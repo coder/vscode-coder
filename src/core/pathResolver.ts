@@ -1,3 +1,4 @@
+import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
@@ -43,11 +44,49 @@ export class PathResolver {
 	}
 
 	/**
-	 * The editor-owned generated SSH config, referenced by an Include in the
-	 * user's main config.
+	 * Directory of generated SSH configs, glob-included from the user's config.
+	 * Lives in the platform data dir so every editor emits the same include.
 	 */
-	public getIncludedSshConfigPath(): string {
-		return path.join(this.basePath, "ssh-config");
+	public getSshConfigDir(): string {
+		switch (process.platform) {
+			case "win32":
+				return path.join(
+					process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
+					"coder.coder-remote",
+					"ssh",
+				);
+			case "darwin":
+				return path.join(
+					os.homedir(),
+					"Library",
+					"Application Support",
+					"coder.coder-remote",
+					"ssh",
+				);
+			default:
+				return path.join(
+					process.env.XDG_DATA_HOME ||
+						path.join(os.homedir(), ".local", "share"),
+					"coder.coder-remote",
+					"ssh",
+				);
+		}
+	}
+
+	/** This editor's generated SSH config for one deployment. */
+	public getSshConfigPath(safeHostname: string): string {
+		return path.join(
+			this.getSshConfigDir(),
+			`${vscode.env.uriScheme}--${safeHostname}.conf`,
+		);
+	}
+
+	/** The deployment hostname if this editor generated the file, else undefined. */
+	public parseSshConfigFile(fileName: string): string | undefined {
+		const prefix = `${vscode.env.uriScheme}--`;
+		return fileName.startsWith(prefix) && fileName.endsWith(".conf")
+			? fileName.slice(prefix.length, -".conf".length)
+			: undefined;
 	}
 
 	/**

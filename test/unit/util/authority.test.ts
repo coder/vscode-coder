@@ -162,24 +162,18 @@ describe("authority construction", () => {
 		).toBe("ssh-remote+coder-vscode.dev.coder.com--foo--bar");
 	});
 
-	interface CurrentHostPrefixCase {
-		hostname: string | undefined;
-		expected: string;
-	}
-	it.each<CurrentHostPrefixCase>([
-		{ hostname: undefined, expected: "coder-vscode-insiders--" },
-		{
-			hostname: "dev.coder.com",
-			expected: "coder-vscode-insiders.dev.coder.com--",
-		},
-	])("formats current host prefix for $hostname", ({ hostname, expected }) => {
+	it("formats the current host prefix", () => {
 		env.uriScheme = "vscode-insiders";
-		expect(toCurrentAuthorityHostPrefix(hostname)).toBe(expected);
+		expect(toCurrentAuthorityHostPrefix("dev.coder.com")).toBe(
+			"coder-vscode-insiders.dev.coder.com--",
+		);
 	});
 
 	it("rejects an empty editor URI scheme at prefix construction", () => {
 		env.uriScheme = "";
-		expect(() => toCurrentAuthorityHostPrefix()).toThrow("must not be empty");
+		expect(() => toCurrentAuthorityHostPrefix("dev.coder.com")).toThrow(
+			"must not be empty",
+		);
 	});
 });
 

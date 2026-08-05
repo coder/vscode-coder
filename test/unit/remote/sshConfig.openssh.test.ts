@@ -14,8 +14,12 @@ const sshAvailable = !spawnSync("ssh", ["-V"]).error;
 // Generous for slow CI runners; each ssh -G call is local and fast.
 const TEST_TIMEOUT_MS = 30_000;
 
-const sshValues = (hostname: string, proxyCommand: string): SshValues => ({
-	Host: `coder-vscode.${hostname}--*`,
+const sshValues = (
+	hostname: string,
+	proxyCommand: string,
+	editor = "vscode",
+): SshValues => ({
+	Host: `coder-${editor}.${hostname}--*`,
 	ProxyCommand: proxyCommand,
 	ConnectTimeout: "0",
 	StrictHostKeyChecking: "no",
@@ -41,19 +45,21 @@ async function createFixture(includeDirName: string) {
 	const root = process.platform === "win32" ? os.homedir() : os.tmpdir();
 	tempDir = await fs.mkdtemp(path.join(root, "coder-ssh-test-"));
 	const logger = createMockLogger();
-	const includePath = path.join(tempDir, includeDirName, "ssh-config");
+	const includeDir = path.join(tempDir, includeDirName);
 	const userConfigPath = path.join(tempDir, "config");
 
 	return {
-		includePath,
+		includeDir,
 		/** What the extension does on connect: write our file, then include it. */
-		async connect(hostname: string, proxyCommand: string) {
-			const coderConfig = new SshConfig(includePath, logger);
-			await coderConfig.load();
-			await coderConfig.update(hostname, sshValues(hostname, proxyCommand));
+		async connect(hostname: string, proxyCommand: string, editor = "vscode") {
+			const coderConfig = new SshConfig(
+				path.join(includeDir, `${editor}--${hostname}.conf`),
+				logger,
+			);
+			await coderConfig.update(sshValues(hostname, proxyCommand, editor));
 			const userConfig = new SshConfig(userConfigPath, logger);
 			await userConfig.load();
-			await userConfig.updateInclude({ id: "vscode", includePath }, hostname);
+			await userConfig.updateInclude(includeDir, hostname);
 		},
 		async seedUserConfig(contents: string) {
 			await fs.writeFile(userConfigPath, contents);
@@ -87,6 +93,7 @@ describe.skipIf(!sshAvailable)("include resolution by real OpenSSH", () => {
 			);
 			await ssh.connect("dev.coder.com", "echo dev-wins");
 			await ssh.connect("eu.coder.com", "echo eu-wins");
+			await ssh.connect("dev.coder.com", "echo cursor-wins", "cursor");
 			await ssh.appendUserConfig(
 				"\nHost *\n  ProxyCommand echo user-wins\n  ConnectTimeout 9\n",
 			);
@@ -100,15 +107,18 @@ describe.skipIf(!sshAvailable)("include resolution by real OpenSSH", () => {
 			expect(
 				await ssh.resolve("coder-vscode.eu.coder.com--user--ws"),
 			).toContain("proxycommand echo eu-wins");
+			expect(
+				await ssh.resolve("coder-cursor.dev.coder.com--user--ws"),
+			).toContain("proxycommand echo cursor-wins");
 		},
 		TEST_TIMEOUT_MS,
 	);
 
-	// Windows forbids these characters in file names.
-	it.skipIf(process.platform === "win32")(
+	// Brackets are legal in file names on every platform, unlike * and ?.
+	it(
 		"honors escaped glob characters in the include path",
 		async () => {
-			const ssh = await createFixture("we[i]rd *dir?");
+			const ssh = await createFixture("we[i]rd [dir]");
 			await ssh.connect("dev.coder.com", "echo dev-wins");
 			expect(
 				await ssh.resolve("coder-vscode.dev.coder.com--user--ws"),
@@ -118,12 +128,12 @@ describe.skipIf(!sshAvailable)("include resolution by real OpenSSH", () => {
 	);
 
 	it(
-		"keeps ssh working when the included file is deleted",
+		"keeps ssh working when the included directory is deleted",
 		async () => {
 			const ssh = await createFixture("Code Dir");
 			await ssh.connect("dev.coder.com", "echo dev-wins");
 			await ssh.appendUserConfig("\nHost *\n  ProxyCommand echo user-wins\n");
-			await fs.rm(ssh.includePath);
+			await fs.rm(ssh.includeDir, { recursive: true });
 
 			expect(
 				await ssh.resolve("coder-vscode.dev.coder.com--user--ws"),

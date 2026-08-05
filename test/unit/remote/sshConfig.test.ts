@@ -4,11 +4,11 @@ import * as os from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+	cleanupStaleSshConfigs,
 	mergeSshConfigValues,
 	parseCoderSshOptions,
 	parseSshConfig,
 	SshConfig,
-	type SshInclude,
 	type SshValues,
 	validateDeploymentSshOptions,
 } from "@/remote/sshConfig";
@@ -50,22 +50,14 @@ const BENIGN_DEPLOYMENT_OPTIONS = {
 	serveraliveinterval: "5",
 } as const;
 
-const deploymentBlock = `# --- START CODER dev.coder.com ---
-Host coder-vscode.dev.coder.com--*
+const deploymentBlock = `Host coder-vscode.dev.coder.com--*
   ConnectTimeout 0
   LogLevel ERROR
   ProxyCommand some-command-here
   ServerAliveCountMax 3
   ServerAliveInterval 10
   StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER dev.coder.com ---`;
-const staleDeploymentBlock = `# --- START CODER dev.coder.com ---
-Host stale
-# --- END CODER dev.coder.com ---`;
-const otherDeploymentBlock = `# --- START CODER other.coder.com ---
-Host coder-vscode.other.coder.com--*
-# --- END CODER other.coder.com ---`;
+  UserKnownHostsFile /dev/null`;
 // Released versions wrote deployment blocks with the VSCODE label.
 const legacyDeploymentBlock = `# --- START CODER VSCODE dev.coder.com ---
 Host stale
@@ -77,30 +69,20 @@ const deploymentUnawareBlock = `# --- START CODER VSCODE ---
 Host coder-vscode--*
 # --- END CODER VSCODE ---`;
 
-const include = {
-	id: "vscode",
-	includePath: "~/.ssh/coder/config",
-} satisfies SshInclude;
+const includeDir = "~/.ssh/coder";
 
-function renderIncludeBlock(value: SshInclude): string {
-	return `# --- START CODER ${value.id} ---
+function renderIncludeBlock(dir: string): string {
+	return `# --- START CODER ---
 # Moves back to the top on connect; override options via coder.sshConfig.
-Include "${value.includePath}"
-# --- END CODER ${value.id} ---`;
+Include "${dir}/*.conf"
+# --- END CODER ---`;
 }
 
-const includeBlock = renderIncludeBlock(include);
-const otherIncludeBlock = renderIncludeBlock({
-	id: "windsurf",
-	includePath: "~/.ssh/windsurf/config",
-});
+const includeBlock = renderIncludeBlock(includeDir);
 
 const mockLogger = createMockLogger();
-// Captured before any spy so injected implementations can delegate to memfs.
-const realReadFile = fsPromises.readFile;
-const realRename = fsPromises.rename;
 
-const readConfig = () => realReadFile(sshFilePath, "utf-8");
+const readConfig = () => fsPromises.readFile(sshFilePath, "utf-8");
 
 async function loadSshConfig(
 	contents?: string,
@@ -121,33 +103,15 @@ async function updateDeployment(
 	overrides?: Record<string, string>,
 ): Promise<void> {
 	const sshConfig = await loadSshConfig(contents);
-	await sshConfig.update(hostname, values, overrides);
+	await sshConfig.update(values, overrides);
 }
 
 async function updateInclude(
 	contents: string,
-	value: SshInclude = include,
+	dir: string = includeDir,
 ): Promise<void> {
 	const sshConfig = await loadSshConfig(contents);
-	await sshConfig.updateInclude(value, hostname);
-}
-
-function injectConcurrentChangeBeforeRename(contents: string): void {
-	vi.spyOn(fsPromises, "readFile").mockImplementationOnce(
-		(filePath, options) => {
-			vol.writeFileSync(sshFilePath, contents);
-			return realReadFile(filePath, options);
-		},
-	);
-}
-
-function injectConcurrentChangeAfterRename(contents: string): void {
-	vi.spyOn(fsPromises, "rename").mockImplementationOnce(
-		async (source, destination) => {
-			await realRename(source, destination);
-			vol.writeFileSync(sshFilePath, contents);
-		},
-	);
+	await sshConfig.updateInclude(dir, hostname);
 }
 
 beforeEach(() => {
@@ -175,45 +139,15 @@ describe("SshConfig.update", () => {
 		expect(configDir.mode & 0o777).toBe(0o700);
 	});
 
-	interface DeploymentMergeCase {
-		name: string;
-		existing: string;
-		expected: string;
-	}
-	it.each<DeploymentMergeCase>([
-		{
-			name: "appends after user config",
-			existing: "Host personal\n  HostName example.com\n\n",
-			expected: `${fileHeader}\n\nHost personal\n  HostName example.com\n\n${deploymentBlock}`,
-		},
-		{
-			name: "replaces only the current deployment",
-			existing: `Host before\n\n${staleDeploymentBlock}\n\nHost after`,
-			expected: `${fileHeader}\n\nHost before\n\n${deploymentBlock}\n\nHost after`,
-		},
-		{
-			name: "does not duplicate the header",
-			existing: `${fileHeader}\n\n${staleDeploymentBlock}`,
-			expected: `${fileHeader}\n\n${deploymentBlock}`,
-		},
-		{
-			name: "moves the header back to the top",
-			existing: `Host personal\n\n${fileHeader}\n\n${staleDeploymentBlock}`,
-			expected: `${fileHeader}\n\nHost personal\n\n${deploymentBlock}`,
-		},
-		{
-			name: "preserves another deployment",
-			existing: otherDeploymentBlock,
-			expected: `${fileHeader}\n\n${otherDeploymentBlock}\n\n${deploymentBlock}`,
-		},
-		{
-			name: "preserves deployment-unaware config",
-			existing: deploymentUnawareBlock,
-			expected: `${fileHeader}\n\n${deploymentUnawareBlock}\n\n${deploymentBlock}`,
-		},
-	])("$name", async ({ existing, expected }) => {
-		await updateDeployment(existing);
-		expect(await readConfig()).toBe(expected);
+	it("regenerates the whole file over existing content", async () => {
+		await updateDeployment("Host personal\n  HostName example.com\n\n");
+		expect(await readConfig()).toBe(`${fileHeader}\n\n${deploymentBlock}`);
+	});
+
+	it("rewrites an unchanged file so its mtime marks the last connect", async () => {
+		const renameSpy = vi.spyOn(fsPromises, "rename");
+		await updateDeployment(`${fileHeader}\n\n${deploymentBlock}`);
+		expect(renameSpy).toHaveBeenCalledTimes(1);
 	});
 
 	it("applies sorted case-insensitive overrides, additions, and removals", async () => {
@@ -227,7 +161,6 @@ describe("SshConfig.update", () => {
 
 		expect(await readConfig()).toBe(`${fileHeader}
 
-# --- START CODER dev.coder.com ---
 Host coder-vscode.dev.coder.com--*
   ConnectTimeout 500
   ExtraKey ExtraValue
@@ -235,52 +168,7 @@ Host coder-vscode.dev.coder.com--*
   ServerAliveCountMax 3
   ServerAliveInterval 10
   UserKnownHostsFile /dev/null
-  loglevel DEBUG
-# --- END CODER dev.coder.com ---`);
-	});
-
-	interface MalformedDeploymentCase {
-		name: string;
-		existing: string;
-		error: string;
-	}
-	it.each<MalformedDeploymentCase>([
-		{
-			name: "missing end marker",
-			existing: "# --- START CODER dev.coder.com ---",
-			error:
-				'has 1 "# --- START CODER dev.coder.com ---" and 0 "# --- END CODER dev.coder.com ---" markers',
-		},
-		{
-			name: "extra start marker",
-			existing: `${staleDeploymentBlock}\n# --- START CODER dev.coder.com ---`,
-			error:
-				'has 2 "# --- START CODER dev.coder.com ---" and 1 "# --- END CODER dev.coder.com ---" markers',
-		},
-		{
-			name: "extra end marker",
-			existing: `${staleDeploymentBlock}\n# --- END CODER dev.coder.com ---`,
-			error:
-				'has 1 "# --- START CODER dev.coder.com ---" and 2 "# --- END CODER dev.coder.com ---" markers',
-		},
-		{
-			name: "duplicate blocks",
-			existing: `${staleDeploymentBlock}\n${staleDeploymentBlock}`,
-			error: 'has 2 "# --- START CODER dev.coder.com ---" blocks',
-		},
-		{
-			name: "end before start",
-			existing:
-				"# --- END CODER dev.coder.com ---\n# --- START CODER dev.coder.com ---",
-			error:
-				'"# --- END CODER dev.coder.com ---" marker before its "# --- START CODER dev.coder.com ---" marker',
-		},
-	])("rejects $name", async ({ existing, error }) => {
-		const sshConfig = await loadSshConfig(existing);
-		await expect(sshConfig.update(hostname, BASE_SSH_VALUES)).rejects.toThrow(
-			error,
-		);
-		expect(await readConfig()).toBe(existing);
+  loglevel DEBUG`);
 	});
 
 	/**
@@ -289,16 +177,11 @@ Host coder-vscode.dev.coder.com--*
 	 */
 	interface RejectCase {
 		name: string;
-		safeHostname?: string;
 		values?: SshValues;
 		overrides?: Record<string, string>;
 	}
 
 	it.each<RejectCase>([
-		{
-			name: "deployment hostname newline",
-			safeHostname: "dev.coder.com\nHost *",
-		},
 		{
 			name: "Host value carriage return",
 			values: { ...BASE_SSH_VALUES, Host: "coder-vscode--*\rMatch all" },
@@ -320,16 +203,10 @@ Host coder-vscode.dev.coder.com--*
 		},
 	])(
 		"rejects unsafe serialization: $name",
-		async ({
-			safeHostname = hostname,
-			values = BASE_SSH_VALUES,
-			overrides,
-		}) => {
+		async ({ values = BASE_SSH_VALUES, overrides }) => {
 			const sshConfig = await loadSshConfig();
 
-			await expect(
-				sshConfig.update(safeHostname, values, overrides),
-			).rejects.toThrow();
+			await expect(sshConfig.update(values, overrides)).rejects.toThrow();
 			expect(vol.existsSync(sshFilePath)).toBe(false);
 		},
 	);
@@ -362,21 +239,13 @@ describe("SshConfig.updateInclude", () => {
 			expected: `${includeBlock}\n\nHost *`,
 		},
 		{
-			name: "moves to first",
-			existing: `Host *\n\n${includeBlock}`,
+			name: "moves a stale block to first",
+			existing: `Host *\n\n${includeBlock.replace("coder/*.conf", "old/*.conf")}`,
 			expected: `${includeBlock}\n\nHost *`,
 		},
 	])("handles $name", async ({ existing, expected }) => {
 		await updateInclude(existing);
 		expect(await readConfig()).toBe(expected);
-	});
-
-	it("replaces the current editor block and preserves another editor", async () => {
-		const stale = includeBlock.replace("coder/config", "old/config");
-		await updateInclude(`Host *\n\n${stale}\n\n${otherIncludeBlock}`);
-		expect(await readConfig()).toBe(
-			`${includeBlock}\n\nHost *\n\n${otherIncludeBlock}`,
-		);
 	});
 
 	it("removes the current deployment and preserves other and deployment-unaware blocks", async () => {
@@ -395,95 +264,66 @@ describe("SshConfig.updateInclude", () => {
 	}
 	it.each<MalformedEditorCase>([
 		{
-			name: "missing end marker",
-			existing: includeBlock.replace("# --- END CODER vscode ---", ""),
+			name: "extra end marker",
+			existing: `${includeBlock}\n# --- END CODER ---`,
 			error:
-				'has 1 "# --- START CODER vscode ---" and 0 "# --- END CODER vscode ---" markers',
-		},
-		{
-			name: "mismatched end marker",
-			existing: includeBlock.replace(
-				"# --- END CODER vscode ---",
-				"# --- END CODER windsurf ---",
-			),
-			error:
-				'has 1 "# --- START CODER vscode ---" and 0 "# --- END CODER vscode ---" markers',
+				'has 1 "# --- START CODER ---" and 2 "# --- END CODER ---" markers',
 		},
 		{
 			name: "duplicate blocks",
 			existing: `${includeBlock}\n${includeBlock}`,
-			error: 'has 2 "# --- START CODER vscode ---" blocks',
+			error: 'has 2 "# --- START CODER ---" blocks',
 		},
 		{
 			name: "end before start",
-			existing: "# --- END CODER vscode ---\n# --- START CODER vscode ---",
+			existing: "# --- END CODER ---\n# --- START CODER ---",
 			error:
-				'"# --- END CODER vscode ---" marker before its "# --- START CODER vscode ---" marker',
+				'"# --- END CODER ---" marker before its "# --- START CODER ---" marker',
 		},
 	])("rejects $name", async ({ existing, error }) => {
 		await expect(updateInclude(existing)).rejects.toThrow(error);
 		expect(await readConfig()).toBe(existing);
 	});
 
-	it("supports dashed editor IDs", async () => {
-		const dashed = { ...include, id: "vscode-insiders" };
-		await updateInclude("", dashed);
-		expect(await readConfig()).toBe(renderIncludeBlock(dashed));
-	});
-
-	it("rejects an empty editor ID", async () => {
-		await expect(updateInclude("", { ...include, id: "" })).rejects.toThrow(
-			"Editor ID must not be empty",
-		);
-	});
-
 	interface IncludePathEscapeCase {
-		includePath: string;
+		dir: string;
 		escaped: string;
 	}
 	it.each<IncludePathEscapeCase>([
 		{
-			includePath: "~/.ssh/we[i]rd/*?[config]",
-			escaped: "~/.ssh/we\\[i\\]rd/\\*\\?\\[config\\]",
+			dir: "~/.ssh/we[i]rd/*?[dir]",
+			escaped: "~/.ssh/we\\[i\\]rd/\\*\\?\\[dir\\]",
 		},
 		{
-			includePath: "C:\\Users\\Jane Doe\\config",
-			escaped: "C:/Users/Jane Doe/config",
+			dir: "C:\\Users\\Jane Doe\\ssh",
+			escaped: "C:/Users/Jane Doe/ssh",
 		},
-	])("escapes $includePath", async ({ includePath, escaped }) => {
-		await updateInclude("", { ...include, includePath });
-		expect(await readConfig()).toContain(`Include "${escaped}"`);
+	])("escapes $dir", async ({ dir, escaped }) => {
+		await updateInclude("", dir);
+		expect(await readConfig()).toContain(`Include "${escaped}/*.conf"`);
 	});
 
 	// A tilde swallows home-path quirks that ssh could not read back otherwise.
-	it.each([
-		{ label: "plain", home: homeDir },
-		{ label: "weird", home: "/home/we[i]rd %user" },
-	])(
-		"writes a $label home-relative include path with a tilde",
-		async ({ home }) => {
-			vi.mocked(os.homedir).mockReturnValue(home);
-			await updateInclude("", {
-				...include,
-				includePath: `${home}/.config/Code/ssh-config`,
-			});
-			expect(await readConfig()).toContain(
-				'Include "~/.config/Code/ssh-config"',
-			);
-		},
-	);
+	it("writes a home-relative include path with a tilde", async () => {
+		const home = "/home/we[i]rd %user";
+		vi.mocked(os.homedir).mockReturnValue(home);
+		await updateInclude("", `${home}/.local/share/coder.coder-remote/ssh`);
+		expect(await readConfig()).toContain(
+			'Include "~/.local/share/coder.coder-remote/ssh/*.conf"',
+		);
+	});
 
-	type InvalidIncludePath = string;
-	it.each<InvalidIncludePath>([
+	type InvalidIncludeDir = string;
+	it.each<InvalidIncludeDir>([
 		"path\rname",
 		"path\nname",
 		"path\0name",
 		'path"name',
 		"path%name",
-	])("rejects unrepresentable include paths", async (includePath) => {
-		await expect(
-			updateInclude("", { ...include, includePath }),
-		).rejects.toThrow("must not contain CR, LF, NUL");
+	])("rejects unrepresentable include paths", async (dir) => {
+		await expect(updateInclude("", dir)).rejects.toThrow(
+			"must not contain CR, LF, NUL",
+		);
 	});
 });
 
@@ -498,12 +338,12 @@ describe("persistence", () => {
 		{ name: "existing file", existing: "Host *", mode: 0o640 },
 	])("uses the correct mode for a $name", async ({ existing, mode }) => {
 		const sshConfig = await loadSshConfig(existing, mode);
-		await sshConfig.update(hostname, BASE_SSH_VALUES);
+		await sshConfig.update(BASE_SSH_VALUES);
 		expect(vol.statSync(sshFilePath).mode & 0o777).toBe(mode);
 	});
 
-	type FileSystemErrorStage = "load" | "conflict read" | "stat";
-	it.each<FileSystemErrorStage>(["load", "conflict read", "stat"])(
+	type FileSystemErrorStage = "load" | "include read" | "stat";
+	it.each<FileSystemErrorStage>(["load", "include read", "stat"])(
 		"propagates non-ENOENT %s errors",
 		async (stage) => {
 			const denied = Object.assign(new Error("denied"), { code: "EACCES" });
@@ -515,14 +355,15 @@ describe("persistence", () => {
 				return;
 			}
 			const sshConfig = await loadSshConfig("Host initial");
-			if (stage === "conflict read") {
+			if (stage === "include read") {
 				vi.spyOn(fsPromises, "readFile").mockRejectedValueOnce(denied);
-			} else {
-				vi.spyOn(fsPromises, "stat").mockRejectedValueOnce(denied);
+				await expect(
+					sshConfig.updateInclude(includeDir, hostname),
+				).rejects.toThrow("denied");
+				return;
 			}
-			await expect(sshConfig.update(hostname, BASE_SSH_VALUES)).rejects.toThrow(
-				"denied",
-			);
+			vi.spyOn(fsPromises, "stat").mockRejectedValueOnce(denied);
+			await expect(sshConfig.update(BASE_SSH_VALUES)).rejects.toThrow("denied");
 		},
 	);
 
@@ -531,7 +372,7 @@ describe("persistence", () => {
 		vi.spyOn(fsPromises, "writeFile").mockRejectedValueOnce(
 			new Error("EACCES"),
 		);
-		await expect(sshConfig.update(hostname, BASE_SSH_VALUES)).rejects.toThrow(
+		await expect(sshConfig.update(BASE_SSH_VALUES)).rejects.toThrow(
 			/Failed to write temporary SSH config file.*EACCES/,
 		);
 	});
@@ -540,7 +381,7 @@ describe("persistence", () => {
 		const sshConfig = await loadSshConfig("Host initial");
 		const error = Object.assign(new Error("EXDEV"), { code: "EXDEV" });
 		vi.spyOn(fsPromises, "rename").mockRejectedValueOnce(error);
-		await expect(sshConfig.update(hostname, BASE_SSH_VALUES)).rejects.toThrow(
+		await expect(sshConfig.update(BASE_SSH_VALUES)).rejects.toThrow(
 			"Failed to rename temporary SSH config file",
 		);
 		const leftoverTempFiles = Object.keys(vol.toJSON()).filter((filePath) =>
@@ -549,70 +390,46 @@ describe("persistence", () => {
 		expect(leftoverTempFiles).toEqual([]);
 	});
 
-	it("retries a transient Windows rename failure", async () => {
-		const realPlatform = process.platform;
-		Object.defineProperty(process, "platform", { value: "win32" });
-		vi.useFakeTimers();
-		try {
-			const sshConfig = await loadSshConfig("Host initial");
-			const error = Object.assign(new Error("EPERM"), { code: "EPERM" });
-			const renameSpy = vi
-				.spyOn(fsPromises, "rename")
-				.mockRejectedValueOnce(error);
-			const update = sshConfig.update(hostname, BASE_SSH_VALUES);
-			await vi.advanceTimersByTimeAsync(100);
-			await update;
-			expect(renameSpy).toHaveBeenCalledTimes(2);
-		} finally {
-			vi.useRealTimers();
-			Object.defineProperty(process, "platform", { value: realPlatform });
-		}
+	it("writes over a concurrent change using the freshly read content", async () => {
+		const sshConfig = await loadSshConfig("Host initial");
+		// The include update reads right before merging, so it picks up content
+		// written after load().
+		vol.writeFileSync(sshFilePath, "Host concurrent");
+		await sshConfig.updateInclude(includeDir, hostname);
+		expect(await readConfig()).toBe(`${includeBlock}\n\nHost concurrent`);
 	});
 
-	it("retries an update conflict detected before rename", async () => {
-		const sshConfig = await loadSshConfig("Host initial");
+	it("does not rewrite the file when the include is already in place", async () => {
+		const sshConfig = await loadSshConfig(`${includeBlock}\n\nHost *`);
 		const writeFileSpy = vi.spyOn(fsPromises, "writeFile");
 		const renameSpy = vi.spyOn(fsPromises, "rename");
-		injectConcurrentChangeBeforeRename(otherDeploymentBlock);
-		await sshConfig.update(hostname, BASE_SSH_VALUES);
-		expect(await readConfig()).toBe(
-			`${fileHeader}\n\n${otherDeploymentBlock}\n\n${deploymentBlock}`,
-		);
-		expect(writeFileSpy).toHaveBeenCalledTimes(2);
-		expect(renameSpy).toHaveBeenCalledTimes(1);
-	});
-
-	it("retries an include conflict detected after rename", async () => {
-		const sshConfig = await loadSshConfig("Host initial");
-		const renameSpy = vi.spyOn(fsPromises, "rename");
-		injectConcurrentChangeAfterRename(
-			`${otherIncludeBlock}\n\nHost concurrent\n\n${includeBlock}\n\n${legacyDeploymentBlock}`,
-		);
-		await sshConfig.updateInclude(include, hostname);
-		expect(await readConfig()).toBe(
-			`${includeBlock}\n\n${otherIncludeBlock}\n\nHost concurrent`,
-		);
-		expect(renameSpy).toHaveBeenCalledTimes(2);
-	});
-
-	it("fails after bounded optimistic retries", async () => {
-		vol.fromJSON({ [sshFilePath]: "Host initial" });
-		const writeFileSpy = vi.spyOn(fsPromises, "writeFile");
-		const renameSpy = vi.spyOn(fsPromises, "rename");
-		let destinationReads = 0;
-		vi.spyOn(fsPromises, "readFile").mockImplementation((filePath, options) => {
-			if (filePath === sshFilePath && ++destinationReads > 1) {
-				vol.writeFileSync(sshFilePath, `Host revision-${destinationReads}`);
-			}
-			return realReadFile(filePath, options);
-		});
-		const sshConfig = new SshConfig(sshFilePath, mockLogger, fsPromises);
-		await sshConfig.load();
-		await expect(sshConfig.updateInclude(include, hostname)).rejects.toThrow(
-			"because it kept changing",
-		);
-		expect(writeFileSpy).toHaveBeenCalledTimes(3);
+		await sshConfig.updateInclude(includeDir, hostname);
+		expect(writeFileSpy).not.toHaveBeenCalled();
 		expect(renameSpy).not.toHaveBeenCalled();
+	});
+});
+
+describe("cleanupStaleSshConfigs", () => {
+	it("removes only generated configs not written for a week", async () => {
+		const dir = "/Path/To/UserHomeDir/ssh";
+		vol.fromJSON({
+			[`${dir}/vscode--old.coder.com.conf`]: "stale",
+			[`${dir}/cursor--fresh.coder.com.conf`]: "fresh",
+			[`${dir}/unrelated.txt`]: "keep",
+		});
+		const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+		vol.utimesSync(
+			`${dir}/vscode--old.coder.com.conf`,
+			eightDaysAgo,
+			eightDaysAgo,
+		);
+
+		await cleanupStaleSshConfigs(dir, mockLogger);
+
+		expect(Object.keys(vol.toJSON()).sort()).toEqual([
+			`${dir}/cursor--fresh.coder.com.conf`,
+			`${dir}/unrelated.txt`,
+		]);
 	});
 });
 

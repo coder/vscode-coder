@@ -10,6 +10,7 @@ import * as os from "node:os";
 import path from "node:path";
 
 import { countSubstring, lowercase } from "../util";
+import { cleanupFiles } from "../util/fileCleanup";
 import { renameWithRetry, tempFilePath } from "../util/fs";
 
 import type { Logger } from "../logging/logger";
@@ -17,14 +18,8 @@ import type { Logger } from "../logging/logger";
 class SshConfigBadFormat extends Error {}
 
 interface Block {
-	raw: string;
 	start: number;
 	end: number;
-}
-
-interface Mutation {
-	apply(raw: string): string;
-	onSuccess?(): void;
 }
 
 export interface SshValues {
@@ -39,7 +34,7 @@ export interface SshValues {
 	SetEnv?: string;
 }
 
-/** Interface for the file system to make it easier to test. */
+/** Injectable for tests. */
 export interface FileSystem {
 	mkdir: typeof mkdir;
 	readFile: typeof readFile;
@@ -58,10 +53,10 @@ const defaultFileSystem: FileSystem = {
 	writeFile,
 };
 
-/** Matches an SSH config key at the start of a line (e.g. "ConnectTimeout", "LogLevel"). */
+/** An SSH config key at the start of a line, e.g. "ConnectTimeout". */
 const SSH_KEY_REGEX = /^[a-zA-Z0-9-]+/;
 
-/** Matches the Coder CLI's START-CODER / END-CODER block, flexible on dash count. */
+/** The Coder CLI's START-CODER block, flexible on dash count. */
 const CODER_BLOCK_REGEX = /^# -+START-CODER-+$(.*?)^# -+END-CODER-+$/ms;
 
 /** Matches a string that is only an SSH config key. */
@@ -70,34 +65,43 @@ const KEY_ONLY_REGEX = /^[a-zA-Z0-9-]+$/;
 /** Characters that would break a value out of its config line. */
 const UNSAFE_CHARS_REGEX = /[\r\n\0]/;
 
-const UPDATE_ATTEMPTS = 3;
-
 interface BlockMarkers {
 	start: string;
 	end: string;
 }
 
-// Labels are an editor ID for include blocks in the user's config and a
-// deployment hostname for blocks in the editor-owned generated file.
-function blockMarkers(label: string): BlockMarkers {
+/** Released versions wrote deployment blocks with these markers into the user's config. */
+function legacyDeploymentMarkers(safeHostname: string): BlockMarkers {
 	return {
-		start: `# --- START CODER ${label} ---`,
-		end: `# --- END CODER ${label} ---`,
+		start: `# --- START CODER VSCODE ${safeHostname} ---`,
+		end: `# --- END CODER VSCODE ${safeHostname} ---`,
 	};
 }
 
-// Released versions wrote deployment blocks with this label into the user's config.
-function legacyDeploymentMarkers(safeHostname: string): BlockMarkers {
-	return blockMarkers(`VSCODE ${safeHostname}`);
-}
+/** Shared include block; identical bytes from every editor, so writers converge. */
+const INCLUDE_MARKERS: BlockMarkers = {
+	start: "# --- START CODER ---",
+	end: "# --- END CODER ---",
+};
 
-// Kept at the top of the editor-owned generated file.
+/** Header of the generated per-deployment file. */
 const CODER_SSH_CONFIG_HEADER = `# Coder workspace hosts. Do not edit; the Coder extension rewrites this file
 # on every connection. Override options with the "coder.sshConfig" setting.`;
 
-export interface SshInclude {
-	id: string;
-	includePath: string;
+/** Connects rewrite the file, so anything older is unused and safe to sweep. */
+const STALE_CONFIG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Delete generated configs (from any editor) not connected to recently. */
+export async function cleanupStaleSshConfigs(
+	dir: string,
+	logger: Logger,
+): Promise<void> {
+	await cleanupFiles(dir, logger, {
+		label: "generated SSH config",
+		filter: (name) => name.endsWith(".conf"),
+		select: (files, now) =>
+			files.filter((file) => now - file.mtime > STALE_CONFIG_MAX_AGE_MS),
+	});
 }
 
 /**
@@ -216,30 +220,24 @@ export function parseCoderSshOptions(raw: string): Record<string, string> {
 	return parseSshConfig(sshOptionLines);
 }
 
-/**
- * Parse an array of SSH config lines into a Record.
- * Handles both "Key value" and "Key=value" formats.
- * Accumulates SetEnv values since SSH allows multiple environment variables.
- */
+/** Parse "Key value" or "Key=value" lines, accumulating SetEnv values. */
 export function parseSshConfig(lines: string[]): Record<string, string> {
 	return lines.reduce(
 		(acc, line) => {
 			const keyMatch = SSH_KEY_REGEX.exec(line);
 			if (!keyMatch) {
-				return acc; // Malformed line
+				return acc;
 			}
 
 			const key = keyMatch[0];
 			const separator = line.at(key.length);
 			if (separator !== "=" && separator !== " ") {
-				return acc; // Malformed line
+				return acc;
 			}
 
 			const value = line.slice(key.length + 1);
 
-			// Accumulate SetEnv values since there can be multiple.
 			if (key.toLowerCase() === "setenv") {
-				// Ignore empty SetEnv values
 				if (value !== "") {
 					const existing = acc["SetEnv"];
 					acc["SetEnv"] = existing ? `${existing} ${value}` : value;
@@ -253,20 +251,13 @@ export function parseSshConfig(lines: string[]): Record<string, string> {
 	);
 }
 
-/**
- * Merge the given SSH config with the provided overrides. The merge handles
- * key case insensitivity, so casing in the key does not matter.
- */
+/** Merge overrides into config; keys match case-insensitively. */
 export function mergeSshConfigValues(
 	config: Record<string, string>,
 	overrides: Record<string, string>,
 ): Record<string, string> {
 	const merged: Record<string, string> = {};
 
-	// We need to do a case insensitive match for the overrides as ssh config keys are case insensitive.
-	// To get the correct key:value, use:
-	//   key = caseInsensitiveOverrides[key.toLowerCase()]
-	//   value = overrides[key]
 	const caseInsensitiveOverrides: Record<string, string> = {};
 	Object.keys(overrides).forEach((key) => {
 		caseInsensitiveOverrides[key.toLowerCase()] = key;
@@ -274,13 +265,12 @@ export function mergeSshConfigValues(
 
 	Object.keys(config).forEach((key) => {
 		const lower = key.toLowerCase();
-		// If the key is in overrides, use the override value.
 		if (caseInsensitiveOverrides[lower]) {
 			const correctCaseKey = caseInsensitiveOverrides[lower];
 			const value = overrides[correctCaseKey];
 			delete caseInsensitiveOverrides[lower];
 
-			// Special handling for SetEnv - concatenate values instead of replacing.
+			// SetEnv concatenates instead of replacing.
 			if (lower === "setenv") {
 				if (value === "") {
 					merged["SetEnv"] = config[key];
@@ -290,25 +280,22 @@ export function mergeSshConfigValues(
 				return;
 			}
 
-			// If the value is empty, do not add the key. It is being removed.
+			// An empty override removes the key.
 			if (value !== "") {
 				merged[correctCaseKey] = value;
 			}
 
 			return;
 		}
-		// If no override, take the original value.
 		if (config[key] !== "") {
 			merged[key] = config[key];
 		}
 	});
 
-	// Add remaining overrides.
 	Object.keys(caseInsensitiveOverrides).forEach((lower) => {
 		const correctCaseKey = caseInsensitiveOverrides[lower];
 		const value = overrides[correctCaseKey];
 
-		// Special handling for SetEnv - concatenate if already exists
 		if (lower === "setenv" && merged["SetEnv"]) {
 			merged["SetEnv"] = `${merged["SetEnv"]} ${value}`;
 		} else {
@@ -336,44 +323,33 @@ export class SshConfig {
 	}
 
 	async load() {
-		try {
-			this.raw = await this.fileSystem.readFile(this.filePath, "utf-8");
-			this.logger.debug("Loaded SSH config", this.filePath);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-				throw error;
-			}
-			this.logger.debug(
-				"SSH config file not found, starting fresh",
-				this.filePath,
-			);
-			this.raw = "";
-		}
+		this.raw = await this.read();
+		this.logger.debug("Loaded SSH config", this.filePath);
 	}
 
 	/**
-	 * Update the block for the deployment with the provided hostname.
-	 * @throws {Error} when the hostname, values, or overrides fail validation.
+	 * Regenerate the whole per-deployment file; last-writer-wins. Always
+	 * writes, so the file's mtime marks the last connect for the stale sweep.
 	 */
-	async update(
-		safeHostname: string,
-		values: SshValues,
-		overrides?: Record<string, string>,
-	) {
-		const block = this.renderDeploymentBlock(safeHostname, values, overrides);
-		await this.mutate({
-			apply: (raw) => this.mergeDeployment(raw, safeHostname, block),
-		});
+	async update(values: SshValues, overrides?: Record<string, string>) {
+		const block = this.renderDeploymentBlock(values, overrides);
+		this.raw = `${CODER_SSH_CONFIG_HEADER}\n\n${block}`;
+		await this.save();
 	}
 
-	/** Include an editor's config first so its options win, removing its deployment block. */
-	async updateInclude(include: SshInclude, safeHostname: string) {
-		const block = this.renderIncludeBlock(include);
-		await this.mutate({
-			apply: (raw) => this.mergeInclude(raw, include.id, block, safeHostname),
-			onSuccess: () =>
-				this.logger.debug("Including SSH config", include.includePath),
-		});
+	/**
+	 * Keep the shared include first so our options win, removing superseded
+	 * blocks. Read-modify-write with no locking, like the CLI's config-ssh;
+	 * when the include is already in place nothing is written.
+	 */
+	async updateInclude(includeDir: string, safeHostname: string) {
+		const block = this.renderIncludeBlock(includeDir);
+		const raw = await this.read();
+		this.raw = this.mergeInclude(raw, block, safeHostname);
+		if (this.raw !== raw) {
+			await this.save();
+			this.logger.debug("Including SSH config dir", includeDir);
+		}
 	}
 
 	public getRaw() {
@@ -385,16 +361,13 @@ export class SshConfig {
 	}
 
 	/**
-	 * Render the deployment's block, validating everything written into it,
-	 * including the hostname, which lands in the block marker comments.
-	 * @throws {Error} when the hostname, values, or overrides fail validation.
+	 * Render the deployment's block, validating everything written into it.
+	 * @throws {Error} when the values or overrides fail validation.
 	 */
 	private renderDeploymentBlock(
-		safeHostname: string,
 		values: SshValues,
 		overrides?: Record<string, string>,
 	): string {
-		validateSshValue("deployment hostname", safeHostname);
 		validateSshConfigOptions({ ...values });
 		validateSshConfigOptions(overrides ?? {});
 		const { Host, ...defaults } = values;
@@ -403,41 +376,7 @@ export class SshConfig {
 			.sort()
 			.filter((key) => config[key] !== "")
 			.map((key) => `  ${key} ${config[key]}`);
-		const markers = blockMarkers(safeHostname);
-		return [markers.start, `Host ${Host}`, ...options, markers.end].join("\n");
-	}
-
-	private mergeDeployment(
-		raw: string,
-		safeHostname: string,
-		block: string,
-	): string {
-		let merged: string;
-		const existing = this.findBlock(raw, blockMarkers(safeHostname));
-		if (existing) {
-			this.logger.debug("Replacing SSH config block", safeHostname);
-			merged = this.replaceRange(raw, existing, block);
-		} else {
-			this.logger.debug("Appending new SSH config block", safeHostname);
-			merged = raw ? `${raw.trimEnd()}\n\n${block}` : block;
-		}
-		return this.moveHeaderToTop(merged);
-	}
-
-	/** The user may have added content above the header; move it back to the top. */
-	private moveHeaderToTop(merged: string): string {
-		const start = merged.indexOf(CODER_SSH_CONFIG_HEADER);
-		if (start === 0) {
-			return merged;
-		}
-		if (start > 0) {
-			merged = this.removeRange(merged, {
-				raw: CODER_SSH_CONFIG_HEADER,
-				start,
-				end: start + CODER_SSH_CONFIG_HEADER.length,
-			});
-		}
-		return `${CODER_SSH_CONFIG_HEADER}\n\n${merged}`;
+		return [`Host ${Host}`, ...options].join("\n");
 	}
 
 	private findBlock(raw: string, markers: BlockMarkers): Block | undefined {
@@ -453,46 +392,38 @@ export class SshConfig {
 				`Malformed config: ${this.filePath} has ${startCount} "${markers.start}" blocks. Please remove all but one.`,
 			);
 		}
+		if (startCount === 0) {
+			return undefined;
+		}
 
 		const start = raw.indexOf(markers.start);
 		const endMarkerStart = raw.indexOf(markers.end);
-		if (start === -1 || endMarkerStart === -1) return undefined;
 		if (endMarkerStart < start) {
 			throw new SshConfigBadFormat(
 				`Malformed config: ${this.filePath} has an "${markers.end}" marker before its "${markers.start}" marker.`,
 			);
 		}
-		const end = endMarkerStart + markers.end.length;
-		return { raw: raw.slice(start, end), start, end };
+		return { start, end: endMarkerStart + markers.end.length };
 	}
 
-	private replaceRange(raw: string, range: Block, replacement: string): string {
-		return raw.slice(0, range.start) + replacement + raw.slice(range.end);
-	}
-
-	private renderIncludeBlock({ id, includePath }: SshInclude): string {
-		if (id.length === 0) {
-			throw new Error("Editor ID must not be empty.");
-		}
-		const markers = blockMarkers(id);
+	private renderIncludeBlock(includeDir: string): string {
 		return [
-			markers.start,
+			INCLUDE_MARKERS.start,
 			"# Moves back to the top on connect; override options via coder.sshConfig.",
-			`Include "${this.escapeIncludePath(includePath)}"`,
-			markers.end,
+			`Include "${this.escapeIncludePath(includeDir)}/*.conf"`,
+			INCLUDE_MARKERS.end,
 		].join("\n");
 	}
 
 	private escapeIncludePath(includePath: string): string {
-		// Prefer ~/... so quirks in the home path (spaces, %, glob characters)
-		// never reach the emitted argument. ssh expands the tilde itself.
+		// Emit ~/... so home-path quirks (spaces, %, glob chars) never reach ssh.
 		const relative = path.relative(os.homedir(), includePath);
 		const argument =
 			relative && !relative.startsWith("..") && !path.isAbsolute(relative)
 				? `~/${relative}`
 				: includePath;
-		// ssh_config has no escape for '"' inside a quoted argument, and
-		// OpenSSH 9.9+ fatals on unknown %-tokens in Include arguments.
+		// No escape exists for '"' in quoted arguments; OpenSSH 9.9+ fatals on
+		// unknown %-tokens in Include arguments.
 		if (/[\r\n\0"%]/.test(argument)) {
 			throw new Error(
 				"SSH include path must not contain CR, LF, NUL, %, or double-quote characters.",
@@ -503,22 +434,16 @@ export class SshConfig {
 
 	private mergeInclude(
 		raw: string,
-		editorId: string,
 		includeBlock: string,
 		safeHostname: string,
 	): string {
 		let rest = raw;
-		const editorBlock = this.findBlock(rest, blockMarkers(editorId));
-		if (editorBlock) {
-			rest = this.removeRange(rest, editorBlock);
-		}
-		const deployment = this.findBlock(
-			rest,
-			legacyDeploymentMarkers(safeHostname),
-		);
-		if (deployment) {
-			this.logger.debug("Removing superseded SSH config block", safeHostname);
-			rest = this.removeRange(rest, deployment);
+		const superseded = [INCLUDE_MARKERS, legacyDeploymentMarkers(safeHostname)];
+		for (const markers of superseded) {
+			const block = this.findBlock(rest, markers);
+			if (block) {
+				rest = this.removeRange(rest, block);
+			}
 		}
 		return [includeBlock, rest].filter(Boolean).join("\n\n");
 	}
@@ -529,51 +454,20 @@ export class SshConfig {
 		return [before, after].filter(Boolean).join("\n\n");
 	}
 
-	private async mutate(mutation: Mutation): Promise<void> {
-		let snapshot = this.getRaw();
-		// Retries only handle concurrent writers (save() returns false on a
-		// conflict); I/O errors like EACCES throw immediately and are not retried.
-		for (let attempt = 0; attempt < UPDATE_ATTEMPTS; attempt++) {
-			const updated = mutation.apply(snapshot);
-			if (updated === snapshot) {
-				this.raw = snapshot;
-				return;
-			}
-
-			this.raw = updated;
-			if (!(await this.save(snapshot))) {
-				snapshot = await this.read();
-				continue;
-			}
-
-			const latest = await this.read();
-			if (mutation.apply(latest) === latest) {
-				this.raw = latest;
-				mutation.onSuccess?.();
-				return;
-			}
-			snapshot = latest;
-		}
-
-		this.raw = snapshot;
-		throw new Error(
-			`Failed to update SSH config at ${this.filePath} because it kept changing, likely due to another editor writing it at the same time. Please try again.`,
-		);
-	}
-
-	private async save(expectedRaw?: string): Promise<boolean> {
-		// We want to preserve the original file mode.
+	/** Atomically write raw via a temp file. */
+	private async save(): Promise<void> {
+		// Preserve the existing file mode.
 		const existingMode = await this.fileSystem
 			.stat(this.filePath)
 			.then((stat) => stat.mode)
 			.catch((ex: NodeJS.ErrnoException) => {
 				if (ex.code === "ENOENT") {
-					return 0o600; // default to 0600 if file does not exist
+					return 0o600;
 				}
-				throw ex; // Any other error is unexpected
+				throw ex;
 			});
 		await this.fileSystem.mkdir(path.dirname(this.filePath), {
-			mode: 0o700, // only owner has rwx permission, not group or everyone.
+			mode: 0o700,
 			recursive: true,
 		});
 		const fileName = path.basename(this.filePath);
@@ -596,34 +490,14 @@ export class SshConfig {
 		}
 
 		try {
-			if (expectedRaw !== undefined) {
-				const latest = await this.read();
-				if (latest !== expectedRaw) {
-					await this.fileSystem.unlink(tempPath).catch((unlinkErr: unknown) => {
-						this.logger.warn(
-							"Failed to clean up conflicted temp SSH config file",
-							tempPath,
-							unlinkErr,
-						);
-					});
-					return false;
-				}
-			}
 			await renameWithRetry(
 				(src, dest) => this.fileSystem.rename(src, dest),
 				tempPath,
 				this.filePath,
 			);
 			this.logger.debug("Saved SSH config", this.filePath);
-			return true;
 		} catch (err) {
-			await this.fileSystem.unlink(tempPath).catch((unlinkErr: unknown) => {
-				this.logger.warn(
-					"Failed to clean up temp SSH config file",
-					tempPath,
-					unlinkErr,
-				);
-			});
+			await this.discardTemp(tempPath);
 			throw new Error(
 				`Failed to rename temporary SSH config file at ${tempPath} to ${this.filePath}: ${
 					err instanceof Error ? err.message : String(err)
@@ -631,6 +505,16 @@ export class SshConfig {
 				{ cause: err },
 			);
 		}
+	}
+
+	private async discardTemp(tempPath: string): Promise<void> {
+		await this.fileSystem.unlink(tempPath).catch((unlinkErr: unknown) => {
+			this.logger.warn(
+				"Failed to clean up temp SSH config file",
+				tempPath,
+				unlinkErr,
+			);
+		});
 	}
 
 	private async read(): Promise<string> {

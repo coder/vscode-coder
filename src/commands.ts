@@ -52,6 +52,7 @@ import {
 import { runExportTelemetryCommand } from "./telemetry/export/command";
 import {
 	isRemoteAuthorityCompatible,
+	parseRemoteAuthority,
 	toRemoteAuthority,
 } from "./util/authority";
 import { openInBrowser, toSafeHost } from "./util/uri";
@@ -568,22 +569,57 @@ export class Commands {
 		);
 	}
 
-	/**
-	 * Open this editor's generated SSH config with the Coder workspace hosts.
-	 */
+	/** Open this editor's generated SSH config, picking a deployment when several exist. */
 	public async openSshConfig(): Promise<void> {
-		const configPath = this.pathResolver.getIncludedSshConfigPath();
+		const hostname = await this.pickSshHostname();
+		if (!hostname) {
+			return;
+		}
 		try {
-			await openFile(configPath);
-			// The file is rewritten on every connection, so edits would be lost.
-			await vscode.commands.executeCommand(
-				"workbench.action.files.setActiveEditorReadonlyInSession",
-			);
+			await openFile(this.pathResolver.getSshConfigPath(hostname));
 		} catch {
 			vscode.window.showInformationMessage(
 				"No SSH config has been generated yet. It is written when you connect to a workspace.",
 			);
+			return;
 		}
+		// The file is rewritten on every connection, so edits would be lost.
+		await vscode.commands.executeCommand(
+			"workbench.action.files.setActiveEditorReadonlyInSession",
+		);
+	}
+
+	/** A connected window resolves to its own deployment; otherwise ask. */
+	private async pickSshHostname(): Promise<string | undefined> {
+		const remoteAuthority = vscode.env.remoteAuthority;
+		if (remoteAuthority) {
+			try {
+				const parts = parseRemoteAuthority(remoteAuthority);
+				if (parts) {
+					return parts.safeHostname;
+				}
+			} catch {
+				// Malformed Coder authority; fall through to the picker.
+			}
+		}
+		const hostnames = (
+			await readdirOrEmpty(this.pathResolver.getSshConfigDir())
+		)
+			.map((file) => this.pathResolver.parseSshConfigFile(file))
+			.filter((name) => name !== undefined);
+		if (hostnames.length === 0) {
+			vscode.window.showInformationMessage(
+				"No SSH config has been generated yet. It is written when you connect to a workspace.",
+			);
+			return undefined;
+		}
+		if (hostnames.length === 1) {
+			return hostnames[0];
+		}
+		return vscode.window.showQuickPick(hostnames, {
+			title: "Open generated SSH configuration",
+			placeHolder: "Select a deployment",
+		});
 	}
 
 	/**

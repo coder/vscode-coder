@@ -141,9 +141,8 @@ export function toRemoteAuthority(
 	return remoteAuthority;
 }
 
-export function toCurrentAuthorityHostPrefix(safeHostname?: string): string {
-	const prefix = currentAuthorityPrefix();
-	return safeHostname ? `${prefix}.${safeHostname}--` : `${prefix}--`;
+export function toCurrentAuthorityHostPrefix(safeHostname: string): string {
+	return `${currentAuthorityPrefix()}.${safeHostname}--`;
 }
 
 export function retargetRemoteAuthority(authority: string): string {

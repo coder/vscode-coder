@@ -54,6 +54,7 @@ import { migrateAuthToSecretsStorage } from "./migration";
 import {
 	SshConfig,
 	type SshValues,
+	cleanupStaleSshConfigs,
 	mergeSshConfigValues,
 	parseCoderSshOptions,
 	parseSshConfig,
@@ -161,14 +162,11 @@ export class Remote {
 			return;
 		}
 
-		switch (classifyRemoteAuthority(parts)) {
-			case "current":
-				break;
-			case "legacy":
-				await this.migrateLegacyAuthority(remoteAuthority, startupMode);
-				return;
-			case "foreign":
-				return;
+		// parseRemoteAuthority returned null for foreign hosts, so this is
+		// either the current editor's authority or a migratable legacy one.
+		if (classifyRemoteAuthority(parts) === "legacy") {
+			await this.migrateLegacyAuthority(remoteAuthority, startupMode);
+			return;
 		}
 
 		this.logger.info("Setting up remote connection", {
@@ -968,12 +966,14 @@ export class Remote {
 		featureSet: FeatureSet,
 		cliAuth: CliAuth,
 	): Promise<SshProperties> {
-		// Our blocks live in our own file; the user's only gains the include.
+		// One file per (editor, deployment); the user's config gains one shared include.
 		const sshConfig = new SshConfig(this.getMainSshConfigPath(), this.logger);
 		await sshConfig.load();
-		const coderConfigPath = this.pathResolver.getIncludedSshConfigPath();
-		const coderConfig = new SshConfig(coderConfigPath, this.logger);
-		await coderConfig.load();
+		// Never loaded: update() regenerates it without reading the old content.
+		const coderConfig = new SshConfig(
+			this.pathResolver.getSshConfigPath(safeHostname),
+			this.logger,
+		);
 
 		// Options the user set themselves win the merge below, so they are exempt
 		// from the deny list. Both sources are local and already trusted: whoever
@@ -1045,14 +1045,12 @@ export class Remote {
 		}
 
 		// Write our file before including it, so the include never dangles.
-		await coderConfig.update(safeHostname, sshValues, sshConfigOverrides);
-		await sshConfig.updateInclude(
-			{
-				id: vscode.env.uriScheme,
-				includePath: coderConfigPath,
-			},
-			safeHostname,
-		);
+		await coderConfig.update(sshValues, sshConfigOverrides);
+		const sharedSshConfigDir = this.pathResolver.getSshConfigDir();
+		await sshConfig.updateInclude(sharedSshConfigDir, safeHostname);
+		// Our file was just written, so only other unused deployments are swept.
+		// Never throws, and the connection does not depend on it.
+		void cleanupStaleSshConfigs(sharedSshConfigDir, this.logger);
 
 		// Mirror SSH's parse order; RemoteCommand can come from the user's config.
 		return computeSshProperties(
