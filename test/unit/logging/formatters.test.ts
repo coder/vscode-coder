@@ -71,14 +71,34 @@ describe("Logging formatters", () => {
 			expect(result).toContain("accept: text/html");
 		});
 
-		it("redacts sensitive headers", () => {
-			const sensitiveHeaders = ["Coder-Session-Token", "Proxy-Authorization"];
+		it("redacts sensitive headers regardless of casing", () => {
+			const sensitiveHeaders = [
+				"authorization",
+				"AUTHORIZATION",
+				"Coder-Session-Token",
+				"coder-session-token",
+				"cookie",
+				"set-cookie",
+				"SET-COOKIE",
+				"X-Api-Key",
+				"Proxy-Authorization",
+			];
 
 			sensitiveHeaders.forEach((header) => {
 				const result = formatHeaders({ [header]: "secret-value" });
 				expect(result).toContain(`${header}: <redacted>`);
 				expect(result).not.toContain("secret-value");
 			});
+		});
+
+		it("redacts extra header names case-insensitively", () => {
+			const result = formatHeaders(
+				{ "X-Custom-Auth": "secret-value", accept: "text/html" },
+				["x-custom-auth"],
+			);
+			expect(result).toContain("X-Custom-Auth: <redacted>");
+			expect(result).not.toContain("secret-value");
+			expect(result).toContain("accept: text/html");
 		});
 
 		it("returns placeholder for empty headers", () => {
@@ -117,6 +137,65 @@ describe("Logging formatters", () => {
 			emptyValues.forEach((value) => {
 				expect(formatBody(value)).toContain("no body");
 			});
+		});
+
+		it("redacts sensitive fields in objects", () => {
+			const result = formatBody({
+				access_token: "secret-access",
+				refresh_token: "secret-refresh",
+				client_secret: "secret-client",
+				code: "secret-code",
+				code_verifier: "secret-verifier",
+				id_token: "secret-id",
+				password: "secret-password",
+				token: "secret-token",
+				token_type: "bearer",
+			});
+			expect(result).toContain("access_token: '<redacted>'");
+			expect(result).toContain("token_type: 'bearer'");
+			expect(result).not.toContain("secret-");
+		});
+
+		it("redacts sensitive fields in nested objects and arrays", () => {
+			const result = formatBody({
+				data: { session: { TOKEN: "secret-value" } },
+				items: [{ password: "secret-value" }],
+			});
+			expect(result).toContain("TOKEN: '<redacted>'");
+			expect(result).toContain("password: '<redacted>'");
+			expect(result).not.toContain("secret-value");
+		});
+
+		it("redacts sensitive fields in URLSearchParams", () => {
+			const params = new URLSearchParams({
+				grant_type: "refresh_token",
+				refresh_token: "secret-value",
+			});
+			const result = formatBody(params);
+			expect(result).toContain("refresh_token");
+			expect(result).toContain("<redacted>");
+			expect(result).not.toContain("secret-value");
+		});
+
+		it("redacts sensitive fields in serialized bodies", () => {
+			const json = formatBody(
+				JSON.stringify({ access_token: "secret-value", expires_in: 3600 }),
+			);
+			expect(json).toContain("expires_in");
+			expect(json).not.toContain("secret-value");
+
+			const form = formatBody(
+				"grant_type=authorization_code&code=secret-value",
+			);
+			expect(form).toContain("grant_type");
+			expect(form).not.toContain("secret-value");
+		});
+
+		it("leaves non-sensitive strings unchanged", () => {
+			expect(formatBody("plain response text")).toContain(
+				"plain response text",
+			);
+			expect(formatBody("a=b&c=d")).toContain("a=b&c=d");
 		});
 	});
 });

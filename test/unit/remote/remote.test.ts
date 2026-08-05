@@ -92,9 +92,7 @@ describe("Remote", () => {
 			await remote.setup(REMOTE_AUTHORITY, "none", "anysphere.remote-ssh");
 
 			// The mismatched URL carries a token, so only its hostname is logged.
-			expect(
-				logs.entries.filter((entry) => entry.level === "warn"),
-			).toContainEqual({
+			expect(logs.entries).toContainEqual({
 				level: "warn",
 				message: "Failed to migrate session auth from files:",
 				args: [

@@ -17,6 +17,7 @@ import {
 	config,
 	createMockLogger,
 	MockProgressReporter,
+	MockUserInteraction,
 } from "../mocks/testHelpers";
 
 import type { CoderApi } from "@/api/coderApi";
@@ -66,6 +67,9 @@ function setup(options: { cliVersion?: string } = {}) {
 	vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(
 		vscode.Uri.file(OUTPUT_PATH),
 	);
+	// Accept the collection disclosure dialog by default.
+	const interaction = new MockUserInteraction();
+	interaction.setResponse("Create a support bundle?", "Continue");
 	vi.mocked(cliExec.version).mockResolvedValue(options.cliVersion ?? "v2.36.0");
 	vi.mocked(cliExec.supportBundle).mockResolvedValue(undefined);
 	vi.mocked(getRemoteServerDataPath).mockResolvedValue({
@@ -107,7 +111,7 @@ function setup(options: { cliVersion?: string } = {}) {
 		{} as DeploymentManager,
 	);
 
-	return { commands, client, logger };
+	return { commands, client, logger, interaction };
 }
 
 function setRemoteAuthority(value: string | undefined): void {
@@ -233,5 +237,32 @@ describe("Commands.supportBundle", () => {
 			"owner/ws",
 			expect.objectContaining({ workspaceFiles: [] }),
 		);
+	});
+
+	it("describes the collected data before creating the bundle", async () => {
+		const { commands, interaction } = setup();
+
+		await commands.supportBundle(agentItem("dev"));
+
+		expect(interaction.getMessageCalls()).toContainEqual(
+			expect.objectContaining({
+				message: "Create a support bundle?",
+				items: ["Continue"],
+				options: expect.objectContaining({
+					modal: true,
+					detail: expect.stringContaining("telemetry"),
+				}),
+			}),
+		);
+	});
+
+	it("does not create a bundle when the disclosure dialog is dismissed", async () => {
+		const { commands, interaction } = setup();
+		interaction.setResponse("Create a support bundle?", undefined);
+
+		await commands.supportBundle(agentItem("dev"));
+
+		expect(vscode.window.showSaveDialog).not.toHaveBeenCalled();
+		expect(cliExec.supportBundle).not.toHaveBeenCalled();
 	});
 });

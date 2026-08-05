@@ -1061,9 +1061,10 @@ export class CliManager {
 
 	/**
 	 * Remove credentials for a deployment. Clears both file-based credentials
-	 * and keyring entries (via `coder logout`). All cleanup is best-effort.
+	 * and keyring entries (via `coder logout`). Never throws; returns whether
+	 * every store was cleared.
 	 */
-	public async clearCredentials(url: string): Promise<void> {
+	public async clearCredentials(url: string): Promise<boolean> {
 		const configs = vscode.workspace.getConfiguration();
 		const result = await withOptionalProgress(
 			({ signal }) =>
@@ -1076,13 +1077,14 @@ export class CliManager {
 			},
 		);
 		if (result.ok) {
-			return;
+			return result.value;
 		}
 		if (result.cancelled) {
 			this.output.info("Credential removal cancelled by user");
 		} else {
 			this.output.warn("Failed to remove credentials:", result.error);
 		}
+		return false;
 	}
 
 	private handleStoreError(error: unknown): void {

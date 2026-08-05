@@ -201,6 +201,10 @@ export class DeploymentManager implements vscode.Disposable {
 			"Clearing deployment",
 			this.#sessionStore.current.deployment?.safeHostname,
 		);
+		if (reason === "logout") {
+			// Best-effort server-side revocation before local state is cleared.
+			await this.oauthSessionManager.revokeTokens();
+		}
 		const wasAuthenticated = this.isAuthenticated();
 		this.#authListenerDisposable?.dispose();
 		this.#authListenerDisposable = undefined;

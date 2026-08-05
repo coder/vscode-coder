@@ -340,16 +340,25 @@ describe("CliManager", () => {
 		});
 
 		it.each([
-			{ scenario: "succeeds", error: undefined },
-			{ scenario: "fails", error: new Error("unexpected failure") },
-			{ scenario: "is cancelled", error: makeAbortError() },
-		])("should not throw when deleteToken $scenario", async ({ error }) => {
-			const { manager, mockCredManager } = setupCliManager();
-			if (error) {
-				vi.mocked(mockCredManager.deleteToken).mockRejectedValueOnce(error);
-			}
-			await expect(manager.clearCredentials(CLEAR_URL)).resolves.not.toThrow();
-		});
+			{ scenario: "succeeds", error: undefined, cleared: true },
+			{
+				scenario: "fails",
+				error: new Error("unexpected failure"),
+				cleared: false,
+			},
+			{ scenario: "is cancelled", error: makeAbortError(), cleared: false },
+		])(
+			"should report cleanup state when deleteToken $scenario",
+			async ({ error, cleared }) => {
+				const { manager, mockCredManager } = setupCliManager();
+				if (error) {
+					vi.mocked(mockCredManager.deleteToken).mockRejectedValueOnce(error);
+				}
+				await expect(manager.clearCredentials(CLEAR_URL)).resolves.toBe(
+					cleared,
+				);
+			},
+		);
 	});
 
 	describe("Binary Version Validation", () => {

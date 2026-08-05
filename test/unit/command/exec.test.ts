@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { execCommand } from "@/command/exec";
 
-import { createMockLogger } from "../../mocks/testHelpers";
+import { createMockLogger, LogCollector } from "../../mocks/testHelpers";
 import {
 	exitCommand,
 	printCommand,
@@ -57,5 +57,19 @@ describe("execCommand", () => {
 	it("should use default title when not provided", async () => {
 		const result = await execCommand(printCommand("test"), logger);
 		expect(result.success).toBe(true);
+	});
+
+	it("should not log the command or its output", async () => {
+		const quietLogger = new LogCollector();
+		await execCommand(printCommand("quiet-output-value"), quietLogger, {
+			title: "Test",
+		});
+		await execCommand(
+			`${printCommand("quiet-output-value")} && ${exitCommand(3)}`,
+			quietLogger,
+			{ title: "Test" },
+		);
+
+		expect(quietLogger.text).not.toContain("quiet-output-value");
 	});
 });

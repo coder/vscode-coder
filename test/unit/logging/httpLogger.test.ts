@@ -12,7 +12,7 @@ import {
 	type RequestConfigWithMeta,
 } from "@/logging/types";
 
-import { createMockLogger } from "../../mocks/testHelpers";
+import { createMockLogger, LogCollector } from "../../mocks/testHelpers";
 
 describe("REST HTTP Logger", () => {
 	describe("log level behavior", () => {
@@ -107,6 +107,62 @@ describe("REST HTTP Logger", () => {
 
 			logError(logger, error, HttpClientLogLevel.BASIC);
 			expect(logger.error).toHaveBeenCalledWith("Request error", error);
+		});
+	});
+
+	describe("redaction", () => {
+		const config = {
+			method: "POST",
+			url: "https://api.example.com/endpoint",
+			headers: {
+				authorization: "Bearer request-secret",
+				"X-From-Command": "command-secret",
+			} as unknown as AxiosHeaders,
+			data: { refresh_token: "body-secret" },
+			headerCommandKeys: ["X-From-Command"],
+			metadata: createRequestMeta(),
+		} as RequestConfigWithMeta;
+
+		it("redacts sensitive request headers and body fields", () => {
+			const logger = new LogCollector();
+
+			logRequest(logger, config, HttpClientLogLevel.BODY);
+
+			const logged = logger.text;
+			expect(logged).toContain("authorization: <redacted>");
+			expect(logged).toContain("X-From-Command: <redacted>");
+			// Every planted value contains "secret"; none may survive.
+			expect(logged).not.toContain("secret");
+		});
+
+		it("redacts sensitive headers and body fields on error paths", () => {
+			const logger = new LogCollector();
+			const error = new AxiosError("Bad Request");
+			error.config = config;
+			error.response = {
+				status: 400,
+				headers: { "set-cookie": ["session=response-secret"] },
+				data: { access_token: "body-secret", error: "invalid_grant" },
+			} as unknown as AxiosResponse;
+
+			logError(logger, error, HttpClientLogLevel.BODY);
+
+			const logged = logger.text;
+			expect(logged).toContain("set-cookie: <redacted>");
+			expect(logged).toContain("invalid_grant");
+			// Every planted value contains "secret"; none may survive.
+			expect(logged).not.toContain("secret");
+		});
+
+		it("redacts header-command headers on network error paths", () => {
+			const logger = new LogCollector();
+			const error = new AxiosError("Network Error", "ECONNREFUSED");
+			error.config = config;
+
+			logError(logger, error, HttpClientLogLevel.BODY);
+
+			// Every planted value contains "secret"; none may survive.
+			expect(logger.text).not.toContain("secret");
 		});
 	});
 });

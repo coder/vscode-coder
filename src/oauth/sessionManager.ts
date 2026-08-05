@@ -441,68 +441,55 @@ export class OAuthSessionManager implements vscode.Disposable {
 		}
 	}
 
-	public async revokeRefreshToken(): Promise<void> {
-		const storedTokens = await this.getStoredTokens();
-		if (!storedTokens?.refresh_token) {
-			this.logger.debug("No refresh token to revoke");
+	/** Best-effort server-side revocation of the stored refresh and access tokens; never throws. */
+	public async revokeTokens(): Promise<void> {
+		const storedTokens = await this.getStoredTokens().catch((error) => {
+			this.logger.warn("Failed to read stored tokens for revocation:", error);
+			return undefined;
+		});
+		if (!storedTokens) {
 			return;
 		}
 
-		await this.revokeToken(
-			storedTokens.access_token,
-			storedTokens.refresh_token,
-			"refresh_token",
-		);
-	}
+		// Refresh token first, while the access token still authenticates the call.
+		const targets: Array<[string, "access_token" | "refresh_token"]> = [];
+		if (storedTokens.refresh_token) {
+			targets.push([storedTokens.refresh_token, "refresh_token"]);
+		}
+		targets.push([storedTokens.access_token, "access_token"]);
 
-	/**
-	 * Revoke a token using the OAuth server's revocation endpoint.
-	 *
-	 * @param authToken - Token for authenticating the revocation request
-	 * @param tokenToRevoke - The token to be revoked
-	 * @param tokenTypeHint - Hint about the token type being revoked
-	 */
-	private async revokeToken(
-		authToken: string,
-		tokenToRevoke: string,
-		tokenTypeHint: "access_token" | "refresh_token" = "refresh_token",
-	): Promise<void> {
-		await this.withOAuthOperation(
-			authToken,
-			async ({ axiosInstance, metadata, registration }) => {
-				if (!metadata.revocation_endpoint) {
-					this.logger.debug(
-						"No revocation endpoint available, skipping revocation",
-					);
-					return;
-				}
-
-				this.logger.debug("Revoking refresh token");
-
-				const params: OAuth2TokenRevocationRequest = {
-					token: tokenToRevoke,
-					client_id: registration.client_id,
-					client_secret: registration.client_secret,
-					token_type_hint: tokenTypeHint,
-				};
-
-				try {
-					await axiosInstance.post(
-						metadata.revocation_endpoint,
-						toUrlSearchParams(params),
-						{
-							headers: {
-								"Content-Type": "application/x-www-form-urlencoded",
-							},
-						},
-					);
-					this.logger.debug("Token revocation successful");
-				} catch (error) {
-					this.logger.error("Token revocation failed:", error);
-					throw error;
-				}
-			},
-		);
+		try {
+			await this.withOAuthOperation(
+				storedTokens.access_token,
+				async ({ axiosInstance, metadata, registration }) => {
+					const endpoint = metadata.revocation_endpoint;
+					if (!endpoint) {
+						this.logger.debug("No revocation endpoint; skipping revocation");
+						return;
+					}
+					for (const [token, token_type_hint] of targets) {
+						const params: OAuth2TokenRevocationRequest = {
+							token,
+							client_id: registration.client_id,
+							client_secret: registration.client_secret,
+							token_type_hint,
+						};
+						try {
+							await axiosInstance.post(endpoint, toUrlSearchParams(params), {
+								headers: {
+									"Content-Type": "application/x-www-form-urlencoded",
+								},
+							});
+							this.logger.debug(`Revoked ${token_type_hint}`);
+						} catch (error) {
+							this.logger.warn(`Failed to revoke ${token_type_hint}:`, error);
+						}
+					}
+				},
+			);
+		} catch (error) {
+			this.logger.warn("Token revocation failed:", error);
+		}
 	}
 
 	/**

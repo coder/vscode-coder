@@ -48,9 +48,10 @@ export function safeStringify(data: unknown): string | null {
 	try {
 		return util.inspect(data, {
 			showHidden: false,
-			depth: Infinity,
-			maxArrayLength: Infinity,
-			maxStringLength: Infinity,
+			// Bounded so a single log line cannot balloon in size.
+			depth: 8,
+			maxArrayLength: 100,
+			maxStringLength: 10_000,
 			breakLength: Infinity,
 			compact: true,
 			getters: false, // avoid side-effects

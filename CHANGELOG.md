@@ -14,6 +14,8 @@
   `coder.disableNotifications`; suppressed announcements highlight the status
   bar item instead). A new **Coder: View Announcements** command opens the full
   messages in a markdown preview.
+- Ask for confirmation before creating a support bundle, with a summary of the
+  data it collects.
 
 ### Changed
 
@@ -22,6 +24,12 @@
   workspaces are fetched and the view loads faster. Deployments too old to
   support the new filter now show a message explaining why instead of an
   empty list.
+- Logging out now revokes the OAuth tokens at the server and warns when locally
+  stored credentials could not be fully removed.
+- Redact more sensitive data from HTTP logs: authorization and cookie headers
+  regardless of casing, OAuth credential fields in request and response bodies,
+  and headers produced by `coder.headerCommand`. Shell command output and the
+  header command's output no longer appear in logs or error messages.
 
 ### Fixed
 
@@ -41,6 +49,8 @@
   keeps workspace/folder `settings.json` from overriding them (the original
   SEC-200 goal) while fixing #1032, where a `machine`-scoped value could
   revert to its default in a remote window.
+- Delete the legacy file-based credentials after migrating them to secret
+  storage, instead of leaving plaintext copies behind.
 
 ## [v1.15.2](https://github.com/coder/vscode-coder/releases/tag/v1.15.2) 2026-06-30
 

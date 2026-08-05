@@ -45,11 +45,12 @@ interface SetupOptions {
 	readonly authenticated?: boolean;
 	readonly loginResult?: LoginResultForTest;
 	readonly clearAllAuthDataError?: Error;
+	readonly clearCredentialsResult?: boolean;
 }
 
 function setup(options: SetupOptions = {}) {
 	vi.clearAllMocks();
-	new MockUserInteraction();
+	const interaction = new MockUserInteraction();
 	vi.mocked(maybeAskUrl).mockResolvedValue(TEST_URL);
 
 	const { sink, service } = createTelemetryHarness();
@@ -83,7 +84,9 @@ function setup(options: SetupOptions = {}) {
 	};
 
 	const cliManager: Pick<CliManager, "clearCredentials"> = {
-		clearCredentials: vi.fn(() => Promise.resolve()),
+		clearCredentials: vi.fn(() =>
+			Promise.resolve(options.clearCredentialsResult ?? true),
+		),
 	};
 
 	const secretsManager: Pick<
@@ -125,6 +128,7 @@ function setup(options: SetupOptions = {}) {
 	return {
 		commands,
 		sink,
+		interaction,
 		mocks: { cliManager, deploymentManager, loginCoordinator, secretsManager },
 	};
 }
@@ -272,6 +276,32 @@ describe("Commands", () => {
 				properties: { result: "error", "error.type": "exception" },
 				error: { message: "secret clear failed" },
 			});
+		});
+
+		it("reports incomplete credential cleanup instead of success", async () => {
+			const { commands, sink, interaction } = setup({
+				authenticated: true,
+				clearCredentialsResult: false,
+			});
+
+			await commands.logout();
+
+			expect(sink.expectOne("auth.logout")).toMatchObject({
+				properties: {
+					result: "aborted",
+					reason: "cleanup_incomplete",
+				},
+			});
+			const messages = interaction
+				.getMessageCalls()
+				.map((call) => call.message);
+			expect(messages).toContainEqual(
+				expect.stringContaining("could not be removed"),
+			);
+			// The success toast must not appear alongside the warning.
+			expect(messages).not.toContainEqual(
+				expect.stringContaining("You've been logged out of Coder!"),
+			);
 		});
 	});
 });

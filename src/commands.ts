@@ -434,6 +434,11 @@ export class Commands {
 
 		const { agentName, client, workspaceId, remoteAuthority } = resolved;
 
+		if (!(await this.confirmSupportBundleCollection())) {
+			telemetry.abort("prompt");
+			return;
+		}
+
 		const outputUri = await this.promptSupportBundlePath();
 		if (!outputUri) {
 			telemetry.abort("save_dialog");
@@ -523,6 +528,27 @@ export class Commands {
 		});
 	}
 
+	/** Modal disclosure of what a support bundle collects; the CLI's own prompt is suppressed. */
+	private async confirmSupportBundleCollection(): Promise<boolean> {
+		const detail = [
+			"A support bundle may contain sensitive information. It collects:",
+			"",
+			"\u2022 Deployment and workspace diagnostics",
+			"\u2022 Coder extension and connection logs from recent VS Code windows",
+			"\u2022 Remote SSH extension logs",
+			"\u2022 Locally recorded telemetry",
+			"\u2022 Coder extension settings",
+			"",
+			"Review the bundle before sharing it.",
+		].join("\n");
+		const choice = await vscode.window.showInformationMessage(
+			"Create a support bundle?",
+			{ modal: true, detail },
+			"Continue",
+		);
+		return choice === "Continue";
+	}
+
 	public async exportTelemetry(): Promise<void> {
 		await this.diagnosticTelemetry.trace("export_telemetry", (telemetry) =>
 			this.runExportTelemetry(telemetry),
@@ -596,8 +622,14 @@ export class Commands {
 		await this.deploymentManager.clearDeployment("logout");
 
 		if (deployment) {
-			await this.cliManager.clearCredentials(deployment.url);
+			const cleared = await this.cliManager.clearCredentials(deployment.url);
 			await this.secretsManager.clearAllAuthData(deployment.safeHostname);
+			if (!cleared) {
+				vscode.window.showWarningMessage(
+					'You\'ve been logged out of Coder, but some credentials could not be removed. Log out again to retry, or run "coder logout" in a terminal.',
+				);
+				return { success: false, reason: "cleanup_incomplete" };
+			}
 		}
 
 		this.showLogoutMessage();

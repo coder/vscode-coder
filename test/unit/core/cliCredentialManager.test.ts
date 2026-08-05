@@ -541,8 +541,9 @@ describe("CliCredentialManager", () => {
 			writeCredentialFiles(TEST_URL, "old-token");
 			const { manager, resolver, sink } = setup();
 
-			await manager.deleteToken(TEST_URL, configs);
+			const result = await manager.deleteToken(TEST_URL, configs);
 
+			expect(result).toBe(true);
 			expect(resolver).toHaveBeenCalledWith(TEST_URL);
 			const exec = lastExecArgs();
 			expect(exec.bin).toBe(TEST_BIN);
@@ -580,9 +581,7 @@ describe("CliCredentialManager", () => {
 			stubExecFile({ error: "logout failed" });
 			const { manager, sink } = setup();
 
-			await expect(
-				manager.deleteToken(TEST_URL, configs),
-			).resolves.not.toThrow();
+			await expect(manager.deleteToken(TEST_URL, configs)).resolves.toBe(false);
 			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
 				properties: {
 					"error.type": "cli",
@@ -595,9 +594,7 @@ describe("CliCredentialManager", () => {
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 			const { manager, sink } = setup(failingResolver());
 
-			await expect(
-				manager.deleteToken(TEST_URL, configs),
-			).resolves.toBeUndefined();
+			await expect(manager.deleteToken(TEST_URL, configs)).resolves.toBe(false);
 			expect(execFile).not.toHaveBeenCalled();
 			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
 				properties: {

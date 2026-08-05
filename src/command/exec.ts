@@ -33,19 +33,14 @@ export async function execCommand(
 	options?: ExecCommandOptions,
 ): Promise<ExecCommandResult> {
 	const title = options?.title ?? "Command";
-	logger.debug(`Executing ${title}: ${command}`);
+	// The command string and its output can carry credentials, so log neither.
+	logger.debug(`Executing ${title}`);
 
 	try {
 		const result = await util.promisify(cp.exec)(command, {
 			env: options?.env,
 		});
 		logger.debug(`${title} completed successfully`);
-		if (result.stdout) {
-			logger.debug(`${title} stdout:`, result.stdout);
-		}
-		if (result.stderr) {
-			logger.debug(`${title} stderr:`, result.stderr);
-		}
 		return {
 			success: true,
 			stdout: result.stdout,
@@ -54,12 +49,6 @@ export async function execCommand(
 	} catch (error) {
 		if (isExecException(error)) {
 			logger.warn(`${title} failed with exit code ${error.code}`);
-			if (error.stdout) {
-				logger.warn(`${title} stdout:`, error.stdout);
-			}
-			if (error.stderr) {
-				logger.warn(`${title} stderr:`, error.stderr);
-			}
 			return {
 				success: false,
 				stdout: error.stdout,
@@ -68,7 +57,7 @@ export async function execCommand(
 			};
 		}
 
-		logger.warn(`${title} failed:`, error);
+		logger.warn(`${title} failed to execute`);
 		return { success: false };
 	}
 }
