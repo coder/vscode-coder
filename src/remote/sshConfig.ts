@@ -86,8 +86,7 @@ function blockMarkers(label: string): BlockMarkers {
 	};
 }
 
-// Released versions wrote deployment blocks with this label, both into the
-// user's config and via early builds of the editor-owned file.
+// Released versions wrote deployment blocks with this label into the user's config.
 function legacyDeploymentMarkers(safeHostname: string): BlockMarkers {
 	return blockMarkers(`VSCODE ${safeHostname}`);
 }
@@ -414,9 +413,7 @@ export class SshConfig {
 		block: string,
 	): string {
 		let merged: string;
-		const existing =
-			this.findBlock(raw, blockMarkers(safeHostname)) ??
-			this.findBlock(raw, legacyDeploymentMarkers(safeHostname));
+		const existing = this.findBlock(raw, blockMarkers(safeHostname));
 		if (existing) {
 			this.logger.debug("Replacing SSH config block", safeHostname);
 			merged = this.replaceRange(raw, existing, block);
@@ -424,9 +421,23 @@ export class SshConfig {
 			this.logger.debug("Appending new SSH config block", safeHostname);
 			merged = raw ? `${raw.trimEnd()}\n\n${block}` : block;
 		}
-		return merged.startsWith(CODER_SSH_CONFIG_HEADER)
-			? merged
-			: `${CODER_SSH_CONFIG_HEADER}\n\n${merged}`;
+		return this.moveHeaderToTop(merged);
+	}
+
+	/** The user may have added content above the header; move it back to the top. */
+	private moveHeaderToTop(merged: string): string {
+		const start = merged.indexOf(CODER_SSH_CONFIG_HEADER);
+		if (start === 0) {
+			return merged;
+		}
+		if (start > 0) {
+			merged = this.removeRange(merged, {
+				raw: CODER_SSH_CONFIG_HEADER,
+				start,
+				end: start + CODER_SSH_CONFIG_HEADER.length,
+			});
+		}
+		return `${CODER_SSH_CONFIG_HEADER}\n\n${merged}`;
 	}
 
 	private findBlock(raw: string, markers: BlockMarkers): Block | undefined {
@@ -434,7 +445,7 @@ export class SshConfig {
 		const endCount = countSubstring(markers.end, raw);
 		if (startCount !== endCount) {
 			throw new SshConfigBadFormat(
-				`Malformed config: ${this.filePath} has an unterminated "${markers.start}" block. Each START block must have an END block.`,
+				`Malformed config: ${this.filePath} has ${startCount} "${markers.start}" and ${endCount} "${markers.end}" markers. Each START marker must have exactly one END marker.`,
 			);
 		}
 		if (startCount > 1) {
@@ -520,6 +531,8 @@ export class SshConfig {
 
 	private async mutate(mutation: Mutation): Promise<void> {
 		let snapshot = this.getRaw();
+		// Retries only handle concurrent writers (save() returns false on a
+		// conflict); I/O errors like EACCES throw immediately and are not retried.
 		for (let attempt = 0; attempt < UPDATE_ATTEMPTS; attempt++) {
 			const updated = mutation.apply(snapshot);
 			if (updated === snapshot) {
@@ -529,11 +542,11 @@ export class SshConfig {
 
 			this.raw = updated;
 			if (!(await this.save(snapshot))) {
-				snapshot = await this.readForConflict();
+				snapshot = await this.read();
 				continue;
 			}
 
-			const latest = await this.readForConflict();
+			const latest = await this.read();
 			if (mutation.apply(latest) === latest) {
 				this.raw = latest;
 				mutation.onSuccess?.();
@@ -544,7 +557,7 @@ export class SshConfig {
 
 		this.raw = snapshot;
 		throw new Error(
-			`Failed to update SSH config at ${this.filePath} because it kept changing. Please try again.`,
+			`Failed to update SSH config at ${this.filePath} because it kept changing, likely due to another editor writing it at the same time. Please try again.`,
 		);
 	}
 
@@ -584,7 +597,7 @@ export class SshConfig {
 
 		try {
 			if (expectedRaw !== undefined) {
-				const latest = await this.readForConflict();
+				const latest = await this.read();
 				if (latest !== expectedRaw) {
 					await this.fileSystem.unlink(tempPath).catch((unlinkErr: unknown) => {
 						this.logger.warn(
@@ -620,7 +633,7 @@ export class SshConfig {
 		}
 	}
 
-	private async readForConflict(): Promise<string> {
+	private async read(): Promise<string> {
 		try {
 			return await this.fileSystem.readFile(this.filePath, "utf-8");
 		} catch (error) {

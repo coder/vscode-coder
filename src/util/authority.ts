@@ -41,7 +41,7 @@ function getSshHostStart(authority: string): number | undefined {
 	return undefined;
 }
 
-function classifySshHost(sshHost: string): AuthorityClassification | undefined {
+function classifySshHost(sshHost: string): AuthorityClassification {
 	const currentPrefix = currentAuthorityPrefix();
 	if (sshHost.startsWith(`${currentPrefix}.`)) {
 		return "current";
@@ -52,9 +52,9 @@ function classifySshHost(sshHost: string): AuthorityClassification | undefined {
 	) {
 		return "legacy";
 	}
-	// Deployment-unaware hosts like coder-vscode--ws stay foreign; their
-	// preserved config block still routes them.
-	return sshHost.startsWith("coder-") ? "foreign" : undefined;
+	// Anything else is foreign, including deployment-unaware hosts like
+	// coder-vscode--ws; their preserved config block still routes them.
+	return "foreign";
 }
 
 function authorityPrefix(classification: AuthorityClassification): string {
@@ -82,7 +82,7 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 
 	const sshHost = authority.slice(sshHostStart);
 	const classification = classifySshHost(sshHost);
-	if (!classification || classification === "foreign") {
+	if (classification === "foreign") {
 		return null;
 	}
 
@@ -125,7 +125,7 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 export function classifyRemoteAuthority(
 	parts: AuthorityParts,
 ): AuthorityClassification {
-	return classifySshHost(parts.sshHost) ?? "foreign";
+	return classifySshHost(parts.sshHost);
 }
 
 export function toRemoteAuthority(

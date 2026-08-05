@@ -952,7 +952,7 @@ export class Remote {
 		return ["--log-dir", escapeCommandArg(logDir), "-v"];
 	}
 
-	private getSshConfigPath(): string {
+	private getMainSshConfigPath(): string {
 		const configured = getRemoteSshConfigFile();
 		return expandPath(configured || path.join("~", ".ssh", "config"));
 	}
@@ -969,9 +969,9 @@ export class Remote {
 		cliAuth: CliAuth,
 	): Promise<SshProperties> {
 		// Our blocks live in our own file; the user's only gains the include.
-		const sshConfig = new SshConfig(this.getSshConfigPath(), this.logger);
+		const sshConfig = new SshConfig(this.getMainSshConfigPath(), this.logger);
 		await sshConfig.load();
-		const coderConfigPath = this.pathResolver.getSshConfigPath();
+		const coderConfigPath = this.pathResolver.getIncludedSshConfigPath();
 		const coderConfig = new SshConfig(coderConfigPath, this.logger);
 		await coderConfig.load();
 

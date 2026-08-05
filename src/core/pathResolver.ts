@@ -42,7 +42,11 @@ export class PathResolver {
 		return path.join(this.basePath, "net");
 	}
 
-	public getSshConfigPath(): string {
+	/**
+	 * The editor-owned generated SSH config, referenced by an Include in the
+	 * user's main config.
+	 */
+	public getIncludedSshConfigPath(): string {
 		return path.join(this.basePath, "ssh-config");
 	}
 

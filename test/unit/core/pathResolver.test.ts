@@ -38,10 +38,10 @@ describe("PathResolver", () => {
 		});
 	});
 
-	describe("getSshConfigPath", () => {
+	describe("getIncludedSshConfigPath", () => {
 		it("uses the extension's global storage directory", () => {
 			expectPathsEqual(
-				pathResolver.getSshConfigPath(),
+				pathResolver.getIncludedSshConfigPath(),
 				path.join(basePath, "ssh-config"),
 			);
 		});

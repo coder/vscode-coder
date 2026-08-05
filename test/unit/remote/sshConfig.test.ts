@@ -192,14 +192,14 @@ describe("SshConfig.update", () => {
 			expected: `${fileHeader}\n\nHost before\n\n${deploymentBlock}\n\nHost after`,
 		},
 		{
-			name: "upgrades a legacy deployment marker in place",
-			existing: `Host before\n\n${legacyDeploymentBlock}\n\nHost after`,
-			expected: `${fileHeader}\n\nHost before\n\n${deploymentBlock}\n\nHost after`,
-		},
-		{
 			name: "does not duplicate the header",
 			existing: `${fileHeader}\n\n${staleDeploymentBlock}`,
 			expected: `${fileHeader}\n\n${deploymentBlock}`,
+		},
+		{
+			name: "moves the header back to the top",
+			existing: `Host personal\n\n${fileHeader}\n\n${staleDeploymentBlock}`,
+			expected: `${fileHeader}\n\nHost personal\n\n${deploymentBlock}`,
 		},
 		{
 			name: "preserves another deployment",
@@ -248,17 +248,25 @@ Host coder-vscode.dev.coder.com--*
 		{
 			name: "missing end marker",
 			existing: "# --- START CODER dev.coder.com ---",
-			error: 'unterminated "# --- START CODER dev.coder.com ---" block',
+			error:
+				'has 1 "# --- START CODER dev.coder.com ---" and 0 "# --- END CODER dev.coder.com ---" markers',
 		},
 		{
 			name: "extra start marker",
 			existing: `${staleDeploymentBlock}\n# --- START CODER dev.coder.com ---`,
-			error: 'unterminated "# --- START CODER dev.coder.com ---" block',
+			error:
+				'has 2 "# --- START CODER dev.coder.com ---" and 1 "# --- END CODER dev.coder.com ---" markers',
 		},
 		{
-			name: "duplicate legacy blocks",
-			existing: `${legacyDeploymentBlock}\n${legacyDeploymentBlock}`,
-			error: 'has 2 "# --- START CODER VSCODE dev.coder.com ---" blocks',
+			name: "extra end marker",
+			existing: `${staleDeploymentBlock}\n# --- END CODER dev.coder.com ---`,
+			error:
+				'has 1 "# --- START CODER dev.coder.com ---" and 2 "# --- END CODER dev.coder.com ---" markers',
+		},
+		{
+			name: "duplicate blocks",
+			existing: `${staleDeploymentBlock}\n${staleDeploymentBlock}`,
+			error: 'has 2 "# --- START CODER dev.coder.com ---" blocks',
 		},
 		{
 			name: "end before start",
@@ -389,7 +397,8 @@ describe("SshConfig.updateInclude", () => {
 		{
 			name: "missing end marker",
 			existing: includeBlock.replace("# --- END CODER vscode ---", ""),
-			error: 'unterminated "# --- START CODER vscode ---" block',
+			error:
+				'has 1 "# --- START CODER vscode ---" and 0 "# --- END CODER vscode ---" markers',
 		},
 		{
 			name: "mismatched end marker",
@@ -397,7 +406,8 @@ describe("SshConfig.updateInclude", () => {
 				"# --- END CODER vscode ---",
 				"# --- END CODER windsurf ---",
 			),
-			error: 'unterminated "# --- START CODER vscode ---" block',
+			error:
+				'has 1 "# --- START CODER vscode ---" and 0 "# --- END CODER vscode ---" markers',
 		},
 		{
 			name: "duplicate blocks",

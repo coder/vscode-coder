@@ -572,7 +572,7 @@ export class Commands {
 	 * Open this editor's generated SSH config with the Coder workspace hosts.
 	 */
 	public async openSshConfig(): Promise<void> {
-		const configPath = this.pathResolver.getSshConfigPath();
+		const configPath = this.pathResolver.getIncludedSshConfigPath();
 		try {
 			await openFile(configPath);
 			// The file is rewritten on every connection, so edits would be lost.
