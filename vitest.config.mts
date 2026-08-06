@@ -2,7 +2,7 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 
 const webviewSharedAlias = path.resolve(
-	__dirname,
+	import.meta.dirname,
 	"packages/webview-shared/src",
 );
 
@@ -24,9 +24,12 @@ export default defineConfig({
 				},
 				resolve: {
 					alias: {
-						"@": path.resolve(__dirname, "src"),
+						"@": path.resolve(import.meta.dirname, "src"),
 						"@repo/webview-shared": webviewSharedAlias,
-						vscode: path.resolve(__dirname, "test/mocks/vscode.runtime.ts"),
+						vscode: path.resolve(
+							import.meta.dirname,
+							"test/mocks/vscode.runtime.ts",
+						),
 					},
 				},
 			},
@@ -43,11 +46,17 @@ export default defineConfig({
 				resolve: {
 					alias: {
 						"@repo/webview-shared": webviewSharedAlias,
-						"@repo/tasks": path.resolve(__dirname, "packages/tasks/src"),
-						"@repo/ui": path.resolve(__dirname, "packages/ui/src"),
-						"@repo/netcheck": path.resolve(__dirname, "packages/netcheck/src"),
+						"@repo/tasks": path.resolve(
+							import.meta.dirname,
+							"packages/tasks/src",
+						),
+						"@repo/ui": path.resolve(import.meta.dirname, "packages/ui/src"),
+						"@repo/netcheck": path.resolve(
+							import.meta.dirname,
+							"packages/netcheck/src",
+						),
 						"@repo/speedtest": path.resolve(
-							__dirname,
+							import.meta.dirname,
 							"packages/speedtest/src",
 						),
 					},
