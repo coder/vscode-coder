@@ -87,6 +87,9 @@ import type {
 	PongMessage,
 } from "./workspace/duplicateWorkspaceIpc";
 
+const NO_SSH_CONFIG_MESSAGE =
+	"No SSH config has been generated yet. It is written when you connect to a workspace.";
+
 interface OpenOptions {
 	workspaceOwner?: string;
 	workspaceName?: string;
@@ -578,9 +581,7 @@ export class Commands {
 		try {
 			await openFile(this.pathResolver.getSshConfigPath(hostname));
 		} catch {
-			vscode.window.showInformationMessage(
-				"No SSH config has been generated yet. It is written when you connect to a workspace.",
-			);
+			vscode.window.showInformationMessage(NO_SSH_CONFIG_MESSAGE);
 			return;
 		}
 		// The file is rewritten on every connection, so edits would be lost.
@@ -608,9 +609,7 @@ export class Commands {
 			.map((file) => this.pathResolver.parseSshConfigFile(file))
 			.filter((name) => name !== undefined);
 		if (hostnames.length === 0) {
-			vscode.window.showInformationMessage(
-				"No SSH config has been generated yet. It is written when you connect to a workspace.",
-			);
+			vscode.window.showInformationMessage(NO_SSH_CONFIG_MESSAGE);
 			return undefined;
 		}
 		if (hostnames.length === 1) {

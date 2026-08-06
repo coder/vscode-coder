@@ -18,12 +18,17 @@ const sshRemotePrefix = "ssh-remote+";
 const invalidAuthorityMessage =
 	"Invalid Coder SSH authority. Must be: <hostname>--<username>--<workspace>(.<agent?>)";
 
-function currentAuthorityPrefix(): string {
+/** This editor's identity, keeping its SSH hosts and files apart from other editors'. */
+export function currentEditorId(): string {
 	const uriScheme = vscode.env.uriScheme;
 	if (!uriScheme) {
 		throw new Error("Editor URI scheme must not be empty.");
 	}
-	return `coder-${uriScheme}`;
+	return uriScheme;
+}
+
+function currentAuthorityPrefix(): string {
+	return `coder-${currentEditorId()}`;
 }
 
 function getSshHostStart(authority: string): number | undefined {
@@ -155,7 +160,6 @@ export function retargetRemoteAuthority(authority: string): string {
 	if (classifySshHost(sshHost) !== "legacy") {
 		return authority;
 	}
-	parseRemoteAuthority(authority);
 	return `${authority.slice(0, sshHostStart)}${currentAuthorityPrefix()}${sshHost.slice(LegacyAuthorityPrefix.length)}`;
 }
 
@@ -166,12 +170,8 @@ export function isRemoteAuthorityCompatible(
 	if (!authority) {
 		return false;
 	}
-	if (authority === targetAuthority) {
-		return true;
-	}
-	try {
-		return retargetRemoteAuthority(authority) === targetAuthority;
-	} catch {
-		return false;
-	}
+	return (
+		authority === targetAuthority ||
+		retargetRemoteAuthority(authority) === targetAuthority
+	);
 }

@@ -9,6 +9,7 @@ import {
 import * as os from "node:os";
 import path from "node:path";
 
+import { SSH_CONFIG_EXT } from "../core/pathResolver";
 import { countSubstring, lowercase } from "../util";
 import { cleanupFiles } from "../util/fileCleanup";
 import { renameWithRetry, tempFilePath } from "../util/fs";
@@ -98,7 +99,7 @@ export async function cleanupStaleSshConfigs(
 ): Promise<void> {
 	await cleanupFiles(dir, logger, {
 		label: "generated SSH config",
-		filter: (name) => name.endsWith(".conf"),
+		filter: (name) => name.endsWith(SSH_CONFIG_EXT),
 		select: (files, now) =>
 			files.filter((file) => now - file.mtime > STALE_CONFIG_MAX_AGE_MS),
 	});
@@ -410,7 +411,7 @@ export class SshConfig {
 		return [
 			INCLUDE_MARKERS.start,
 			"# Moves back to the top on connect; override options via coder.sshConfig.",
-			`Include "${this.escapeIncludePath(includeDir)}/*.conf"`,
+			`Include "${this.escapeIncludePath(includeDir)}/*${SSH_CONFIG_EXT}"`,
 			INCLUDE_MARKERS.end,
 		].join("\n");
 	}

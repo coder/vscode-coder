@@ -3,6 +3,26 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 import { expandPath } from "../util";
+import { currentEditorId } from "../util/authority";
+
+/** Extension of generated SSH config files; the include glob matches on it. */
+export const SSH_CONFIG_EXT = ".conf";
+
+/** The per-user data dir of the platform, shared by every editor. */
+function platformDataDir(): string {
+	switch (process.platform) {
+		case "win32":
+			return (
+				process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming")
+			);
+		case "darwin":
+			return path.join(os.homedir(), "Library", "Application Support");
+		default:
+			return (
+				process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share")
+			);
+	}
+}
 
 export class PathResolver {
 	constructor(
@@ -48,44 +68,22 @@ export class PathResolver {
 	 * Lives in the platform data dir so every editor emits the same include.
 	 */
 	public getSshConfigDir(): string {
-		switch (process.platform) {
-			case "win32":
-				return path.join(
-					process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
-					"coder.coder-remote",
-					"ssh",
-				);
-			case "darwin":
-				return path.join(
-					os.homedir(),
-					"Library",
-					"Application Support",
-					"coder.coder-remote",
-					"ssh",
-				);
-			default:
-				return path.join(
-					process.env.XDG_DATA_HOME ||
-						path.join(os.homedir(), ".local", "share"),
-					"coder.coder-remote",
-					"ssh",
-				);
-		}
+		return path.join(platformDataDir(), "coder.coder-remote", "ssh");
 	}
 
 	/** This editor's generated SSH config for one deployment. */
 	public getSshConfigPath(safeHostname: string): string {
 		return path.join(
 			this.getSshConfigDir(),
-			`${vscode.env.uriScheme}--${safeHostname}.conf`,
+			`${currentEditorId()}--${safeHostname}${SSH_CONFIG_EXT}`,
 		);
 	}
 
 	/** The deployment hostname if this editor generated the file, else undefined. */
 	public parseSshConfigFile(fileName: string): string | undefined {
-		const prefix = `${vscode.env.uriScheme}--`;
-		return fileName.startsWith(prefix) && fileName.endsWith(".conf")
-			? fileName.slice(prefix.length, -".conf".length)
+		const prefix = `${currentEditorId()}--`;
+		return fileName.startsWith(prefix) && fileName.endsWith(SSH_CONFIG_EXT)
+			? fileName.slice(prefix.length, -SSH_CONFIG_EXT.length)
 			: undefined;
 	}
 
