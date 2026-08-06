@@ -1,7 +1,11 @@
 import * as semver from "semver";
 import { describe, expect, it } from "vitest";
 
-import { type FeatureSet, featureSetForVersion } from "@/featureSet";
+import {
+	type FeatureSet,
+	featureSetForVersion,
+	tasksSupported,
+} from "@/featureSet";
 
 function expectFlag(
 	flag: keyof FeatureSet,
@@ -66,6 +70,16 @@ describe("check version support", () => {
 			["v2.36.0", "v2.36.1", "v2.37.0", "v3.0.0"],
 		);
 	});
+	it("tasks panel only on deployments before deprecation", () => {
+		for (const v of ["v2.34.0", "v2.34.7+e491217", "v2.0.0"]) {
+			expect(tasksSupported(semver.parse(v)), v).toBe(true);
+		}
+		for (const v of ["v2.35.0", "v2.36.1", "v3.0.0", "v2.36.0-devel+abc123"]) {
+			expect(tasksSupported(semver.parse(v)), v).toBe(false);
+		}
+		expect(tasksSupported(null)).toBe(false);
+	});
+
 	it("enables all features for development builds", () => {
 		const featureSet = featureSetForVersion(
 			semver.parse("v0.0.0-devel+abc123"),

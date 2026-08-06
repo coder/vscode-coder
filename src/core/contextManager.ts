@@ -5,6 +5,7 @@ const CONTEXT_DEFAULTS = {
 	"coder.isOwner": false,
 	"coder.loaded": false,
 	"coder.sharedWorkspacesSupported": true,
+	"coder.tasksSupported": false,
 	"coder.workspace.connected": false,
 	"coder.workspace.updatable": false,
 	"coder.workspacesPanelEnabled": false,

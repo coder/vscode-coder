@@ -27,6 +27,14 @@ function versionAtLeast(
 }
 
 /**
+ * True when the deployment predates the June 2026 Tasks deprecation
+ * (2.34 and below). The deprecated Tasks panel is hidden everywhere else.
+ */
+export function tasksSupported(version: semver.SemVer | null): boolean {
+	return version !== null && !versionAtLeast(version, "2.35.0");
+}
+
+/**
  * Builds and returns a FeatureSet object for a given coder version.
  */
 export function featureSetForVersion(
