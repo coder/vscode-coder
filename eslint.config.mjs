@@ -123,6 +123,12 @@ export default defineConfig(
 					message:
 						"Do not use registerCommand('coder.*', ...) directly. Use the CommandManager class instead.",
 				},
+				{
+					selector:
+						"MemberExpression[property.name='remoteAuthority'][object.property.name='env'][object.object.name='vscode']",
+					message:
+						"env.remoteAuthority is a proposed API (resolvers) and throws through our own vscode module. Read it via vscodeProposed.env.remoteAuthority.",
+				},
 			],
 		},
 	},

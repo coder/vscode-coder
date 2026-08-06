@@ -592,16 +592,17 @@ export class Commands {
 
 	/** A connected window resolves to its own deployment; otherwise ask. */
 	private async pickSshHostname(): Promise<string | undefined> {
-		const remoteAuthority = vscode.env.remoteAuthority;
-		if (remoteAuthority) {
-			try {
+		try {
+			// remoteAuthority is a proposed API; our own vscode module may not read it.
+			const remoteAuthority = vscodeProposed.env.remoteAuthority;
+			if (remoteAuthority) {
 				const parts = parseRemoteAuthority(remoteAuthority);
 				if (parts) {
 					return parts.safeHostname;
 				}
-			} catch {
-				// Malformed Coder authority; fall through to the picker.
 			}
+		} catch {
+			// Malformed Coder authority or unavailable API; fall through to the picker.
 		}
 		const hostnames = (
 			await readdirOrEmpty(this.pathResolver.getSshConfigDir())
