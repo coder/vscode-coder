@@ -1,7 +1,11 @@
 import * as childProcess from "child_process";
 
-// Matches the OpenSSH version number from `ssh -V` output.
-// [^,]* prevents greedy matching across comma-separated components
+import { lowercase } from "../util";
+
+/**
+ * Matches the OpenSSH version number from `ssh -V` output.
+ * [^,]* prevents greedy matching across comma-separated components.
+ */
 const openSSHVersionRegex = /OpenSSH[^,]*_([\d.]+)/;
 
 /** Check if the local SSH installation supports the `SetEnv` directive. */
@@ -42,21 +46,25 @@ export function sshVersionSupportsSetEnv(sshVersionString: string): boolean {
 	return false;
 }
 
+/** Keyed by lowercase directive name, so wrong-cased lookups fail to compile. */
+export type SshProperties = Record<Lowercase<string>, string>;
+
+interface HostBlock {
+	host: string;
+	properties: Array<[key: Lowercase<string>, value: string]>;
+}
+
 /**
- * Compute the effective SSH properties for a given host by evaluating
- * all matching Host blocks in the provided SSH config.
+ * Compute the effective SSH properties for a host like OpenSSH does: directive
+ * names are case-insensitive and the first value wins. Match, Include, and
+ * negated or multi-pattern Host lines are not handled.
  */
 export function computeSshProperties(
 	host: string,
 	config: string,
-): Record<string, string> {
-	let currentConfig:
-		| {
-				Host: string;
-				properties: Record<string, string>;
-		  }
-		| undefined;
-	const configs: Array<typeof currentConfig> = [];
+): SshProperties {
+	let currentConfig: HostBlock | undefined;
+	const configs: HostBlock[] = [];
 	config.split("\n").forEach((line) => {
 		line = line.trim();
 		if (line === "") {
@@ -71,36 +79,34 @@ export function computeSshProperties(
 			// Ignore comments!
 			return;
 		}
-		if (key === "Host") {
+		const propertyKey = lowercase(key);
+		if (propertyKey === "host") {
 			if (currentConfig) {
 				configs.push(currentConfig);
 			}
 			currentConfig = {
-				Host: valueParts.join(""),
-				properties: {},
+				host: valueParts.join(""),
+				properties: [],
 			};
 			return;
 		}
 		if (!currentConfig) {
 			return;
 		}
-		currentConfig.properties[key] = valueParts.join("");
+		currentConfig.properties.push([propertyKey, valueParts.join("")]);
 	});
 	if (currentConfig) {
 		configs.push(currentConfig);
 	}
 
-	const merged: Record<string, string> = {};
-	configs.reverse().forEach((config) => {
-		if (!config) {
-			return;
-		}
-
+	const merged: SshProperties = {};
+	configs.forEach((config) => {
 		// In OpenSSH * matches any number of characters and ? matches exactly one.
 		if (
 			!new RegExp(
 				"^" +
-					config?.Host.replace(/\./g, "\\.")
+					config.host
+						.replace(/\./g, "\\.")
 						.replace(/\*/g, ".*")
 						.replace(/\?/g, ".") +
 					"$",
@@ -108,7 +114,33 @@ export function computeSshProperties(
 		) {
 			return;
 		}
-		Object.assign(merged, config.properties);
+		config.properties.forEach(([key, value]) => {
+			if (!Object.hasOwn(merged, key)) {
+				merged[key] = value;
+			}
+		});
 	});
 	return merged;
+}
+
+/**
+ * Compare effective SSH properties against what Coder wrote, one problem per
+ * unexpected value.
+ */
+export function findSshPropertyProblems(
+	computed: SshProperties,
+	expected: Record<string, string>,
+): string[] {
+	const problems: string[] = [];
+	for (const [key, value] of Object.entries(expected)) {
+		const computedValue = computed[lowercase(key)];
+		if (computedValue !== value) {
+			const actual =
+				computedValue === undefined
+					? "is not set"
+					: `is set to "${computedValue}"`;
+			problems.push(`"${key}" ${actual}, but Coder expects "${value}"`);
+		}
+	}
+	return problems;
 }

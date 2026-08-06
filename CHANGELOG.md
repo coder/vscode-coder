@@ -33,12 +33,26 @@
 
 ### Fixed
 
+- Reject SSH options sent by the deployment that could run code or change how
+  Coder connects, such as `ProxyCommand`, `LocalCommand`, and `Match`, matching
+  the server's own validation of `--ssh-config-options`. One error reports
+  every rejected option. Options you set yourself, in the `coder.sshConfig`
+  setting or with `coder config-ssh --ssh-option`, stay allowed because your
+  value takes precedence.
+- Check the written SSH config the way OpenSSH reads it: option names are
+  case-insensitive and the first value wins. Every unexpected value is
+  reported in a single dialog.
+- Ask for confirmation before a deep link connects to a deployment you have
+  not logged in to before, and before a token in a link signs you in or
+  switches accounts, naming the accounts involved. A link normally shows at
+  most one of these prompts, and a link that signs in the same user on the
+  same deployment stays silent.
 - Write the SSH config to the file the active Remote-SSH extension actually
-  reads. Windsurf/Devin and Antigravity renamed the whole `remote.SSH` settings
+  reads. Windsurf/Devin and Antigravity renamed the `remote.SSH` settings
   section, so a custom config file set as `remote.devinSSH.configFile`,
   `remote.windsurfSSH.configFile`, or `remote.antigravitySSH.configFile` was
-  ignored and the workspace host was written to `~/.ssh/config` instead, where
-  those editors never looked for it.
+  ignored and the workspace host was written to `~/.ssh/config`, where those
+  editors never looked.
 - Apply a 60-second default timeout to REST requests, so requests hung on a
   half-open TCP connection don't stall pollers forever.
 - Change `coder.binarySource`, `coder.binaryDestination`, `coder.headerCommand`,

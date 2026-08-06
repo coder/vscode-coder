@@ -75,32 +75,24 @@ describe("Remote", () => {
 		new MockConfigurationProvider();
 	});
 
-	it("ignores mismatched file auth", async () => {
-		const { remote, secretsManager } = createRemote();
+	it("ignores mismatched file auth and logs why", async () => {
+		const logs = new LogCollector();
+		const { remote, secretsManager } = createRemote(logs);
 
 		await expect(
 			remote.setup(REMOTE_AUTHORITY, "none", "anysphere.remote-ssh"),
 		).resolves.toBeUndefined();
+
 		expect(await secretsManager.getSessionAuth(SAFE_HOSTNAME)).toBeUndefined();
-	});
-
-	describe("logging", () => {
-		it("logs why the file auth migration failed", async () => {
-			const logs = new LogCollector();
-			const { remote } = createRemote(logs);
-
-			await remote.setup(REMOTE_AUTHORITY, "none", "anysphere.remote-ssh");
-
-			// The mismatched URL carries a token, so only its hostname is logged.
-			expect(logs.entries).toContainEqual({
-				level: "warn",
-				message: "Failed to migrate session auth from files:",
-				args: [
-					new Error(
-						`Session auth hostname mismatch: expected "${SAFE_HOSTNAME}", got "cursor.example.com"`,
-					),
-				],
-			});
+		// The mismatched URL carries a token, so only its hostname is logged.
+		expect(logs.entries).toContainEqual({
+			level: "warn",
+			message: "Failed to migrate session auth from files:",
+			args: [
+				new Error(
+					`Session auth hostname mismatch: expected "${SAFE_HOSTNAME}", got "cursor.example.com"`,
+				),
+			],
 		});
 	});
 });

@@ -10,14 +10,18 @@ import { buildOAuthTokenData } from "../oauth/utils";
 import { withOptionalProgress } from "../progress";
 import { maybeAskAuthMethod, maybeAskUrl } from "../promptUtils";
 import { isKeyringEnabled } from "../settings/cli";
-import { openInBrowser } from "../util/uri";
+import { isSameOrigin, openInBrowser } from "../util/uri";
 import { vscodeProposed } from "../vscodeProposed";
 
 import type { User } from "coder/site/src/api/typesGenerated";
 
 import type { CliCredentialManager } from "../core/cliCredentialManager";
 import type { MementoManager } from "../core/mementoManager";
-import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
+import type {
+	OAuthTokenData,
+	SecretsManager,
+	SessionAuth,
+} from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
 import type {
 	AuthLoginPromptTrigger,
@@ -54,6 +58,22 @@ export interface LoginOptions {
 	url: string | undefined;
 	autoLogin?: boolean;
 	token?: string;
+	/**
+	 * A prompt already disclosed that `token` signs the user in. Ignored when
+	 * a stored session would be replaced, which needs a prompt naming it.
+	 */
+	tokenSignInConfirmed?: boolean;
+}
+
+/** Session state shared by every attempt in the login chain. */
+interface LoginAttemptContext {
+	client: CoderApi;
+	deployment: Deployment;
+	isAutoLogin: boolean;
+	/** Stored session for the hostname, if any. */
+	auth: SessionAuth | undefined;
+	/** `auth`, but only when it matches the deployment's exact origin. */
+	sameOriginAuth: SessionAuth | undefined;
 }
 
 /**
@@ -93,6 +113,7 @@ export class LoginCoordinator implements vscode.Disposable {
 				{ safeHostname, url },
 				options.autoLogin ?? false,
 				options.token,
+				options.tokenSignInConfirmed ?? false,
 			);
 
 			await this.persistSessionAuth(result, safeHostname, url);
@@ -185,6 +206,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			await this.secretsManager.setSessionAuth(safeHostname, {
 				url,
 				token: result.token,
+				username: result.user.username,
 				oauth: result.oauth, // undefined for non-OAuth logins
 			});
 			await this.mementoManager.addToUrlHistory(url);
@@ -260,6 +282,7 @@ export class LoginCoordinator implements vscode.Disposable {
 		deployment: Deployment,
 		isAutoLogin: boolean,
 		providedToken?: string,
+		tokenSignInConfirmed = false,
 	): Promise<LoginResult> {
 		const client = CoderApi.create(deployment.url, "", this.logger);
 		try {
@@ -268,19 +291,25 @@ export class LoginCoordinator implements vscode.Disposable {
 				deployment,
 				isAutoLogin,
 				providedToken,
+				tokenSignInConfirmed,
 			);
 		} finally {
 			client.dispose();
 		}
 	}
 
+	/**
+	 * Try each token source in turn. A source returns undefined on 401 to hand
+	 * over to the next one; any other failure is terminal since retrying more
+	 * tokens against an erroring server would just repeat the error.
+	 */
 	private async runLoginAttempts(
 		client: CoderApi,
 		deployment: Deployment,
 		isAutoLogin: boolean,
 		providedToken: string | undefined,
+		tokenSignInConfirmed: boolean,
 	): Promise<LoginResult> {
-		// mTLS authentication (no token needed)
 		if (!needToken(vscode.workspace.getConfiguration())) {
 			this.logger.debug("Attempting mTLS authentication (no token required)");
 			return withLoginMethod(
@@ -289,42 +318,115 @@ export class LoginCoordinator implements vscode.Disposable {
 			);
 		}
 
-		// Try provided token first
-		if (providedToken) {
-			this.logger.debug("Trying provided token");
-			const result = await this.tryTokenAuth(
-				client,
-				providedToken,
-				isAutoLogin,
-			);
-			if (result !== "unauthorized") {
-				return withLoginMethod("provided_token", result);
-			}
-		}
-
-		// Try stored token (skip if same as provided)
 		const auth = await this.secretsManager.getSessionAuth(
 			deployment.safeHostname,
 		);
-		if (auth?.token && auth.token !== providedToken) {
-			this.logger.debug("Trying stored session token");
-			const result = await this.tryTokenAuth(client, auth.token, isAutoLogin);
-			if (result !== "unauthorized") {
-				return withLoginMethod("stored_token", result);
-			}
+		const ctx: LoginAttemptContext = {
+			client,
+			deployment,
+			isAutoLogin,
+			auth,
+			// Only sent to its own origin, so a lookalike hostname cannot get it.
+			sameOriginAuth:
+				auth && isSameOrigin(auth.url, deployment.url) ? auth : undefined,
+		};
+
+		if (providedToken) {
+			return this.loginWithProvidedToken(
+				ctx,
+				providedToken,
+				tokenSignInConfirmed,
+			);
 		}
 
-		// Try CLI-managed credentials. This reads from the OS keyring when
-		// enabled, otherwise from the resolved global config directory.
+		const stored = await this.tryStoredSession(ctx);
+		if (stored) {
+			return stored;
+		}
+		const cli = await this.tryCliCredentials(ctx);
+		if (cli) {
+			return cli;
+		}
+		return this.askAuthMethod(ctx);
+	}
+
+	/**
+	 * A link token is the login intent: sign in with it or fail. Falling back
+	 * to another source could silently continue as a different user.
+	 */
+	private async loginWithProvidedToken(
+		ctx: LoginAttemptContext,
+		providedToken: string,
+		tokenSignInConfirmed: boolean,
+	): Promise<LoginResult> {
+		const { client, deployment, isAutoLogin, auth, sameOriginAuth } = ctx;
+		this.logger.debug("Trying provided token");
+		const result = await this.tryTokenAuth(client, providedToken, isAutoLogin);
+		if (result === "unauthorized") {
+			this.showAuthError(
+				new Error("The token in the link is invalid or expired."),
+				isAutoLogin,
+			);
+			return { success: false, method: "provided_token", reason: "auth_failed" };
+		}
+		if (result.success) {
+			// Silent when the link repeats the same user on the same origin, or an
+			// earlier prompt confirmed a sign-in that replaces nothing.
+			const silent =
+				sameOriginAuth?.username === result.user.username ||
+				(auth === undefined && tokenSignInConfirmed);
+			if (!silent) {
+				// Checked silently, only to word the prompt.
+				const expired =
+					sameOriginAuth?.token !== undefined &&
+					(await this.tryTokenAuth(client, sameOriginAuth.token, true)) ===
+						"unauthorized";
+				const confirmed = await this.confirmLinkSignIn(
+					deployment.url,
+					result.user,
+					auth && { username: auth.username, expired },
+				);
+				if (!confirmed) {
+					return { success: false, reason: "user_dismissed" };
+				}
+			}
+		}
+		return withLoginMethod("provided_token", result);
+	}
+
+	/** Stored session for the deployment's exact origin, if it still works. */
+	private async tryStoredSession(
+		ctx: LoginAttemptContext,
+	): Promise<LoginResult | undefined> {
+		const { client, isAutoLogin, sameOriginAuth } = ctx;
+		if (!sameOriginAuth?.token) {
+			return undefined;
+		}
+		this.logger.debug("Trying stored session token");
+		const result = await this.tryTokenAuth(
+			client,
+			sameOriginAuth.token,
+			isAutoLogin,
+		);
+		if (result === "unauthorized") {
+			return undefined;
+		}
+		return withLoginMethod("stored_token", result);
+	}
+
+	/** CLI credentials: the OS keyring when enabled, else the config dir. */
+	private async tryCliCredentials(
+		ctx: LoginAttemptContext,
+	): Promise<LoginResult | undefined> {
+		const { client, deployment, isAutoLogin, auth } = ctx;
 		const configs = vscode.workspace.getConfiguration();
-		const keyringEnabled = isKeyringEnabled(configs);
 		const cliCredentialResult = await withOptionalProgress(
 			({ signal }) =>
 				this.cliCredentialManager.readToken(deployment.url, configs, {
 					signal,
 				}),
 			{
-				enabled: keyringEnabled,
+				enabled: isKeyringEnabled(configs),
 				location: vscode.ProgressLocation.Notification,
 				title: "Reading token from OS keyring...",
 				cancellable: true,
@@ -333,35 +435,66 @@ export class LoginCoordinator implements vscode.Disposable {
 		const cliCredential = cliCredentialResult.ok
 			? cliCredentialResult.value
 			: undefined;
-		if (
-			cliCredential &&
-			cliCredential.token !== providedToken &&
-			cliCredential.token !== auth?.token
-		) {
-			this.logger.debug("Trying token from CLI credentials");
-			const result = await this.tryTokenAuth(
-				client,
-				cliCredential.token,
-				isAutoLogin,
-			);
-			if (result !== "unauthorized") {
-				return withLoginMethod(
-					cliCredential.source === "keyring" ? "keyring_token" : "cli_token",
-					result,
-				);
-			}
+		if (!cliCredential || cliCredential.token === auth?.token) {
+			return undefined;
 		}
+		this.logger.debug("Trying token from CLI credentials");
+		const result = await this.tryTokenAuth(
+			client,
+			cliCredential.token,
+			isAutoLogin,
+		);
+		if (result === "unauthorized") {
+			return undefined;
+		}
+		return withLoginMethod(
+			cliCredential.source === "keyring" ? "keyring_token" : "cli_token",
+			result,
+		);
+	}
 
-		// Prompt user for token
-		const authMethod = await maybeAskAuthMethod(client);
+	/** Last resort: ask the user how to authenticate. */
+	private async askAuthMethod(ctx: LoginAttemptContext): Promise<LoginResult> {
+		const authMethod = await maybeAskAuthMethod(ctx.client);
 		switch (authMethod) {
 			case "oauth":
-				return withLoginMethod("oauth", await this.loginWithOAuth(deployment));
+				return withLoginMethod(
+					"oauth",
+					await this.loginWithOAuth(ctx.deployment),
+				);
 			case "legacy":
-				return withLoginMethod("cli_token", await this.loginWithToken(client));
+				return withLoginMethod(
+					"cli_token",
+					await this.loginWithToken(ctx.client),
+				);
 			case undefined:
 				return { success: false, reason: "user_dismissed" };
 		}
+	}
+
+	/** Ask before a token from a link signs the user in. */
+	private async confirmLinkSignIn(
+		url: string,
+		user: User,
+		previousSession:
+			{ username: string | undefined; expired: boolean } | undefined,
+	): Promise<boolean> {
+		const previous = previousSession?.username
+			? ` for "${previousSession.username}"`
+			: "";
+		const replacing = previousSession
+			? `, replacing your ${previousSession.expired ? "expired" : "current"} session${previous}`
+			: "";
+		const action = await vscodeProposed.window.showWarningMessage(
+			"Sign in with the token from the link?",
+			{
+				useCustom: true,
+				modal: true,
+				detail: `${url}\n\nThe link contains a token that signs you in as "${user.username}"${replacing}.`,
+			},
+			"Sign In",
+		);
+		return action === "Sign In";
 	}
 
 	private async tryMtlsAuth(

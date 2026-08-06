@@ -59,7 +59,15 @@ describe("SecretsManager", () => {
 			});
 		});
 
-		it.each([
+		interface MismatchCase {
+			name: string;
+			url: string;
+			error: string;
+		}
+
+		// A mismatched URL can carry credentials, so only its hostname may
+		// appear in the error.
+		const MISMATCH_CASES: MismatchCase[] = [
 			{
 				name: "malformed URL",
 				url: "not a URL",
@@ -68,62 +76,37 @@ describe("SecretsManager", () => {
 			},
 			{
 				name: "mismatched hostname",
-				url: "https://other.example.com",
+				url: "https://other.example.com/private?token=secret",
 				error:
 					'Session auth hostname mismatch: expected "example.com", got "other.example.com"',
 			},
-		])("should reject a write with a $name", async ({ url, error }) => {
-			const existingAuth = {
-				url: "https://example.com",
-				token: "existing-token",
-			};
-			await secretsManager.setSessionAuth("example.com", existingAuth);
+		];
 
-			await expect(
-				secretsManager.setSessionAuth("example.com", {
-					url,
-					token: "secret-token",
-				}),
-			).rejects.toThrow(error);
+		it.each<MismatchCase>(MISMATCH_CASES)(
+			"should reject a write with a $name",
+			async ({ url, error }) => {
+				const existingAuth = {
+					url: "https://example.com",
+					token: "existing-token",
+				};
+				await secretsManager.setSessionAuth("example.com", existingAuth);
 
-			expect(await secretsManager.getSessionAuth("example.com")).toEqual(
-				existingAuth,
-			);
-		});
+				await expect(
+					secretsManager.setSessionAuth("example.com", {
+						url,
+						token: "secret-token",
+					}),
+				).rejects.toThrow(error);
 
-		it.each([
-			{ name: "malformed URL", url: "not a URL" },
-			{
-				name: "mismatched hostname",
-				url: "https://other.example.com/private?token=secret",
+				expect(await secretsManager.getSessionAuth("example.com")).toEqual(
+					existingAuth,
+				);
 			},
-		])("should ignore stored auth with a $name", async ({ url }) => {
-			await secretStorage.store(
-				"coder.session.example.com",
-				JSON.stringify({ url, token: "secret-token" }),
-			);
+		);
 
-			expect(
-				await secretsManager.getSessionAuth("example.com"),
-			).toBeUndefined();
-		});
-
-		describe("logging", () => {
-			it.each([
-				{
-					name: "malformed URL",
-					url: "not a URL",
-					error:
-						'Session auth hostname mismatch: expected "example.com", got an invalid URL "not a URL"',
-				},
-				{
-					// A mismatched URL can carry credentials, so only its hostname is logged.
-					name: "mismatched hostname",
-					url: "https://other.example.com/private?token=secret",
-					error:
-						'Session auth hostname mismatch: expected "example.com", got "other.example.com"',
-				},
-			])("logs why a $name was ignored", async ({ url, error }) => {
+		it.each<MismatchCase>(MISMATCH_CASES)(
+			"should ignore stored auth with a $name and log why",
+			async ({ url, error }) => {
 				const logs = new LogCollector();
 				const manager = new SecretsManager(secretStorage, mementoManager, logs);
 				await secretStorage.store(
@@ -131,8 +114,7 @@ describe("SecretsManager", () => {
 					JSON.stringify({ url, token: "secret-token" }),
 				);
 
-				await manager.getSessionAuth("example.com");
-
+				expect(await manager.getSessionAuth("example.com")).toBeUndefined();
 				expect(logs.entries).toEqual([
 					{
 						level: "warn",
@@ -140,8 +122,8 @@ describe("SecretsManager", () => {
 						args: [new Error(error)],
 					},
 				]);
-			});
-		});
+			},
+		);
 
 		it("should clear session auth", async () => {
 			await secretsManager.setSessionAuth("example.com", {

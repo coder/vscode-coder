@@ -15,6 +15,18 @@ export function removeTrailingSlashes(value: string): string {
 	return value.replace(/\/+$/, "");
 }
 
+/** True when both URLs share a scheme, host, and port. */
+export function isSameOrigin(a: string, b: string): boolean {
+	try {
+		const originA = new URL(a).origin;
+		const originB = new URL(b).origin;
+		// "null" means an opaque origin, which is never comparable.
+		return originA !== "null" && originA === originB;
+	} catch {
+		return false;
+	}
+}
+
 /** Trim surrounding whitespace and strip trailing slashes from a URL. */
 export function normalizeUrl(value: string): string {
 	return removeTrailingSlashes(value.trim());

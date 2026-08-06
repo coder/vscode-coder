@@ -5,6 +5,7 @@ import {
 	parseCoderSshOptions,
 	parseSshConfig,
 	mergeSshConfigValues,
+	validateDeploymentSshOptions,
 	type SshValues,
 } from "@/remote/sshConfig";
 
@@ -40,6 +41,18 @@ const BASE_SSH_VALUES = {
 	ServerAliveInterval: "10",
 	ServerAliveCountMax: "3",
 } as const satisfies SshValues;
+
+const USER_OVERRIDES = {
+	ForwardAgent: "yes",
+	IdentityFile: "~/.ssh/coder identity",
+} as const;
+
+const BENIGN_DEPLOYMENT_OPTIONS = {
+	ConnectTimeout: "30",
+	IdentityFile: "~/.ssh/coder identity",
+	SetEnv: "CODER_SSH_SESSION_TYPE=vscode",
+	serveraliveinterval: "5",
+} as const;
 
 afterEach(() => {
 	vi.clearAllMocks();
@@ -544,6 +557,232 @@ Host coder-vscode.dev.coder.com--*
 		expect.stringContaining(sshTempFilePrefix),
 		sshFilePath,
 	);
+});
+
+describe("SSH config serialization", () => {
+	/**
+	 * One case per input surface; the full character matrix is covered by the
+	 * validateDeploymentSshOptions tests below.
+	 */
+	interface RejectCase {
+		name: string;
+		safeHostname?: string;
+		values?: SshValues;
+		overrides?: Record<string, string>;
+	}
+
+	it.each<RejectCase>([
+		{
+			name: "deployment hostname newline",
+			safeHostname: "dev.coder.com\nHost *",
+		},
+		{
+			name: "Host value carriage return",
+			values: { ...BASE_SSH_VALUES, Host: "coder-vscode--*\rMatch all" },
+		},
+		{
+			name: "managed value newline",
+			values: {
+				...BASE_SSH_VALUES,
+				ProxyCommand: "some-command-here\nRemoteCommand calc",
+			},
+		},
+		{
+			name: "override key whitespace",
+			overrides: { "ForwardAgent RemoteCommand": "yes" },
+		},
+		{
+			name: "override value newline",
+			overrides: { ForwardAgent: "yes\nRemoteCommand calc" },
+		},
+	])(
+		"rejects $name",
+		async ({
+			safeHostname = "dev.coder.com",
+			values = BASE_SSH_VALUES,
+			overrides,
+		}) => {
+			mockFileSystem.readFile.mockRejectedValueOnce("No file found");
+			const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
+			await sshConfig.load();
+
+			await expect(
+				sshConfig.update(safeHostname, values, overrides),
+			).rejects.toThrow();
+			expect(mockFileSystem.writeFile).not.toHaveBeenCalled();
+		},
+	);
+
+	it("accepts benign override options", async () => {
+		mockFileSystem.readFile.mockRejectedValueOnce("No file found");
+		mockFileSystem.stat.mockRejectedValueOnce({ code: "ENOENT" });
+		const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
+		await sshConfig.load();
+
+		await sshConfig.update("dev.coder.com", BASE_SSH_VALUES, USER_OVERRIDES);
+
+		const writtenConfig = mockFileSystem.writeFile.mock.calls[0]?.[1];
+		expect(writtenConfig).toContain("  ForwardAgent yes");
+		expect(writtenConfig).toContain("  IdentityFile ~/.ssh/coder identity");
+	});
+
+	it("uses literal replacement text and preserves surrounding config", async () => {
+		const existentSshConfig = `Host before
+  IdentityFile ~/.ssh/before
+
+# --- START CODER VSCODE dev.coder.com ---
+Host coder-vscode.dev.coder.com--*
+# --- END CODER VSCODE dev.coder.com ---
+
+Host after
+  IdentityFile ~/.ssh/after`;
+		mockFileSystem.readFile.mockResolvedValueOnce(existentSshConfig);
+		mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o600 });
+
+		const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
+		await sshConfig.load();
+		await sshConfig.update("dev.coder.com", BASE_SSH_VALUES, {
+			IdentityFile: "$& $` $' $<name> $$",
+		});
+
+		const writtenConfig = String(mockFileSystem.writeFile.mock.calls[0]?.[1]);
+		expect(writtenConfig).toContain("  IdentityFile $& $` $' $<name> $$");
+		expect(
+			writtenConfig.startsWith(`Host before
+  IdentityFile ~/.ssh/before
+
+`),
+		).toBe(true);
+		expect(
+			writtenConfig.endsWith(`
+
+Host after
+  IdentityFile ~/.ssh/after`),
+		).toBe(true);
+	});
+});
+
+describe("validateDeploymentSshOptions", () => {
+	it.each([
+		// Restructure the config.
+		"Host",
+		"Match",
+		"Include",
+		"ProxyJump",
+		// Run code.
+		"ProxyCommand",
+		"LocalCommand",
+		"PermitLocalCommand",
+		"RemoteCommand",
+		"KnownHostsCommand",
+		// Load shared libraries.
+		"PKCS11Provider",
+		"SecurityKeyProvider",
+		"SmartcardDevice",
+		// Execute a command for X11 authentication.
+		"XAuthLocation",
+	])("rejects %s case-insensitively", (key) => {
+		expect(() =>
+			validateDeploymentSshOptions({ [key.toLowerCase()]: "value" }, {}),
+		).toThrow(
+			`The Coder deployment tried to set SSH options that could run code or change how Coder connects: ${JSON.stringify(key.toLowerCase())}.`,
+		);
+		expect(() =>
+			validateDeploymentSshOptions({ [key.toUpperCase()]: "value" }, {}),
+		).toThrow();
+	});
+
+	interface MalformedCase {
+		name: string;
+		key: string;
+		value: unknown;
+	}
+
+	it.each<MalformedCase>([
+		{ name: "empty key", key: "", value: "value" },
+		{ name: "key whitespace", key: "Forward Agent", value: "yes" },
+		{ name: "key equals", key: "ForwardAgent=", value: "yes" },
+		{ name: "key punctuation", key: "ForwardAgent#", value: "yes" },
+		{ name: "key carriage return", key: "ForwardAgent\r", value: "yes" },
+		{ name: "key newline", key: "ForwardAgent\n", value: "yes" },
+		{ name: "key NUL", key: "ForwardAgent\0", value: "yes" },
+		{ name: "value carriage return", key: "ForwardAgent", value: "yes\rno" },
+		{ name: "value newline", key: "ForwardAgent", value: "yes\nno" },
+		{ name: "value NUL", key: "ForwardAgent", value: "yes\0no" },
+		{ name: "non-string value", key: "ForwardAgent", value: 42 },
+	])("rejects $name", ({ key, value }) => {
+		expect(() => validateDeploymentSshOptions({ [key]: value }, {})).toThrow();
+	});
+
+	it("accepts options outside the deny list in any case", () => {
+		expect(() =>
+			validateDeploymentSshOptions(BENIGN_DEPLOYMENT_OPTIONS, {}),
+		).not.toThrow();
+		expect(() =>
+			validateDeploymentSshOptions(
+				{
+					CONNECTTIMEOUT: "30",
+					ForwardAgent: "yes",
+					StrictHostKeyChecking: "no",
+					SomeFutureDirective: "value",
+				},
+				{},
+			),
+		).not.toThrow();
+	});
+
+	it("collects every denied option into one error", () => {
+		expect(() =>
+			validateDeploymentSshOptions(
+				{
+					ProxyCommand: "evil",
+					LocalCommand: "evil",
+					ConnectTimeout: "30",
+				},
+				{},
+			),
+		).toThrow('change how Coder connects: "ProxyCommand", "LocalCommand".');
+	});
+
+	it("offers the coder.sshConfig escape hatch only for options Coder does not manage", () => {
+		expect(() =>
+			validateDeploymentSshOptions({ LocalCommand: "evil" }, {}),
+		).toThrow(
+			'To allow "LocalCommand", set the option yourself in the "coder.sshConfig" setting',
+		);
+		// Overriding a pinned option fails the post-write check instead.
+		expect(() =>
+			validateDeploymentSshOptions({ ProxyCommand: "evil" }, {}),
+		).toThrow('Coder manages "ProxyCommand", which cannot be overridden.');
+		expect(() =>
+			validateDeploymentSshOptions({ ProxyCommand: "evil" }, {}),
+		).not.toThrow(/coder\.sshConfig/);
+		// Mixed: each option gets the advice that applies to it.
+		expect(() =>
+			validateDeploymentSshOptions(
+				{ ProxyCommand: "evil", LocalCommand: "evil" },
+				{},
+			),
+		).toThrow(/To allow "LocalCommand".*Coder manages "ProxyCommand"/s);
+	});
+
+	it("skips denied options the user overrides in coder.sshConfig", () => {
+		// Case-insensitive: the user's value wins the merge, so the
+		// deployment's value is never written.
+		expect(() =>
+			validateDeploymentSshOptions(
+				{ ProxyCommand: "deployment value" },
+				{ proxycommand: "user value" },
+			),
+		).not.toThrow();
+		// Only the overridden key is exempt.
+		expect(() =>
+			validateDeploymentSshOptions(
+				{ ProxyCommand: "deployment value", LocalCommand: "evil" },
+				{ ProxyCommand: "user value" },
+			),
+		).toThrow('"LocalCommand"');
+	});
 });
 
 it("fails if we are unable to write the temporary file", async () => {

@@ -6,7 +6,7 @@ import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
 import { getHeaders } from "@/headers";
 import { AuthTelemetry } from "@/instrumentation/auth";
-import { LoginCoordinator } from "@/login/loginCoordinator";
+import { LoginCoordinator, type LoginMethod } from "@/login/loginCoordinator";
 import { OAuthCallback } from "@/oauth/oauthCallback";
 import { maybeAskAuthMethod, maybeAskUrl } from "@/promptUtils";
 
@@ -22,6 +22,8 @@ import {
 	MockProgressReporter,
 	MockUserInteraction,
 } from "../../mocks/testHelpers";
+
+import type { User } from "coder/site/src/api/typesGenerated";
 
 import type { TelemetryService } from "@/telemetry/service";
 
@@ -433,135 +435,285 @@ describe("LoginCoordinator", () => {
 	});
 
 	describe("token fallback order", () => {
-		it("uses provided token first when valid", async () => {
-			const { secretsManager, coordinator, mockSuccessfulAuth } =
-				createTestContext();
-			const user = mockSuccessfulAuth();
+		const SIGN_IN_PROMPT = "Sign in with the token from the link?";
+		const LINK_TOKEN = "provided-token";
+		const DISMISSED = { success: false, reason: "user_dismissed" };
 
-			// Store a different token
-			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-				url: TEST_URL,
+		/** The result of a successful login, by the source of the token. */
+		const signedIn = (method: LoginMethod, user: User, token: string) => ({
+			success: true,
+			method,
+			user,
+			token,
+		});
+
+		/** Test context plus shorthands for the link sign-in flow. */
+		function createLinkTestContext() {
+			const ctx = createTestContext();
+			return {
+				...ctx,
+				/** Queue one getAuthenticatedUser result per expected call, in order. */
+				authSequence: (...results: Array<User | "unauthorized">) => {
+					for (const result of results) {
+						if (result === "unauthorized") {
+							mockGetAuthenticatedUser.mockRejectedValueOnce(
+								createAxiosError(401, "Unauthorized"),
+							);
+						} else {
+							mockGetAuthenticatedUser.mockResolvedValueOnce(result);
+						}
+					}
+				},
+				storeSession: (auth: {
+					token: string;
+					username?: string;
+					url?: string;
+				}) =>
+					ctx.secretsManager.setSessionAuth(TEST_HOSTNAME, {
+						url: TEST_URL,
+						...auth,
+					}),
+				confirmSignIn: () =>
+					ctx.userInteraction.setResponse(SIGN_IN_PROMPT, "Sign In"),
+				dismissSignIn: () =>
+					ctx.userInteraction.setResponse(SIGN_IN_PROMPT, undefined),
+				login: (options?: { token?: string; tokenSignInConfirmed?: boolean }) =>
+					ctx.coordinator.ensureLoggedIn({
+						url: TEST_URL,
+						safeHostname: TEST_HOSTNAME,
+						token: LINK_TOKEN,
+						...options,
+					}),
+				storedToken: async () =>
+					(await ctx.secretsManager.getSessionAuth(TEST_HOSTNAME))?.token,
+				/** Assert the prompt named the user and the session it replaces. */
+				expectSignInPrompt: (username: string, replaces?: string) =>
+					expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+						SIGN_IN_PROMPT,
+						expect.objectContaining({
+							detail:
+								`${TEST_URL}\n\nThe link contains a token that signs you in as "${username}"` +
+								`${replaces ? `, replacing your ${replaces}` : ""}.`,
+						}),
+						"Sign In",
+					),
+				expectNoPrompt: () =>
+					expect(vscode.window.showWarningMessage).not.toHaveBeenCalled(),
+			};
+		}
+
+		it("signs in with the provided token over an expired session, after confirmation", async () => {
+			const t = createLinkTestContext();
+			const user = createMockUser();
+			t.authSequence(user, "unauthorized"); // link token, then stored token
+			await t.storeSession({ token: "expired-stored-token" });
+			t.confirmSignIn();
+
+			expect(await t.login()).toEqual(
+				signedIn("provided_token", user, LINK_TOKEN),
+			);
+			t.expectSignInPrompt(user.username, "expired session");
+		});
+
+		it("skips confirmation when the link signs in the same user on the same origin", async () => {
+			const t = createLinkTestContext();
+			const user = createMockUser();
+			t.authSequence(user);
+			await t.storeSession({
 				token: "stored-token",
+				username: user.username,
 			});
 
-			const result = await coordinator.ensureLoggedIn({
-				url: TEST_URL,
-				safeHostname: TEST_HOSTNAME,
-				token: "provided-token",
-			});
+			expect(await t.login()).toEqual(
+				signedIn("provided_token", user, LINK_TOKEN),
+			);
+			t.expectNoPrompt();
+			// The stored token is never checked; the link token is the intent.
+			expect(mockGetAuthenticatedUser).toHaveBeenCalledTimes(1);
+		});
 
-			expect(result).toEqual({
-				success: true,
+		it("still asks for confirmation when the same user is on a different origin", async () => {
+			const t = createLinkTestContext();
+			const user = createMockUser();
+			t.authSequence(user); // only the link token is checked
+			await t.storeSession({
+				url: "http://coder.example.com",
+				token: "stored-token-for-other-origin",
+				username: user.username,
+			});
+			t.dismissSignIn();
+
+			expect(await t.login()).toEqual(DISMISSED);
+			// The stored token is never sent to a different origin.
+			expect(mockGetAuthenticatedUser).toHaveBeenCalledTimes(1);
+			// The unchecked session is not called expired.
+			t.expectSignInPrompt(
+				user.username,
+				`current session for "${user.username}"`,
+			);
+		});
+
+		it("confirms a first-time link sign-in, naming the user", async () => {
+			const t = createLinkTestContext();
+			const user = t.mockSuccessfulAuth();
+			t.confirmSignIn();
+
+			expect(await t.login()).toEqual(
+				signedIn("provided_token", user, LINK_TOKEN),
+			);
+			t.expectSignInPrompt(user.username);
+		});
+
+		it("switches to the link user after confirmation while the stored session is valid", async () => {
+			const t = createLinkTestContext();
+			const userA = createMockUser({ username: "user-a" });
+			const userB = createMockUser({ username: "user-b" });
+			// The link token authenticates as user B, the stored token as user A.
+			t.authSequence(userB, userA);
+			await t.storeSession({ token: "valid-stored-token", username: "user-a" });
+			t.confirmSignIn();
+
+			expect(await t.login()).toEqual(
+				signedIn("provided_token", userB, LINK_TOKEN),
+			);
+			t.expectSignInPrompt("user-b", 'current session for "user-a"');
+			expect(
+				await t.secretsManager.getSessionAuth(TEST_HOSTNAME),
+			).toMatchObject({ token: LINK_TOKEN, username: "user-b" });
+		});
+
+		it("fails the login when the link token is invalid, keeping the stored session", async () => {
+			const t = createLinkTestContext();
+			t.authSequence("unauthorized");
+			await t.storeSession({ token: "valid-stored-token" });
+
+			expect(await t.login({ token: "invalid-provided-token" })).toEqual({
+				success: false,
 				method: "provided_token",
-				user,
-				token: "provided-token",
+				reason: "auth_failed",
 			});
+			t.expectNoPrompt();
+			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+				"Failed to log in to Coder server",
+				expect.objectContaining({ modal: true }),
+			);
+			// The stored session stays untouched.
+			expect(await t.storedToken()).toBe("valid-stored-token");
+			expect(mockGetAuthenticatedUser).toHaveBeenCalledTimes(1);
 		});
 
-		it("falls back to stored token when provided token is invalid", async () => {
-			const { mockGetAuthenticatedUser, secretsManager, coordinator } =
-				createTestContext();
-			const user = createMockUser();
+		it("skips the confirmation when the sign-in was already confirmed", async () => {
+			const t = createLinkTestContext();
+			const user = t.mockSuccessfulAuth();
 
-			// First call (provided token) fails with 401, second call (stored token) succeeds
-			mockGetAuthenticatedUser
-				.mockRejectedValueOnce(createAxiosError(401, "Unauthorized"))
-				.mockResolvedValueOnce(user);
-
-			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-				url: TEST_URL,
-				token: "stored-token",
-			});
-
-			const result = await coordinator.ensureLoggedIn({
-				url: TEST_URL,
-				safeHostname: TEST_HOSTNAME,
-				token: "invalid-provided-token",
-			});
-
-			expect(result).toEqual({
-				success: true,
-				method: "stored_token",
-				user,
-				token: "stored-token",
-			});
+			expect(await t.login({ tokenSignInConfirmed: true })).toEqual(
+				signedIn("provided_token", user, LINK_TOKEN),
+			);
+			t.expectNoPrompt();
 		});
 
-		it("prompts user when both provided and stored tokens are invalid", async () => {
-			const {
-				mockGetAuthenticatedUser,
-				userInteraction,
-				secretsManager,
-				coordinator,
-			} = createTestContext();
-			const user = createMockUser();
+		interface DismissedCase {
+			name: string;
+			/** The link token's result, then the stored token's (prompt wording). */
+			auth: Array<User | "unauthorized">;
+			session?: { url?: string; token: string; username?: string };
+			/** The trust prompt already disclosed the sign-in. */
+			preConfirmed?: boolean;
+		}
 
-			// First call (provided token) fails, second call (stored token) fails,
-			// third call (user-entered token) succeeds
-			mockGetAuthenticatedUser
-				.mockRejectedValueOnce(createAxiosError(401, "Unauthorized"))
-				.mockRejectedValueOnce(createAxiosError(401, "Unauthorized"))
-				.mockResolvedValueOnce(user);
+		it.each<DismissedCase>([
+			{
+				name: "signs in for the first time",
+				auth: [createMockUser()],
+			},
+			{
+				name: "replaces an expired session",
+				auth: [createMockUser(), "unauthorized"],
+				session: { token: "expired-stored-token" },
+			},
+			{
+				name: "signs in a different user over an expired session",
+				auth: [createMockUser(), "unauthorized"],
+				session: { token: "expired-stored-token", username: "someone-else" },
+			},
+			{
+				name: "switches accounts over a valid session",
+				auth: [
+					createMockUser({ username: "user-b" }),
+					createMockUser({ username: "user-a" }),
+				],
+				session: { token: "valid-stored-token", username: "user-a" },
+			},
+			{
+				name: "was pre-confirmed but replaces another origin's session",
+				auth: [createMockUser()],
+				session: {
+					url: "http://coder.example.com",
+					token: "other-origin-token",
+					username: "someone-else",
+				},
+				preConfirmed: true,
+			},
+			{
+				name: "was pre-confirmed but replaces an expired session",
+				auth: [createMockUser(), "unauthorized"],
+				session: { token: "expired-stored-token", username: "someone-else" },
+				preConfirmed: true,
+			},
+			{
+				name: "was pre-confirmed but switches accounts",
+				auth: [
+					createMockUser({ username: "user-b" }),
+					createMockUser({ username: "user-a" }),
+				],
+				session: { token: "valid-stored-token", username: "user-a" },
+				preConfirmed: true,
+			},
+		])(
+			"cancels a dismissed sign-in that $name, keeping the stored session",
+			async ({ auth, session, preConfirmed }) => {
+				const t = createLinkTestContext();
+				t.authSequence(...auth);
+				if (session) {
+					await t.storeSession(session);
+				}
+				t.dismissSignIn();
 
-			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-				url: TEST_URL,
-				token: "stored-token",
+				expect(await t.login({ tokenSignInConfirmed: preConfirmed })).toEqual(
+					DISMISSED,
+				);
+				expect(await t.storedToken()).toBe(session?.token);
+			},
+		);
+
+		it("does not fall back to other credentials when the link token is invalid", async () => {
+			const t = createLinkTestContext();
+			t.authSequence("unauthorized");
+			await t.storeSession({ token: "expired-stored-token" });
+			t.userInteraction.setInputBoxValue("user-entered-token");
+
+			expect(await t.login({ token: "invalid-provided-token" })).toEqual({
+				success: false,
+				method: "provided_token",
+				reason: "auth_failed",
 			});
-
-			userInteraction.setInputBoxValue("user-entered-token");
-
-			const result = await coordinator.ensureLoggedIn({
-				url: TEST_URL,
-				safeHostname: TEST_HOSTNAME,
-				token: "invalid-provided-token",
-			});
-
-			expect(result).toEqual({
-				success: true,
-				method: "cli_token",
-				user,
-				token: "user-entered-token",
-			});
-			expect(vscode.window.showInputBox).toHaveBeenCalled();
+			// Neither the stored token, CLI credentials, nor a manual prompt runs.
+			expect(mockGetAuthenticatedUser).toHaveBeenCalledTimes(1);
+			expect(vscode.window.showInputBox).not.toHaveBeenCalled();
 		});
 
-		it("skips stored token check when same as provided token", async () => {
-			const {
-				mockGetAuthenticatedUser,
-				userInteraction,
-				secretsManager,
-				coordinator,
-			} = createTestContext();
-			const user = createMockUser();
+		it("fails the login when the link repeats the stored token and it expired", async () => {
+			const t = createLinkTestContext();
+			t.authSequence("unauthorized");
+			await t.storeSession({ token: "same-token" });
 
-			// First call (provided token = stored token) fails with 401,
-			// second call (user-entered token) succeeds
-			mockGetAuthenticatedUser
-				.mockRejectedValueOnce(createAxiosError(401, "Unauthorized"))
-				.mockResolvedValueOnce(user);
-
-			// Store the SAME token as will be provided
-			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-				url: TEST_URL,
-				token: "same-token",
+			expect(await t.login({ token: "same-token" })).toEqual({
+				success: false,
+				method: "provided_token",
+				reason: "auth_failed",
 			});
-
-			userInteraction.setInputBoxValue("user-entered-token");
-
-			const result = await coordinator.ensureLoggedIn({
-				url: TEST_URL,
-				safeHostname: TEST_HOSTNAME,
-				token: "same-token",
-			});
-
-			expect(result).toEqual({
-				success: true,
-				method: "cli_token",
-				user,
-				token: "user-entered-token",
-			});
-			// Provided/stored token check only called once + user prompt
-			expect(mockGetAuthenticatedUser).toHaveBeenCalledTimes(2);
+			// The shared token is checked once; no other source is tried.
+			expect(mockGetAuthenticatedUser).toHaveBeenCalledTimes(1);
 		});
 	});
 

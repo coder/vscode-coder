@@ -45,6 +45,8 @@ export type OAuthTokenData = z.infer<typeof OAuthTokenDataSchema>;
 const SessionAuthSchema = z.object({
 	url: z.string(),
 	token: z.string(),
+	/** Username the session was created for, used to detect account switches */
+	username: z.string().optional(),
 	/** If present, this session uses OAuth authentication */
 	oauth: OAuthTokenDataSchema.optional(),
 });

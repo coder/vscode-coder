@@ -14,14 +14,25 @@ function setup(extensionId: string, settings: Settings = {}): void {
 }
 
 describe("getRemoteSshSetting", () => {
-	it.each([
-		["ms-vscode-remote.remote-ssh", "remote.SSH.configFile"],
-		["anysphere.remote-ssh", "remote.SSH.configFile"],
-		["jeanp413.open-remote-ssh", "remote.SSH.configFile"],
-		["google.antigravity-remote-openssh", "remote.antigravitySSH.configFile"],
-		["codeium.windsurf-remote-openssh", "remote.devinSSH.configFile"],
-	])("reads the section %s uses", (extensionId, settingKey) => {
-		setup(extensionId, { [settingKey]: "/custom/config" });
+	interface SectionCase {
+		id: string;
+		key: string;
+	}
+
+	it.each<SectionCase>([
+		{ id: "ms-vscode-remote.remote-ssh", key: "remote.SSH.configFile" },
+		{ id: "anysphere.remote-ssh", key: "remote.SSH.configFile" },
+		{ id: "jeanp413.open-remote-ssh", key: "remote.SSH.configFile" },
+		{
+			id: "google.antigravity-remote-openssh",
+			key: "remote.antigravitySSH.configFile",
+		},
+		{
+			id: "codeium.windsurf-remote-openssh",
+			key: "remote.devinSSH.configFile",
+		},
+	])("reads the section $id uses", ({ id, key }) => {
+		setup(id, { [key]: "/custom/config" });
 
 		expect(getRemoteSshSetting("configFile")).toBe("/custom/config");
 	});

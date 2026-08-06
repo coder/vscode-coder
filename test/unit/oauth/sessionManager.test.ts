@@ -16,6 +16,7 @@ import {
 } from "../../mocks/telemetry";
 import {
 	createMockServiceContainer,
+	createMockUser,
 	setupAxiosMockRoutes,
 } from "../../mocks/testHelpers";
 
@@ -79,6 +80,7 @@ function createTestContext(deployment: Deployment = createTestDeployment()) {
 	const setupOAuthSession = async (
 		overrides: {
 			token?: string;
+			username?: string;
 			refreshToken?: string;
 			expiryMs?: number;
 			scope?: string;
@@ -87,6 +89,7 @@ function createTestContext(deployment: Deployment = createTestDeployment()) {
 		await base.secretsManager.setSessionAuth(TEST_HOSTNAME, {
 			url: TEST_URL,
 			token: overrides.token ?? "access-token",
+			username: overrides.username,
 			oauth: {
 				refresh_token: overrides.refreshToken ?? "refresh-token",
 				expiry_timestamp: Date.now() + (overrides.expiryMs ?? ONE_HOUR_MS),
@@ -108,12 +111,7 @@ function createTestContext(deployment: Deployment = createTestDeployment()) {
 	 */
 	const setupForOAuthOperation = async (
 		routes: Record<string, unknown>,
-		sessionOverrides: {
-			token?: string;
-			refreshToken?: string;
-			expiryMs?: number;
-			scope?: string;
-		} = {},
+		sessionOverrides: Parameters<typeof setupOAuthSession>[0] = {},
 	) => {
 		await setupOAuthSession(sessionOverrides);
 		await base.secretsManager.setOAuthClientRegistration(
@@ -189,26 +187,47 @@ describe("OAuthSessionManager", () => {
 			);
 		});
 
-		it("refreshes token successfully", async () => {
-			const { secretsManager, mockAdapter, manager, setupOAuthSession } =
+		it("refreshes the token and stores the username it authenticates", async () => {
+			const { secretsManager, manager, setupForOAuthOperation } =
 				createTestContext();
-
-			await setupOAuthSession({ token: "old-token" });
-			await secretsManager.setOAuthClientRegistration(
-				TEST_HOSTNAME,
-				createMockClientRegistration(),
+			await setupForOAuthOperation(
+				{
+					"/oauth2/token": createMockTokenResponse({
+						access_token: "refreshed-token",
+					}),
+					"/api/v2/users/me": createMockUser({ username: "refreshed-user" }),
+				},
+				{ token: "old-token" },
 			);
 
-			setupAxiosMockRoutes(mockAdapter, {
-				"/.well-known/oauth-authorization-server":
-					createMockOAuthMetadata(TEST_URL),
-				"/oauth2/token": createMockTokenResponse({
-					access_token: "refreshed-token",
-				}),
-			});
-
 			const result = await manager.refreshToken();
+
 			expect(result.access_token).toBe("refreshed-token");
+			expect(await secretsManager.getSessionAuth(TEST_HOSTNAME)).toMatchObject({
+				token: "refreshed-token",
+				username: "refreshed-user",
+			});
+		});
+
+		it("keeps the stored username when the user lookup fails", async () => {
+			const { secretsManager, manager, setupForOAuthOperation } =
+				createTestContext();
+			// No users/me route, so the lookup after the refresh fails.
+			await setupForOAuthOperation(
+				{
+					"/oauth2/token": createMockTokenResponse({
+						access_token: "refreshed-token",
+					}),
+				},
+				{ username: "existing-user" },
+			);
+
+			await manager.refreshToken();
+
+			expect(await secretsManager.getSessionAuth(TEST_HOSTNAME)).toMatchObject({
+				token: "refreshed-token",
+				username: "existing-user",
+			});
 		});
 	});
 

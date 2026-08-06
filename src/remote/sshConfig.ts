@@ -8,16 +8,10 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 
-import { countSubstring } from "../util";
+import { countSubstring, lowercase } from "../util";
 import { renameWithRetry, tempFilePath } from "../util/fs";
 
 import type { Logger } from "../logging/logger";
-
-class SshConfigBadFormat extends Error {}
-
-interface Block {
-	raw: string;
-}
 
 export interface SshValues {
 	Host: string;
@@ -31,7 +25,7 @@ export interface SshValues {
 	SetEnv?: string;
 }
 
-// Interface for the file system to make it easier to test
+/** Interface for the file system to make it easier to test. */
 export interface FileSystem {
 	mkdir: typeof mkdir;
 	readFile: typeof readFile;
@@ -50,11 +44,139 @@ const defaultFileSystem: FileSystem = {
 	writeFile,
 };
 
-// Matches an SSH config key at the start of a line (e.g. "ConnectTimeout", "LogLevel").
-const sshKeyRegex = /^[a-zA-Z0-9-]+/;
+class SshConfigBadFormat extends Error {}
 
-// Matches the Coder CLI's START-CODER / END-CODER block, flexible on dash count.
-const coderBlockRegex = /^# -+START-CODER-+$(.*?)^# -+END-CODER-+$/ms;
+interface Block {
+	raw: string;
+}
+
+/** Matches an SSH config key at the start of a line (e.g. "ConnectTimeout", "LogLevel"). */
+const SSH_KEY_REGEX = /^[a-zA-Z0-9-]+/;
+
+/** Matches the Coder CLI's START-CODER / END-CODER block, flexible on dash count. */
+const CODER_BLOCK_REGEX = /^# -+START-CODER-+$(.*?)^# -+END-CODER-+$/ms;
+
+/** Matches a string that is only an SSH config key. */
+const KEY_ONLY_REGEX = /^[a-zA-Z0-9-]+$/;
+
+/** Characters that would break a value out of its config line. */
+const UNSAFE_CHARS_REGEX = /[\r\n\0]/;
+
+/**
+ * SSH options a deployment may not set, mirroring the server's validation of
+ * --ssh-config-options (codersdk.ValidateSSHConfigOption).
+ */
+const DENIED_DEPLOYMENT_KEYS: ReadonlySet<Lowercase<string>> = new Set([
+	// Structural directives that escape Coder's managed block.
+	"host",
+	"match",
+	"include",
+	// Directives that run an attacker-supplied command string.
+	"proxycommand",
+	"localcommand",
+	"permitlocalcommand",
+	"remotecommand",
+	"knownhostscommand",
+	// Directives that load an attacker-controlled shared library.
+	"pkcs11provider",
+	"securitykeyprovider",
+	"smartcarddevice",
+	// Directives that execute a command for X11 authentication.
+	"xauthlocation",
+	// Conflicts with Coder's managed ProxyCommand.
+	"proxyjump",
+]);
+
+/**
+ * Options the post-write check in remote.ts pins to Coder's own value. Setting
+ * these in coder.sshConfig fails that check, so the error must not suggest it.
+ */
+const PINNED_KEYS: ReadonlySet<Lowercase<string>> = new Set([
+	"proxycommand",
+	"userknownhostsfile",
+	"stricthostkeychecking",
+]);
+
+/**
+ * Validate SSH options sent by the Coder deployment. Keys in `userOverrides`
+ * are exempt from the deny list: the user's value wins the merge, so the
+ * deployment's value is never written.
+ * @throws {Error} when an option is malformed or denied.
+ */
+export function validateDeploymentSshOptions(
+	options: Record<string, unknown>,
+	userOverrides: Record<string, string>,
+): Record<string, string> {
+	validateSshConfigOptions(options);
+	const overridden = new Set(Object.keys(userOverrides).map(lowercase));
+	const denied = Object.keys(options).filter((key) => {
+		const lower = lowercase(key);
+		return DENIED_DEPLOYMENT_KEYS.has(lower) && !overridden.has(lower);
+	});
+	if (denied.length > 0) {
+		const quote = (keys: string[]) =>
+			keys.map((key) => JSON.stringify(key)).join(", ");
+		const pinned = denied.filter((key) => PINNED_KEYS.has(lowercase(key)));
+		const overridable = denied.filter((key) => !pinned.includes(key));
+		let message = `The Coder deployment tried to set SSH options that could run code or change how Coder connects: ${quote(denied)}.`;
+		if (overridable.length > 0) {
+			message += ` To allow ${quote(overridable)}, set the option yourself in the "coder.sshConfig" setting, which overrides the deployment.`;
+		}
+		if (pinned.length > 0) {
+			message += ` Coder manages ${quote(pinned)}, which cannot be overridden.`;
+		}
+		throw new Error(message);
+	}
+	return options;
+}
+
+/** Validate the key and value of every option in the record. */
+function validateSshConfigOptions(
+	options: Record<string, unknown>,
+): asserts options is Record<string, string> {
+	for (const [key, value] of Object.entries(options)) {
+		if (!KEY_ONLY_REGEX.test(key)) {
+			throw new Error(
+				`SSH config option key ${JSON.stringify(key)} is invalid`,
+			);
+		}
+		validateSshValue(`option ${JSON.stringify(key)}`, value);
+	}
+}
+
+/** Check that the value is a string and cannot break out of its config line. */
+function validateSshValue(
+	name: string,
+	value: unknown,
+): asserts value is string {
+	if (typeof value !== "string") {
+		throw new Error(`SSH config ${name} must be a string`);
+	}
+	if (UNSAFE_CHARS_REGEX.test(value)) {
+		throw new Error(
+			`SSH config ${name} must not contain carriage return, newline, or NUL characters`,
+		);
+	}
+}
+
+/**
+ * Extract `# :ssh-option=` values from the Coder CLI's config block, or `{}`
+ * if there is none. These are flags the user passed to `coder config-ssh`.
+ */
+export function parseCoderSshOptions(raw: string): Record<string, string> {
+	const blockMatch = CODER_BLOCK_REGEX.exec(raw);
+	const block = blockMatch?.[1];
+	if (!block) {
+		return {};
+	}
+	const prefix = "# :ssh-option=";
+	const sshOptionLines = block
+		.split(/\r?\n/)
+		.filter((line) => line.startsWith(prefix))
+		.map((line) => line.slice(prefix.length));
+
+	return parseSshConfig(sshOptionLines);
+}
 
 /**
  * Parse an array of SSH config lines into a Record.
@@ -64,7 +186,7 @@ const coderBlockRegex = /^# -+START-CODER-+$(.*?)^# -+END-CODER-+$/ms;
 export function parseSshConfig(lines: string[]): Record<string, string> {
 	return lines.reduce(
 		(acc, line) => {
-			const keyMatch = sshKeyRegex.exec(line);
+			const keyMatch = SSH_KEY_REGEX.exec(line);
 			if (!keyMatch) {
 				return acc; // Malformed line
 			}
@@ -94,27 +216,9 @@ export function parseSshConfig(lines: string[]): Record<string, string> {
 }
 
 /**
- * Extract `# :ssh-option=` values from the Coder CLI's config block.
- * Returns `{}` if no CLI block is found.
+ * Merge the given SSH config with the provided overrides. The merge handles
+ * key case insensitivity, so casing in the key does not matter.
  */
-export function parseCoderSshOptions(raw: string): Record<string, string> {
-	const blockMatch = coderBlockRegex.exec(raw);
-	const block = blockMatch?.[1];
-	if (!block) {
-		return {};
-	}
-	const prefix = "# :ssh-option=";
-	const sshOptionLines = block
-		.split(/\r?\n/)
-		.filter((line) => line.startsWith(prefix))
-		.map((line) => line.slice(prefix.length));
-
-	return parseSshConfig(sshOptionLines);
-}
-
-// mergeSSHConfigValues will take a given ssh config and merge it with the overrides
-// provided. The merge handles key case insensitivity, so casing in the "key" does
-// not matter.
 export function mergeSshConfigValues(
 	config: Record<string, string>,
 	overrides: Record<string, string>,
@@ -215,14 +319,15 @@ export class SshConfig {
 
 	/**
 	 * Update the block for the deployment with the provided hostname.
+	 * @throws {Error} when the hostname, values, or overrides fail validation.
 	 */
 	async update(
 		safeHostname: string,
 		values: SshValues,
 		overrides?: Record<string, string>,
 	) {
-		const block = this.getBlock(safeHostname);
 		const newBlock = this.buildBlock(safeHostname, values, overrides);
+		const block = this.getBlock(safeHostname);
 		if (block) {
 			this.logger.debug("Replacing SSH config block", safeHostname);
 			this.replaceBlock(block, newBlock);
@@ -286,6 +391,9 @@ export class SshConfig {
 	 * the keys is determinstic based on the input.  Expected values are always in
 	 * a consistent order followed by any additional overrides in sorted order.
 	 *
+	 * Validates everything written here, including the hostname, which lands in
+	 * the block marker comments.
+	 *
 	 * @param safeHostname - The hostname for the deployment.
 	 * @param values       - The expected SSH values for using ssh with Coder.
 	 * @param overrides    - Overrides typically come from the deployment api and are
@@ -300,6 +408,9 @@ export class SshConfig {
 		values: SshValues,
 		overrides?: Record<string, string>,
 	) {
+		validateSshValue("deployment hostname", safeHostname);
+		validateSshConfigOptions({ ...values });
+		validateSshConfigOptions(overrides ?? {});
 		const { Host, ...otherValues } = values;
 		const lines = [
 			this.startBlockComment(safeHostname),
@@ -327,7 +438,8 @@ export class SshConfig {
 	}
 
 	private replaceBlock(oldBlock: Block, newBlock: Block) {
-		this.raw = this.getRaw().replace(oldBlock.raw, newBlock.raw);
+		// A replacer function inserts $ sequences literally.
+		this.raw = this.getRaw().replace(oldBlock.raw, () => newBlock.raw);
 	}
 
 	private appendBlock(block: Block) {

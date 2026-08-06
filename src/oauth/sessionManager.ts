@@ -421,11 +421,14 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 					this.logger.debug("Token refresh successful");
 
-					const oauthData = buildOAuthTokenData(response.data);
 					await this.secretsManager.setSessionAuth(deployment.safeHostname, {
 						url: deployment.url,
 						token: response.data.access_token,
-						oauth: oauthData,
+						username: await this.fetchUsername(
+							deployment,
+							response.data.access_token,
+						),
+						oauth: buildOAuthTokenData(response.data),
 					});
 
 					return response.data;
@@ -438,6 +441,28 @@ export class OAuthSessionManager implements vscode.Disposable {
 				this.refreshAbortController = null;
 			}
 			this.refreshPromise = null;
+		}
+	}
+
+	/**
+	 * Ask the deployment who the token belongs to, falling back to the stored
+	 * username so a failed lookup cannot fail the refresh.
+	 */
+	private async fetchUsername(
+		deployment: Deployment,
+		accessToken: string,
+	): Promise<string | undefined> {
+		const client = CoderApi.create(deployment.url, accessToken, this.logger);
+		try {
+			return (await client.getAuthenticatedUser()).username;
+		} catch (error) {
+			this.logger.warn("Failed to fetch the user after token refresh:", error);
+			const auth = await this.secretsManager.getSessionAuth(
+				deployment.safeHostname,
+			);
+			return auth?.username;
+		} finally {
+			client.dispose();
 		}
 	}
 

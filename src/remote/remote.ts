@@ -55,11 +55,17 @@ import {
 	mergeSshConfigValues,
 	parseCoderSshOptions,
 	parseSshConfig,
+	validateDeploymentSshOptions,
 } from "./sshConfig";
 import { getRemoteSshSetting } from "./sshExtension";
 import { applySettingOverrides, buildSshOverrides } from "./sshOverrides";
 import { SshProcessMonitor } from "./sshProcess";
-import { computeSshProperties, sshSupportsSetEnv } from "./sshSupport";
+import {
+	computeSshProperties,
+	findSshPropertyProblems,
+	sshSupportsSetEnv,
+	type SshProperties,
+} from "./sshSupport";
 import { WorkspaceStateMachine } from "./workspaceStateMachine";
 
 import type { Api } from "coder/site/src/api/api";
@@ -396,7 +402,7 @@ export class Remote {
 					cliAuth,
 				),
 			);
-			const remoteCommand = computedSshProperties.RemoteCommand;
+			const remoteCommand = computedSshProperties.remotecommand;
 
 			this.logger.info("Modifying settings...");
 			const overrides = buildSshOverrides(
@@ -656,7 +662,7 @@ export class Remote {
 		logDir: string,
 		featureSet: FeatureSet,
 		cliAuth: CliAuth,
-	): Promise<Record<string, string>> {
+	): Promise<SshProperties> {
 		try {
 			this.logger.info("Updating SSH config...");
 			return await this.updateSSHConfig(
@@ -890,11 +896,29 @@ export class Remote {
 		logDir: string,
 		featureSet: FeatureSet,
 		cliAuth: CliAuth,
-	): Promise<Record<string, string>> {
-		let deploymentSSHConfig = {};
+	): Promise<SshProperties> {
+		const sshConfigFile = this.getSshConfigPath();
+
+		const sshConfig = new SshConfig(sshConfigFile, this.logger);
+		await sshConfig.load();
+
+		// Options the user set themselves win the merge below, so they are exempt
+		// from the deny list. Both sources are local and already trusted: whoever
+		// can write the SSH config could write any Host block directly, and the
+		// post-write check below still pins the critical options.
+		const userConfigSsh = vscode.workspace
+			.getConfiguration("coder")
+			.get<string[]>("sshConfig", []);
+		const userConfig = parseSshConfig(userConfigSsh);
+		const configSshOptions = parseCoderSshOptions(sshConfig.getRaw());
+
+		let deploymentSshConfig = {};
 		try {
 			const deploymentConfig = await restClient.getDeploymentSSHConfig();
-			deploymentSSHConfig = deploymentConfig.ssh_config_options;
+			deploymentSshConfig = validateDeploymentSshOptions(
+				deploymentConfig.ssh_config_options,
+				{ ...configSshOptions, ...userConfig },
+			);
 		} catch (error) {
 			if (!isAxiosError(error)) {
 				throw error;
@@ -910,22 +934,13 @@ export class Remote {
 			}
 		}
 
-		const sshConfigFile = this.getSshConfigPath();
-
-		const sshConfig = new SshConfig(sshConfigFile, this.logger);
-		await sshConfig.load();
-
 		// Merge SSH config from three sources (highest to lowest priority):
 		// 1. User's VS Code coder.sshConfig setting
 		// 2. coder config-ssh --ssh-option flags from the CLI block
 		// 3. Deployment SSH config from the coderd API
-		const configSshOptions = parseCoderSshOptions(sshConfig.getRaw());
-		const userConfigSsh = vscode.workspace
-			.getConfiguration("coder")
-			.get<string[]>("sshConfig", []);
-		const userConfig = parseSshConfig(userConfigSsh);
+		// Only 3 is deny listed; 1 and 2 are the user's own options.
 		const sshConfigOverrides = mergeSshConfigValues(
-			mergeSshConfigValues(deploymentSSHConfig, configSshOptions),
+			mergeSshConfigValues(deploymentSshConfig, configSshOptions),
 			userConfig,
 		);
 
@@ -967,33 +982,42 @@ export class Remote {
 			hostName,
 			sshConfig.getRaw(),
 		);
-		const keysToMatch: Array<keyof SshValues> = [
-			"ProxyCommand",
-			"UserKnownHostsFile",
-			"StrictHostKeyChecking",
-		];
-		for (const key of keysToMatch) {
-			if (computedProperties[key] === sshValues[key]) {
-				continue;
-			}
-
-			const result = await vscodeProposed.window.showErrorMessage(
-				"Unexpected SSH Config Option",
-				{
-					useCustom: true,
-					modal: true,
-					detail: `Your SSH config is overriding the "${key}" property to "${computedProperties[key]}" when it expected "${sshValues[key]}" for the "${hostName}" host. Please fix this and try again!`,
-				},
-				"Reload Window",
-			);
-			if (result === "Reload Window") {
-				await this.reloadWindow();
-			}
-			await this.closeRemote();
-			throw new Error("SSH config mismatch, closing remote");
+		const problems = findSshPropertyProblems(computedProperties, {
+			ProxyCommand: sshValues.ProxyCommand,
+			UserKnownHostsFile: sshValues.UserKnownHostsFile,
+			StrictHostKeyChecking: sshValues.StrictHostKeyChecking,
+		});
+		if (problems.length > 0) {
+			await this.failSshConfigCheck(hostName, problems);
 		}
 
 		return computedProperties;
+	}
+
+	/** Show every unexpected option at once, close the remote, and abort. */
+	private async failSshConfigCheck(
+		hostName: string,
+		problems: string[],
+	): Promise<never> {
+		const title = `Unexpected SSH Config Option${problems.length > 1 ? "s" : ""}`;
+		const detail =
+			`Your SSH config sets unexpected values for the "${hostName}" host. ` +
+			`Please fix the following and try again:\n\n` +
+			problems.map((problem) => `- ${problem}.`).join("\n");
+		const result = await vscodeProposed.window.showErrorMessage(
+			title,
+			{
+				useCustom: true,
+				modal: true,
+				detail,
+			},
+			"Reload Window",
+		);
+		if (result === "Reload Window") {
+			await this.reloadWindow();
+		}
+		await this.closeRemote();
+		throw new Error("SSH config mismatch, closing remote");
 	}
 
 	private watchSettings(
