@@ -5,7 +5,7 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
-## Unreleased
+## [v1.16.0](https://github.com/coder/vscode-coder/releases/tag/v1.16.0) 2026-08-06
 
 ### Added
 
@@ -16,6 +16,9 @@
   messages in a markdown preview.
 - Ask for confirmation before creating a support bundle, with a summary of the
   data it collects.
+- Collect the remote editor's server logs from the workspace in support
+  bundles, alongside the local extension and SSH logs (requires a Coder
+  2.36.0+ deployment).
 
 ### Changed
 
@@ -65,6 +68,9 @@
   revert to its default in a remote window.
 - Delete the legacy file-based credentials after migrating them to secret
   storage, instead of leaving plaintext copies behind.
+- Stop using saved logins that point at a different deployment than the one
+  they were saved for, and warn instead of failing the connection when
+  migrated file-based credentials carry such a mismatch.
 
 ## [v1.15.2](https://github.com/coder/vscode-coder/releases/tag/v1.15.2) 2026-06-30
 

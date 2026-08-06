@@ -367,7 +367,11 @@ export class LoginCoordinator implements vscode.Disposable {
 				new Error("The token in the link is invalid or expired."),
 				isAutoLogin,
 			);
-			return { success: false, method: "provided_token", reason: "auth_failed" };
+			return {
+				success: false,
+				method: "provided_token",
+				reason: "auth_failed",
+			};
 		}
 		if (result.success) {
 			// Silent when the link repeats the same user on the same origin, or an
