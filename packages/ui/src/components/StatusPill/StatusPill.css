@@ -6,9 +6,9 @@
 	color: var(--ui-badge-foreground);
 	background: var(--ui-badge-background);
 	border: 1px solid var(--ui-contrast-border);
-	border-radius: 11px;
-	font-size: 11px;
-	font-weight: 400;
+	border-radius: var(--ui-radius-circle);
+	font-size: var(--ui-font-size-small);
+	font-weight: var(--ui-font-weight-regular);
 }
 
 .ui-status-pill .ui-icon {

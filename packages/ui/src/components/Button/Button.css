@@ -1,0 +1,30 @@
+/* monaco-text-button, flattened to a flex row: its 4px padding, 16px
+   leading, and 1px border make the 26px height. */
+.ui-button {
+	height: 26px;
+	padding: 0 8px;
+	color: var(--ui-button-foreground);
+	background: var(--ui-button-background);
+	border: 1px solid var(--ui-button-border);
+	border-radius: var(--ui-radius-small);
+	cursor: pointer;
+}
+
+.ui-button:hover:not(:disabled) {
+	background: var(--ui-button-hover-background);
+}
+
+.ui-button:focus {
+	outline: 1px solid var(--ui-focus-border);
+	outline-offset: 2px;
+}
+
+.ui-button--secondary {
+	color: var(--ui-button-secondary-foreground);
+	background: var(--ui-button-secondary-background);
+	border-color: var(--ui-button-secondary-border);
+}
+
+.ui-button--secondary:hover:not(:disabled) {
+	background: var(--ui-button-secondary-hover-background);
+}

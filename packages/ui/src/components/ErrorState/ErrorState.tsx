@@ -2,6 +2,7 @@ import { type ComponentProps, type ReactNode } from "react";
 
 import { cx } from "#cx";
 
+import { Button } from "../Button/Button";
 import { StatePanel } from "../StatePanel/StatePanel";
 
 export interface ErrorStateProps extends Omit<
@@ -32,11 +33,7 @@ export function ErrorState({
 			className={cx("ui-state-panel--error", className)}
 			action={
 				action ??
-				(onRetry ? (
-					<button type="button" onClick={onRetry}>
-						{retryLabel}
-					</button>
-				) : undefined)
+				(onRetry ? <Button onClick={onRetry}>{retryLabel}</Button> : undefined)
 			}
 		/>
 	);

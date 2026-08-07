@@ -1,17 +1,19 @@
-import { expect, screen, userEvent, waitFor, within } from "storybook/test";
+import { expect, waitFor } from "storybook/test";
 
-import {
-	openSubmenuByKeyboard,
-	PIXEL_ALL_THEMES,
-	STORY_TRIGGER_CLASS,
-} from "#storybook";
+import { openMenu, openSubmenuByKeyboard, PIXEL_ALL_THEMES } from "#storybook";
 
+import { Button } from "../Button/Button";
 import { Icon } from "../Icon/Icon";
 
 import {
 	DropdownMenu,
+	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuKeybinding,
+	DropdownMenuLabel,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
 	DropdownMenuSeparator,
 	DropdownMenuSub,
 	DropdownMenuSubContent,
@@ -24,9 +26,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 const MenuExample = (): React.JSX.Element => (
 	<DropdownMenu>
 		<DropdownMenuTrigger asChild>
-			<button type="button" className={STORY_TRIGGER_CLASS}>
-				Workspace actions
-			</button>
+			<Button variant="secondary">Workspace actions</Button>
 		</DropdownMenuTrigger>
 		<DropdownMenuContent>
 			<DropdownMenuItem>
@@ -37,6 +37,22 @@ const MenuExample = (): React.JSX.Element => (
 				<Icon name="stop-circle" />
 				Stop
 			</DropdownMenuItem>
+			<DropdownMenuItem>
+				Rebuild
+				<DropdownMenuKeybinding
+					keys={{ key: "ctrl+shift+r", mac: "cmd+shift+r" }}
+				/>
+			</DropdownMenuItem>
+			<DropdownMenuSeparator />
+			<DropdownMenuCheckboxItem checked>
+				Start on connect
+			</DropdownMenuCheckboxItem>
+			<DropdownMenuSeparator />
+			<DropdownMenuLabel>Sort by</DropdownMenuLabel>
+			<DropdownMenuRadioGroup value="name">
+				<DropdownMenuRadioItem value="name">Name</DropdownMenuRadioItem>
+				<DropdownMenuRadioItem value="status">Status</DropdownMenuRadioItem>
+			</DropdownMenuRadioGroup>
 			<DropdownMenuSeparator />
 			<DropdownMenuSub>
 				<DropdownMenuSubTrigger>More actions</DropdownMenuSubTrigger>
@@ -60,9 +76,7 @@ type Story = StoryObj<typeof MenuExample>;
 export const Open: Story = {
 	parameters: { pixel: PIXEL_ALL_THEMES },
 	play: async ({ canvasElement }) => {
-		await userEvent.click(
-			within(canvasElement).getByRole("button", { name: "Workspace actions" }),
-		);
+		await openMenu(canvasElement, "Workspace actions");
 		await openSubmenuByKeyboard("Open logs");
 	},
 };
@@ -72,9 +86,7 @@ export const ManyItems: Story = {
 	render: () => (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<button type="button" className={STORY_TRIGGER_CLASS}>
-					Workspace actions
-				</button>
+				<Button variant="secondary">Workspace actions</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent style={{ maxHeight: 240 }}>
 				{Array.from({ length: 40 }, (_, i) => (
@@ -84,10 +96,7 @@ export const ManyItems: Story = {
 		</DropdownMenu>
 	),
 	play: async ({ canvasElement }) => {
-		await userEvent.click(
-			within(canvasElement).getByRole("button", { name: "Workspace actions" }),
-		);
-		const menu = await screen.findByRole("menu");
+		const menu = await openMenu(canvasElement, "Workspace actions");
 		await waitFor(() =>
 			expect(menu.scrollHeight).toBeGreaterThan(menu.clientHeight),
 		);

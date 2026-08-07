@@ -1,8 +1,7 @@
-/* Shared control geometry. Controls center content with fixed heights and
-   flex alignment, never with line-height or vertical padding math, so text
-   stays optically centered regardless of font metrics. */
-.ui-control,
-.ui-state-panel__action button {
+/* Shared control geometry: fixed heights and flex centering, never
+   line-height or vertical padding math, which drift with font metrics.
+   Focus rings use :focus, not :focus-visible, like VS Code's button:focus. */
+.ui-control {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -11,4 +10,9 @@
 	line-height: 1;
 	white-space: nowrap;
 	user-select: none;
+}
+
+.ui-control:disabled {
+	opacity: var(--ui-disabled-opacity);
+	cursor: default;
 }

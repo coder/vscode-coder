@@ -6,8 +6,13 @@ import { Icon } from "../Icon/Icon";
 
 import {
 	ContextMenu,
+	ContextMenuCheckboxItem,
 	ContextMenuContent,
 	ContextMenuItem,
+	ContextMenuKeybinding,
+	ContextMenuLabel,
+	ContextMenuRadioGroup,
+	ContextMenuRadioItem,
 	ContextMenuSeparator,
 	ContextMenuSub,
 	ContextMenuSubContent,
@@ -39,6 +44,22 @@ const MenuExample = (): React.JSX.Element => (
 				<Icon name="stop-circle" />
 				Stop
 			</ContextMenuItem>
+			<ContextMenuItem>
+				Rebuild
+				<ContextMenuKeybinding
+					keys={{ key: "ctrl+shift+r", mac: "cmd+shift+r" }}
+				/>
+			</ContextMenuItem>
+			<ContextMenuSeparator />
+			<ContextMenuCheckboxItem checked>
+				Start on connect
+			</ContextMenuCheckboxItem>
+			<ContextMenuSeparator />
+			<ContextMenuLabel>Sort by</ContextMenuLabel>
+			<ContextMenuRadioGroup value="name">
+				<ContextMenuRadioItem value="name">Name</ContextMenuRadioItem>
+				<ContextMenuRadioItem value="status">Status</ContextMenuRadioItem>
+			</ContextMenuRadioGroup>
 			<ContextMenuSeparator />
 			<ContextMenuSub>
 				<ContextMenuSubTrigger>More actions</ContextMenuSubTrigger>

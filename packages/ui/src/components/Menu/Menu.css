@@ -1,5 +1,4 @@
-/* Shared ContextMenu/DropdownMenu surface matching the native menu
-   widget; typography inherits from the webview body. */
+/* Shared ContextMenu/DropdownMenu surface, matching the native menu widget. */
 .ui-menu {
 	--ui-menu-gutter: 2em;
 	--ui-overlay-border: var(--ui-menu-border);
@@ -9,6 +8,7 @@
 		var(--radix-context-menu-content-available-height)
 	);
 
+	/* Native .monaco-menu min-width */
 	min-width: 160px;
 	padding: 4px;
 	color: var(--ui-menu-foreground);
@@ -16,13 +16,18 @@
 	outline: 0;
 }
 
-.ui-menu__item {
-	position: relative;
+/* Rows and headings share their metrics so their labels stay aligned; the
+   gutters double as the check/icon columns. */
+.ui-menu__item,
+.ui-menu__label {
 	display: flex;
 	align-items: center;
 	height: 24px;
-	/* Native label inset; the gutters double as the check/icon columns. */
 	padding: 0 var(--ui-menu-gutter);
+}
+
+.ui-menu__item {
+	position: relative;
 	line-height: 1;
 	white-space: nowrap;
 	border-radius: var(--ui-radius-medium);
@@ -32,8 +37,8 @@
 	outline-offset: -1px;
 }
 
-/* Selection border only resolves in high contrast; an open submenu
-   keeps its parent highlighted, like native. */
+/* An open submenu keeps its parent highlighted, like native; the selection
+   border only resolves in high contrast. */
 .ui-menu__item[data-highlighted],
 .ui-menu__item[data-state="open"] {
 	forced-color-adjust: none;
@@ -46,7 +51,8 @@
 	color: var(--ui-disabled-foreground);
 }
 
-/* Leading icons sit in the left gutter so labels stay aligned */
+/* Left gutter, like the native menu-item-check; a checked item's check is
+   just another leading icon. */
 .ui-menu__item > .ui-icon:not(.ui-menu__submenu-indicator) {
 	position: absolute;
 	left: 0;
@@ -54,7 +60,18 @@
 	text-align: center;
 }
 
-/* Chevron in the right gutter, like the native indicator */
+.ui-menu__label {
+	color: var(--ui-description-foreground);
+}
+
+/* Native .keybinding: right-aligned, 1em inset, 0.7 opacity */
+.ui-menu__keybinding {
+	margin-inline-start: auto;
+	padding-inline-start: 1em;
+	opacity: 0.7;
+}
+
+/* Right gutter, like the native submenu-indicator */
 .ui-menu__submenu-indicator {
 	position: absolute;
 	right: 0;
@@ -72,11 +89,48 @@
 	background: var(--ui-menu-separator);
 }
 
-/* Entry fade like native menus. Gated on data-state so an interrupted
-   entry animation cannot block Radix from unmounting the closed menu. */
+/* Modern UI menu motion (contextview.ts). Radix supplies the anchor-corner
+   origin, and holds unmount until the closed-state animation ends. */
 @media (prefers-reduced-motion: no-preference) {
-	.ui-menu:not([data-state="closed"]) {
+	.ui-menu {
+		transform-origin: var(
+			--radix-dropdown-menu-content-transform-origin,
+			var(--radix-context-menu-content-transform-origin)
+		);
+	}
+
+	.ui-menu[data-state="open"] {
+		animation: ui-menu-open 250ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+	}
+
+	.ui-menu[data-state="closed"] {
+		animation: ui-menu-close 150ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+	}
+}
+
+@keyframes ui-menu-open {
+	from {
+		opacity: 0;
+		transform: scale(0.97);
+	}
+}
+
+@keyframes ui-menu-close {
+	to {
+		opacity: 0;
+		transform: scale(0.99);
+	}
+}
+
+/* Stable-parity motion while the design settles; :where() keeps the rules
+   at the modern block's specificity so source order alone decides. */
+@media (prefers-reduced-motion: no-preference) {
+	:where(:root[data-ui-style="stable"]) .ui-menu:not([data-state="closed"]) {
 		animation: ui-menu-fade-in 83ms linear;
+	}
+
+	:where(:root[data-ui-style="stable"]) .ui-menu[data-state="closed"] {
+		animation: none;
 	}
 }
 

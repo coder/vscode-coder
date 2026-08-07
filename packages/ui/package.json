@@ -19,7 +19,7 @@
 	"imports": {
 		"#cx": "./src/cx.ts",
 		"#codicons": "./src/codicons.ts",
-		"#storybook": "./src/storybook.tsx"
+		"#storybook": "./src/storybook.ts"
 	},
 	"scripts": {
 		"typecheck": "tsc --noEmit"
@@ -35,10 +35,12 @@
 		"react-dom": "catalog:"
 	},
 	"devDependencies": {
+		"@storybook/react-vite": "catalog:",
 		"@types/react": "catalog:",
 		"@vscode-elements/react-elements": "catalog:",
 		"react": "catalog:",
 		"react-dom": "catalog:",
+		"storybook": "catalog:",
 		"typescript": "catalog:"
 	}
 }

@@ -1,14 +1,17 @@
-/* Matches the native workbench hover widget; typography inherits from
-   the webview body. */
+/* Matches the native workbench hover widget. */
 .ui-tooltip {
 	--ui-overlay-border: var(--ui-tooltip-border);
-	--ui-overlay-available-height: var(--radix-tooltip-content-available-height);
+	/* Native hovers stop growing at half the window height */
+	--ui-overlay-available-height: min(
+		50vh,
+		var(--radix-tooltip-content-available-height)
+	);
 
 	max-width: min(700px, var(--radix-tooltip-content-available-width));
 	padding: 4px 8px;
 	color: var(--ui-tooltip-foreground);
 	background: var(--ui-tooltip-background);
-	/* Native hover: 13px/19px type and a 5px radius, not cornerRadius-large */
+	/* Native hover pins 19px leading and a literal 5px radius */
 	line-height: 19px;
 	border-radius: 5px;
 	overflow-wrap: break-word;

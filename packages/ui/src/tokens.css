@@ -1,18 +1,30 @@
 /*
  * Semantic tokens mapped to the `--vscode-*` variables VS Code injects
- * into webviews — the single place the library is theme-matched to
- * VS Code.
+ * into webviews; the single place the library is theme-matched.
  */
 :root {
 	/* Typography */
 	--ui-font-family: var(--vscode-font-family);
 	--ui-font-size: var(--vscode-font-size);
 	--ui-font-weight: var(--vscode-font-weight);
+	/* Badges and pills; the native badge size. The deprecated bodyFontSize
+	   rung backfills hosts older than 1.131. */
+	--ui-font-size-small: var(
+		--vscode-fontSize-body2,
+		var(--vscode-bodyFontSize-xSmall, 11px)
+	);
+	--ui-font-weight-regular: var(--vscode-fontWeight-regular, 400);
+	--ui-font-weight-semibold: var(--vscode-fontWeight-semiBold, 600);
 
 	/* Surfaces and text */
 	--ui-foreground: var(--vscode-foreground);
 	--ui-background: var(
 		--vscode-sideBar-background,
+		var(--vscode-editor-background)
+	);
+	/* For editor-tab and bottom-panel webviews; --ui-background assumes the sidebar */
+	--ui-panel-background: var(
+		--vscode-panel-background,
 		var(--vscode-editor-background)
 	);
 	--ui-description-foreground: var(--vscode-descriptionForeground);
@@ -23,6 +35,19 @@
 		var(--vscode-contrastActiveBorder, var(--ui-foreground))
 	);
 	--ui-disabled-opacity: 0.4;
+
+	/* Modern UI surfaces; older hosts fall back to the sidebar-based tokens */
+	--ui-surface-background: var(
+		--vscode-surface-background,
+		var(--ui-background)
+	);
+	--ui-surface-foreground: var(
+		--vscode-surface-foreground,
+		var(--ui-foreground)
+	);
+	--ui-surface-border: var(--vscode-surface-border, var(--ui-border));
+	/* Native menus size their border with this (menu.ts) */
+	--ui-stroke-thickness: var(--vscode-strokeThickness, 1px);
 
 	/* Controls */
 	--ui-toolbar-foreground: var(--vscode-foreground);
@@ -64,6 +89,22 @@
 		--vscode-button-hoverBackground,
 		var(--ui-button-background)
 	);
+	--ui-button-secondary-foreground: var(
+		--vscode-button-secondaryForeground,
+		var(--ui-foreground)
+	);
+	--ui-button-secondary-background: var(
+		--vscode-button-secondaryBackground,
+		transparent
+	);
+	--ui-button-secondary-hover-background: var(
+		--vscode-button-secondaryHoverBackground,
+		var(--ui-toolbar-hover-background)
+	);
+	--ui-button-secondary-border: var(
+		--vscode-button-secondaryBorder,
+		var(--ui-button-border)
+	);
 
 	/* Activity and feedback */
 	--ui-progress-foreground: var(--vscode-progressBar-background);
@@ -93,16 +134,23 @@
 	/* Disabled text */
 	--ui-disabled-foreground: var(--vscode-disabledForeground);
 
-	/* Mirrors the native menu shadow; widget.shadow is null in high
-	   contrast, hiding the shadow like native */
+	/* widget.shadow is null in high contrast, hiding the shadow like native */
 	--ui-widget-shadow: var(
 		--vscode-shadow-lg,
 		0 0 12px var(--vscode-widget-shadow, transparent)
 	);
 
-	/* Corner radii; fallbacks predate the host's corner radius tokens */
-	--ui-radius-large: var(--vscode-cornerRadius-large, 5px);
-	--ui-radius-medium: var(--vscode-cornerRadius-medium, 4px);
+	/* Corner radii, VS Code's scale (baseSizes.ts); fallbacks predate the host's */
+	--ui-radius-small: var(--vscode-cornerRadius-small, 4px);
+	--ui-radius-medium: var(--vscode-cornerRadius-medium, 6px);
+	--ui-radius-large: var(--vscode-cornerRadius-large, 8px);
+	--ui-radius-circle: var(--vscode-cornerRadius-circle, 9999px);
+
+	/* Spacing, VS Code's scale (baseSizes.ts); names are px times ten */
+	--ui-spacing-60: var(--vscode-spacing-size60, 6px);
+	--ui-spacing-120: var(--vscode-spacing-size120, 12px);
+	--ui-spacing-160: var(--vscode-spacing-size160, 16px);
+	--ui-spacing-240: var(--vscode-spacing-size240, 24px);
 
 	/* Menus */
 	--ui-menu-background: var(--vscode-menu-background);
@@ -130,4 +178,7 @@
 
 	/* Only defined by high contrast themes; transparent elsewhere */
 	--ui-contrast-border: var(--vscode-contrastBorder, transparent);
+
+	/* Portalled overlays; matches the native hover widget's stacking */
+	--ui-z-index-overlay: 40;
 }

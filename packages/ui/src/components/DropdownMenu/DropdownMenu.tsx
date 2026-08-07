@@ -2,20 +2,64 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 
 import { cx } from "#cx";
 
-import { Icon } from "../Icon/Icon";
-import "../menu.css";
+import { menuPart } from "../Menu/Menu";
+import "../Menu/Menu.css";
 import "../overlay.css";
 
 import type { ComponentPropsWithRef } from "react";
 
-/** Root state container; wraps the trigger and content. */
+export { MenuKeybinding as DropdownMenuKeybinding } from "../Menu/Menu";
+
+/** Root state container. */
 export const DropdownMenu = DropdownMenuPrimitive.Root;
 
 /** Opens the menu on click; renders its child element via `asChild`. */
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 
-/** Scopes one submenu; wraps its sub trigger and sub content. */
+/** Scopes one submenu. */
 export const DropdownMenuSub = DropdownMenuPrimitive.Sub;
+
+/** Groups radio items into one exclusive selection. */
+export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
+
+/** One selectable action row; a leading `Icon` sits in the gutter. */
+export const DropdownMenuItem = menuPart(
+	DropdownMenuPrimitive.Item,
+	"ui-menu__item",
+);
+
+/** Non-interactive heading above a group. */
+export const DropdownMenuLabel = menuPart(
+	DropdownMenuPrimitive.Label,
+	"ui-menu__label",
+);
+
+/** Rule between groups of items. */
+export const DropdownMenuSeparator = menuPart(
+	DropdownMenuPrimitive.Separator,
+	"ui-menu__separator",
+);
+
+/** A toggleable row; checked shows a gutter check. */
+export const DropdownMenuCheckboxItem = menuPart(
+	DropdownMenuPrimitive.CheckboxItem,
+	"ui-menu__item",
+	{ indicator: DropdownMenuPrimitive.ItemIndicator },
+);
+
+/** One choice in a radio group. */
+export const DropdownMenuRadioItem = menuPart(
+	DropdownMenuPrimitive.RadioItem,
+	"ui-menu__item",
+	{ indicator: DropdownMenuPrimitive.ItemIndicator },
+);
+
+/** The row that opens its submenu. */
+export const DropdownMenuSubTrigger = menuPart(
+	DropdownMenuPrimitive.SubTrigger,
+	"ui-menu__item",
+	{ chevron: true },
+);
 
 /** The floating menu surface, portalled to `body`. */
 export function DropdownMenuContent({
@@ -39,7 +83,7 @@ export function DropdownMenuContent({
 	);
 }
 
-/** The floating submenu surface, opened by `DropdownMenuSubTrigger`. */
+/** The floating submenu surface. */
 export function DropdownMenuSubContent({
 	className,
 	...props
@@ -56,54 +100,5 @@ export function DropdownMenuSubContent({
 				className={cx("ui-overlay ui-menu", className)}
 			/>
 		</DropdownMenuPrimitive.Portal>
-	);
-}
-
-/** One selectable action row; a leading `Icon` sits in the gutter. */
-export function DropdownMenuItem({
-	className,
-	...props
-}: ComponentPropsWithRef<
-	typeof DropdownMenuPrimitive.Item
->): React.JSX.Element {
-	return (
-		<DropdownMenuPrimitive.Item
-			{...props}
-			className={cx("ui-menu__item", className)}
-		/>
-	);
-}
-
-/** The row that opens its submenu; renders a trailing chevron. */
-export function DropdownMenuSubTrigger({
-	className,
-	children,
-	...props
-}: ComponentPropsWithRef<
-	typeof DropdownMenuPrimitive.SubTrigger
->): React.JSX.Element {
-	return (
-		<DropdownMenuPrimitive.SubTrigger
-			{...props}
-			className={cx("ui-menu__item", className)}
-		>
-			{children}
-			<Icon name="chevron-right" className="ui-menu__submenu-indicator" />
-		</DropdownMenuPrimitive.SubTrigger>
-	);
-}
-
-/** Thin rule between groups of items. */
-export function DropdownMenuSeparator({
-	className,
-	...props
-}: ComponentPropsWithRef<
-	typeof DropdownMenuPrimitive.Separator
->): React.JSX.Element {
-	return (
-		<DropdownMenuPrimitive.Separator
-			{...props}
-			className={cx("ui-menu__separator", className)}
-		/>
 	);
 }

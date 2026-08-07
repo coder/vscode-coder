@@ -28,13 +28,24 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+	/* Tint the uncolored sides so the stopped ring reads as a paused spinner */
 	.ui-spinner {
+		--ui-spinner-track: color-mix(
+			in srgb,
+			var(--ui-progress-foreground) 25%,
+			transparent
+		);
+
 		animation: none;
+		border-block-end-color: var(--ui-spinner-track);
+		border-inline-start-color: var(--ui-spinner-track);
 	}
 }
 
 @media (forced-colors: active) {
 	.ui-spinner {
+		/* Overrides the reduced-motion tint too */
+		border-color: Canvas;
 		border-block-start-color: Highlight;
 		border-inline-end-color: Highlight;
 	}

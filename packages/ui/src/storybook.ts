@@ -1,6 +1,4 @@
-import { expect, screen, userEvent, waitFor } from "storybook/test";
-
-import "./storybook.css";
+import { expect, screen, userEvent, waitFor, within } from "storybook/test";
 
 /**
  * Pixel matrix override (`parameters.pixel`) that snapshots a story in every
@@ -12,8 +10,16 @@ export const PIXEL_ALL_THEMES = {
 	},
 } as const;
 
-/* Story stand-in for a webview-styled button; styled in storybook.css. */
-export const STORY_TRIGGER_CLASS = "story-trigger";
+/* Clicks a menu trigger and returns its portalled surface. */
+export async function openMenu(
+	canvasElement: HTMLElement,
+	triggerName: string,
+): Promise<HTMLElement> {
+	await userEvent.click(
+		within(canvasElement).getByRole("button", { name: triggerName }),
+	);
+	return screen.findByRole("menu");
+}
 
 /* Opens the focused menu's submenu; keyboard skips the hover-open delay. */
 export async function openSubmenuByKeyboard(itemName: string): Promise<void> {

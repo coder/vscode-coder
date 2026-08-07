@@ -44,8 +44,9 @@ if (
 
 /**
  * Applies a captured VS Code theme dump (`pnpm sync:vscode-themes`) as one
- * `:root` stylesheet and mirrors VS Code's body attribute for theme-aware
- * hooks. Synchronous and idempotent, so stories render fully themed.
+ * `:root` stylesheet and mirrors VS Code's body theme attributes for
+ * theme-aware hooks. Synchronous and idempotent, so stories render fully
+ * themed.
  */
 let appliedTheme: string | undefined;
 
@@ -68,13 +69,14 @@ function applyTheme(requested: string): void {
 		.map(([property, value]) => `${property}: ${value};`)
 		.join("")}}`;
 	document.body.setAttribute("data-vscode-theme-kind", `vscode-${slug}`);
+	document.body.setAttribute("data-vscode-theme-id", slug);
 }
 
 /* Pixel's autofit crop follows in-flow layout, but portalled overlays
    (menus, tooltips) are out of flow and would be cropped away. Grow the
-   story root to cover any element portalled to body. Relies on the
-   padded (top-left anchored) layout: growth only extends right and
-   down, so already-positioned overlays never move. */
+   story root to cover them. Relies on the padded (top-left anchored)
+   layout: growth only extends right and down, so already-positioned
+   overlays never move. */
 function fitRootToPortals(): void {
 	const root = document.getElementById("root");
 	if (!root) {
@@ -83,19 +85,10 @@ function fitRootToPortals(): void {
 	const origin = root.getBoundingClientRect();
 	let right = 0;
 	let bottom = 0;
-	for (const el of document.body.children) {
-		// Skip Storybook chrome (root, loaders, error display, a11y helpers)
-		if (
-			!(el instanceof HTMLElement) ||
-			el.id.startsWith("storybook-") ||
-			el.classList.contains("sb-wrapper")
-		) {
-			continue;
-		}
-		const rect = el.getBoundingClientRect();
-		if (rect.width === 0 || rect.height === 0) {
-			continue;
-		}
+	for (const overlay of document.querySelectorAll(
+		"[data-radix-popper-content-wrapper]",
+	)) {
+		const rect = overlay.getBoundingClientRect();
 		right = Math.max(right, rect.right - origin.left);
 		bottom = Math.max(bottom, rect.bottom - origin.top);
 	}
@@ -142,9 +135,27 @@ const preview: Preview = {
 				dynamicTitle: true,
 			},
 		},
+		uiStyle: {
+			description: "packages/ui styling baseline",
+			defaultValue: "modern",
+			toolbar: {
+				title: "UI style",
+				icon: "beaker",
+				items: [
+					{ value: "modern", title: "Modern UI" },
+					{ value: "stable", title: "Stable parity" },
+				],
+				dynamicTitle: true,
+			},
+		},
 	},
 	decorators: [
 		(Story, context) => {
+			if (context.globals.uiStyle === "stable") {
+				document.documentElement.setAttribute("data-ui-style", "stable");
+			} else {
+				document.documentElement.removeAttribute("data-ui-style");
+			}
 			applyTheme(context.globals.theme as string);
 			return createElement(
 				"div",

@@ -1,5 +1,7 @@
 import { PIXEL_ALL_THEMES } from "#storybook";
 
+import { Button } from "../Button/Button";
+
 import { EmptyState } from "./EmptyState";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -9,7 +11,7 @@ const EmptyStates = (): React.JSX.Element => (
 		<EmptyState
 			title="No workspaces"
 			description="Create one to get started."
-			action={<button type="button">Create workspace</button>}
+			action={<Button>Create workspace</Button>}
 		/>
 		<EmptyState
 			icon="search"

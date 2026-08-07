@@ -55,6 +55,9 @@ catalogs:
     react-dom:
       specifier: ^19.2.8
       version: 19.2.8
+    storybook:
+      specifier: ^10.5.6
+      version: 10.5.6
     typescript:
       specifier: ^6.0.3
       version: 6.0.3
@@ -293,7 +296,7 @@ importers:
         specifier: 'catalog:'
         version: 19.2.8(react@19.2.8)
       storybook:
-        specifier: ^10.5.6
+        specifier: 'catalog:'
         version: 10.5.6(@types/react@19.2.18)(bufferutil@4.1.0)(prettier@3.9.6)(react@19.2.8)(utf-8-validate@6.0.6)
       typescript:
         specifier: 'catalog:'
@@ -451,6 +454,9 @@ importers:
         specifier: 'catalog:'
         version: 0.0.46-24
     devDependencies:
+      '@storybook/react-vite':
+        specifier: 'catalog:'
+        version: 10.5.6(@types/react-dom@19.2.4)(@types/react@19.2.18)(esbuild@0.28.1)(react-dom@19.2.8)(react@19.2.8)(storybook@10.5.6)(supports-color@10.2.2)(typescript@6.0.3)(vite@8.2.0)
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
@@ -463,6 +469,9 @@ importers:
       react-dom:
         specifier: 'catalog:'
         version: 19.2.8(react@19.2.8)
+      storybook:
+        specifier: 'catalog:'
+        version: 10.5.6(@types/react@19.2.18)(bufferutil@4.1.0)(prettier@3.9.6)(react@19.2.8)(utf-8-validate@6.0.6)
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -696,7 +705,7 @@ packages:
     hasBin: true
 
   '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/65e2bfbb46808bb2572634b58e6cf43c8fc44937':
-    resolution: {gitHosted: true, integrity: sha512-80UUTO5Rx66MXDGRjXjObOfpKkWIRH1wWIxKMxZOgn6ebLiLpzhvng11GoYc4vZmWFNE41NYuEIiESvD/7bAUw==, tarball: https://codeload.github.com/coder/coder/tar.gz/65e2bfbb46808bb2572634b58e6cf43c8fc44937}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/coder/coder/tar.gz/65e2bfbb46808bb2572634b58e6cf43c8fc44937}
     version: 0.0.0
 
   '@coder/pixel-storybook@0.3.0':
