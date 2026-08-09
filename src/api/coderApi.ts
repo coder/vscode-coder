@@ -49,15 +49,28 @@ import {
 import { SseConnection } from "../websocket/sseConnection";
 
 import { getRefreshCommand, refreshCertificates } from "./certificateRefresh";
+import {
+	parseApiResponse,
+	SSHConfigResponseSchema,
+	UserSchema,
+	WorkspaceBuildSchema,
+	WorkspaceResourcesSchema,
+	WorkspaceSchema,
+} from "./responseValidation";
 import { createHttpAgent } from "./utils";
 
 import type {
 	GetInboxNotificationResponse,
 	ProvisionerJobLog,
 	ServerSentEvent,
+	SSHConfigResponse,
+	User,
 	Workspace,
 	WorkspaceAgent,
 	WorkspaceAgentLog,
+	WorkspaceBuild,
+	WorkspaceOptions,
+	WorkspaceResource,
 } from "coder/site/src/api/typesGenerated";
 import type { ClientOptions } from "ws";
 
@@ -148,6 +161,97 @@ export class CoderApi extends Api implements vscode.Disposable {
 	getHost(): string | undefined {
 		return this.getAxiosInstance().defaults.baseURL;
 	}
+
+	/**
+	 * The SDK casts response bodies to the generated types with no runtime
+	 * check, so a 2xx from a non-Coder service (or a proxy error page) would
+	 * flow in as if valid and crash far from the cause. These overrides
+	 * validate the fields the extension reads and throw
+	 * InvalidApiResponseError, naming the endpoint, at the boundary instead.
+	 *
+	 * The SDK methods are instance arrow properties assigned during super(),
+	 * and field initializers run in declaration order before the constructor
+	 * body, so capturing `this.X` here reads the base implementation before
+	 * the shadowing overrides below are assigned. `super.X` is unavailable
+	 * for parent class fields (ts(2855)), and TS2729 on `this.X` is a false
+	 * positive since the base constructor already ran.
+	 */
+	private readonly baseMethods = captureBaseMethods(this);
+
+	override getAuthenticatedUser = async (): Promise<User> => {
+		return parseApiResponse(
+			UserSchema,
+			await this.baseMethods.getAuthenticatedUser(),
+			"/api/v2/users/me",
+			this.getHost(),
+		);
+	};
+
+	override getWorkspace = async (
+		workspaceId: string,
+		params?: WorkspaceOptions,
+	): Promise<Workspace> => {
+		return parseApiResponse(
+			WorkspaceSchema,
+			await this.baseMethods.getWorkspace(workspaceId, params),
+			`/api/v2/workspaces/${workspaceId}`,
+			this.getHost(),
+		);
+	};
+
+	override getWorkspaceByOwnerAndName = async (
+		username: string,
+		workspaceName: string,
+		params?: WorkspaceOptions,
+	): Promise<Workspace> => {
+		return parseApiResponse(
+			WorkspaceSchema,
+			await this.baseMethods.getWorkspaceByOwnerAndName(
+				username,
+				workspaceName,
+				params,
+			),
+			`/api/v2/users/${username}/workspace/${workspaceName}`,
+			this.getHost(),
+		);
+	};
+
+	override getWorkspaceBuildByNumber = async (
+		username: string,
+		workspaceName: string,
+		buildNumber: number,
+	): Promise<WorkspaceBuild> => {
+		return parseApiResponse(
+			WorkspaceBuildSchema,
+			await this.baseMethods.getWorkspaceBuildByNumber(
+				username,
+				workspaceName,
+				buildNumber,
+			),
+			`/api/v2/users/${username}/workspace/${workspaceName}/builds/${buildNumber}`,
+			this.getHost(),
+		);
+	};
+
+	override getTemplateVersionResources = async (
+		versionId: string,
+	): Promise<WorkspaceResource[]> => {
+		return parseApiResponse(
+			WorkspaceResourcesSchema,
+			await this.baseMethods.getTemplateVersionResources(versionId),
+			`/api/v2/templateversions/${versionId}/resources`,
+			this.getHost(),
+		);
+	};
+
+	override getDeploymentSSHConfig = async (): Promise<SSHConfigResponse> => {
+		return parseApiResponse(
+			SSHConfigResponseSchema,
+			await this.baseMethods.getDeploymentSSHConfig(),
+			"/api/v2/deployment/ssh",
+			this.getHost(),
+		);
+	};
 
 	hasAuthConfigChangedSince(version: number | undefined): boolean {
 		return this.authConfigTracker.hasChangedSince(version);
@@ -745,6 +849,23 @@ function wrapResponseTransform(
 			);
 		},
 	];
+}
+
+/**
+ * Capture the base SDK method implementations before the validating
+ * overrides on CoderApi shadow them. Reads `this.X` while the base class
+ * arrow-function fields are still in place (field initializers run in
+ * declaration order, and this field is declared before the overrides).
+ */
+function captureBaseMethods(instance: Api) {
+	return {
+		getAuthenticatedUser: instance.getAuthenticatedUser,
+		getWorkspace: instance.getWorkspace,
+		getWorkspaceByOwnerAndName: instance.getWorkspaceByOwnerAndName,
+		getWorkspaceBuildByNumber: instance.getWorkspaceBuildByNumber,
+		getTemplateVersionResources: instance.getTemplateVersionResources,
+		getDeploymentSSHConfig: instance.getDeploymentSSHConfig,
+	};
 }
 
 function getSize(headers: AxiosHeaders, data: unknown): number | undefined {

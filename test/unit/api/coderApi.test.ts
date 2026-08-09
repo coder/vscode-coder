@@ -22,6 +22,7 @@ import {
 	refreshCertificates,
 } from "@/api/certificateRefresh";
 import { CoderApi, DEFAULT_REQUEST_TIMEOUT_MS } from "@/api/coderApi";
+import { InvalidApiResponseError } from "@/api/responseValidation";
 import { createHttpAgent } from "@/api/utils";
 import { CONFIG_CHANGE_DEBOUNCE_MS } from "@/configWatcher";
 import { ClientCertificateError } from "@/error/clientCertificateError";
@@ -844,6 +845,141 @@ describe("CoderApi", () => {
 				);
 			},
 		);
+	});
+
+	describe("Response Validation", () => {
+		const mockResponse = (data: unknown) => {
+			mockAdapter.mockResolvedValueOnce({
+				data,
+				status: 200,
+				statusText: "OK",
+				headers: {},
+				config: {},
+			});
+		};
+
+		const validUser = {
+			id: "user-1",
+			username: "developer",
+			roles: [{ name: "owner" }],
+			organization_ids: ["org-1"],
+			email: "dev@example.com",
+		};
+
+		const validWorkspace = {
+			id: "ws-1",
+			name: "dev",
+			owner_name: "developer",
+			template_id: "tpl-1",
+			latest_build: {
+				id: "build-1",
+				status: "running",
+				template_version_id: "version-1",
+				resources: [],
+			},
+		};
+
+		it("returns the user when /users/me is valid", async () => {
+			api = createApi();
+			mockResponse(validUser);
+
+			const user = await api.getAuthenticatedUser();
+
+			expect(user.username).toBe("developer");
+			expect(user.roles[0]?.name).toBe("owner");
+		});
+
+		it("still performs the underlying HTTP request", async () => {
+			api = createApi();
+			mockResponse(validUser);
+
+			await api.getAuthenticatedUser();
+
+			expect(mockAdapter).toHaveBeenCalledWith(
+				expect.objectContaining({ url: "/api/v2/users/me" }),
+			);
+		});
+
+		it.each([
+			["an HTML error page", "<html><body>Bad Gateway</body></html>"],
+			["null", null],
+			["an empty object", {}],
+			["a user missing roles", { id: "user-1", username: "developer" }],
+		])(
+			"rejects /users/me returning %s with the endpoint and URL",
+			async (_description, body) => {
+				api = createApi();
+				mockResponse(body);
+
+				const promise = api.getAuthenticatedUser();
+				await expect(promise).rejects.toBeInstanceOf(InvalidApiResponseError);
+				await expect(promise).rejects.toThrow(
+					`${CODER_URL} did not return a valid Coder API response for /api/v2/users/me`,
+				);
+			},
+		);
+
+		it("preserves unknown fields on validated responses", async () => {
+			api = createApi();
+			mockResponse({ ...validUser, future_field: { nested: true } });
+
+			const user = await api.getAuthenticatedUser();
+
+			expect((user as unknown as Record<string, unknown>).future_field).toEqual(
+				{ nested: true },
+			);
+		});
+
+		it("validates getWorkspace and getWorkspaceByOwnerAndName", async () => {
+			api = createApi();
+			mockResponse(validWorkspace);
+			await expect(api.getWorkspace("ws-1")).resolves.toEqual(validWorkspace);
+
+			mockResponse({ name: "not-a-workspace" });
+			await expect(
+				api.getWorkspaceByOwnerAndName("me", "dev"),
+			).rejects.toBeInstanceOf(InvalidApiResponseError);
+		});
+
+		it("validates the build job status for waitForBuild polling", async () => {
+			api = createApi();
+			mockResponse({ job: { status: "succeeded" } });
+			await expect(
+				api.getWorkspaceBuildByNumber("me", "dev", 1),
+			).resolves.toEqual({ job: { status: "succeeded" } });
+
+			mockResponse({ id: "build-without-job" });
+			await expect(
+				api.getWorkspaceBuildByNumber("me", "dev", 1),
+			).rejects.toBeInstanceOf(InvalidApiResponseError);
+		});
+
+		it("validates template version resources", async () => {
+			api = createApi();
+			mockResponse([{ id: "res-1", agents: null }]);
+			await expect(
+				api.getTemplateVersionResources("version-1"),
+			).resolves.toEqual([{ id: "res-1", agents: null }]);
+
+			mockResponse({ resources: "not-an-array" });
+			await expect(
+				api.getTemplateVersionResources("version-1"),
+			).rejects.toBeInstanceOf(InvalidApiResponseError);
+		});
+
+		it("validates deployment SSH config", async () => {
+			api = createApi();
+			mockResponse({ hostname_suffix: ".coder", ssh_config_options: {} });
+			await expect(api.getDeploymentSSHConfig()).resolves.toEqual({
+				hostname_suffix: ".coder",
+				ssh_config_options: {},
+			});
+
+			mockResponse({});
+			await expect(api.getDeploymentSSHConfig()).rejects.toBeInstanceOf(
+				InvalidApiResponseError,
+			);
+		});
 	});
 
 	describe("getHost/getSessionToken", () => {

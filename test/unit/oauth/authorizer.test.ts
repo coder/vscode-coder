@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { InvalidApiResponseError } from "@/api/responseValidation";
 import { getHeaders } from "@/headers";
 import { OAuthAuthorizer } from "@/oauth/authorizer";
 
 import {
+	createMockUser,
 	MockCancellationToken,
 	MockProgress,
 	setupAxiosMockRoutes,
@@ -127,7 +129,7 @@ describe("OAuthAuthorizer", () => {
 				"/oauth2/token": createMockTokenResponse({
 					access_token: "oauth-access-token",
 				}),
-				"/api/v2/users/me": { username: "oauth-user" },
+				"/api/v2/users/me": createMockUser({ username: "oauth-user" }),
 			});
 
 			const deployment = createTestDeployment();
@@ -179,7 +181,7 @@ describe("OAuthAuthorizer", () => {
 				"/.well-known/oauth-authorization-server":
 					createMockOAuthMetadata(TEST_URL),
 				"/oauth2/token": createMockTokenResponse(),
-				"/api/v2/users/me": { username: "test-user" },
+				"/api/v2/users/me": createMockUser(),
 			});
 
 			const loginPromise = authorizer.login(
@@ -220,7 +222,7 @@ describe("OAuthAuthorizer", () => {
 					client_id: "new-client-id",
 				}),
 				"/oauth2/token": createMockTokenResponse(),
-				"/api/v2/users/me": { username: "test-user" },
+				"/api/v2/users/me": createMockUser(),
 			});
 
 			const loginPromise = authorizer.login(
@@ -506,6 +508,47 @@ describe("OAuthAuthorizer", () => {
 					new MockCancellationToken(),
 				),
 			).rejects.toThrow("Server does not support dynamic client registration");
+		});
+
+		it("throws when the token response has no access token", async () => {
+			const { mockAdapter, oauthCallback, authorizer } = createTestContext();
+
+			setupAxiosMockRoutes(mockAdapter, {
+				"/.well-known/oauth-authorization-server":
+					createMockOAuthMetadata(TEST_URL),
+				"/oauth2/register": createMockClientRegistration(),
+				"/oauth2/token": { token_type: "Bearer" },
+				"/api/v2/users/me": createMockUser(),
+			});
+
+			const loginPromise = authorizer.login(
+				createTestDeployment(),
+				new MockProgress(),
+				new MockCancellationToken(),
+			);
+
+			const { state } = await waitForBrowserToOpen();
+			await oauthCallback.send({ state, code: "auth-code-123", error: null });
+
+			await expect(loginPromise).rejects.toThrow(InvalidApiResponseError);
+		});
+
+		it("throws when the registration response has no client_id", async () => {
+			const { mockAdapter, authorizer } = createTestContext();
+
+			setupAxiosMockRoutes(mockAdapter, {
+				"/.well-known/oauth-authorization-server":
+					createMockOAuthMetadata(TEST_URL),
+				"/oauth2/register": { client_secret: "no-id" },
+			});
+
+			await expect(
+				authorizer.login(
+					createTestDeployment(),
+					new MockProgress(),
+					new MockCancellationToken(),
+				),
+			).rejects.toThrow(InvalidApiResponseError);
 		});
 	});
 });

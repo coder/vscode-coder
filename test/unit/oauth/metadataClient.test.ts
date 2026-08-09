@@ -89,7 +89,7 @@ describe("OAuthMetadataClient", () => {
 					});
 
 					await expect(client.getMetadata()).rejects.toThrow(
-						"OAuth server metadata missing required endpoints",
+						"did not return a valid Coder API response",
 					);
 				},
 			);

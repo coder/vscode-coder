@@ -8,6 +8,7 @@ import { OAuthCallback } from "@/oauth/oauthCallback";
 
 import {
 	createMockLogger,
+	createMockUser,
 	getAxiosMockAdapter,
 	InMemoryMemento,
 	InMemorySecretStorage,
@@ -146,7 +147,7 @@ export function createBaseTestContext() {
 			"/.well-known/oauth-authorization-server": metadata,
 			"/oauth2/register": createMockClientRegistration(),
 			"/oauth2/token": createMockTokenResponse(),
-			"/api/v2/users/me": { username: "test-user" },
+			"/api/v2/users/me": createMockUser(),
 		});
 	};
 
