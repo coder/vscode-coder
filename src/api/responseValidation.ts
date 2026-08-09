@@ -22,11 +22,9 @@ export class InvalidApiResponseError extends Error {
 }
 
 /**
- * Validate a response body against a permissive schema, returning the
- * original value with the caller's type. Schemas must use looseObject so
- * unknown fields pass through: the point is to catch "this is not the object
- * we expect", not to mirror the full API, so newer deployments adding fields
- * never break.
+ * Validate a response body, returning the original value with the caller's
+ * type. Schemas must use looseObject so unknown fields pass through and
+ * newer deployments adding fields never break.
  *
  * @throws {InvalidApiResponseError} naming the endpoint when validation fails.
  */

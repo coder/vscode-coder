@@ -73,6 +73,7 @@ import type {
 	WorkspaceResource,
 } from "coder/site/src/api/typesGenerated";
 import type { ClientOptions } from "ws";
+import type { z } from "zod";
 
 import type { Logger } from "../logging/logger";
 import type {
@@ -164,26 +165,29 @@ export class CoderApi extends Api implements vscode.Disposable {
 
 	/**
 	 * The SDK casts response bodies to the generated types with no runtime
-	 * check, so a 2xx from a non-Coder service (or a proxy error page) would
-	 * flow in as if valid and crash far from the cause. These overrides
-	 * validate the fields the extension reads and throw
-	 * InvalidApiResponseError, naming the endpoint, at the boundary instead.
-	 *
-	 * The SDK methods are instance arrow properties assigned during super(),
-	 * and field initializers run in declaration order before the constructor
-	 * body, so capturing `this.X` here reads the base implementation before
-	 * the shadowing overrides below are assigned. `super.X` is unavailable
-	 * for parent class fields (ts(2855)), and TS2729 on `this.X` is a false
-	 * positive since the base constructor already ran.
+	 * check, so a 2xx from a non-Coder service would crash far from the
+	 * cause. The overrides below validate the fields the extension reads and
+	 * throw InvalidApiResponseError at the boundary instead. Base
+	 * implementations are captured here because they are instance arrow
+	 * properties assigned during super(); this field is declared before the
+	 * overrides, so field initialization order reads the base versions.
+	 * `super.X` is unavailable for parent class fields (ts(2855)).
 	 */
 	private readonly baseMethods = captureBaseMethods(this);
 
+	private validate<T>(
+		schema: z.ZodType<unknown>,
+		data: T,
+		endpoint: string,
+	): T {
+		return parseApiResponse(schema, data, endpoint, this.getHost());
+	}
+
 	override getAuthenticatedUser = async (): Promise<User> => {
-		return parseApiResponse(
+		return this.validate(
 			UserSchema,
 			await this.baseMethods.getAuthenticatedUser(),
 			"/api/v2/users/me",
-			this.getHost(),
 		);
 	};
 
@@ -191,11 +195,10 @@ export class CoderApi extends Api implements vscode.Disposable {
 		workspaceId: string,
 		params?: WorkspaceOptions,
 	): Promise<Workspace> => {
-		return parseApiResponse(
+		return this.validate(
 			WorkspaceSchema,
 			await this.baseMethods.getWorkspace(workspaceId, params),
 			`/api/v2/workspaces/${workspaceId}`,
-			this.getHost(),
 		);
 	};
 
@@ -204,7 +207,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		workspaceName: string,
 		params?: WorkspaceOptions,
 	): Promise<Workspace> => {
-		return parseApiResponse(
+		return this.validate(
 			WorkspaceSchema,
 			await this.baseMethods.getWorkspaceByOwnerAndName(
 				username,
@@ -212,7 +215,6 @@ export class CoderApi extends Api implements vscode.Disposable {
 				params,
 			),
 			`/api/v2/users/${username}/workspace/${workspaceName}`,
-			this.getHost(),
 		);
 	};
 
@@ -221,7 +223,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		workspaceName: string,
 		buildNumber: number,
 	): Promise<WorkspaceBuild> => {
-		return parseApiResponse(
+		return this.validate(
 			WorkspaceBuildSchema,
 			await this.baseMethods.getWorkspaceBuildByNumber(
 				username,
@@ -229,27 +231,24 @@ export class CoderApi extends Api implements vscode.Disposable {
 				buildNumber,
 			),
 			`/api/v2/users/${username}/workspace/${workspaceName}/builds/${buildNumber}`,
-			this.getHost(),
 		);
 	};
 
 	override getTemplateVersionResources = async (
 		versionId: string,
 	): Promise<WorkspaceResource[]> => {
-		return parseApiResponse(
+		return this.validate(
 			WorkspaceResourcesSchema,
 			await this.baseMethods.getTemplateVersionResources(versionId),
 			`/api/v2/templateversions/${versionId}/resources`,
-			this.getHost(),
 		);
 	};
 
 	override getDeploymentSSHConfig = async (): Promise<SSHConfigResponse> => {
-		return parseApiResponse(
+		return this.validate(
 			SSHConfigResponseSchema,
 			await this.baseMethods.getDeploymentSSHConfig(),
 			"/api/v2/deployment/ssh",
-			this.getHost(),
 		);
 	};
 
@@ -851,12 +850,6 @@ function wrapResponseTransform(
 	];
 }
 
-/**
- * Capture the base SDK method implementations before the validating
- * overrides on CoderApi shadow them. Reads `this.X` while the base class
- * arrow-function fields are still in place (field initializers run in
- * declaration order, and this field is declared before the overrides).
- */
 function captureBaseMethods(instance: Api) {
 	return {
 		getAuthenticatedUser: instance.getAuthenticatedUser,

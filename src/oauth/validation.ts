@@ -1,9 +1,8 @@
 import { z } from "zod";
 
 /**
- * Permissive schemas for the OAuth endpoints hit directly via axios during
- * login, before any session exists. Only the fields the flow reads are
- * required; unknown fields pass through so newer deployments never break.
+ * Schemas for the OAuth endpoints hit directly via axios during login,
+ * before any session exists. Only the fields the flow reads are required.
  */
 export const OAuth2AuthorizationServerMetadataSchema = z.looseObject({
 	issuer: z.string(),

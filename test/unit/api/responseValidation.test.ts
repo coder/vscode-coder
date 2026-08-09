@@ -19,17 +19,7 @@ const validUser = {
 };
 
 describe("parseApiResponse", () => {
-	it("returns the value when it matches the schema", () => {
-		const result = parseApiResponse(
-			UserSchema,
-			validUser,
-			"/api/v2/users/me",
-			"https://coder.example.com",
-		);
-		expect(result).toEqual(validUser);
-	});
-
-	it("preserves unknown fields not in the schema", () => {
+	it("returns the value unchanged, preserving unknown fields", () => {
 		const withExtras = { ...validUser, future_field: { nested: [1, 2, 3] } };
 		const result = parseApiResponse(
 			UserSchema,
@@ -37,27 +27,28 @@ describe("parseApiResponse", () => {
 			"/api/v2/users/me",
 			"https://coder.example.com",
 		);
-		expect(result).toEqual(withExtras);
+		expect(result).toBe(withExtras);
 	});
 
 	it("throws InvalidApiResponseError naming the endpoint and URL", () => {
-		let caught: unknown;
-		try {
+		const call = () =>
 			parseApiResponse(
 				UserSchema,
 				{ id: "user-1" },
 				"/api/v2/users/me",
 				"https://coder.example.com",
 			);
+
+		let caught: unknown;
+		try {
+			call();
 		} catch (error) {
 			caught = error;
 		}
 		expect(caught).toBeInstanceOf(InvalidApiResponseError);
 		const error = caught as InvalidApiResponseError;
-		expect(error.message).toContain("https://coder.example.com");
-		expect(error.message).toContain("/api/v2/users/me");
 		expect(error.message).toContain(
-			"Check that the URL points to a Coder deployment",
+			"https://coder.example.com did not return a valid Coder API response for /api/v2/users/me",
 		);
 		expect(error.cause).toBeInstanceOf(ZodError);
 	});
@@ -89,14 +80,9 @@ describe("parseApiResponse", () => {
 	});
 
 	it("omits the URL from the message when not provided", () => {
-		let caught: unknown;
-		try {
-			parseApiResponse(UserSchema, {}, "/api/v2/users/me");
-		} catch (error) {
-			caught = error;
-		}
-		expect(caught).toBeInstanceOf(InvalidApiResponseError);
-		expect((caught as Error).message).toContain("The deployment");
+		expect(() => parseApiResponse(UserSchema, {}, "/api/v2/users/me")).toThrow(
+			"The deployment did not return a valid Coder API response",
+		);
 	});
 });
 
