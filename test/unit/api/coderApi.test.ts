@@ -921,13 +921,15 @@ describe("CoderApi", () => {
 
 		it("preserves unknown fields on validated responses", async () => {
 			api = createApi();
-			mockResponse({ ...validUser, future_field: { nested: true } });
+			const withExtra = {
+				...validUser,
+				future_field: { nested: true },
+			};
+			mockResponse(withExtra);
 
 			const user = await api.getAuthenticatedUser();
 
-			expect((user as unknown as Record<string, unknown>).future_field).toEqual(
-				{ nested: true },
-			);
+			expect(user).toEqual(withExtra);
 		});
 
 		it("validates getWorkspace and getWorkspaceByOwnerAndName", async () => {
