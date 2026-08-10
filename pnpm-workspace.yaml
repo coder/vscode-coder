@@ -39,6 +39,8 @@ allowBuilds:
 
 overrides:
   "@vscode-elements/elements": ^2.5.1
+  # yauzl 2 dies silently on Node >= 24.16, breaking electron's postinstall; drop when electron/electron#51886 ships.
+  yauzl: ^3.4.0
 
 # pnpm 11 defaults to 1440 (24h); 0 opts out of the release-age quarantine.
 minimumReleaseAge: 0
