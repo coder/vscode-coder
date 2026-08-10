@@ -3,9 +3,9 @@ packages:
 
 catalog:
   "@rolldown/plugin-babel": ^0.2.3
-  "@storybook/addon-a11y": ^10.5.6
-  "@storybook/addon-docs": ^10.5.6
-  "@storybook/react-vite": ^10.5.6
+  "@storybook/addon-a11y": ^10.5.7
+  "@storybook/addon-docs": ^10.5.7
+  "@storybook/react-vite": ^10.5.7
   "@tanstack/react-query": ^5.101.4
   "@types/react": ^19.2.18
   "@types/react-dom": ^19.2.4
@@ -19,9 +19,9 @@ catalog:
   date-fns: ^4.4.0
   react: ^19.2.8
   react-dom: ^19.2.8
-  storybook: ^10.5.6
+  storybook: ^10.5.7
   typescript: ^6.0.3
-  vite: ^8.2.0
+  vite: ^8.2.1
 
 catalogMode: strict
 
@@ -39,6 +39,8 @@ allowBuilds:
 
 overrides:
   "@vscode-elements/elements": ^2.5.1
+  # yauzl 2 dies silently on Node >= 24.16, breaking electron's postinstall; drop when electron/electron#51886 ships.
+  yauzl: ^3.4.0
 
 # pnpm 11 defaults to 1440 (24h); 0 opts out of the release-age quarantine.
 minimumReleaseAge: 0
