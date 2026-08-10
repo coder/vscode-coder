@@ -36,10 +36,14 @@ import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
 
 import {
 	createMockLogger,
+	createMockUser,
 	MockConfigurationProvider,
 } from "../../mocks/testHelpers";
 
-import type { ProvisionerJobLog } from "coder/site/src/api/typesGenerated";
+import type {
+	ProvisionerJobLog,
+	WorkspaceBuild,
+} from "coder/site/src/api/typesGenerated";
 
 import type { RequestConfigWithMeta } from "@/logging/types";
 
@@ -858,13 +862,10 @@ describe("CoderApi", () => {
 			});
 		};
 
-		const validUser = {
-			id: "user-1",
+		const validUser = createMockUser({
 			username: "developer",
-			roles: [{ name: "owner" }],
-			organization_ids: ["org-1"],
-			email: "dev@example.com",
-		};
+			roles: [{ name: "owner", display_name: "Owner" }],
+		});
 
 		const validWorkspace = {
 			id: "ws-1",
@@ -914,7 +915,7 @@ describe("CoderApi", () => {
 				const promise = api.getAuthenticatedUser();
 				await expect(promise).rejects.toBeInstanceOf(InvalidApiResponseError);
 				await expect(promise).rejects.toThrow(
-					`${CODER_URL} did not return a valid Coder API response for /api/v2/users/me`,
+					`${CODER_URL} did not return a valid Coder API response for getAuthenticatedUser`,
 				);
 			},
 		);
@@ -943,17 +944,63 @@ describe("CoderApi", () => {
 			).rejects.toBeInstanceOf(InvalidApiResponseError);
 		});
 
+		const validBuild = {
+			workspace_owner_name: "me",
+			workspace_name: "dev",
+			build_number: 1,
+			job: { status: "succeeded" },
+		} as WorkspaceBuild;
+
 		it("validates the build job status for waitForBuild polling", async () => {
 			api = createApi();
-			mockResponse({ job: { status: "succeeded" } });
+			mockResponse(validBuild);
 			await expect(
 				api.getWorkspaceBuildByNumber("me", "dev", 1),
-			).resolves.toEqual({ job: { status: "succeeded" } });
+			).resolves.toEqual(validBuild);
 
 			mockResponse({ id: "build-without-job" });
 			await expect(
 				api.getWorkspaceBuildByNumber("me", "dev", 1),
 			).rejects.toBeInstanceOf(InvalidApiResponseError);
+		});
+
+		it("waitForBuild resolves settled jobs and throws on failed ones", async () => {
+			api = createApi();
+			mockResponse(validBuild);
+			await expect(api.waitForBuild(validBuild)).resolves.toEqual({
+				status: "succeeded",
+			});
+
+			mockResponse({ ...validBuild, job: { status: "failed" } });
+			await expect(api.waitForBuild(validBuild)).rejects.toThrow(
+				"Build 1 failed",
+			);
+		});
+
+		it("waitForBuild surfaces validation errors instead of hanging", async () => {
+			api = createApi();
+			mockResponse({ ...validBuild, job: {} });
+			await expect(api.waitForBuild(validBuild)).rejects.toBeInstanceOf(
+				InvalidApiResponseError,
+			);
+		});
+
+		it("validates getTemplate, stopWorkspace, and startWorkspace", async () => {
+			api = createApi();
+			mockResponse({ active_version_id: "v1" });
+			await expect(api.getTemplate("tpl-1")).resolves.toEqual({
+				active_version_id: "v1",
+			});
+
+			mockResponse("<html><body>Bad Gateway</body></html>");
+			await expect(api.stopWorkspace("ws-1")).rejects.toBeInstanceOf(
+				InvalidApiResponseError,
+			);
+
+			mockResponse({ id: "build-without-job" });
+			await expect(api.startWorkspace("ws-1", "v1")).rejects.toBeInstanceOf(
+				InvalidApiResponseError,
+			);
 		});
 
 		it("validates template version resources", async () => {
@@ -971,10 +1018,9 @@ describe("CoderApi", () => {
 
 		it("validates deployment SSH config", async () => {
 			api = createApi();
-			mockResponse({ hostname_suffix: ".coder", ssh_config_options: {} });
+			mockResponse({ ssh_config_options: { ConnectTimeout: "30" } });
 			await expect(api.getDeploymentSSHConfig()).resolves.toEqual({
-				hostname_suffix: ".coder",
-				ssh_config_options: {},
+				ssh_config_options: { ConnectTimeout: "30" },
 			});
 
 			mockResponse({});

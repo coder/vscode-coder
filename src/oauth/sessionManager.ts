@@ -1,5 +1,4 @@
 import { CoderApi } from "../api/coderApi";
-import { parseApiResponse } from "../api/responseValidation";
 import {
 	AuthTelemetry,
 	type AuthTokenRefreshTrigger,
@@ -9,7 +8,7 @@ import { DEFAULT_OAUTH_SCOPES, REFRESH_GRANT_TYPE } from "./constants";
 import { OAuthError, parseOAuthError } from "./errors";
 import { OAuthMetadataClient } from "./metadataClient";
 import { buildOAuthTokenData, toUrlSearchParams } from "./utils";
-import { OAuth2TokenResponseSchema } from "./validation";
+import { OAuth2TokenResponseSchema, parseOAuthResponse } from "./validation";
 
 import type { AxiosInstance } from "axios";
 import type {
@@ -423,11 +422,10 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 					this.logger.debug("Token refresh successful");
 
-					const tokenResponse = parseApiResponse(
+					const tokenResponse = parseOAuthResponse(
 						OAuth2TokenResponseSchema,
 						response.data,
 						metadata.token_endpoint,
-						axiosInstance.defaults.baseURL,
 					);
 
 					await this.secretsManager.setSessionAuth(deployment.safeHostname, {

@@ -1,4 +1,4 @@
-import { ZodError, z } from "zod";
+import { z } from "zod";
 
 /**
  * Thrown when a 2xx response body does not match the shape the extension
@@ -13,8 +13,7 @@ export class InvalidApiResponseError extends Error {
 	) {
 		super(
 			`${url ?? "The deployment"} did not return a valid Coder API response ` +
-				`for ${endpoint}. Check that the URL points to a Coder deployment. ` +
-				"See Output > Coder for details.",
+				`for ${endpoint}. Check that the URL points to a Coder deployment.`,
 			options,
 		);
 		this.name = "InvalidApiResponseError";
@@ -34,26 +33,22 @@ export function parseApiResponse<T>(
 	endpoint: string,
 	url?: string,
 ): T {
-	try {
-		schema.parse(data);
-	} catch (error) {
-		if (error instanceof ZodError) {
-			throw new InvalidApiResponseError(endpoint, url, { cause: error });
-		}
-		throw error;
+	const result = schema.safeParse(data);
+	if (!result.success) {
+		throw new InvalidApiResponseError(endpoint, url, { cause: result.error });
 	}
 	return data;
 }
 
 /**
- * Only the fields the extension reads are required; everything else passes
- * through untouched.
+ * Only fields the extension reads appear here. A field is required only if
+ * every deployment version sends it; newer fields must be .optional() and
+ * their consumers must handle the absence.
  */
 export const UserSchema = z.looseObject({
 	id: z.string(),
 	username: z.string(),
 	roles: z.array(z.looseObject({ name: z.string() })),
-	organization_ids: z.array(z.string()),
 });
 
 const WorkspaceAgentSchema = z.looseObject({
@@ -61,7 +56,6 @@ const WorkspaceAgentSchema = z.looseObject({
 	name: z.string(),
 	status: z.string(),
 	operating_system: z.string(),
-	architecture: z.string(),
 });
 
 const WorkspaceResourceSchema = z.looseObject({
@@ -81,14 +75,20 @@ export const WorkspaceSchema = z.looseObject({
 	}),
 });
 
-/** waitForBuild polls `job.status`; a malformed job would loop forever. */
+/** waitForBuild reads the identifiers to poll and the job status to stop. */
 export const WorkspaceBuildSchema = z.looseObject({
+	workspace_owner_name: z.string(),
+	workspace_name: z.string(),
+	build_number: z.number(),
 	job: z.looseObject({ status: z.string() }),
+});
+
+export const TemplateSchema = z.looseObject({
+	active_version_id: z.string(),
 });
 
 export const WorkspaceResourcesSchema = z.array(WorkspaceResourceSchema);
 
 export const SSHConfigResponseSchema = z.looseObject({
-	hostname_suffix: z.string(),
 	ssh_config_options: z.record(z.string(), z.string()),
 });

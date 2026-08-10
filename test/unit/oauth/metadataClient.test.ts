@@ -95,6 +95,21 @@ describe("OAuthMetadataClient", () => {
 			);
 		});
 
+		it("throws when a *_supported field is not an array", async () => {
+			const { mockAdapter, client } = createTestContext();
+
+			setupAxiosMockRoutes(mockAdapter, {
+				"/.well-known/oauth-authorization-server": {
+					...createMockOAuthMetadata(TEST_URL),
+					grant_types_supported: "authorization_code refresh_token",
+				},
+			});
+
+			await expect(client.getMetadata()).rejects.toThrow(
+				"did not return a valid Coder API response",
+			);
+		});
+
 		describe("grant type validation", () => {
 			it("accepts metadata with required grant types", async () => {
 				const { mockAdapter, client } = createTestContext();

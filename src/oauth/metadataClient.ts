@@ -79,7 +79,6 @@ export class OAuthMetadataClient {
 			this.axiosInstance.defaults.baseURL,
 		);
 
-		this.validateRequiredEndpoints(metadata);
 		this.validateGrantTypes(metadata);
 		this.validateResponseTypes(metadata);
 		this.validateAuthMethods(metadata);
@@ -93,21 +92,6 @@ export class OAuthMetadataClient {
 		});
 
 		return metadata;
-	}
-
-	private validateRequiredEndpoints(
-		metadata: OAuth2AuthorizationServerMetadata,
-	): void {
-		if (
-			!metadata.authorization_endpoint ||
-			!metadata.token_endpoint ||
-			!metadata.issuer
-		) {
-			throw new Error(
-				"OAuth server metadata missing required endpoints: " +
-					JSON.stringify(metadata),
-			);
-		}
 	}
 
 	private validateGrantTypes(

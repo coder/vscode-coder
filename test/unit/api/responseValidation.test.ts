@@ -1,22 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { ZodError } from "zod";
+import { ZodError, type z } from "zod";
 
 import {
 	InvalidApiResponseError,
 	parseApiResponse,
 	SSHConfigResponseSchema,
+	TemplateSchema,
 	UserSchema,
+	WorkspaceBuildSchema,
+	WorkspaceResourcesSchema,
 	WorkspaceSchema,
 } from "@/api/responseValidation";
 
-const validUser = {
-	id: "user-1",
-	username: "developer",
-	roles: [{ name: "owner", display_name: "Owner" }],
-	organization_ids: ["org-1"],
-	email: "dev@example.com",
-	status: "active",
-};
+import { createMockUser } from "../../mocks/testHelpers";
+
+const validUser = createMockUser();
 
 describe("parseApiResponse", () => {
 	it("returns the value unchanged, preserving unknown fields", () => {
@@ -160,13 +158,61 @@ describe("SSHConfigResponseSchema", () => {
 		expect(result).toEqual(config);
 	});
 
-	it("rejects a config without hostname_suffix", () => {
+	it("rejects a config without ssh_config_options", () => {
 		expect(() =>
 			parseApiResponse(
 				SSHConfigResponseSchema,
-				{ ssh_config_options: {} },
+				{ hostname_prefix: "coder." },
 				"/api/v2/deployment/ssh",
 			),
 		).toThrow(InvalidApiResponseError);
 	});
+});
+
+/**
+ * Pins the oldest body each schema must keep accepting; a new field that
+ * breaks one of these must be .optional() instead.
+ */
+describe("backward compatibility", () => {
+	it.each<[string, z.ZodType, unknown]>([
+		["UserSchema", UserSchema, { id: "u", username: "dev", roles: [] }],
+		[
+			"WorkspaceSchema",
+			WorkspaceSchema,
+			{
+				id: "ws",
+				name: "dev",
+				owner_name: "me",
+				template_id: "tpl",
+				latest_build: {
+					id: "b",
+					status: "running",
+					template_version_id: "v",
+					resources: [],
+				},
+			},
+		],
+		[
+			"WorkspaceBuildSchema",
+			WorkspaceBuildSchema,
+			{
+				workspace_owner_name: "me",
+				workspace_name: "dev",
+				build_number: 1,
+				job: { status: "ok" },
+			},
+		],
+		["WorkspaceResourcesSchema", WorkspaceResourcesSchema, [{}]],
+		["TemplateSchema", TemplateSchema, { active_version_id: "v" }],
+		[
+			"SSHConfigResponseSchema",
+			SSHConfigResponseSchema,
+			{ ssh_config_options: {} },
+		],
+	])(
+		"%s accepts the minimal body an old deployment sends",
+		(_, schema, body) => {
+			expect(schema.safeParse(body).success).toBe(true);
+		},
+	);
 });

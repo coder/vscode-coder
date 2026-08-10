@@ -52,6 +52,7 @@ import { getRefreshCommand, refreshCertificates } from "./certificateRefresh";
 import {
 	parseApiResponse,
 	SSHConfigResponseSchema,
+	TemplateSchema,
 	UserSchema,
 	WorkspaceBuildSchema,
 	WorkspaceResourcesSchema,
@@ -61,16 +62,13 @@ import { createHttpAgent } from "./utils";
 
 import type {
 	GetInboxNotificationResponse,
+	ProvisionerJob,
 	ProvisionerJobLog,
 	ServerSentEvent,
-	SSHConfigResponse,
-	User,
 	Workspace,
 	WorkspaceAgent,
 	WorkspaceAgentLog,
 	WorkspaceBuild,
-	WorkspaceOptions,
-	WorkspaceResource,
 } from "coder/site/src/api/typesGenerated";
 import type { ClientOptions } from "ws";
 import type { z } from "zod";
@@ -128,6 +126,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		private readonly authConfigTracker: AuthConfigTracker,
 	) {
 		super();
+		wrapWithValidation(this);
 		this.configWatcher = this.watchConfigChanges();
 	}
 
@@ -164,92 +163,27 @@ export class CoderApi extends Api implements vscode.Disposable {
 	}
 
 	/**
-	 * The SDK casts response bodies to the generated types with no runtime
-	 * check, so a 2xx from a non-Coder service would crash far from the
-	 * cause. The overrides below validate the fields the extension reads and
-	 * throw InvalidApiResponseError at the boundary instead. Base
-	 * implementations are captured here because they are instance arrow
-	 * properties assigned during super(); this field is declared before the
-	 * overrides, so field initialization order reads the base versions.
-	 * `super.X` is unavailable for parent class fields (ts(2855)).
+	 * Reimplemented because the SDK version polls inside a voided IIFE that
+	 * swallows errors, hanging callers forever if a poll throws (e.g. on
+	 * failed response validation).
 	 */
-	private readonly baseMethods = captureBaseMethods(this);
-
-	private validate<T>(
-		schema: z.ZodType<unknown>,
-		data: T,
-		endpoint: string,
-	): T {
-		return parseApiResponse(schema, data, endpoint, this.getHost());
-	}
-
-	override getAuthenticatedUser = async (): Promise<User> => {
-		return this.validate(
-			UserSchema,
-			await this.baseMethods.getAuthenticatedUser(),
-			"/api/v2/users/me",
-		);
-	};
-
-	override getWorkspace = async (
-		workspaceId: string,
-		params?: WorkspaceOptions,
-	): Promise<Workspace> => {
-		return this.validate(
-			WorkspaceSchema,
-			await this.baseMethods.getWorkspace(workspaceId, params),
-			`/api/v2/workspaces/${workspaceId}`,
-		);
-	};
-
-	override getWorkspaceByOwnerAndName = async (
-		username: string,
-		workspaceName: string,
-		params?: WorkspaceOptions,
-	): Promise<Workspace> => {
-		return this.validate(
-			WorkspaceSchema,
-			await this.baseMethods.getWorkspaceByOwnerAndName(
-				username,
-				workspaceName,
-				params,
-			),
-			`/api/v2/users/${username}/workspace/${workspaceName}`,
-		);
-	};
-
-	override getWorkspaceBuildByNumber = async (
-		username: string,
-		workspaceName: string,
-		buildNumber: number,
-	): Promise<WorkspaceBuild> => {
-		return this.validate(
-			WorkspaceBuildSchema,
-			await this.baseMethods.getWorkspaceBuildByNumber(
-				username,
-				workspaceName,
-				buildNumber,
-			),
-			`/api/v2/users/${username}/workspace/${workspaceName}/builds/${buildNumber}`,
-		);
-	};
-
-	override getTemplateVersionResources = async (
-		versionId: string,
-	): Promise<WorkspaceResource[]> => {
-		return this.validate(
-			WorkspaceResourcesSchema,
-			await this.baseMethods.getTemplateVersionResources(versionId),
-			`/api/v2/templateversions/${versionId}/resources`,
-		);
-	};
-
-	override getDeploymentSSHConfig = async (): Promise<SSHConfigResponse> => {
-		return this.validate(
-			SSHConfigResponseSchema,
-			await this.baseMethods.getDeploymentSSHConfig(),
-			"/api/v2/deployment/ssh",
-		);
+	override waitForBuild = async (
+		build: WorkspaceBuild,
+	): Promise<ProvisionerJob | undefined> => {
+		while (true) {
+			const { job } = await this.getWorkspaceBuildByNumber(
+				build.workspace_owner_name,
+				build.workspace_name,
+				build.build_number,
+			);
+			if (job.status === "failed") {
+				throw new Error(`Build ${build.build_number} failed`);
+			}
+			if (job.status === "succeeded" || job.status === "canceled") {
+				return job;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+		}
 	};
 
 	hasAuthConfigChangedSince(version: number | undefined): boolean {
@@ -850,15 +784,61 @@ function wrapResponseTransform(
 	];
 }
 
-function captureBaseMethods(instance: Api) {
-	return {
-		getAuthenticatedUser: instance.getAuthenticatedUser,
-		getWorkspace: instance.getWorkspace,
-		getWorkspaceByOwnerAndName: instance.getWorkspaceByOwnerAndName,
-		getWorkspaceBuildByNumber: instance.getWorkspaceBuildByNumber,
-		getTemplateVersionResources: instance.getTemplateVersionResources,
-		getDeploymentSSHConfig: instance.getDeploymentSSHConfig,
-	};
+/**
+ * Validate the fields the extension reads on each response, since the SDK
+ * casts bodies to the generated types with no runtime check. The methods
+ * are instance arrow properties, so wrapping is by reassignment;
+ * `override` fields would depend on declaration order.
+ */
+function wrapWithValidation(api: CoderApi): void {
+	const wrap =
+		<Args extends unknown[], R>(
+			name: string,
+			schema: z.ZodType<unknown>,
+			method: (...args: Args) => Promise<R>,
+		) =>
+		async (...args: Args): Promise<R> => {
+			const url = api.getHost();
+			return parseApiResponse(schema, await method(...args), name, url);
+		};
+
+	api.getAuthenticatedUser = wrap(
+		"getAuthenticatedUser",
+		UserSchema,
+		api.getAuthenticatedUser,
+	);
+	api.getWorkspace = wrap("getWorkspace", WorkspaceSchema, api.getWorkspace);
+	api.getWorkspaceByOwnerAndName = wrap(
+		"getWorkspaceByOwnerAndName",
+		WorkspaceSchema,
+		api.getWorkspaceByOwnerAndName,
+	);
+	api.getWorkspaceBuildByNumber = wrap(
+		"getWorkspaceBuildByNumber",
+		WorkspaceBuildSchema,
+		api.getWorkspaceBuildByNumber,
+	);
+	api.getTemplateVersionResources = wrap(
+		"getTemplateVersionResources",
+		WorkspaceResourcesSchema,
+		api.getTemplateVersionResources,
+	);
+	api.getDeploymentSSHConfig = wrap(
+		"getDeploymentSSHConfig",
+		SSHConfigResponseSchema,
+		api.getDeploymentSSHConfig,
+	);
+	api.getTemplate = wrap("getTemplate", TemplateSchema, api.getTemplate);
+	api.stopWorkspace = wrap(
+		"stopWorkspace",
+		WorkspaceBuildSchema,
+		api.stopWorkspace,
+	);
+	api.startWorkspace = wrap(
+		"startWorkspace",
+		WorkspaceBuildSchema,
+		api.startWorkspace,
+	);
 }
 
 function getSize(headers: AxiosHeaders, data: unknown): number | undefined {

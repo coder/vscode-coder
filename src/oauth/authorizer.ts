@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
-import { parseApiResponse } from "../api/responseValidation";
 import { resolveCoderDashboardUrl } from "../util/uri";
 
 import {
@@ -21,6 +20,7 @@ import {
 import {
 	OAuth2ClientRegistrationResponseSchema,
 	OAuth2TokenResponseSchema,
+	parseOAuthResponse,
 } from "./validation";
 
 import type { AxiosInstance } from "axios";
@@ -178,11 +178,10 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			registrationRequest,
 		);
 
-		const registrationResponse = parseApiResponse(
+		const registrationResponse = parseOAuthResponse(
 			OAuth2ClientRegistrationResponseSchema,
 			response.data,
 			metadata.registration_endpoint,
-			axiosInstance.defaults.baseURL,
 		);
 
 		await this.secretsManager.setOAuthClientRegistration(
@@ -372,11 +371,10 @@ export class OAuthAuthorizer implements vscode.Disposable {
 
 		this.logger.debug("Token exchange successful");
 
-		return parseApiResponse(
+		return parseOAuthResponse(
 			OAuth2TokenResponseSchema,
 			response.data,
 			metadata.token_endpoint,
-			axiosInstance.defaults.baseURL,
 		);
 	}
 
