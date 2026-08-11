@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { CoderApi } from "./coderApi";
+
 /**
  * Thrown when a 2xx response body does not match the shape the extension
  * needs, which almost always means the URL does not point at a Coder
@@ -22,8 +24,12 @@ export class InvalidApiResponseError extends Error {
 
 /**
  * Validate a response body, returning the original value with the caller's
- * type. Schemas must use looseObject so unknown fields pass through and
- * newer deployments adding fields never break.
+ * type.
+ *
+ * Every schema passed here lists only the fields the extension reads and uses
+ * looseObject so unknown fields pass through. A field may be required only if
+ * every supported deployment sends it (Coder 0.25 and up, see featureSet);
+ * anything newer must be .optional() with its consumers handling the absence.
  *
  * @throws {InvalidApiResponseError} naming the endpoint when validation fails.
  */
@@ -40,11 +46,6 @@ export function parseApiResponse<T>(
 	return data;
 }
 
-/**
- * Only fields the extension reads appear here. A field is required only if
- * every deployment version sends it; newer fields must be .optional() and
- * their consumers must handle the absence.
- */
 export const UserSchema = z.looseObject({
 	id: z.string(),
 	username: z.string(),
@@ -92,3 +93,21 @@ export const WorkspaceResourcesSchema = z.array(WorkspaceResourceSchema);
 export const SSHConfigResponseSchema = z.looseObject({
 	ssh_config_options: z.record(z.string(), z.string()),
 });
+
+/**
+ * The schema each validated SDK method's response must match, applied by
+ * CoderApi. Add an entry to validate another method; the key doubles as the
+ * endpoint name in the error. The OAuth endpoints are plain axios calls
+ * rather than SDK methods, so they pass their schema at the call site.
+ */
+export const VALIDATED_RESPONSES = {
+	getAuthenticatedUser: UserSchema,
+	getDeploymentSSHConfig: SSHConfigResponseSchema,
+	getTemplate: TemplateSchema,
+	getTemplateVersionResources: WorkspaceResourcesSchema,
+	getWorkspace: WorkspaceSchema,
+	getWorkspaceByOwnerAndName: WorkspaceSchema,
+	getWorkspaceBuildByNumber: WorkspaceBuildSchema,
+	startWorkspace: WorkspaceBuildSchema,
+	stopWorkspace: WorkspaceBuildSchema,
+} as const satisfies Readonly<Partial<Record<keyof CoderApi, z.ZodType>>>;

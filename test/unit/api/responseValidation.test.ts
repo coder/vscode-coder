@@ -14,205 +14,156 @@ import {
 
 import { createMockUser } from "../../mocks/testHelpers";
 
-const validUser = createMockUser();
+const ENDPOINT = "/api/v2/users/me";
+const DEPLOYMENT_URL = "https://coder.example.com";
+
+/**
+ * The smallest body each schema must keep accepting: what Coder 0.25, the
+ * oldest supported deployment, sends. Making one of these fail is a breaking
+ * change, so a newly required field belongs in the schema as .optional().
+ */
+const SCHEMAS: ReadonlyArray<{
+	name: string;
+	schema: z.ZodType;
+	minimal: unknown;
+	/** The minimal body with one required field taken away. */
+	incomplete: unknown;
+}> = [
+	{
+		name: "UserSchema",
+		schema: UserSchema,
+		minimal: { id: "user-1", username: "dev", roles: [] },
+		incomplete: { id: "user-1", username: "dev" },
+	},
+	{
+		name: "WorkspaceSchema",
+		schema: WorkspaceSchema,
+		minimal: {
+			id: "ws-1",
+			name: "dev",
+			owner_name: "developer",
+			template_id: "tpl-1",
+			latest_build: {
+				id: "build-1",
+				status: "running",
+				template_version_id: "version-1",
+				resources: [],
+			},
+		},
+		incomplete: {
+			id: "ws-1",
+			name: "dev",
+			owner_name: "developer",
+			template_id: "tpl-1",
+		},
+	},
+	{
+		name: "WorkspaceBuildSchema",
+		schema: WorkspaceBuildSchema,
+		minimal: {
+			workspace_owner_name: "developer",
+			workspace_name: "dev",
+			build_number: 1,
+			job: { status: "succeeded" },
+		},
+		incomplete: {
+			workspace_owner_name: "developer",
+			workspace_name: "dev",
+			build_number: 1,
+		},
+	},
+	{
+		name: "WorkspaceResourcesSchema",
+		schema: WorkspaceResourcesSchema,
+		minimal: [{}],
+		incomplete: { resources: [] },
+	},
+	{
+		name: "TemplateSchema",
+		schema: TemplateSchema,
+		minimal: { active_version_id: "version-1" },
+		incomplete: {},
+	},
+	{
+		name: "SSHConfigResponseSchema",
+		schema: SSHConfigResponseSchema,
+		minimal: { ssh_config_options: {} },
+		incomplete: { hostname_prefix: "coder." },
+	},
+];
 
 describe("parseApiResponse", () => {
-	it("returns the value unchanged, preserving unknown fields", () => {
-		const withExtras = { ...validUser, future_field: { nested: [1, 2, 3] } };
-		const result = parseApiResponse(
-			UserSchema,
-			withExtras,
-			"/api/v2/users/me",
-			"https://coder.example.com",
+	it("returns the body as-is, unknown fields included", () => {
+		const body = { ...createMockUser(), future_field: { nested: [1, 2, 3] } };
+
+		expect(parseApiResponse(UserSchema, body, ENDPOINT, DEPLOYMENT_URL)).toBe(
+			body,
 		);
-		expect(result).toBe(withExtras);
 	});
 
 	it("throws InvalidApiResponseError naming the endpoint and URL", () => {
-		const call = () =>
-			parseApiResponse(
-				UserSchema,
-				{ id: "user-1" },
-				"/api/v2/users/me",
-				"https://coder.example.com",
-			);
-
-		let caught: unknown;
-		try {
-			call();
-		} catch (error) {
-			caught = error;
-		}
-		expect(caught).toBeInstanceOf(InvalidApiResponseError);
-		const error = caught as InvalidApiResponseError;
-		expect(error.message).toContain(
-			"https://coder.example.com did not return a valid Coder API response for /api/v2/users/me",
+		expect(() =>
+			parseApiResponse(UserSchema, {}, ENDPOINT, DEPLOYMENT_URL),
+		).toThrow(
+			`${DEPLOYMENT_URL} did not return a valid Coder API response for ${ENDPOINT}`,
 		);
-		expect(error.cause).toBeInstanceOf(ZodError);
 	});
 
-	it("rejects a string body, e.g. an HTML proxy error page", () => {
-		expect(() =>
-			parseApiResponse(
-				UserSchema,
-				"<html><body>Login</body></html>",
-				"/api/v2/users/me",
-				"https://proxy.example.com",
-			),
-		).toThrow(InvalidApiResponseError);
-	});
-
-	it("rejects null and empty objects", () => {
-		for (const body of [null, undefined, {}]) {
-			expect(() =>
-				parseApiResponse(UserSchema, body, "/api/v2/users/me"),
-			).toThrow(InvalidApiResponseError);
+	it("keeps the Zod failure as the cause", () => {
+		try {
+			parseApiResponse(UserSchema, {}, ENDPOINT, DEPLOYMENT_URL);
+			expect.unreachable("should have thrown");
+		} catch (error) {
+			expect(error).toBeInstanceOf(InvalidApiResponseError);
+			expect((error as InvalidApiResponseError).cause).toBeInstanceOf(ZodError);
 		}
 	});
 
-	it("rejects a user with missing roles", () => {
-		const { roles: _roles, ...noRoles } = validUser;
-		expect(() =>
-			parseApiResponse(UserSchema, noRoles, "/api/v2/users/me"),
-		).toThrow(InvalidApiResponseError);
-	});
-
-	it("omits the URL from the message when not provided", () => {
-		expect(() => parseApiResponse(UserSchema, {}, "/api/v2/users/me")).toThrow(
+	it("names the deployment generically when no URL is known", () => {
+		expect(() => parseApiResponse(UserSchema, {}, ENDPOINT)).toThrow(
 			"The deployment did not return a valid Coder API response",
 		);
+	});
+
+	// The bodies a misdirected URL realistically returns: a proxy login page, a
+	// 204-style empty body, or JSON from some other service.
+	it.each([
+		["an HTML page", "<html><body>Login</body></html>"],
+		["null", null],
+		["undefined", undefined],
+		["an unrelated object", { message: "not found" }],
+	])("rejects %s", (_name, body) => {
+		expect(() => parseApiResponse(UserSchema, body, ENDPOINT)).toThrow(
+			InvalidApiResponseError,
+		);
+	});
+});
+
+describe.each(SCHEMAS)("$name", ({ schema, minimal, incomplete }) => {
+	it("accepts the minimal body an old deployment sends", () => {
+		expect(schema.safeParse(minimal).success).toBe(true);
+	});
+
+	it("rejects a body missing a required field", () => {
+		expect(schema.safeParse(incomplete).success).toBe(false);
 	});
 });
 
 describe("WorkspaceSchema", () => {
-	const validWorkspace = {
-		id: "ws-1",
-		name: "dev",
-		owner_name: "developer",
-		template_id: "tpl-1",
-		latest_build: {
-			id: "build-1",
-			status: "running",
-			template_version_id: "version-1",
-			resources: [
-				{
-					id: "res-1",
-					agents: [
-						{
-							id: "agent-1",
-							name: "main",
-							status: "connected",
-							operating_system: "linux",
-							architecture: "amd64",
-						},
-					],
-				},
-			],
-		},
-	};
-
-	it("accepts a workspace with agents", () => {
-		expect(() =>
-			parseApiResponse(
-				WorkspaceSchema,
-				validWorkspace,
-				"/api/v2/workspaces/ws-1",
-			),
-		).not.toThrow();
-	});
-
-	it("accepts resources with null or missing agents", () => {
+	it("accepts resources whose agents are null or absent", () => {
 		const workspace = {
-			...validWorkspace,
+			id: "ws-1",
+			name: "dev",
+			owner_name: "developer",
+			template_id: "tpl-1",
 			latest_build: {
-				...validWorkspace.latest_build,
+				id: "build-1",
+				status: "running",
+				template_version_id: "version-1",
 				resources: [{ id: "res-1", agents: null }, { id: "res-2" }],
 			},
 		};
-		expect(() =>
-			parseApiResponse(WorkspaceSchema, workspace, "/api/v2/workspaces/ws-1"),
-		).not.toThrow();
-	});
 
-	it("rejects a workspace without latest_build", () => {
-		const { latest_build: _lb, ...noBuild } = validWorkspace;
-		expect(() =>
-			parseApiResponse(WorkspaceSchema, noBuild, "/api/v2/workspaces/ws-1"),
-		).toThrow(InvalidApiResponseError);
+		expect(WorkspaceSchema.safeParse(workspace).success).toBe(true);
 	});
-});
-
-describe("SSHConfigResponseSchema", () => {
-	it("accepts a valid config with extra fields", () => {
-		const config = {
-			hostname_prefix: "coder.",
-			hostname_suffix: ".coder",
-			ssh_config_options: { ConnectTimeout: "30" },
-			something_new: true,
-		};
-		const result = parseApiResponse(
-			SSHConfigResponseSchema,
-			config,
-			"/api/v2/deployment/ssh",
-		);
-		expect(result).toEqual(config);
-	});
-
-	it("rejects a config without ssh_config_options", () => {
-		expect(() =>
-			parseApiResponse(
-				SSHConfigResponseSchema,
-				{ hostname_prefix: "coder." },
-				"/api/v2/deployment/ssh",
-			),
-		).toThrow(InvalidApiResponseError);
-	});
-});
-
-/**
- * Pins the oldest body each schema must keep accepting; a new field that
- * breaks one of these must be .optional() instead.
- */
-describe("backward compatibility", () => {
-	it.each<[string, z.ZodType, unknown]>([
-		["UserSchema", UserSchema, { id: "u", username: "dev", roles: [] }],
-		[
-			"WorkspaceSchema",
-			WorkspaceSchema,
-			{
-				id: "ws",
-				name: "dev",
-				owner_name: "me",
-				template_id: "tpl",
-				latest_build: {
-					id: "b",
-					status: "running",
-					template_version_id: "v",
-					resources: [],
-				},
-			},
-		],
-		[
-			"WorkspaceBuildSchema",
-			WorkspaceBuildSchema,
-			{
-				workspace_owner_name: "me",
-				workspace_name: "dev",
-				build_number: 1,
-				job: { status: "ok" },
-			},
-		],
-		["WorkspaceResourcesSchema", WorkspaceResourcesSchema, [{}]],
-		["TemplateSchema", TemplateSchema, { active_version_id: "v" }],
-		[
-			"SSHConfigResponseSchema",
-			SSHConfigResponseSchema,
-			{ ssh_config_options: {} },
-		],
-	])(
-		"%s accepts the minimal body an old deployment sends",
-		(_, schema, body) => {
-			expect(schema.safeParse(body).success).toBe(true);
-		},
-	);
 });

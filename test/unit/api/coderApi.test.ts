@@ -22,7 +22,10 @@ import {
 	refreshCertificates,
 } from "@/api/certificateRefresh";
 import { CoderApi, DEFAULT_REQUEST_TIMEOUT_MS } from "@/api/coderApi";
-import { InvalidApiResponseError } from "@/api/responseValidation";
+import {
+	InvalidApiResponseError,
+	VALIDATED_RESPONSES,
+} from "@/api/responseValidation";
 import { createHttpAgent } from "@/api/utils";
 import { CONFIG_CHANGE_DEBOUNCE_MS } from "@/configWatcher";
 import { ClientCertificateError } from "@/error/clientCertificateError";
@@ -851,7 +854,7 @@ describe("CoderApi", () => {
 		);
 	});
 
-	describe("Response Validation", () => {
+	describe("response validation", () => {
 		const mockResponse = (data: unknown) => {
 			mockAdapter.mockResolvedValueOnce({
 				data,
@@ -862,12 +865,7 @@ describe("CoderApi", () => {
 			});
 		};
 
-		const validUser = createMockUser({
-			username: "developer",
-			roles: [{ name: "owner", display_name: "Owner" }],
-		});
-
-		const validWorkspace = {
+		const VALID_WORKSPACE = {
 			id: "ws-1",
 			name: "dev",
 			owner_name: "developer",
@@ -880,151 +878,144 @@ describe("CoderApi", () => {
 			},
 		};
 
-		it("returns the user when /users/me is valid", async () => {
-			api = createApi();
-			mockResponse(validUser);
+		const VALID_BUILD = {
+			workspace_owner_name: "developer",
+			workspace_name: "dev",
+			build_number: 1,
+			job: { status: "succeeded" },
+		};
 
-			const user = await api.getAuthenticatedUser();
+		/** One realistic body per validated method, keyed by the method name. */
+		const CASES: ReadonlyArray<{
+			method: keyof typeof VALIDATED_RESPONSES;
+			call: (api: CoderApi) => Promise<unknown>;
+			valid: unknown;
+		}> = [
+			{
+				method: "getAuthenticatedUser",
+				call: (api) => api.getAuthenticatedUser(),
+				valid: createMockUser({ username: "developer" }),
+			},
+			{
+				method: "getDeploymentSSHConfig",
+				call: (api) => api.getDeploymentSSHConfig(),
+				valid: { ssh_config_options: { ConnectTimeout: "30" } },
+			},
+			{
+				method: "getTemplate",
+				call: (api) => api.getTemplate("tpl-1"),
+				valid: { active_version_id: "version-1" },
+			},
+			{
+				method: "getTemplateVersionResources",
+				call: (api) => api.getTemplateVersionResources("version-1"),
+				valid: [{ id: "res-1", agents: null }],
+			},
+			{
+				method: "getWorkspace",
+				call: (api) => api.getWorkspace("ws-1"),
+				valid: VALID_WORKSPACE,
+			},
+			{
+				method: "getWorkspaceByOwnerAndName",
+				call: (api) => api.getWorkspaceByOwnerAndName("developer", "dev"),
+				valid: VALID_WORKSPACE,
+			},
+			{
+				method: "getWorkspaceBuildByNumber",
+				call: (api) => api.getWorkspaceBuildByNumber("developer", "dev", 1),
+				valid: VALID_BUILD,
+			},
+			{
+				method: "startWorkspace",
+				call: (api) => api.startWorkspace("ws-1", "version-1"),
+				valid: VALID_BUILD,
+			},
+			{
+				method: "stopWorkspace",
+				call: (api) => api.stopWorkspace("ws-1"),
+				valid: VALID_BUILD,
+			},
+		];
 
-			expect(user.username).toBe("developer");
-			expect(user.roles[0]?.name).toBe("owner");
-		});
-
-		it("still performs the underlying HTTP request", async () => {
-			api = createApi();
-			mockResponse(validUser);
-
-			await api.getAuthenticatedUser();
-
-			expect(mockAdapter).toHaveBeenCalledWith(
-				expect.objectContaining({ url: "/api/v2/users/me" }),
+		it("exercises every validated method", () => {
+			expect(CASES.map((testCase) => testCase.method).sort()).toEqual(
+				Object.keys(VALIDATED_RESPONSES).sort(),
 			);
 		});
 
-		it.each([
-			["an HTML error page", "<html><body>Bad Gateway</body></html>"],
-			["null", null],
-			["an empty object", {}],
-			["a user missing roles", { id: "user-1", username: "developer" }],
-		])(
-			"rejects /users/me returning %s with the endpoint and URL",
-			async (_description, body) => {
+		it.each(CASES)(
+			"$method passes a valid body through",
+			async ({ call, valid }) => {
 				api = createApi();
-				mockResponse(body);
+				mockResponse(valid);
 
-				const promise = api.getAuthenticatedUser();
-				await expect(promise).rejects.toBeInstanceOf(InvalidApiResponseError);
-				await expect(promise).rejects.toThrow(
-					`${CODER_URL} did not return a valid Coder API response for getAuthenticatedUser`,
+				await expect(call(api)).resolves.toEqual(valid);
+			},
+		);
+
+		it.each(CASES)(
+			"$method rejects a body that is not from Coder",
+			async ({ method, call }) => {
+				api = createApi();
+				mockResponse("<html><body>Bad Gateway</body></html>");
+
+				await expect(call(api)).rejects.toThrow(
+					`${CODER_URL} did not return a valid Coder API response for ${method}`,
 				);
 			},
 		);
 
-		it("preserves unknown fields on validated responses", async () => {
+		it("reports an unparseable response as InvalidApiResponseError", async () => {
 			api = createApi();
-			const withExtra = {
-				...validUser,
-				future_field: { nested: true },
-			};
-			mockResponse(withExtra);
+			mockResponse({ id: "user-1" });
 
-			const user = await api.getAuthenticatedUser();
-
-			expect(user).toEqual(withExtra);
+			await expect(api.getAuthenticatedUser()).rejects.toBeInstanceOf(
+				InvalidApiResponseError,
+			);
 		});
+	});
 
-		it("validates getWorkspace and getWorkspaceByOwnerAndName", async () => {
-			api = createApi();
-			mockResponse(validWorkspace);
-			await expect(api.getWorkspace("ws-1")).resolves.toEqual(validWorkspace);
-
-			mockResponse({ name: "not-a-workspace" });
-			await expect(
-				api.getWorkspaceByOwnerAndName("me", "dev"),
-			).rejects.toBeInstanceOf(InvalidApiResponseError);
-		});
-
-		const validBuild = {
-			workspace_owner_name: "me",
+	describe("waitForBuild", () => {
+		const BUILD = {
+			workspace_owner_name: "developer",
 			workspace_name: "dev",
 			build_number: 1,
 			job: { status: "succeeded" },
 		} as WorkspaceBuild;
 
-		it("validates the build job status for waitForBuild polling", async () => {
-			api = createApi();
-			mockResponse(validBuild);
-			await expect(
-				api.getWorkspaceBuildByNumber("me", "dev", 1),
-			).resolves.toEqual(validBuild);
+		const mockPoll = (job: unknown) => {
+			mockAdapter.mockResolvedValueOnce({
+				data: { ...BUILD, job },
+				status: 200,
+				statusText: "OK",
+				headers: {},
+				config: {},
+			});
+		};
 
-			mockResponse({ id: "build-without-job" });
-			await expect(
-				api.getWorkspaceBuildByNumber("me", "dev", 1),
-			).rejects.toBeInstanceOf(InvalidApiResponseError);
-		});
-
-		it("waitForBuild resolves settled jobs and throws on failed ones", async () => {
+		it("returns the job once the build settles", async () => {
 			api = createApi();
-			mockResponse(validBuild);
-			await expect(api.waitForBuild(validBuild)).resolves.toEqual({
+			mockPoll({ status: "succeeded" });
+
+			await expect(api.waitForBuild(BUILD)).resolves.toEqual({
 				status: "succeeded",
 			});
-
-			mockResponse({ ...validBuild, job: { status: "failed" } });
-			await expect(api.waitForBuild(validBuild)).rejects.toThrow(
-				"Build 1 failed",
-			);
 		});
 
-		it("waitForBuild surfaces validation errors instead of hanging", async () => {
+		it("throws when the build failed", async () => {
 			api = createApi();
-			mockResponse({ ...validBuild, job: {} });
-			await expect(api.waitForBuild(validBuild)).rejects.toBeInstanceOf(
-				InvalidApiResponseError,
-			);
+			mockPoll({ status: "failed" });
+
+			await expect(api.waitForBuild(BUILD)).rejects.toThrow("Build 1 failed");
 		});
 
-		it("validates getTemplate, stopWorkspace, and startWorkspace", async () => {
+		// The SDK version swallows poll errors, leaving callers hanging forever.
+		it("surfaces a validation error instead of polling forever", async () => {
 			api = createApi();
-			mockResponse({ active_version_id: "v1" });
-			await expect(api.getTemplate("tpl-1")).resolves.toEqual({
-				active_version_id: "v1",
-			});
+			mockPoll({});
 
-			mockResponse("<html><body>Bad Gateway</body></html>");
-			await expect(api.stopWorkspace("ws-1")).rejects.toBeInstanceOf(
-				InvalidApiResponseError,
-			);
-
-			mockResponse({ id: "build-without-job" });
-			await expect(api.startWorkspace("ws-1", "v1")).rejects.toBeInstanceOf(
-				InvalidApiResponseError,
-			);
-		});
-
-		it("validates template version resources", async () => {
-			api = createApi();
-			mockResponse([{ id: "res-1", agents: null }]);
-			await expect(
-				api.getTemplateVersionResources("version-1"),
-			).resolves.toEqual([{ id: "res-1", agents: null }]);
-
-			mockResponse({ resources: "not-an-array" });
-			await expect(
-				api.getTemplateVersionResources("version-1"),
-			).rejects.toBeInstanceOf(InvalidApiResponseError);
-		});
-
-		it("validates deployment SSH config", async () => {
-			api = createApi();
-			mockResponse({ ssh_config_options: { ConnectTimeout: "30" } });
-			await expect(api.getDeploymentSSHConfig()).resolves.toEqual({
-				ssh_config_options: { ConnectTimeout: "30" },
-			});
-
-			mockResponse({});
-			await expect(api.getDeploymentSSHConfig()).rejects.toBeInstanceOf(
+			await expect(api.waitForBuild(BUILD)).rejects.toBeInstanceOf(
 				InvalidApiResponseError,
 			);
 		});

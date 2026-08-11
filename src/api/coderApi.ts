@@ -49,15 +49,7 @@ import {
 import { SseConnection } from "../websocket/sseConnection";
 
 import { getRefreshCommand, refreshCertificates } from "./certificateRefresh";
-import {
-	parseApiResponse,
-	SSHConfigResponseSchema,
-	TemplateSchema,
-	UserSchema,
-	WorkspaceBuildSchema,
-	WorkspaceResourcesSchema,
-	WorkspaceSchema,
-} from "./responseValidation";
+import { parseApiResponse, VALIDATED_RESPONSES } from "./responseValidation";
 import { createHttpAgent } from "./utils";
 
 import type {
@@ -71,7 +63,6 @@ import type {
 	WorkspaceBuild,
 } from "coder/site/src/api/typesGenerated";
 import type { ClientOptions } from "ws";
-import type { z } from "zod";
 
 import type { Logger } from "../logging/logger";
 import type {
@@ -791,54 +782,15 @@ function wrapResponseTransform(
  * `override` fields would depend on declaration order.
  */
 function wrapWithValidation(api: CoderApi): void {
-	const wrap =
-		<Args extends unknown[], R>(
-			name: string,
-			schema: z.ZodType<unknown>,
-			method: (...args: Args) => Promise<R>,
-		) =>
-		async (...args: Args): Promise<R> => {
-			const url = api.getHost();
-			return parseApiResponse(schema, await method(...args), name, url);
-		};
-
-	api.getAuthenticatedUser = wrap(
-		"getAuthenticatedUser",
-		UserSchema,
-		api.getAuthenticatedUser,
-	);
-	api.getWorkspace = wrap("getWorkspace", WorkspaceSchema, api.getWorkspace);
-	api.getWorkspaceByOwnerAndName = wrap(
-		"getWorkspaceByOwnerAndName",
-		WorkspaceSchema,
-		api.getWorkspaceByOwnerAndName,
-	);
-	api.getWorkspaceBuildByNumber = wrap(
-		"getWorkspaceBuildByNumber",
-		WorkspaceBuildSchema,
-		api.getWorkspaceBuildByNumber,
-	);
-	api.getTemplateVersionResources = wrap(
-		"getTemplateVersionResources",
-		WorkspaceResourcesSchema,
-		api.getTemplateVersionResources,
-	);
-	api.getDeploymentSSHConfig = wrap(
-		"getDeploymentSSHConfig",
-		SSHConfigResponseSchema,
-		api.getDeploymentSSHConfig,
-	);
-	api.getTemplate = wrap("getTemplate", TemplateSchema, api.getTemplate);
-	api.stopWorkspace = wrap(
-		"stopWorkspace",
-		WorkspaceBuildSchema,
-		api.stopWorkspace,
-	);
-	api.startWorkspace = wrap(
-		"startWorkspace",
-		WorkspaceBuildSchema,
-		api.startWorkspace,
-	);
+	const methods = api as unknown as Record<
+		string,
+		(...args: unknown[]) => Promise<unknown>
+	>;
+	for (const [name, schema] of Object.entries(VALIDATED_RESPONSES)) {
+		const method = methods[name];
+		methods[name] = async (...args) =>
+			parseApiResponse(schema, await method(...args), name, api.getHost());
+	}
 }
 
 function getSize(headers: AxiosHeaders, data: unknown): number | undefined {
