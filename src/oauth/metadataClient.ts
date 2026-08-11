@@ -1,3 +1,5 @@
+import { parseApiResponse } from "../api/responseValidation";
+
 import {
 	AUTH_GRANT_TYPE,
 	PKCE_CHALLENGE_METHOD,
@@ -5,6 +7,7 @@ import {
 	RESPONSE_TYPE,
 	TOKEN_ENDPOINT_AUTH_METHOD,
 } from "./constants";
+import { OAuth2AuthorizationServerMetadataSchema } from "./validation";
 
 import type { AxiosInstance } from "axios";
 import type {
@@ -69,9 +72,13 @@ export class OAuthMetadataClient {
 				OAUTH_DISCOVERY_ENDPOINT,
 			);
 
-		const metadata = response.data;
+		const metadata = parseApiResponse(
+			OAuth2AuthorizationServerMetadataSchema,
+			response.data,
+			OAUTH_DISCOVERY_ENDPOINT,
+			this.axiosInstance.defaults.baseURL,
+		);
 
-		this.validateRequiredEndpoints(metadata);
 		this.validateGrantTypes(metadata);
 		this.validateResponseTypes(metadata);
 		this.validateAuthMethods(metadata);
@@ -85,21 +92,6 @@ export class OAuthMetadataClient {
 		});
 
 		return metadata;
-	}
-
-	private validateRequiredEndpoints(
-		metadata: OAuth2AuthorizationServerMetadata,
-	): void {
-		if (
-			!metadata.authorization_endpoint ||
-			!metadata.token_endpoint ||
-			!metadata.issuer
-		) {
-			throw new Error(
-				"OAuth server metadata missing required endpoints: " +
-					JSON.stringify(metadata),
-			);
-		}
 	}
 
 	private validateGrantTypes(

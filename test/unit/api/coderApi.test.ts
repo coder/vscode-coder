@@ -22,6 +22,11 @@ import {
 	refreshCertificates,
 } from "@/api/certificateRefresh";
 import { CoderApi, DEFAULT_REQUEST_TIMEOUT_MS } from "@/api/coderApi";
+import {
+	InvalidApiResponseError,
+	VALIDATED_RESPONSES,
+	type ValidatedMethods,
+} from "@/api/responseValidation";
 import { createHttpAgent } from "@/api/utils";
 import { CONFIG_CHANGE_DEBOUNCE_MS } from "@/configWatcher";
 import { ClientCertificateError } from "@/error/clientCertificateError";
@@ -35,10 +40,14 @@ import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
 
 import {
 	createMockLogger,
+	createMockUser,
 	MockConfigurationProvider,
 } from "../../mocks/testHelpers";
 
-import type { ProvisionerJobLog } from "coder/site/src/api/typesGenerated";
+import type {
+	ProvisionerJobLog,
+	WorkspaceBuild,
+} from "coder/site/src/api/typesGenerated";
 
 import type { RequestConfigWithMeta } from "@/logging/types";
 
@@ -844,6 +853,173 @@ describe("CoderApi", () => {
 				);
 			},
 		);
+	});
+
+	describe("response validation", () => {
+		const mockResponse = (data: unknown) => {
+			mockAdapter.mockResolvedValueOnce({
+				data,
+				status: 200,
+				statusText: "OK",
+				headers: {},
+				config: {},
+			});
+		};
+
+		const VALID_WORKSPACE = {
+			id: "ws-1",
+			name: "dev",
+			owner_name: "developer",
+			template_id: "tpl-1",
+			latest_build: {
+				id: "build-1",
+				status: "running",
+				template_version_id: "version-1",
+				resources: [],
+			},
+		};
+
+		const VALID_BUILD = {
+			workspace_owner_name: "developer",
+			workspace_name: "dev",
+			build_number: 1,
+			job: { status: "succeeded" },
+		};
+
+		/** One realistic body per validated method, keyed by the method name. */
+		const CASES: ReadonlyArray<{
+			method: keyof ValidatedMethods;
+			call: (api: CoderApi) => Promise<unknown>;
+			valid: unknown;
+		}> = [
+			{
+				method: "getAuthenticatedUser",
+				call: (api) => api.getAuthenticatedUser(),
+				valid: createMockUser({ username: "developer" }),
+			},
+			{
+				method: "getDeploymentSSHConfig",
+				call: (api) => api.getDeploymentSSHConfig(),
+				valid: { ssh_config_options: { ConnectTimeout: "30" } },
+			},
+			{
+				method: "getTemplate",
+				call: (api) => api.getTemplate("tpl-1"),
+				valid: { active_version_id: "version-1" },
+			},
+			{
+				method: "getTemplateVersionResources",
+				call: (api) => api.getTemplateVersionResources("version-1"),
+				valid: [{ id: "res-1", agents: null }],
+			},
+			{
+				method: "getWorkspace",
+				call: (api) => api.getWorkspace("ws-1"),
+				valid: VALID_WORKSPACE,
+			},
+			{
+				method: "getWorkspaceByOwnerAndName",
+				call: (api) => api.getWorkspaceByOwnerAndName("developer", "dev"),
+				valid: VALID_WORKSPACE,
+			},
+			{
+				method: "getWorkspaceBuildByNumber",
+				call: (api) => api.getWorkspaceBuildByNumber("developer", "dev", 1),
+				valid: VALID_BUILD,
+			},
+			{
+				method: "startWorkspace",
+				call: (api) => api.startWorkspace("ws-1", "version-1"),
+				valid: VALID_BUILD,
+			},
+			{
+				method: "stopWorkspace",
+				call: (api) => api.stopWorkspace("ws-1"),
+				valid: VALID_BUILD,
+			},
+		];
+
+		it("exercises every validated method", () => {
+			expect(CASES.map((testCase) => testCase.method).sort()).toEqual(
+				VALIDATED_RESPONSES.map(([method]) => method).sort(),
+			);
+		});
+
+		it.each(CASES)(
+			"$method passes a valid body through",
+			async ({ call, valid }) => {
+				api = createApi();
+				mockResponse(valid);
+
+				await expect(call(api)).resolves.toEqual(valid);
+			},
+		);
+
+		it.each(CASES)(
+			"$method rejects a body that is not from Coder",
+			async ({ method, call }) => {
+				api = createApi();
+				mockResponse("<html><body>Bad Gateway</body></html>");
+
+				await expect(call(api)).rejects.toThrow(
+					`${CODER_URL} did not return a valid Coder API response for ${method}`,
+				);
+			},
+		);
+
+		it("reports an unparseable response as InvalidApiResponseError", async () => {
+			api = createApi();
+			mockResponse({ id: "user-1" });
+
+			await expect(api.getAuthenticatedUser()).rejects.toBeInstanceOf(
+				InvalidApiResponseError,
+			);
+		});
+	});
+
+	describe("waitForBuild", () => {
+		const BUILD = {
+			workspace_owner_name: "developer",
+			workspace_name: "dev",
+			build_number: 1,
+			job: { status: "succeeded" },
+		} as WorkspaceBuild;
+
+		const mockPoll = (job: unknown) => {
+			mockAdapter.mockResolvedValueOnce({
+				data: { ...BUILD, job },
+				status: 200,
+				statusText: "OK",
+				headers: {},
+				config: {},
+			});
+		};
+
+		it("returns the job once the build settles", async () => {
+			api = createApi();
+			mockPoll({ status: "succeeded" });
+
+			await expect(api.waitForBuild(BUILD)).resolves.toEqual({
+				status: "succeeded",
+			});
+		});
+
+		it("throws when the build failed", async () => {
+			api = createApi();
+			mockPoll({ status: "failed" });
+
+			await expect(api.waitForBuild(BUILD)).rejects.toThrow("Build 1 failed");
+		});
+
+		// The SDK version swallows poll errors, leaving callers hanging forever.
+		it("surfaces a validation error instead of polling forever", async () => {
+			api = createApi();
+			mockPoll({});
+
+			await expect(api.waitForBuild(BUILD)).rejects.toBeInstanceOf(
+				InvalidApiResponseError,
+			);
+		});
 	});
 
 	describe("getHost/getSessionToken", () => {

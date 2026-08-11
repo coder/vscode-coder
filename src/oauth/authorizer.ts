@@ -17,6 +17,11 @@ import {
 	generateState,
 	toUrlSearchParams,
 } from "./utils";
+import {
+	OAuth2ClientRegistrationResponseSchema,
+	OAuth2TokenResponseSchema,
+	parseOAuthResponse,
+} from "./validation";
 
 import type { AxiosInstance } from "axios";
 import type {
@@ -173,16 +178,22 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			registrationRequest,
 		);
 
+		const registrationResponse = parseOAuthResponse(
+			OAuth2ClientRegistrationResponseSchema,
+			response.data,
+			metadata.registration_endpoint,
+		);
+
 		await this.secretsManager.setOAuthClientRegistration(
 			deployment.safeHostname,
-			response.data,
+			registrationResponse,
 		);
 		this.logger.debug(
 			"Saved OAuth client registration:",
-			response.data.client_id,
+			registrationResponse.client_id,
 		);
 
-		return response.data;
+		return registrationResponse;
 	}
 
 	/**
@@ -360,7 +371,11 @@ export class OAuthAuthorizer implements vscode.Disposable {
 
 		this.logger.debug("Token exchange successful");
 
-		return response.data;
+		return parseOAuthResponse(
+			OAuth2TokenResponseSchema,
+			response.data,
+			metadata.token_endpoint,
+		);
 	}
 
 	public dispose(): void {

@@ -8,6 +8,7 @@ import { OAuthCallback } from "@/oauth/oauthCallback";
 
 import {
 	createMockLogger,
+	createMockUser,
 	getAxiosMockAdapter,
 	InMemoryMemento,
 	InMemorySecretStorage,
@@ -136,17 +137,22 @@ export function createBaseTestContext() {
 	);
 	const oauthCallback = new OAuthCallback(secretStorage, logger);
 
-	/** Sets up OAuth routes, defaulting to metadata for TEST_URL. */
+	/**
+	 * Sets up OAuth routes, defaulting to metadata for TEST_URL. Pass overrides
+	 * to replace individual route responses with a failure or a custom body.
+	 */
 	const setupOAuthRoutes = (
 		metadata: OAuth2AuthorizationServerMetadata = createMockOAuthMetadata(
 			TEST_URL,
 		),
+		overrides: Record<string, unknown> = {},
 	) => {
 		setupAxiosMockRoutes(mockAdapter, {
 			"/.well-known/oauth-authorization-server": metadata,
 			"/oauth2/register": createMockClientRegistration(),
 			"/oauth2/token": createMockTokenResponse(),
-			"/api/v2/users/me": { username: "test-user" },
+			"/api/v2/users/me": createMockUser(),
+			...overrides,
 		});
 	};
 

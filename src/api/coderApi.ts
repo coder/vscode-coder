@@ -49,15 +49,22 @@ import {
 import { SseConnection } from "../websocket/sseConnection";
 
 import { getRefreshCommand, refreshCertificates } from "./certificateRefresh";
+import {
+	parseApiResponse,
+	VALIDATED_RESPONSES,
+	type ValidatedMethods,
+} from "./responseValidation";
 import { createHttpAgent } from "./utils";
 
 import type {
 	GetInboxNotificationResponse,
+	ProvisionerJob,
 	ProvisionerJobLog,
 	ServerSentEvent,
 	Workspace,
 	WorkspaceAgent,
 	WorkspaceAgentLog,
+	WorkspaceBuild,
 } from "coder/site/src/api/typesGenerated";
 import type { ClientOptions } from "ws";
 
@@ -114,6 +121,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		private readonly authConfigTracker: AuthConfigTracker,
 	) {
 		super();
+		wrapWithValidation(this);
 		this.configWatcher = this.watchConfigChanges();
 	}
 
@@ -148,6 +156,30 @@ export class CoderApi extends Api implements vscode.Disposable {
 	getHost(): string | undefined {
 		return this.getAxiosInstance().defaults.baseURL;
 	}
+
+	/**
+	 * Reimplemented because the SDK version polls inside a voided IIFE that
+	 * swallows errors, hanging callers forever if a poll throws (e.g. on
+	 * failed response validation).
+	 */
+	override waitForBuild = async (
+		build: WorkspaceBuild,
+	): Promise<ProvisionerJob | undefined> => {
+		while (true) {
+			const { job } = await this.getWorkspaceBuildByNumber(
+				build.workspace_owner_name,
+				build.workspace_name,
+				build.build_number,
+			);
+			if (job.status === "failed") {
+				throw new Error(`Build ${build.build_number} failed`);
+			}
+			if (job.status === "succeeded" || job.status === "canceled") {
+				return job;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+		}
+	};
 
 	hasAuthConfigChangedSince(version: number | undefined): boolean {
 		return this.authConfigTracker.hasChangedSince(version);
@@ -745,6 +777,21 @@ function wrapResponseTransform(
 			);
 		},
 	];
+}
+
+/**
+ * Validate the fields the extension reads on each response, since the SDK
+ * casts bodies to the generated types with no runtime check. The methods
+ * are instance arrow properties, so wrapping is by reassignment;
+ * `override` fields would depend on declaration order.
+ */
+function wrapWithValidation(api: CoderApi): void {
+	const methods: ValidatedMethods = api;
+	for (const [name, schema] of VALIDATED_RESPONSES) {
+		const method = methods[name];
+		methods[name] = async (...args) =>
+			parseApiResponse(schema, await method(...args), name, api.getHost());
+	}
 }
 
 function getSize(headers: AxiosHeaders, data: unknown): number | undefined {

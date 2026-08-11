@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { InvalidApiResponseError } from "@/api/responseValidation";
 import { getHeaders } from "@/headers";
 import { OAuthAuthorizer } from "@/oauth/authorizer";
 
 import {
+	createMockUser,
 	MockCancellationToken,
 	MockProgress,
 	setupAxiosMockRoutes,
@@ -115,19 +117,17 @@ async function waitForBrowserToOpen(): Promise<{
 describe("OAuthAuthorizer", () => {
 	describe("login flow", () => {
 		it("completes full OAuth login flow successfully", async () => {
-			const { mockAdapter, oauthCallback, secretsManager, authorizer } =
+			const { setupOAuthRoutes, oauthCallback, secretsManager, authorizer } =
 				createTestContext();
 
-			setupAxiosMockRoutes(mockAdapter, {
-				"/.well-known/oauth-authorization-server":
-					createMockOAuthMetadata(TEST_URL),
+			setupOAuthRoutes(undefined, {
 				"/oauth2/register": createMockClientRegistration({
 					client_id: "registered-client-id",
 				}),
 				"/oauth2/token": createMockTokenResponse({
 					access_token: "oauth-access-token",
 				}),
-				"/api/v2/users/me": { username: "oauth-user" },
+				"/api/v2/users/me": createMockUser({ username: "oauth-user" }),
 			});
 
 			const deployment = createTestDeployment();
@@ -161,7 +161,7 @@ describe("OAuthAuthorizer", () => {
 		});
 
 		it("uses existing client registration when redirect URI matches", async () => {
-			const { mockAdapter, oauthCallback, secretsManager, authorizer } =
+			const { setupOAuthRoutes, oauthCallback, secretsManager, authorizer } =
 				createTestContext();
 
 			// Pre-store a client registration with matching redirect URI
@@ -174,12 +174,8 @@ describe("OAuthAuthorizer", () => {
 			);
 
 			// Registration endpoint should throw if called (existing registration should be reused)
-			setupAxiosMockRoutes(mockAdapter, {
+			setupOAuthRoutes(undefined, {
 				"/oauth2/register": new Error("Should not re-register"),
-				"/.well-known/oauth-authorization-server":
-					createMockOAuthMetadata(TEST_URL),
-				"/oauth2/token": createMockTokenResponse(),
-				"/api/v2/users/me": { username: "test-user" },
 			});
 
 			const loginPromise = authorizer.login(
@@ -200,7 +196,7 @@ describe("OAuthAuthorizer", () => {
 		});
 
 		it("re-registers client when redirect URI has changed", async () => {
-			const { mockAdapter, oauthCallback, secretsManager, authorizer } =
+			const { setupOAuthRoutes, oauthCallback, secretsManager, authorizer } =
 				createTestContext();
 
 			// Pre-store a client registration with different redirect URI
@@ -213,14 +209,10 @@ describe("OAuthAuthorizer", () => {
 			);
 
 			// Server will return new registration
-			setupAxiosMockRoutes(mockAdapter, {
-				"/.well-known/oauth-authorization-server":
-					createMockOAuthMetadata(TEST_URL),
+			setupOAuthRoutes(undefined, {
 				"/oauth2/register": createMockClientRegistration({
 					client_id: "new-client-id",
 				}),
-				"/oauth2/token": createMockTokenResponse(),
-				"/api/v2/users/me": { username: "test-user" },
 			});
 
 			const loginPromise = authorizer.login(
@@ -506,6 +498,35 @@ describe("OAuthAuthorizer", () => {
 					new MockCancellationToken(),
 				),
 			).rejects.toThrow("Server does not support dynamic client registration");
+		});
+
+		it("rejects a token response without an access token", async () => {
+			const { setupOAuthRoutes, startLogin, completeLogin } =
+				createTestContext();
+			setupOAuthRoutes(undefined, {
+				"/oauth2/token": { token_type: "Bearer" },
+			});
+
+			const { loginPromise, state } = await startLogin();
+			await completeLogin(state);
+
+			await expect(loginPromise).rejects.toThrow(InvalidApiResponseError);
+		});
+
+		it("rejects a registration response without a client_id", async () => {
+			const { setupOAuthRoutes, authorizer } = createTestContext();
+			setupOAuthRoutes(undefined, {
+				"/oauth2/register": { client_secret: "no-id" },
+			});
+
+			// Fails before the browser opens, so there is no callback to complete.
+			await expect(
+				authorizer.login(
+					createTestDeployment(),
+					new MockProgress(),
+					new MockCancellationToken(),
+				),
+			).rejects.toThrow(InvalidApiResponseError);
 		});
 	});
 });

@@ -8,6 +8,7 @@ import { DEFAULT_OAUTH_SCOPES, REFRESH_GRANT_TYPE } from "./constants";
 import { OAuthError, parseOAuthError } from "./errors";
 import { OAuthMetadataClient } from "./metadataClient";
 import { buildOAuthTokenData, toUrlSearchParams } from "./utils";
+import { OAuth2TokenResponseSchema, parseOAuthResponse } from "./validation";
 
 import type { AxiosInstance } from "axios";
 import type {
@@ -421,17 +422,23 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 					this.logger.debug("Token refresh successful");
 
+					const tokenResponse = parseOAuthResponse(
+						OAuth2TokenResponseSchema,
+						response.data,
+						metadata.token_endpoint,
+					);
+
 					await this.secretsManager.setSessionAuth(deployment.safeHostname, {
 						url: deployment.url,
-						token: response.data.access_token,
+						token: tokenResponse.access_token,
 						username: await this.fetchUsername(
 							deployment,
-							response.data.access_token,
+							tokenResponse.access_token,
 						),
-						oauth: buildOAuthTokenData(response.data),
+						oauth: buildOAuthTokenData(tokenResponse),
 					});
 
-					return response.data;
+					return tokenResponse;
 				},
 			);
 		} catch (error) {

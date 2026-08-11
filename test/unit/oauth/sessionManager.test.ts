@@ -5,6 +5,7 @@ import {
 } from "axios";
 import { describe, expect, it, vi } from "vitest";
 
+import { InvalidApiResponseError } from "@/api/responseValidation";
 import { type SessionAuth } from "@/core/secretsManager";
 import { DEFAULT_OAUTH_SCOPES } from "@/oauth/constants";
 import { OAuthSessionManager } from "@/oauth/sessionManager";
@@ -228,6 +229,21 @@ describe("OAuthSessionManager", () => {
 				token: "refreshed-token",
 				username: "existing-user",
 			});
+		});
+
+		it("rejects a token response without an access token", async () => {
+			const { manager, setupForOAuthOperation } = createTestContext();
+			await setupForOAuthOperation(
+				{
+					"/oauth2/token": { token_type: "Bearer" },
+					"/api/v2/users/me": createMockUser(),
+				},
+				{ token: "old-token" },
+			);
+
+			await expect(manager.refreshToken()).rejects.toThrow(
+				InvalidApiResponseError,
+			);
 		});
 	});
 
