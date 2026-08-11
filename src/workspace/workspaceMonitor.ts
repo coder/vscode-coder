@@ -14,6 +14,8 @@ import {
 import { createStatusBarItem } from "../util/statusBar";
 import { vscodeProposed } from "../vscodeProposed";
 
+import { WorkspaceStateLogger } from "./workspaceStateLogger";
+
 import type { CoderApi } from "../api/coderApi";
 import type { ServiceContainer } from "../core/container";
 import type { ContextManager } from "../core/contextManager";
@@ -46,6 +48,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	// For logging.
 	private readonly name: string;
 	private readonly telemetry: WorkspaceStateTelemetry;
+	private readonly stateLogger: WorkspaceStateLogger;
 	private readonly logger: Logger;
 	private readonly contextManager: ContextManager;
 
@@ -63,6 +66,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 			container.getTelemetryService(),
 			this.name,
 		);
+		this.stateLogger = new WorkspaceStateLogger(this.logger, this.name);
 		this.latestWorkspace = workspace;
 
 		const statusBarItem = createStatusBarItem("workspaceUpdate");
@@ -136,6 +140,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 
 	private update(workspace: Workspace) {
 		this.telemetry.observe(workspace);
+		this.stateLogger.observe(workspace);
 		this.latestWorkspace = workspace;
 		this.updateContext(workspace);
 		this.updateStatusBar(workspace);
