@@ -152,6 +152,10 @@ export class ServiceContainer implements vscode.Disposable {
 		return this.logger;
 	}
 
+	getSessionId(): string {
+		return this.sessionId;
+	}
+
 	getCliManager(): CliManager {
 		return this.cliManager;
 	}
