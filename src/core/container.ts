@@ -43,6 +43,7 @@ export class ServiceContainer implements vscode.Disposable {
 
 	constructor(context: vscode.ExtensionContext) {
 		this.logger = vscode.window.createOutputChannel("Coder", { log: true });
+		// TODO pass this.logger to a new class + assign it here
 		this.pathResolver = new PathResolver(
 			context.globalStorageUri.fsPath,
 			context.logUri.fsPath,

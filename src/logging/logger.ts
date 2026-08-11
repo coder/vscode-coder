@@ -6,3 +6,5 @@ export interface Logger {
 	error(message: string, ...args: unknown[]): void;
 	show(): void;
 }
+
+// TODO create a class that extends the Logger and takes in a session ID
