@@ -68,6 +68,7 @@ function createTestContext() {
 		base.oauthCallback,
 		base.logger,
 		EXTENSION_ID,
+		"0123456789abcdef0123456789abcdef",
 	);
 
 	/** Starts login flow and waits for browser to open. Returns promise and state for completing flow. */

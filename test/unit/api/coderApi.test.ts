@@ -148,6 +148,31 @@ describe("CoderApi", () => {
 			);
 		});
 
+		it("attaches the session ID to requests as a baggage header", async () => {
+			const sessionId = "0123456789abcdef0123456789abcdef";
+			api = CoderApi.create(
+				CODER_URL,
+				AXIOS_TOKEN,
+				mockLogger,
+				NOOP_TELEMETRY_REPORTER,
+				sessionId,
+			);
+
+			const response = await api.getAxiosInstance().get("/api/v2/users/me");
+
+			expect(response.config.headers["baggage"]).toBe(
+				`session_id=${sessionId}`,
+			);
+		});
+
+		it("omits the baggage header when no session ID is provided", async () => {
+			api = createApi();
+
+			const response = await api.getAxiosInstance().get("/api/v2/users/me");
+
+			expect(response.config.headers["baggage"]).toBeUndefined();
+		});
+
 		it("applies the default timeout to requests", async () => {
 			api = createApi();
 			const response = await api.getAxiosInstance().get("/api/v2/users/me");

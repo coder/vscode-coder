@@ -49,6 +49,7 @@ export class DeploymentManager implements vscode.Disposable {
 	private readonly logger: Logger;
 	private readonly telemetryService: TelemetryService;
 	private readonly deploymentTelemetry: DeploymentTelemetry;
+	private readonly sessionId: string;
 
 	readonly #sessionStore = new SessionStore();
 	#disposed = false;
@@ -69,6 +70,7 @@ export class DeploymentManager implements vscode.Disposable {
 		this.logger = serviceContainer.getLogger();
 		this.telemetryService = serviceContainer.getTelemetryService();
 		this.deploymentTelemetry = new DeploymentTelemetry(this.telemetryService);
+		this.sessionId = serviceContainer.getSessionId();
 	}
 
 	public static create(
@@ -141,7 +143,13 @@ export class DeploymentManager implements vscode.Disposable {
 		url: string,
 		token: string | undefined,
 	): Promise<User> {
-		const tempClient = CoderApi.create(url, token, this.logger);
+		const tempClient = CoderApi.create(
+			url,
+			token,
+			this.logger,
+			undefined,
+			this.sessionId,
+		);
 		try {
 			return await tempClient.getAuthenticatedUser();
 		} finally {

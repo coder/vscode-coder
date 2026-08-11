@@ -14,6 +14,8 @@ import {
 } from "../../mocks/testHelpers";
 
 const proxyEnv = { HTTP_PROXY: proxy, HTTPS_PROXY: proxy };
+const TEST_SESSION_ID = "0123456789abcdef0123456789abcdef";
+const sessionEnv = { CODER_TRACE_SESSION_ID: TEST_SESSION_ID };
 type Environment = Record<string, string | undefined>;
 
 beforeEach(() => {
@@ -108,11 +110,16 @@ describe("applySshEnvironment", () => {
 	it("applies proxy variables to process.env and the collection, and restores on dispose", () => {
 		const env: Environment = {};
 		const collection = fakeEnvCollection();
-		const expected = { ...proxyEnv, NO_PROXY: "internal.example.com" };
+		const expected = {
+			...proxyEnv,
+			NO_PROXY: "internal.example.com",
+			...sessionEnv,
+		};
 
 		const applied = applySshEnvironment(
 			config(withProxy({ "coder.proxyBypass": "internal.example.com" })),
 			collection,
+			TEST_SESSION_ID,
 			env,
 		);
 
@@ -125,14 +132,14 @@ describe("applySshEnvironment", () => {
 		expect(collection.vars).toEqual({});
 	});
 
-	it("sets nothing when no proxy is configured", () => {
+	it("sets the session ID even when no proxy is configured", () => {
 		const env: Environment = {};
 		const collection = fakeEnvCollection();
 
-		applySshEnvironment(config(), collection, env);
+		applySshEnvironment(config(), collection, TEST_SESSION_ID, env);
 
-		expect(env).toEqual({});
-		expect(collection.vars).toEqual({});
+		expect(env).toEqual(sessionEnv);
+		expect(collection.vars).toEqual(sessionEnv);
 	});
 
 	it("does not clear existing env proxy variables when proxy support is off", () => {
@@ -146,11 +153,12 @@ describe("applySshEnvironment", () => {
 		applySshEnvironment(
 			config(withProxy({ "http.proxySupport": "off" })),
 			collection,
+			TEST_SESSION_ID,
 			env,
 		);
 
-		expect(env).toEqual(original);
-		expect(collection.vars).toEqual({});
+		expect(env).toEqual({ ...original, ...sessionEnv });
+		expect(collection.vars).toEqual(sessionEnv);
 	});
 
 	it("does not overwrite existing lowercase variables", () => {
@@ -163,10 +171,11 @@ describe("applySshEnvironment", () => {
 		const applied = applySshEnvironment(
 			config(withProxy()),
 			fakeEnvCollection(),
+			TEST_SESSION_ID,
 			env,
 		);
 
-		expect(env).toEqual({ ...original, ...proxyEnv });
+		expect(env).toEqual({ ...original, ...proxyEnv, ...sessionEnv });
 
 		applied.dispose();
 		expect(env).toEqual(original);
@@ -179,6 +188,7 @@ describe("applySshEnvironment", () => {
 		const applied = applySshEnvironment(
 			config(withProxy()),
 			fakeEnvCollection(),
+			TEST_SESSION_ID,
 			env,
 		);
 		expect(env.HTTP_PROXY).toBe(proxy);
@@ -193,6 +203,7 @@ describe("applySshEnvironment", () => {
 		const applied = applySshEnvironment(
 			config(withProxy()),
 			fakeEnvCollection(),
+			TEST_SESSION_ID,
 		);
 
 		try {

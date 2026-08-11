@@ -77,6 +77,9 @@ import type {
 
 const coderSessionTokenHeader = "Coder-Session-Token";
 
+/** W3C baggage header used to propagate the session ID to the server. */
+const baggageHeader = "baggage";
+
 /**
  * Default timeout for REST requests, so requests hung on half-open TCP
  * connections (e.g. after system sleep) don't stall pollers forever.
@@ -119,6 +122,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		private readonly telemetry: TelemetryReporter,
 		private readonly httpRequestsTelemetry: HttpRequestsTelemetry,
 		private readonly authConfigTracker: AuthConfigTracker,
+		private readonly sessionId: string | undefined,
 	) {
 		super();
 		wrapWithValidation(this);
@@ -130,13 +134,16 @@ export class CoderApi extends Api implements vscode.Disposable {
 	 * Automatically sets up logging interceptors, certificate handling,
 	 * HTTP request telemetry, and WebSocket connection telemetry. All
 	 * telemetry routes through the single reporter passed in (defaults to
-	 * NOOP_TELEMETRY_REPORTER for throwaway clients).
+	 * NOOP_TELEMETRY_REPORTER for throwaway clients). When a session ID is
+	 * provided it is attached to every request via the `baggage` header so the
+	 * server can correlate requests with the session's logs and telemetry.
 	 */
 	static create(
 		baseUrl: string,
 		token: string | undefined,
 		output: Logger,
 		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
+		sessionId?: string,
 	): CoderApi {
 		const httpRequestsTelemetry = new HttpRequestsTelemetry(telemetry);
 		const authConfigTracker = new AuthConfigTracker();
@@ -145,8 +152,13 @@ export class CoderApi extends Api implements vscode.Disposable {
 			telemetry,
 			httpRequestsTelemetry,
 			authConfigTracker,
+			sessionId,
 		);
 		client.getAxiosInstance().defaults.timeout = DEFAULT_REQUEST_TIMEOUT_MS;
+		if (sessionId) {
+			client.getAxiosInstance().defaults.headers.common[baggageHeader] =
+				`session_id=${sessionId}`;
+		}
 		client.setCredentials(baseUrl, token);
 
 		setupInterceptors(client, output, httpRequestsTelemetry, authConfigTracker);
@@ -379,6 +391,9 @@ export class CoderApi extends Api implements vscode.Disposable {
 		 */
 		const headers = {
 			...(token ? { [coderSessionTokenHeader]: token } : {}),
+			...(this.sessionId
+				? { [baggageHeader]: `session_id=${this.sessionId}` }
+				: {}),
 			...configs.options?.headers,
 			...headersFromCommand,
 		};

@@ -118,6 +118,7 @@ export class ServiceContainer implements vscode.Disposable {
 			new AuthTelemetry(this.telemetryService),
 			this.oauthCallback,
 			context.extension.id,
+			this.sessionId,
 		);
 		this.duplicateWorkspaceIpc = new DuplicateWorkspaceIpc(
 			context.secrets,

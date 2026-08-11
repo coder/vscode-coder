@@ -91,12 +91,14 @@ export class LoginCoordinator implements vscode.Disposable {
 		private readonly authTelemetry: AuthTelemetry,
 		oauthCallback: OAuthCallback,
 		extensionId: string,
+		private readonly sessionId: string,
 	) {
 		this.oauthAuthorizer = new OAuthAuthorizer(
 			secretsManager,
 			oauthCallback,
 			logger,
 			extensionId,
+			sessionId,
 		);
 	}
 
@@ -248,7 +250,13 @@ export class LoginCoordinator implements vscode.Disposable {
 				safeHostname,
 				async (auth) => {
 					if (auth?.token) {
-						const client = CoderApi.create(auth.url, auth.token, this.logger);
+						const client = CoderApi.create(
+							auth.url,
+							auth.token,
+							this.logger,
+							undefined,
+							this.sessionId,
+						);
 						try {
 							const user = await client.getAuthenticatedUser();
 							// Stop listening only on success; a bad token shouldn't
@@ -284,7 +292,13 @@ export class LoginCoordinator implements vscode.Disposable {
 		providedToken?: string,
 		tokenSignInConfirmed = false,
 	): Promise<LoginResult> {
-		const client = CoderApi.create(deployment.url, "", this.logger);
+		const client = CoderApi.create(
+			deployment.url,
+			"",
+			this.logger,
+			undefined,
+			this.sessionId,
+		);
 		try {
 			return await this.runLoginAttempts(
 				client,

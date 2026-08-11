@@ -142,6 +142,7 @@ function createTestContext(telemetry?: TelemetryService) {
 		authTelemetry,
 		oauthCallback,
 		"coder.coder-remote",
+		"0123456789abcdef0123456789abcdef",
 	);
 
 	const mockSuccessfulAuth = (user = createMockUser()) => {

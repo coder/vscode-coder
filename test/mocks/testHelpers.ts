@@ -595,6 +595,7 @@ export function createMockServiceContainer(
 	return {
 		getTelemetryService: () => telemetry,
 		getLogger: () => logger,
+		getSessionId: () => "0123456789abcdef0123456789abcdef",
 		getSecretsManager: () =>
 			require("secretsManager", overrides.secretsManager),
 		getMementoManager: () =>
