@@ -10,6 +10,13 @@ export function createRequestId(): string {
 	return crypto.randomUUID().replace(/-/g, "");
 }
 
+export function createConnectionSessionId(): string {
+	const byteArr = crypto.getRandomValues(new Uint8Array(16));
+	return [...byteArr]
+		.map((byte) => byte.toString(16).padStart(2, "0"))
+		.join("");
+}
+
 /**
  * Returns the byte size of the data if it can be determined from the data's intrinsic properties,
  * otherwise returns undefined (e.g., for plain objects and arrays that would require serialization).

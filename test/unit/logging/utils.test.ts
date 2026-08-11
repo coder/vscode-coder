@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	createConnectionSessionId,
 	createRequestId,
 	safeStringify,
 	shortId,
@@ -118,6 +119,14 @@ describe("Logging utils", () => {
 			const id = createRequestId();
 			expect(id).toHaveLength(32);
 			expect(id).not.toContain("-");
+		});
+	});
+
+	describe("createConnectionSessionId", () => {
+		it("generates a 32-character lowercase hex string", () => {
+			const id = createConnectionSessionId();
+			expect(id).toHaveLength(32);
+			expect(/^[\da-f]+$/.test(id)).toBe(true);
 		});
 	});
 });
