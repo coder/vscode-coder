@@ -18,9 +18,8 @@ const ENDPOINT = "/api/v2/users/me";
 const DEPLOYMENT_URL = "https://coder.example.com";
 
 /**
- * The smallest body each schema must keep accepting: what Coder 0.25, the
- * oldest supported deployment, sends. Making one of these fail is a breaking
- * change, so a newly required field belongs in the schema as .optional().
+ * The smallest body each schema must keep accepting, as Coder 0.25 sends it.
+ * Breaking one of these breaks old deployments; make the new field .optional().
  */
 const SCHEMAS: ReadonlyArray<{
 	name: string;
@@ -125,8 +124,8 @@ describe("parseApiResponse", () => {
 		);
 	});
 
-	// The bodies a misdirected URL realistically returns: a proxy login page, a
-	// 204-style empty body, or JSON from some other service.
+	// What a misdirected URL actually returns: a login page, an empty body,
+	// or JSON from some other service.
 	it.each([
 		["an HTML page", "<html><body>Login</body></html>"],
 		["null", null],

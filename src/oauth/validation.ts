@@ -3,9 +3,9 @@ import { z } from "zod";
 import { parseApiResponse } from "../api/responseValidation";
 
 /**
- * parseApiResponse for OAuth endpoints, which are absolute URLs from
- * server metadata and may live on a different origin than the deployment.
- * The schemas below follow the same rules as parseApiResponse's.
+ * parseApiResponse for OAuth endpoints, whose absolute URLs come from server
+ * metadata and may live on a different origin than the deployment. The schemas
+ * below follow the same rules.
  */
 export function parseOAuthResponse<T>(
 	schema: z.ZodType<unknown>,
@@ -20,9 +20,8 @@ export function parseOAuthResponse<T>(
 const REQUIRED_STRING = z.string().min(1);
 
 /**
- * Advertised capabilities, kept as plain strings rather than the generated
- * enums so a server adding a value does not fail validation. Absent means the
- * caller applies the RFC 8414 default.
+ * Plain strings rather than the generated enums, so a server adding a value
+ * does not fail validation. Absent means the RFC 8414 default applies.
  */
 const CAPABILITIES = z.array(z.string()).optional();
 
@@ -30,8 +29,7 @@ export const OAuth2AuthorizationServerMetadataSchema = z.looseObject({
 	issuer: REQUIRED_STRING,
 	authorization_endpoint: REQUIRED_STRING,
 	token_endpoint: REQUIRED_STRING,
-	// Absence is how a server signals it does not support these, so an empty
-	// string stays valid here and the callers report the missing capability.
+	// Callers report these as unsupported when absent, so no .min(1) here.
 	registration_endpoint: z.string().optional(),
 	revocation_endpoint: z.string().optional(),
 	grant_types_supported: CAPABILITIES,

@@ -49,7 +49,11 @@ import {
 import { SseConnection } from "../websocket/sseConnection";
 
 import { getRefreshCommand, refreshCertificates } from "./certificateRefresh";
-import { parseApiResponse, VALIDATED_RESPONSES } from "./responseValidation";
+import {
+	parseApiResponse,
+	VALIDATED_RESPONSES,
+	type ValidatedMethods,
+} from "./responseValidation";
 import { createHttpAgent } from "./utils";
 
 import type {
@@ -782,11 +786,8 @@ function wrapResponseTransform(
  * `override` fields would depend on declaration order.
  */
 function wrapWithValidation(api: CoderApi): void {
-	const methods = api as unknown as Record<
-		string,
-		(...args: unknown[]) => Promise<unknown>
-	>;
-	for (const [name, schema] of Object.entries(VALIDATED_RESPONSES)) {
+	const methods: ValidatedMethods = api;
+	for (const [name, schema] of VALIDATED_RESPONSES) {
 		const method = methods[name];
 		methods[name] = async (...args) =>
 			parseApiResponse(schema, await method(...args), name, api.getHost());

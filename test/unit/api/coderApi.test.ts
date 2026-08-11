@@ -25,6 +25,7 @@ import { CoderApi, DEFAULT_REQUEST_TIMEOUT_MS } from "@/api/coderApi";
 import {
 	InvalidApiResponseError,
 	VALIDATED_RESPONSES,
+	type ValidatedMethods,
 } from "@/api/responseValidation";
 import { createHttpAgent } from "@/api/utils";
 import { CONFIG_CHANGE_DEBOUNCE_MS } from "@/configWatcher";
@@ -887,7 +888,7 @@ describe("CoderApi", () => {
 
 		/** One realistic body per validated method, keyed by the method name. */
 		const CASES: ReadonlyArray<{
-			method: keyof typeof VALIDATED_RESPONSES;
+			method: keyof ValidatedMethods;
 			call: (api: CoderApi) => Promise<unknown>;
 			valid: unknown;
 		}> = [
@@ -940,7 +941,7 @@ describe("CoderApi", () => {
 
 		it("exercises every validated method", () => {
 			expect(CASES.map((testCase) => testCase.method).sort()).toEqual(
-				Object.keys(VALIDATED_RESPONSES).sort(),
+				VALIDATED_RESPONSES.map(([method]) => method).sort(),
 			);
 		});
 

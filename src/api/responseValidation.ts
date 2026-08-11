@@ -26,10 +26,9 @@ export class InvalidApiResponseError extends Error {
  * Validate a response body, returning the original value with the caller's
  * type.
  *
- * Every schema passed here lists only the fields the extension reads and uses
- * looseObject so unknown fields pass through. A field may be required only if
- * every supported deployment sends it (Coder 0.25 and up, see featureSet);
- * anything newer must be .optional() with its consumers handling the absence.
+ * Schemas list only the fields the extension reads and use looseObject so
+ * unknown fields pass through. Require a field only if every deployment back
+ * to Coder 0.25 sends it; anything newer must be .optional().
  *
  * @throws {InvalidApiResponseError} naming the endpoint when validation fails.
  */
@@ -95,19 +94,29 @@ export const SSHConfigResponseSchema = z.looseObject({
 });
 
 /**
- * The schema each validated SDK method's response must match, applied by
- * CoderApi. Add an entry to validate another method; the key doubles as the
- * endpoint name in the error. The OAuth endpoints are plain axios calls
- * rather than SDK methods, so they pass their schema at the call site.
+ * The schema each SDK method's response must match, applied by CoderApi. Add a
+ * pair to validate another method; the name doubles as the endpoint in the
+ * error. Pairs, not an object, so iterating keeps the names as literal types.
+ * OAuth endpoints are plain axios calls and pass their schema at the call site.
  */
-export const VALIDATED_RESPONSES = {
-	getAuthenticatedUser: UserSchema,
-	getDeploymentSSHConfig: SSHConfigResponseSchema,
-	getTemplate: TemplateSchema,
-	getTemplateVersionResources: WorkspaceResourcesSchema,
-	getWorkspace: WorkspaceSchema,
-	getWorkspaceByOwnerAndName: WorkspaceSchema,
-	getWorkspaceBuildByNumber: WorkspaceBuildSchema,
-	startWorkspace: WorkspaceBuildSchema,
-	stopWorkspace: WorkspaceBuildSchema,
-} as const satisfies Readonly<Partial<Record<keyof CoderApi, z.ZodType>>>;
+export const VALIDATED_RESPONSES = [
+	["getAuthenticatedUser", UserSchema],
+	["getDeploymentSSHConfig", SSHConfigResponseSchema],
+	["getTemplate", TemplateSchema],
+	["getTemplateVersionResources", WorkspaceResourcesSchema],
+	["getWorkspace", WorkspaceSchema],
+	["getWorkspaceByOwnerAndName", WorkspaceSchema],
+	["getWorkspaceBuildByNumber", WorkspaceBuildSchema],
+	["startWorkspace", WorkspaceBuildSchema],
+	["stopWorkspace", WorkspaceBuildSchema],
+] as const satisfies ReadonlyArray<readonly [keyof CoderApi, z.ZodType]>;
+
+/**
+ * The methods above, reduced to what the wrapper needs. CoderApi satisfies this
+ * with no assertion: `never` parameters accept any signature, and one uniform
+ * value type is what allows assigning by a name held in a variable.
+ */
+export type ValidatedMethods = Record<
+	(typeof VALIDATED_RESPONSES)[number][0],
+	(...args: never[]) => Promise<unknown>
+>;
