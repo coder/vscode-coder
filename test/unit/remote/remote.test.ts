@@ -209,10 +209,15 @@ describe("Remote", () => {
 			docsUrls: [expect.stringContaining("multi-root-workspaces")],
 		},
 	])(
-		"keeps an untitled multi-root workspace on the old host (choice: $choice)",
+		"sets up an untitled multi-root workspace on the old host (choice: $choice)",
 		async ({ choice, docsUrls }) => {
 			mockEnv.uriScheme = "cursor";
-			const { remote, mementoManager, userInteraction } = createRemote();
+			const {
+				remote,
+				ensureLoggedInWithDialog,
+				mementoManager,
+				userInteraction,
+			} = createRemote();
 			setWorkspace(
 				[createUri("/first-folder"), createUri("/second-folder")],
 				createUri("/Untitled-1.code-workspace", {
@@ -232,7 +237,17 @@ describe("Remote", () => {
 			expect(warning?.message).toContain("coder-vscode SSH host");
 			expect(warning?.items).toEqual(["Learn More"]);
 			expect(userInteraction.getExternalUrls()).toEqual(docsUrls);
-			expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+			// Setup continues over the legacy host instead of reopening the window.
+			expect(ensureLoggedInWithDialog).toHaveBeenCalledOnce();
+			expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith(
+				"vscode.openFolder",
+				expect.anything(),
+				expect.anything(),
+			);
+			expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith(
+				"vscode.newWindow",
+				expect.anything(),
+			);
 			expect(await mementoManager.getAndClearStartupMode()).toBe("none");
 		},
 	);

@@ -11,7 +11,6 @@ import path from "node:path";
 
 import { SSH_CONFIG_EXT } from "../core/pathResolver";
 import { countSubstring, lowercase } from "../util";
-import { cleanupFiles } from "../util/fileCleanup";
 import { renameWithRetry, tempFilePath } from "../util/fs";
 
 import type { Logger } from "../logging/logger";
@@ -79,31 +78,19 @@ function legacyDeploymentMarkers(safeHostname: string): BlockMarkers {
 	};
 }
 
-/** Shared include block; identical bytes from every editor, so writers converge. */
+/**
+ * Shared include block; identical bytes from every editor, so writers
+ * converge. "CODER INCLUDE <id>" is the convention for Coder-managed include
+ * blocks with disjoint hosts, so integrations can recognize each other's.
+ */
 const INCLUDE_MARKERS: BlockMarkers = {
-	start: "# --- START CODER ---",
-	end: "# --- END CODER ---",
+	start: "# --- START CODER INCLUDE CODER-REMOTE ---",
+	end: "# --- END CODER INCLUDE CODER-REMOTE ---",
 };
 
 /** Header of the generated per-deployment file. */
 const CODER_SSH_CONFIG_HEADER = `# Coder workspace hosts. Do not edit; the Coder extension rewrites this file
 # on every connection. Override options with the "coder.sshConfig" setting.`;
-
-/** Connects rewrite the file, so anything older is unused and safe to sweep. */
-const STALE_CONFIG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
-/** Delete generated configs (from any editor) not connected to recently. */
-export async function cleanupStaleSshConfigs(
-	dir: string,
-	logger: Logger,
-): Promise<void> {
-	await cleanupFiles(dir, logger, {
-		label: "generated SSH config",
-		filter: (name) => name.endsWith(SSH_CONFIG_EXT),
-		select: (files, now) =>
-			files.filter((file) => now - file.mtime > STALE_CONFIG_MAX_AGE_MS),
-	});
-}
 
 /**
  * SSH options a deployment may not set, mirroring the server's validation of
@@ -410,6 +397,7 @@ export class SshConfig {
 	private renderIncludeBlock(includeDir: string): string {
 		return [
 			INCLUDE_MARKERS.start,
+			"# Managed by each editor's Coder extension (coder.coder-remote).",
 			"# Moves back to the top on connect; override options via coder.sshConfig.",
 			`Include "${this.escapeIncludePath(includeDir)}/*${SSH_CONFIG_EXT}"`,
 			INCLUDE_MARKERS.end,
@@ -509,13 +497,15 @@ export class SshConfig {
 	}
 
 	private async discardTemp(tempPath: string): Promise<void> {
-		await this.fileSystem.unlink(tempPath).catch((unlinkErr: unknown) => {
+		try {
+			await this.fileSystem.unlink(tempPath);
+		} catch (unlinkErr) {
 			this.logger.warn(
 				"Failed to clean up temp SSH config file",
 				tempPath,
 				unlinkErr,
 			);
-		});
+		}
 	}
 
 	private async read(): Promise<string> {

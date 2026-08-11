@@ -6,6 +6,8 @@ export const LegacyAuthorityPrefix = "coder-vscode";
 
 export interface AuthorityParts {
 	agent: string | undefined;
+	/** The `coder-<editor>.<safeHostname>--` prefix of the parsed host. */
+	hostPrefix: string;
 	sshHost: string;
 	safeHostname: string;
 	username: string;
@@ -46,7 +48,7 @@ function getSshHostStart(authority: string): number | undefined {
 	return undefined;
 }
 
-function classifySshHost(sshHost: string): AuthorityClassification {
+export function classifySshHost(sshHost: string): AuthorityClassification {
 	const currentPrefix = currentAuthorityPrefix();
 	if (sshHost.startsWith(`${currentPrefix}.`)) {
 		return "current";
@@ -120,17 +122,12 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 
 	return {
 		agent,
+		hostPrefix: `${prefix}${safeHostname}--`,
 		sshHost,
 		safeHostname,
 		username,
 		workspace,
 	};
-}
-
-export function classifyRemoteAuthority(
-	parts: AuthorityParts,
-): AuthorityClassification {
-	return classifySshHost(parts.sshHost);
 }
 
 export function toRemoteAuthority(
@@ -144,10 +141,6 @@ export function toRemoteAuthority(
 		remoteAuthority += `.${workspaceAgent}`;
 	}
 	return remoteAuthority;
-}
-
-export function toCurrentAuthorityHostPrefix(safeHostname: string): string {
-	return `${currentAuthorityPrefix()}.${safeHostname}--`;
 }
 
 export function retargetRemoteAuthority(authority: string): string {

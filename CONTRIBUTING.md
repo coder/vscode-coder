@@ -34,21 +34,25 @@ the current editor, and if so we delay activation to:
 3. Download the matching server binary to the client.
 4. Configure the binary with the URL and token, asking the user for them if they
    are missing. Each domain gets its own config directory.
-5. Write an entry for `coder-<editor>.<domain>--*` to `ssh-config` in the
-   extension's global storage directory.
-6. Add a per-editor `Include` block at the top of the user's SSH config.
+5. Write an entry for `coder-<editor>.<domain>--*` to a per-editor,
+   per-deployment file in a data directory shared by every editor, such as
+   `~/.local/share/coder.coder-remote/ssh/cursor--dev.coder.com.conf`.
+6. Keep a shared `Include` block at the top of the user's SSH config that
+   globs the whole directory. Every editor writes the identical block, so
+   concurrent writers converge on the same content. The `CODER INCLUDE <id>`
+   marker convention lets other Coder integrations recognize the block, since
+   Coder-managed includes route disjoint hosts and are order-independent.
 
 ```text
-# --- START CODER cursor ---
-Include "~/.config/Cursor/User/globalStorage/coder.coder-remote/ssh-config"
-# --- END CODER cursor ---
-
-# --- START CODER vscode ---
-Include "~/.config/Code/User/globalStorage/coder.coder-remote/ssh-config"
-# --- END CODER vscode ---
+# --- START CODER INCLUDE CODER-REMOTE ---
+# Managed by each editor's Coder extension (coder.coder-remote).
+# Moves back to the top on connect; override options via coder.sshConfig.
+Include "~/.local/share/coder.coder-remote/ssh/*.conf"
+# --- END CODER INCLUDE CODER-REMOTE ---
 ```
 
-Each included file contains only that editor's host entries:
+Each generated file contains only its own editor's host entries for one
+deployment:
 
 ```text
 Host coder-cursor.dev.coder.com--*

@@ -40,10 +40,9 @@ import { getHeaderCommand } from "../settings/headers";
 import { escapeCommandArg, expandPath } from "../util";
 import {
 	type AuthorityParts,
-	classifyRemoteAuthority,
+	classifySshHost,
 	parseRemoteAuthority,
 	retargetRemoteAuthority,
-	toCurrentAuthorityHostPrefix,
 } from "../util/authority";
 import { createStatusBarItem } from "../util/statusBar";
 import { vscodeProposed } from "../vscodeProposed";
@@ -54,7 +53,6 @@ import { migrateAuthToSecretsStorage } from "./migration";
 import {
 	SshConfig,
 	type SshValues,
-	cleanupStaleSshConfigs,
 	mergeSshConfigValues,
 	parseCoderSshOptions,
 	parseSshConfig,
@@ -164,9 +162,11 @@ export class Remote {
 
 		// parseRemoteAuthority returned null for foreign hosts, so this is
 		// either the current editor's authority or a migratable legacy one.
-		if (classifyRemoteAuthority(parts) === "legacy") {
-			await this.migrateLegacyAuthority(remoteAuthority, startupMode);
-			return;
+		if (classifySshHost(parts.sshHost) === "legacy") {
+			if (await this.migrateLegacyAuthority(remoteAuthority, startupMode)) {
+				return;
+			}
+			// Not reopened: keep going so the legacy host still connects.
 		}
 
 		this.logger.info("Setting up remote connection", {
@@ -676,8 +676,7 @@ export class Remote {
 			this.logger.info("Updating SSH config...");
 			return await this.updateSSHConfig(
 				workspaceClient,
-				context.parts.safeHostname,
-				context.parts.sshHost,
+				context.parts,
 				binaryPath,
 				logDir,
 				featureSet,
@@ -727,10 +726,15 @@ export class Remote {
 		return undefined;
 	}
 
+	/**
+	 * Reopen the window on this editor's own authority. Returns false when the
+	 * workspace cannot be reopened losslessly, so the caller connects over the
+	 * legacy host instead.
+	 */
 	private async migrateLegacyAuthority(
 		remoteAuthority: string,
 		startupMode: StartupMode,
-	): Promise<void> {
+	): Promise<boolean> {
 		const migratedAuthority = retargetRemoteAuthority(remoteAuthority);
 		const workspaceFile = vscode.workspace.workspaceFile;
 		const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
@@ -738,28 +742,26 @@ export class Remote {
 			workspaceFile?.scheme === "untitled" ? undefined : workspaceFile;
 		if (!savedWorkspaceFile && workspaceFolders.length > 1) {
 			this.logger.warn(
-				"Cannot migrate an unsaved multi-root workspace",
+				"Cannot migrate an unsaved multi-root workspace; connecting over the legacy host",
 				remoteAuthority,
 			);
-			const choice = await vscodeProposed.window.showWarningMessage(
-				"Opening the remote over the old coder-vscode SSH host",
-				{
-					modal: true,
-					useCustom: true,
-					detail:
-						"This editor now uses its own SSH hosts, but switching an unsaved multi-root workspace would drop its folders. " +
-						"To switch, save the workspace, then reload the window.",
-				},
-				"Learn More",
-			);
-			if (choice === "Learn More") {
-				await vscode.env.openExternal(
-					vscode.Uri.parse(
-						"https://code.visualstudio.com/docs/editing/workspaces/multi-root-workspaces",
-					),
-				);
-			}
-			return;
+			// Fire-and-forget: the connection proceeds either way.
+			void vscode.window
+				.showWarningMessage(
+					"This workspace still opens over the old coder-vscode SSH host. " +
+						"To switch it to this editor's own host, save the workspace, then reload the window.",
+					"Learn More",
+				)
+				.then(async (choice) => {
+					if (choice === "Learn More") {
+						await vscode.env.openExternal(
+							vscode.Uri.parse(
+								"https://code.visualstudio.com/docs/editing/workspaces/multi-root-workspaces",
+							),
+						);
+					}
+				});
+			return false;
 		}
 
 		await this.serviceContainer
@@ -779,12 +781,13 @@ export class Remote {
 				}),
 				false,
 			);
-			return;
+			return true;
 		}
 		await vscode.commands.executeCommand("vscode.newWindow", {
 			remoteAuthority: migratedAuthority,
 			reuseWindow: true,
 		});
+		return true;
 	}
 
 	private async resolveRemoteBinary(workspaceClient: Api): Promise<string> {
@@ -959,13 +962,14 @@ export class Remote {
 	// all Coder entries.
 	private async updateSSHConfig(
 		restClient: Api,
-		safeHostname: string,
-		hostName: string,
+		parts: AuthorityParts,
 		binaryPath: string,
 		logDir: string,
 		featureSet: FeatureSet,
 		cliAuth: CliAuth,
 	): Promise<SshProperties> {
+		// Taken from the authority, so an unmigrated legacy host keeps working.
+		const { hostPrefix, safeHostname } = parts;
 		// One file per (editor, deployment); the user's config gains one shared include.
 		const sshConfig = new SshConfig(this.getMainSshConfigPath(), this.logger);
 		await sshConfig.load();
@@ -1017,8 +1021,6 @@ export class Remote {
 			userConfig,
 		);
 
-		const hostPrefix = toCurrentAuthorityHostPrefix(safeHostname);
-
 		const proxyCommand = await this.buildProxyCommand(
 			binaryPath,
 			safeHostname,
@@ -1046,15 +1048,14 @@ export class Remote {
 
 		// Write our file before including it, so the include never dangles.
 		await coderConfig.update(sshValues, sshConfigOverrides);
-		const sharedSshConfigDir = this.pathResolver.getSshConfigDir();
-		await sshConfig.updateInclude(sharedSshConfigDir, safeHostname);
-		// Our file was just written, so only other unused deployments are swept.
-		// Never throws, and the connection does not depend on it.
-		void cleanupStaleSshConfigs(sharedSshConfigDir, this.logger);
+		await sshConfig.updateInclude(
+			this.pathResolver.getSshConfigDir(),
+			safeHostname,
+		);
 
 		// Mirror SSH's parse order; RemoteCommand can come from the user's config.
 		return computeSshProperties(
-			hostName,
+			parts.sshHost,
 			`${coderConfig.getRaw()}\n${sshConfig.getRaw()}`,
 		);
 	}

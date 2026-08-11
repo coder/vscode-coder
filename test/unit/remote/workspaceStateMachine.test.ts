@@ -74,6 +74,7 @@ vi.mock("@/remote/terminalOutputChannel", async () => {
 
 const DEFAULT_PARTS: Readonly<AuthorityParts> = {
 	agent: "main",
+	hostPrefix: "coder-vscode.test.coder.com--",
 	sshHost: "coder-vscode--testuser--test-workspace.main",
 	safeHostname: "test.coder.com",
 	username: "testuser",

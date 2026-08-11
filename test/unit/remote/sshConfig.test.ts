@@ -4,7 +4,6 @@ import * as os from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-	cleanupStaleSshConfigs,
 	mergeSshConfigValues,
 	parseCoderSshOptions,
 	parseSshConfig,
@@ -72,10 +71,11 @@ Host coder-vscode--*
 const includeDir = "~/.ssh/coder";
 
 function renderIncludeBlock(dir: string): string {
-	return `# --- START CODER ---
+	return `# --- START CODER INCLUDE CODER-REMOTE ---
+# Managed by each editor's Coder extension (coder.coder-remote).
 # Moves back to the top on connect; override options via coder.sshConfig.
 Include "${dir}/*.conf"
-# --- END CODER ---`;
+# --- END CODER INCLUDE CODER-REMOTE ---`;
 }
 
 const includeBlock = renderIncludeBlock(includeDir);
@@ -265,20 +265,21 @@ describe("SshConfig.updateInclude", () => {
 	it.each<MalformedEditorCase>([
 		{
 			name: "extra end marker",
-			existing: `${includeBlock}\n# --- END CODER ---`,
+			existing: `${includeBlock}\n# --- END CODER INCLUDE CODER-REMOTE ---`,
 			error:
-				'has 1 "# --- START CODER ---" and 2 "# --- END CODER ---" markers',
+				'has 1 "# --- START CODER INCLUDE CODER-REMOTE ---" and 2 "# --- END CODER INCLUDE CODER-REMOTE ---" markers',
 		},
 		{
 			name: "duplicate blocks",
 			existing: `${includeBlock}\n${includeBlock}`,
-			error: 'has 2 "# --- START CODER ---" blocks',
+			error: 'has 2 "# --- START CODER INCLUDE CODER-REMOTE ---" blocks',
 		},
 		{
 			name: "end before start",
-			existing: "# --- END CODER ---\n# --- START CODER ---",
+			existing:
+				"# --- END CODER INCLUDE CODER-REMOTE ---\n# --- START CODER INCLUDE CODER-REMOTE ---",
 			error:
-				'"# --- END CODER ---" marker before its "# --- START CODER ---" marker',
+				'"# --- END CODER INCLUDE CODER-REMOTE ---" marker before its "# --- START CODER INCLUDE CODER-REMOTE ---" marker',
 		},
 	])("rejects $name", async ({ existing, error }) => {
 		await expect(updateInclude(existing)).rejects.toThrow(error);
@@ -406,30 +407,6 @@ describe("persistence", () => {
 		await sshConfig.updateInclude(includeDir, hostname);
 		expect(writeFileSpy).not.toHaveBeenCalled();
 		expect(renameSpy).not.toHaveBeenCalled();
-	});
-});
-
-describe("cleanupStaleSshConfigs", () => {
-	it("removes only generated configs not written for a week", async () => {
-		const dir = "/Path/To/UserHomeDir/ssh";
-		vol.fromJSON({
-			[`${dir}/vscode--old.coder.com.conf`]: "stale",
-			[`${dir}/cursor--fresh.coder.com.conf`]: "fresh",
-			[`${dir}/unrelated.txt`]: "keep",
-		});
-		const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
-		vol.utimesSync(
-			`${dir}/vscode--old.coder.com.conf`,
-			eightDaysAgo,
-			eightDaysAgo,
-		);
-
-		await cleanupStaleSshConfigs(dir, mockLogger);
-
-		expect(Object.keys(vol.toJSON()).sort()).toEqual([
-			`${dir}/cursor--fresh.coder.com.conf`,
-			`${dir}/unrelated.txt`,
-		]);
 	});
 });
 

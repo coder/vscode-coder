@@ -4,11 +4,10 @@ import * as vscode from "vscode";
 import {
 	type AuthorityClassification,
 	type AuthorityParts,
-	classifyRemoteAuthority,
+	classifySshHost,
 	isRemoteAuthorityCompatible,
 	parseRemoteAuthority,
 	retargetRemoteAuthority,
-	toCurrentAuthorityHostPrefix,
 	toRemoteAuthority,
 } from "@/util/authority";
 
@@ -20,6 +19,7 @@ const WINDSURF_AUTHORITY =
 
 const parts = (prefix: string): AuthorityParts => ({
 	agent: "main",
+	hostPrefix: `${prefix}.dev.coder.com--`,
 	sshHost: `${prefix}.dev.coder.com--foo--bar.main`,
 	safeHostname: "dev.coder.com",
 	username: "foo",
@@ -54,7 +54,7 @@ describe("parseRemoteAuthority", () => {
 		"classifies $prefix as $expected in $editor",
 		({ editor, prefix, expected }) => {
 			env.uriScheme = editor;
-			expect(classifyRemoteAuthority(parts(prefix))).toBe(expected);
+			expect(classifySshHost(parts(prefix).sshHost)).toBe(expected);
 		},
 	);
 
@@ -121,6 +121,7 @@ describe("parseRemoteAuthority", () => {
 		({ sshHost, safeHostname, workspace, agent }) => {
 			expect(parseRemoteAuthority(`ssh-remote+${sshHost}`)).toStrictEqual({
 				agent,
+				hostPrefix: `coder-vscode.${safeHostname}--`,
 				sshHost,
 				safeHostname,
 				username: "foo",
@@ -164,16 +165,18 @@ describe("authority construction", () => {
 
 	it("formats the current host prefix", () => {
 		env.uriScheme = "vscode-insiders";
-		expect(toCurrentAuthorityHostPrefix("dev.coder.com")).toBe(
-			"coder-vscode-insiders.dev.coder.com--",
-		);
+		expect(
+			parseRemoteAuthority(
+				"ssh-remote+coder-vscode-insiders.dev.coder.com--foo--bar",
+			)?.hostPrefix,
+		).toBe("coder-vscode-insiders.dev.coder.com--");
 	});
 
 	it("rejects an empty editor URI scheme at prefix construction", () => {
 		env.uriScheme = "";
-		expect(() => toCurrentAuthorityHostPrefix("dev.coder.com")).toThrow(
-			"must not be empty",
-		);
+		expect(() =>
+			toRemoteAuthority("https://dev.coder.com", "foo", "bar", undefined),
+		).toThrow("must not be empty");
 	});
 });
 
