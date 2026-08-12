@@ -5,8 +5,7 @@ import type { Logger } from "./logger";
 /**
  * Wraps a {@link Logger} and prefixes every message with the session ID so all
  * log lines produced during a session can be correlated by searching for a
- * single ID. Composition, not inheritance: it forwards to the underlying
- * channel after tagging the message.
+ * single ID.
  */
 export class SessionLogger implements Logger {
 	constructor(
