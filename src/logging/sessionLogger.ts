@@ -9,7 +9,7 @@ import type { Logger } from "./logger";
  */
 export class SessionLogger implements Logger {
 	constructor(
-		private readonly inner: vscode.LogOutputChannel,
+		private readonly outputChannel: vscode.LogOutputChannel,
 		private readonly sessionId: string,
 	) {}
 
@@ -18,26 +18,26 @@ export class SessionLogger implements Logger {
 	}
 
 	trace(message: string, ...args: unknown[]): void {
-		this.inner.trace(this.prefix(message), ...args);
+		this.outputChannel.trace(this.prefix(message), ...args);
 	}
 
 	debug(message: string, ...args: unknown[]): void {
-		this.inner.debug(this.prefix(message), ...args);
+		this.outputChannel.debug(this.prefix(message), ...args);
 	}
 
 	info(message: string, ...args: unknown[]): void {
-		this.inner.info(this.prefix(message), ...args);
+		this.outputChannel.info(this.prefix(message), ...args);
 	}
 
 	warn(message: string, ...args: unknown[]): void {
-		this.inner.warn(this.prefix(message), ...args);
+		this.outputChannel.warn(this.prefix(message), ...args);
 	}
 
 	error(message: string, ...args: unknown[]): void {
-		this.inner.error(this.prefix(message), ...args);
+		this.outputChannel.error(this.prefix(message), ...args);
 	}
 
 	show(): void {
-		this.inner.show();
+		this.outputChannel.show();
 	}
 }
