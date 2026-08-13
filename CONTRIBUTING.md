@@ -45,7 +45,7 @@ the current editor, and if so we delay activation to:
 
 ```text
 # --- START CODER INCLUDE CODER-REMOTE ---
-# Managed by each editor's Coder extension (coder.coder-remote).
+# Managed by the Coder extension for VS Code and its forks.
 # Moves back to the top on connect; override options via coder.sshConfig.
 Include "~/.local/share/coder.coder-remote/ssh/*.conf"
 # --- END CODER INCLUDE CODER-REMOTE ---

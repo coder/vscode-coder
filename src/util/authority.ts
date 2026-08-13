@@ -33,6 +33,10 @@ function currentAuthorityPrefix(): string {
 	return `coder-${currentEditorId()}`;
 }
 
+/**
+ * Returns an offset, not the host, because retargeting rewrites the prefix in
+ * place. A nested authority puts the SSH remote last.
+ */
 function getSshHostStart(authority: string): number | undefined {
 	if (authority.startsWith(sshRemotePrefix)) {
 		return sshRemotePrefix.length;
@@ -73,8 +77,10 @@ function authorityPrefix(classification: AuthorityClassification): string {
 /**
  * Given an authority, parse into the expected parts.
  *
- * The authority looks like `<scheme>://ssh-remote+<ssh host name>`, where the
- * SSH host names created by this extension match the format:
+ * Authorities arrive without a scheme from `env.remoteAuthority` and
+ * `Uri.authority`, as `ssh-remote+<ssh host name>` or nested behind another
+ * remote, like `dev-container+abc@ssh-remote+<ssh host name>`. The SSH host
+ * names created by this extension match the format:
  *   coder-<editor>.<safeHostname>--<username>--<workspace>(.<agent?>)
  *
  * If this is not a Coder authority, return null.

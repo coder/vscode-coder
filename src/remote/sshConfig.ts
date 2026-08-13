@@ -315,10 +315,7 @@ export class SshConfig {
 		this.logger.debug("Loaded SSH config", this.filePath);
 	}
 
-	/**
-	 * Regenerate the whole per-deployment file; last-writer-wins. Always
-	 * writes, so the file's mtime marks the last connect for the stale sweep.
-	 */
+	/** Regenerate the whole per-deployment file; last-writer-wins. */
 	async update(values: SshValues, overrides?: Record<string, string>) {
 		const block = this.renderDeploymentBlock(values, overrides);
 		this.raw = `${CODER_SSH_CONFIG_HEADER}\n\n${block}`;
@@ -397,7 +394,7 @@ export class SshConfig {
 	private renderIncludeBlock(includeDir: string): string {
 		return [
 			INCLUDE_MARKERS.start,
-			"# Managed by each editor's Coder extension (coder.coder-remote).",
+			"# Managed by the Coder extension for VS Code and its forks.",
 			"# Moves back to the top on connect; override options via coder.sshConfig.",
 			`Include "${this.escapeIncludePath(includeDir)}/*${SSH_CONFIG_EXT}"`,
 			INCLUDE_MARKERS.end,

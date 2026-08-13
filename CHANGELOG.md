@@ -10,18 +10,28 @@
 ### Added
 
 - Add a **Coder: Open Generated SSH Configuration File** command that opens
-  this editor's generated workspace hosts file in a read-only editor.
+  this editor's generated workspace hosts file in a read-only editor. A
+  connected window opens its own deployment's file; a local window asks which
+  deployment to open when there are several.
 
 ### Changed
 
-- Write workspace SSH hosts to an editor-owned file in the extension's global
-  storage and include it from the top of your SSH config, instead of writing
-  the block into your config directly. Each VS Code-based editor gets its own
-  include and SSH host prefix, so VS Code, Cursor, Windsurf, and other clones
-  no longer overwrite one another's proxy settings, and legacy `coder-vscode`
-  authorities are migrated in other editors by automatically reopening the
-  window once. SSH uses the first value it finds for each option, so a
-  catch-all `Host *` can no longer override the connection's `ProxyCommand`.
+- Write workspace SSH hosts to generated files under your platform's data
+  directory (`coder.coder-remote/ssh`) instead of into your SSH config. Your
+  config now carries only an include of that directory, which moves back to the
+  top on every connection. Because ssh uses the first value it finds for each
+  option, global options in your config, such as a catch-all `Host *`, no
+  longer change how the extension connects. To override the generated options,
+  set them in `coder.sshConfig`, which still takes precedence.
+- Generate one file per editor and deployment, all behind the same include, so
+  VS Code, Cursor, Windsurf, and other forks no longer overwrite one another's
+  workspace hosts. Each fork keeps its own SSH host prefix, and legacy
+  `coder-vscode` authorities are migrated by automatically reopening the window
+  once.
+- Stop aborting the connection with "Unexpected SSH Config Option". The include
+  now sits at the top of your config, so the generated options always take
+  effect and there is nothing left to warn about. Validation of the options
+  your deployment sends is unchanged.
 
 ### Fixed
 
