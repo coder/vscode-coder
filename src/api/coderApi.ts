@@ -80,7 +80,6 @@ const coderSessionTokenHeader = "Coder-Session-Token";
 /** W3C baggage header used to propagate the session ID to the server. */
 const baggageHeader = "baggage";
 
-/** Baggage key that carries the client's session ID. */
 const sessionIdBaggageKey = "client_session_id";
 
 /**
