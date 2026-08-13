@@ -161,7 +161,7 @@ describe("CoderApi", () => {
 			const response = await api.getAxiosInstance().get("/api/v2/users/me");
 
 			expect(response.config.headers["baggage"]).toBe(
-				`session_id=${sessionId}`,
+				`client_session_id=${sessionId}`,
 			);
 		});
 

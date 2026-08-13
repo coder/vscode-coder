@@ -80,6 +80,9 @@ const coderSessionTokenHeader = "Coder-Session-Token";
 /** W3C baggage header used to propagate the session ID to the server. */
 const baggageHeader = "baggage";
 
+/** Baggage key that carries the client's session ID. */
+const sessionIdBaggageKey = "client_session_id";
+
 /**
  * Default timeout for REST requests, so requests hung on half-open TCP
  * connections (e.g. after system sleep) don't stall pollers forever.
@@ -157,7 +160,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		client.getAxiosInstance().defaults.timeout = DEFAULT_REQUEST_TIMEOUT_MS;
 		if (sessionId) {
 			client.getAxiosInstance().defaults.headers.common[baggageHeader] =
-				`session_id=${sessionId}`;
+				`${sessionIdBaggageKey}=${sessionId}`;
 		}
 		client.setCredentials(baseUrl, token);
 
@@ -392,7 +395,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		const headers = {
 			...(token ? { [coderSessionTokenHeader]: token } : {}),
 			...(this.sessionId
-				? { [baggageHeader]: `session_id=${this.sessionId}` }
+				? { [baggageHeader]: `${sessionIdBaggageKey}=${this.sessionId}` }
 				: {}),
 			...configs.options?.headers,
 			...headersFromCommand,
