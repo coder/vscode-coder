@@ -3,23 +3,29 @@ import { type ComponentPropsWithRef, useId, useRef } from "react";
 import { cx } from "#cx";
 import { setForwardedRef } from "#ref";
 
+import { StickyScroll } from "./sticky/StickyScroll";
 import "./Tree.css";
 import { TreeRow } from "./TreeRow";
 import { useTreeAdapter, type SelectionProps } from "./useTreeAdapter";
 
 import type { TreeNode } from "./treeModel";
-import type { TreeExpandMode } from "./treePolicy";
+import type { TreeExpandMode, TreeMultiSelectModifier } from "./treePolicy";
 
+/** VS Code's `workbench.tree.stickyScrollMaxItemCount` default. */
+const DEFAULT_STICKY_COUNT = 7;
 const NO_IDS: readonly string[] = [];
 
 /** The tree's own props; everything else lands on the container element. */
-interface TreeOwnProps extends SelectionProps {
+interface TreeOwnProps {
 	readonly nodes: readonly TreeNode[];
 	readonly expandedIds?: readonly string[];
 	readonly onExpandedIdsChange?: (expandedIds: readonly string[]) => void;
 	/** `explorer` aligns leaf icons with branch twisties, as VS Code does. */
 	readonly variant?: "default" | "explorer";
 	readonly expandMode?: TreeExpandMode;
+	readonly multiSelectModifier?: TreeMultiSelectModifier;
+	/** Pins ancestors while scrolling; a number caps how many. */
+	readonly stickyScroll?: boolean | number;
 }
 
 type TreeContainerProps = Omit<
@@ -27,7 +33,7 @@ type TreeContainerProps = Omit<
 	"role" | "onSelect" | "children" | keyof TreeOwnProps
 >;
 
-export type TreeProps = TreeOwnProps & TreeContainerProps;
+export type TreeProps = TreeOwnProps & SelectionProps & TreeContainerProps;
 
 /** Whether the focus or blur target is inside the tree rather than a portal. */
 function ownsTarget(tree: HTMLElement, target: EventTarget | null): boolean {
@@ -39,10 +45,15 @@ export function Tree({
 	nodes,
 	expandedIds = NO_IDS,
 	onExpandedIdsChange,
+	multiSelect,
 	selectedItemId,
 	onSelectedItemChange,
+	selectedItemIds,
+	onSelectedItemsChange,
 	variant = "default",
 	expandMode = "singleClick",
+	multiSelectModifier = "ctrlCmd",
+	stickyScroll = false,
 	className,
 	onFocus,
 	onBlur,
@@ -52,13 +63,16 @@ export function Tree({
 }: TreeProps): React.JSX.Element {
 	const treeRef = useRef<HTMLDivElement>(null);
 	const treeDomId = useId();
+	const selection: SelectionProps = multiSelect
+		? { multiSelect: true, selectedItemIds, onSelectedItemsChange }
+		: { multiSelect: false, selectedItemId, onSelectedItemChange };
 	const adapter = useTreeAdapter({
+		...selection,
 		nodes,
 		expandedIds,
 		onExpandedIdsChange,
-		selectedItemId,
-		onSelectedItemChange,
 		expandMode,
+		multiSelectModifier,
 		onKeyDown,
 		treeRef,
 	});
@@ -75,6 +89,7 @@ export function Tree({
 			aria-activedescendant={
 				adapter.focusedId ? `${treeDomId}-${adapter.focusedId}` : undefined
 			}
+			aria-multiselectable={multiSelect ? true : undefined}
 			className={cx(
 				"ui-tree",
 				variant === "explorer" && "ui-tree--explorer",
@@ -102,6 +117,13 @@ export function Tree({
 			onClick={adapter.onClick}
 			onKeyDown={adapter.onKeyDown}
 		>
+			{stickyScroll ? (
+				<StickyScroll
+					maxCount={stickyScroll === true ? DEFAULT_STICKY_COUNT : stickyScroll}
+					adapter={adapter}
+					treeRef={treeRef}
+				/>
+			) : null}
 			{adapter.model.visibleRows.map((row) => (
 				<TreeRow
 					key={row.node.id}
