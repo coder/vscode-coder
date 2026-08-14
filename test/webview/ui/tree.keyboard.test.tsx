@@ -1,7 +1,13 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import {
+	act,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Tree, type TreeNode, type TreeProps } from "@repo/ui";
+import { Tree, TooltipProvider, type TreeNode, type TreeProps } from "@repo/ui";
 
 import {
 	BASIC_NODES,
@@ -171,6 +177,28 @@ describe("Tree keyboard navigation", () => {
 			press(key);
 			expect(activeRow()).toBe(active);
 		}
+	});
+
+	it("opens the focused row's hover on the show-hover chord", async () => {
+		render(
+			<TooltipProvider delayDuration={0}>
+				<Tree
+					aria-label="Chord"
+					nodes={[
+						{ id: "alpha", label: "Alpha" },
+						{ id: "beta", label: "Beta" },
+					]}
+				/>
+			</TooltipProvider>,
+		);
+		act(() => tree().focus());
+		press("k", { ctrlKey: true });
+		expect(screen.queryByRole("tooltip")).toBeNull();
+		press("i", { ctrlKey: true });
+		expect(await screen.findByRole("tooltip")).toHaveTextContent("Alpha");
+		// Any other key puts it away again.
+		press("ArrowDown");
+		await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
 	});
 
 	describe("type-ahead", () => {

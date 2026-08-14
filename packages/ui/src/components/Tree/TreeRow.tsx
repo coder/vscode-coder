@@ -3,8 +3,9 @@ import { type CSSProperties, memo } from "react";
 import { cx } from "#cx";
 
 import { Icon } from "../Icon/Icon";
+import { Tooltip } from "../Tooltip/Tooltip";
 
-import type { TreeRowModel } from "./treeModel";
+import { rowTooltip, type TreeRowModel } from "./treeModel";
 
 interface TreeRowProps {
 	readonly row: TreeRowModel;
@@ -29,6 +30,14 @@ export const TreeRow = memo(function TreeRow({
 }: TreeRowProps): React.JSX.Element {
 	const { node, expanded } = row;
 	const level = row.pathIds.length + 1;
+	const tooltip = rowTooltip(row);
+	// Native hangs the hover off the label, not the whole row.
+	const label = (
+		<span className="ui-tree-item__content">
+			{node.icon ? <Icon name={node.icon} /> : null}
+			{typeof node.label === "string" ? <span>{node.label}</span> : node.label}
+		</span>
+	);
 	return (
 		<div
 			id={id}
@@ -66,14 +75,7 @@ export const TreeRow = memo(function TreeRow({
 						<Icon name={expanded ? "chevron-down" : "chevron-right"} />
 					)}
 				</span>
-				<span className="ui-tree-item__content">
-					{node.icon ? <Icon name={node.icon} /> : null}
-					{typeof node.label === "string" ? (
-						<span>{node.label}</span>
-					) : (
-						node.label
-					)}
-				</span>
+				{tooltip ? <Tooltip content={tooltip}>{label}</Tooltip> : label}
 				{/* Native keeps a row's actions live on plain hover; CSS reveals them. */}
 				{node.action ? (
 					<span className="ui-tree-item__action">{node.action}</span>

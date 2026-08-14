@@ -14,6 +14,8 @@ type TreeNodeLabel =
 export type TreeNode = TreeNodeLabel & {
 	readonly id: string;
 	readonly icon?: CodiconName;
+	/** Hover content; defaults to the text value, `null` opts out. */
+	readonly tooltip?: ReactNode;
 	readonly action?: ReactNode;
 	readonly className?: string;
 	readonly children?: readonly TreeNode[];
@@ -38,6 +40,12 @@ export interface TreeModel {
 	readonly rows: readonly TreeRowModel[];
 	readonly rowsById: ReadonlyMap<string, TreeRowModel>;
 	readonly visibleIds: ReadonlySet<string>;
+}
+
+/** The row's hover content; empty when the node opts out. */
+export function rowTooltip(row: TreeRowModel): ReactNode {
+	const { tooltip } = row.node;
+	return tooltip === undefined ? row.textValue : tooltip;
 }
 
 export function parentId(row: TreeRowModel): string | undefined {
