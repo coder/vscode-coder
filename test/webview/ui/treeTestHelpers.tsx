@@ -3,6 +3,16 @@ import { useState } from "react";
 
 import { Tree, type TreeNode, type TreeProps } from "@repo/ui";
 
+/**
+ * Tree props as a test writes them. `TreeProps` is a union over the selection
+ * APIs, and a spread does not keep track of which side it is on, so the harness
+ * re-asserts it at the one point it renders.
+ */
+export type TreeTestProps = Partial<TreeProps> & {
+	readonly nodes: readonly TreeNode[];
+};
+const asTreeProps = (props: object): TreeProps => props as TreeProps;
+
 /** A branch of two plus a leaf: depth, sibling order, and hideable rows. */
 export const BASIC_NODES: readonly TreeNode[] = [
 	{
@@ -52,8 +62,10 @@ export const expandedRows = (): string[] =>
  * Sends a key to the container, where DOM focus lives; `from` targets a row, as
  * a click leaves it. Returns false when the tree claimed the key.
  */
-export const press = (key: string, from?: string): boolean =>
-	fireEvent.keyDown(from ? row(from) : tree(), { key });
+export const press = (
+	key: string,
+	{ from, ...init }: { from?: string } & KeyboardEventInit = {},
+): boolean => fireEvent.keyDown(from ? row(from) : tree(), { key, ...init });
 
 export const clickRow = (name: string, init?: MouseEventInit): void => {
 	fireEvent.click(row(name), init);
@@ -75,36 +87,60 @@ export const activeGuides = (name: string): boolean[] =>
 	);
 
 /** A fully controlled Tree, for tests that drive the props themselves. */
-export function renderTree(props: TreeProps) {
-	const view = render(<Tree {...props} />);
+export function renderTree(props: TreeTestProps) {
+	const view = render(<Tree {...asTreeProps(props)} />);
 	return {
 		...view,
 		/** Re-renders with props changed, as a consumer's state would. */
-		update: (next: Partial<TreeProps>): void =>
-			view.rerender(<Tree {...props} {...next} />),
+		update: (next: Partial<TreeTestProps>): void =>
+			view.rerender(<Tree {...asTreeProps({ ...props, ...next })} />),
 	};
 }
 
+interface Recorder {
+	readonly selectedItemId: Array<string | undefined>;
+	readonly selectedItemIds: Array<readonly string[]>;
+	readonly expandedIds: Array<readonly string[]>;
+}
+
 function StatefulTree({
-	onSelectedItemChange,
-	onExpandedIdsChange,
-	...props
-}: TreeProps): React.JSX.Element {
-	const [selectedItemId, setSelectedItemId] = useState(props.selectedItemId);
+	props,
+	record,
+}: {
+	props: TreeTestProps;
+	record: Recorder;
+}): React.JSX.Element {
+	const [selectedId, setSelectedId] = useState(props.selectedItemId);
+	const [selectedIds, setSelectedIds] = useState(props.selectedItemIds ?? []);
 	const [expandedIds, setExpandedIds] = useState(props.expandedIds);
+	const selection = props.multiSelect
+		? {
+				multiSelect: true,
+				selectedItemIds: selectedIds,
+				onSelectedItemsChange: (ids: readonly string[]) => {
+					record.selectedItemIds.push(ids);
+					setSelectedIds(ids);
+				},
+			}
+		: {
+				multiSelect: false,
+				selectedItemId: selectedId,
+				onSelectedItemChange: (id: string | undefined) => {
+					record.selectedItemId.push(id);
+					setSelectedId(id);
+				},
+			};
 	return (
 		<Tree
-			{...props}
-			selectedItemId={selectedItemId}
-			onSelectedItemChange={(id) => {
-				onSelectedItemChange?.(id);
-				setSelectedItemId(id);
-			}}
-			expandedIds={expandedIds}
-			onExpandedIdsChange={(ids) => {
-				onExpandedIdsChange?.(ids);
-				setExpandedIds(ids);
-			}}
+			{...asTreeProps({
+				...props,
+				...selection,
+				expandedIds,
+				onExpandedIdsChange: (ids: readonly string[]) => {
+					record.expandedIds.push(ids);
+					setExpandedIds(ids);
+				},
+			})}
 		/>
 	);
 }
@@ -113,15 +149,12 @@ function StatefulTree({
  * A Tree that keeps its own state, so a gesture's result lands in the DOM.
  * `emitted` records what it reported to its consumer, newest last.
  */
-export function renderStatefulTree(props: TreeProps) {
-	const selection: Array<string | undefined> = [];
-	const expandedIds: Array<readonly string[]> = [];
-	const view = render(
-		<StatefulTree
-			{...props}
-			onSelectedItemChange={(id) => selection.push(id)}
-			onExpandedIdsChange={(ids) => expandedIds.push(ids)}
-		/>,
-	);
-	return { ...view, emitted: { selection, expandedIds } };
+export function renderStatefulTree(props: TreeTestProps) {
+	const emitted: Recorder = {
+		selectedItemId: [],
+		selectedItemIds: [],
+		expandedIds: [],
+	};
+	const view = render(<StatefulTree props={props} record={emitted} />);
+	return { ...view, emitted };
 }

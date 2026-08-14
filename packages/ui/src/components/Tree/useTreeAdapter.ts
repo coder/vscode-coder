@@ -1,12 +1,25 @@
 import { type KeyboardEvent, type MouseEvent, useMemo, useState } from "react";
 
-import { closestRow, nestedInteractiveTarget } from "./rowDom";
-import { createTreeModel, type TreeNode, type TreeRowModel } from "./treeModel";
 import {
+	closestRow,
+	hitTwistie,
+	nestedInteractiveTarget,
+	scrollableAncestor,
+} from "./rowDom";
+import {
+	createTreeModel,
+	ROW_HEIGHT_PX,
+	type TreeNode,
+	type TreeRowModel,
+} from "./treeModel";
+import {
+	isSelectionGesture,
 	keyboardCommands,
 	pointerCommands,
 	type TreeCommand,
+	type TreeCommandBehavior,
 	type TreeExpandMode,
+	type TreeMultiSelectModifier,
 } from "./treePolicy";
 import {
 	deriveTreeInteractionView,
@@ -20,16 +33,29 @@ import {
 const NO_IDS: readonly string[] = [];
 const NO_GUIDES = "";
 
-export interface SelectionProps {
-	readonly selectedItemId?: string;
-	readonly onSelectedItemChange?: (itemId: string | undefined) => void;
-}
+/** Single selection, or multi-selection, never a mix of the two APIs. */
+export type SelectionProps =
+	| {
+			readonly multiSelect?: false;
+			readonly selectedItemId?: string;
+			readonly onSelectedItemChange?: (itemId: string | undefined) => void;
+			readonly selectedItemIds?: never;
+			readonly onSelectedItemsChange?: never;
+	  }
+	| {
+			readonly multiSelect: true;
+			readonly selectedItemIds?: readonly string[];
+			readonly onSelectedItemsChange?: (itemIds: readonly string[]) => void;
+			readonly selectedItemId?: never;
+			readonly onSelectedItemChange?: never;
+	  };
 
-interface AdapterOptions extends SelectionProps {
+interface AdapterOptions {
 	readonly nodes: readonly TreeNode[];
 	readonly expandedIds: readonly string[];
 	readonly onExpandedIdsChange?: (expandedIds: readonly string[]) => void;
 	readonly expandMode: TreeExpandMode;
+	readonly multiSelectModifier: TreeMultiSelectModifier;
 	readonly onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;
 	readonly treeRef: React.RefObject<HTMLDivElement | null>;
 }
@@ -41,20 +67,21 @@ function rowElement(tree: HTMLElement | null, id: string): HTMLElement | null {
 	);
 }
 
-function hitTwistie(row: TreeRowModel, target: EventTarget): boolean {
-	return (
-		row.expanded !== undefined &&
-		target instanceof Element &&
-		target.closest(".ui-tree-item__chevron") !== null
-	);
+function controlledIds(selection: SelectionProps): readonly string[] {
+	if (selection.multiSelect) {
+		return selection.selectedItemIds ?? NO_IDS;
+	}
+	return selection.selectedItemId === undefined
+		? NO_IDS
+		: [selection.selectedItemId];
 }
 
 /**
  * Where the pure modules meet React and the DOM. Events arrive delegated from
  * the container, which leaves rows as memoized presentation.
  */
-export function useTreeAdapter(options: AdapterOptions) {
-	const { nodes, expandedIds, expandMode, treeRef } = options;
+export function useTreeAdapter(options: AdapterOptions & SelectionProps) {
+	const { nodes, expandedIds, treeRef } = options;
 	// Explicit: memoized rows compare against these row objects, and a consumer
 	// of the published package may not run the React Compiler.
 	const model = useMemo(
@@ -62,27 +89,75 @@ export function useTreeAdapter(options: AdapterOptions) {
 		[nodes, expandedIds],
 	);
 	const { visibleRows, rowsById } = model;
-	const selectedItemIds =
-		options.selectedItemId === undefined ? NO_IDS : [options.selectedItemId];
-	const [state, setState] = useState<TreeInteractionState>(
-		initialTreeInteractionState,
+	const selected = controlledIds(options);
+	const [state, setState] = useState<TreeInteractionState>(() =>
+		initialTreeInteractionState(selected),
 	);
-	const view = deriveTreeInteractionView(state, model, selectedItemIds);
+	const view = deriveTreeInteractionView(state, model, selected);
 	// Identity, not value: the view returns this same state unless the data
 	// moved, and then the reconciled one renders instead.
 	if (view.state !== state) {
 		setState(view.state);
 	}
+	const behavior: TreeCommandBehavior = {
+		expandMode: options.expandMode,
+		multiSelect: Boolean(options.multiSelect),
+		multiSelectModifier: options.multiSelectModifier,
+	};
+
+	/**
+	 * How far a page key travels: to the far edge of the viewport, or a whole
+	 * viewport once the focused row is already sitting on it.
+	 */
+	const pageOffset = (row: TreeRowModel, direction: 1 | -1): number => {
+		const tree = treeRef.current;
+		const scroller = tree ? scrollableAncestor(tree) : undefined;
+		if (!tree || !scroller) {
+			return direction;
+		}
+		const viewport = scroller.getBoundingClientRect();
+		if (viewport.height > 0) {
+			const inView = [
+				...tree.querySelectorAll<HTMLElement>("[data-tree-id]"),
+			].filter((element) => {
+				const bounds = element.getBoundingClientRect();
+				return bounds.bottom > viewport.top && bounds.top < viewport.bottom;
+			});
+			const edge = direction === 1 ? inView.at(-1) : inView[0];
+			const edgeId = edge?.dataset.treeId;
+			const edgeRow = edgeId ? rowsById.get(edgeId) : undefined;
+			const offset = edgeRow
+				? visibleRows.indexOf(edgeRow) - visibleRows.indexOf(row)
+				: 0;
+			if (offset !== 0) {
+				return offset;
+			}
+			scroller.scrollBy?.(0, direction * scroller.clientHeight);
+		}
+		return (
+			direction * Math.max(1, Math.floor(scroller.clientHeight / ROW_HEIGHT_PX))
+		);
+	};
 
 	const dispatch = (commands: readonly TreeCommand[]): void => {
+		const move = commands.find((command) => command.type === "move");
+		const moved = move ? rowsById.get(move.id) : undefined;
 		const result = transitionTree(state, commands, {
 			model,
-			controlledIds: selectedItemIds,
+			controlledIds: selected,
 			expandedIds,
+			multiSelect: behavior.multiSelect,
+			pageOffset:
+				move?.page && moved ? pageOffset(moved, move.offset) : undefined,
+			now: Date.now(),
 		});
 		setState(result.state);
 		if (result.selection) {
-			options.onSelectedItemChange?.(result.selection[0]);
+			if (options.multiSelect) {
+				options.onSelectedItemsChange?.(result.selection);
+			} else {
+				options.onSelectedItemChange?.(result.selection[0]);
+			}
 		}
 		if (result.expandedIds) {
 			options.onExpandedIdsChange?.(result.expandedIds);
@@ -103,8 +178,29 @@ export function useTreeAdapter(options: AdapterOptions) {
 		if (row && target === closestRow(target)) {
 			setState((current) => rowFocused(current, row, view.controlledKey));
 		}
-		const entered = row ?? rowsById.get(view.tabStopId ?? "");
+		// Only an entry with no focus target adopts a row: a focus mark the same
+		// gesture just cleared must not come back when focus returns here.
+		const entered = view.state.focusTarget
+			? undefined
+			: (row ?? rowsById.get(view.tabStopId ?? ""));
 		setState((current) => treeFocusChanged(current, true, entered));
+	};
+	const onPointer = (
+		row: TreeRowModel,
+		event: MouseEvent,
+		onTwistie: boolean,
+		source: "row" | "sticky",
+	): void => {
+		dispatch(
+			pointerCommands({
+				...behavior,
+				row,
+				source,
+				onTwistie,
+				detail: event.detail,
+				modifiers: event,
+			}),
+		);
 	};
 	const onClick = (event: MouseEvent<HTMLDivElement>): void => {
 		const element = closestRow(event.target);
@@ -120,15 +216,7 @@ export function useTreeAdapter(options: AdapterOptions) {
 		) {
 			return;
 		}
-		dispatch(
-			pointerCommands({
-				expandMode,
-				row,
-				onTwistie: hitTwistie(row, event.target),
-				detail: event.detail,
-				altKey: event.altKey,
-			}),
-		);
+		onPointer(row, event, hitTwistie(row, event.target), "row");
 	};
 	const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
 		options.onKeyDown?.(event);
@@ -148,7 +236,7 @@ export function useTreeAdapter(options: AdapterOptions) {
 			event.currentTarget,
 		);
 		const result = keyboardCommands({
-			expandMode,
+			...behavior,
 			key: event.key,
 			row,
 			visibleRows,
@@ -157,6 +245,7 @@ export function useTreeAdapter(options: AdapterOptions) {
 				interactive.dataset.treeId === undefined,
 			selectedCount: view.selectedIds.size,
 			hasFocusedRow: view.focusedId !== undefined,
+			modifiers: event,
 		});
 		if (result.focusRowElementId) {
 			rowElement(treeRef.current, result.focusRowElementId)?.focus();
@@ -181,9 +270,14 @@ export function useTreeAdapter(options: AdapterOptions) {
 						.map((id) => (view.guideOwnerIds.has(id) ? "1" : "0"))
 						.join(""),
 		dispatch,
+		isSelectionGesture: (event: MouseEvent) =>
+			isSelectionGesture(event, behavior),
 		onFocusIn,
 		onBlurOut: () => setState((current) => treeFocusChanged(current, false)),
 		onClick,
+		onPointer,
 		onKeyDown,
 	};
 }
+
+export type TreeAdapter = ReturnType<typeof useTreeAdapter>;

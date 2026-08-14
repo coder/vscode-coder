@@ -37,7 +37,7 @@ function focusRow(
 	model: TreeModel,
 	controlledIds: readonly string[] = [],
 ): TreeInteractionState {
-	const state = initialTreeInteractionState();
+	const state = initialTreeInteractionState(controlledIds);
 	const { controlledKey } = deriveTreeInteractionView(
 		state,
 		model,
@@ -59,12 +59,16 @@ const transition = (
 	overrides: {
 		expandedIds?: readonly string[];
 		controlledIds?: readonly string[];
+		multiSelect?: boolean;
+		now?: number;
 	} = {},
 ) =>
 	transitionTree(state, commands, {
 		model,
 		controlledIds: overrides.controlledIds ?? [],
 		expandedIds: overrides.expandedIds ?? ["parent"],
+		multiSelect: overrides.multiSelect ?? false,
+		now: overrides.now ?? 0,
 	});
 
 describe("deriveTreeInteractionView", () => {
@@ -96,12 +100,24 @@ describe("deriveTreeInteractionView", () => {
 	it("gives an unclaimed selection the tab stop, until focus claims it", () => {
 		const state = focusRow("parent", OPEN);
 		expect(view(state, OPEN, ["last"]).tabStopId).toBe("last");
-		const claimed = transition(state, [{ type: "select", id: "last" }], OPEN);
+		const claimed = transition(
+			state,
+			[
+				{
+					type: "select",
+					id: "last",
+					toggle: false,
+					range: false,
+					preserveHidden: true,
+				},
+			],
+			OPEN,
+		);
 		expect(view(claimed.state, OPEN, ["last"]).tabStopId).toBe("parent");
 	});
 
 	it("draws guides down to the selected row, and the focused one when in focus", () => {
-		const selected = view(initialTreeInteractionState(), OPEN, ["child"]);
+		const selected = view(initialTreeInteractionState([]), OPEN, ["child"]);
 		expect([...selected.guideOwnerIds]).toEqual(["parent"]);
 		const blurred = view(focusRow("child", OPEN), OPEN);
 		expect([...blurred.guideOwnerIds]).toEqual([]);
@@ -135,13 +151,13 @@ describe("transitionTree", () => {
 		const state = focusRow("parent", OPEN);
 		const down = transition(
 			state,
-			[{ type: "move", id: "parent", offset: 1 }],
+			[{ type: "move", id: "parent", offset: 1, page: false, extend: false }],
 			OPEN,
 		);
 		expect(down.state.focusTarget?.id).toBe("child");
 		const up = transition(
 			state,
-			[{ type: "move", id: "parent", offset: -1 }],
+			[{ type: "move", id: "parent", offset: -1, page: false, extend: false }],
 			OPEN,
 		);
 		expect(up.state.focusTarget?.id).toBe("parent");
@@ -149,7 +165,7 @@ describe("transitionTree", () => {
 
 	it("emits expansion in tree order, keeping ids the data does not have yet", () => {
 		const expanded = transition(
-			initialTreeInteractionState(),
+			initialTreeInteractionState([]),
 			[{ type: "toggle", id: "parent", recursive: false }],
 			CLOSED,
 			{ expandedIds: ["ghost"] },
@@ -172,11 +188,148 @@ describe("transitionTree", () => {
 			new Set(["one"]),
 		);
 		const expanded = transition(
-			initialTreeInteractionState(),
+			initialTreeInteractionState([]),
 			[{ type: "toggle", id: "root", recursive: true }],
 			nested,
 			{ expandedIds: ["one"] },
 		);
 		expect(expanded.expandedIds).toEqual(["root", "one", "two"]);
+	});
+});
+
+describe("multi-selection", () => {
+	const withSelection = (ids: readonly string[]) => ({
+		controlledIds: ids,
+		multiSelect: true,
+	});
+
+	it("keeps the anchor when a controlled selection only reorders", () => {
+		const state = initialTreeInteractionState(["child", "last"]);
+		expect(view(state, OPEN, ["last", "child"]).anchorId).toBe("child");
+	});
+
+	it("adds to and removes from the selection when toggling", () => {
+		const added = transition(
+			initialTreeInteractionState(["child"]),
+			[
+				{
+					type: "select",
+					id: "last",
+					toggle: true,
+					range: false,
+					preserveHidden: true,
+				},
+			],
+			OPEN,
+			withSelection(["child"]),
+		);
+		expect(added.selection).toEqual(["child", "last"]);
+		const removed = transition(
+			initialTreeInteractionState(["child", "last"]),
+			[
+				{
+					type: "select",
+					id: "last",
+					toggle: true,
+					range: false,
+					preserveHidden: true,
+				},
+			],
+			OPEN,
+			withSelection(["child", "last"]),
+		);
+		expect(removed.selection).toEqual(["child"]);
+	});
+
+	it("selects the range from the anchor, in tree order", () => {
+		const anchored = focusRow("parent", OPEN, ["parent"]);
+		const ranged = transition(
+			anchored,
+			[
+				{
+					type: "select",
+					id: "last",
+					toggle: false,
+					range: true,
+					preserveHidden: false,
+				},
+			],
+			OPEN,
+			withSelection(["parent"]),
+		);
+		expect(ranged.selection).toEqual(["parent", "child", "last"]);
+	});
+
+	it("extends the selection as a Shift move travels", () => {
+		const extended = transition(
+			initialTreeInteractionState(["parent"]),
+			[{ type: "move", id: "parent", offset: 1, page: false, extend: true }],
+			OPEN,
+			withSelection(["parent"]),
+		);
+		expect(extended.selection).toEqual(["parent", "child"]);
+		expect(extended.state.focusTarget?.id).toBe("child");
+	});
+
+	it("moves a page by the offset the scroller measured", () => {
+		const paged = transition(
+			initialTreeInteractionState([]),
+			[{ type: "move", id: "parent", offset: 1, page: true, extend: false }],
+			OPEN,
+		);
+		expect(paged.state.focusTarget?.id).toBe("child");
+	});
+
+	it("scopes select-all to the sibling group, then widens to the parent", () => {
+		const group = transition(
+			initialTreeInteractionState([]),
+			[{ type: "selectScope", id: "child" }],
+			OPEN,
+			withSelection([]),
+		);
+		expect(group.selection).toEqual(["child"]);
+		const widened = transition(
+			initialTreeInteractionState(["child"]),
+			[{ type: "selectScope", id: "child" }],
+			OPEN,
+			withSelection(["child"]),
+		);
+		expect(widened.selection).toEqual(["parent", "child"]);
+	});
+
+	it("resets the anchor on dismiss", () => {
+		const dismissed = transition(
+			focusRow("child", OPEN, ["child"]),
+			[{ type: "dismiss", clearSelection: true, clearFocus: false }],
+			OPEN,
+			{ controlledIds: ["child"] },
+		);
+		expect(dismissed.state.anchorId).toBeUndefined();
+	});
+
+	it("buffers type-ahead keys until the query expires", () => {
+		const first = transition(
+			initialTreeInteractionState([]),
+			[{ type: "typeahead", id: "parent", key: "l" }],
+			OPEN,
+			{ now: 1000 },
+		);
+		expect(first.state.focusTarget?.id).toBe("last");
+		expect(first.state.typeQuery).toBe("l");
+		// Within the window the keys join into one query; after it they do not.
+		const joined = transition(
+			first.state,
+			[{ type: "typeahead", id: "last", key: "a" }],
+			OPEN,
+			{ now: 1100 },
+		);
+		expect(joined.state.typeQuery).toBe("la");
+		const expired = transition(
+			first.state,
+			[{ type: "typeahead", id: "last", key: "a" }],
+			OPEN,
+			{ now: 9000 },
+		);
+		expect(expired.state.typeQuery).toBe("a");
 	});
 });

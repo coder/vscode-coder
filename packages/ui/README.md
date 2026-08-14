@@ -54,7 +54,7 @@ that override live.
 ## Tree
 
 `Tree` is controlled: `nodes` describe the hierarchy, `expandedIds` controls
-branches, and `selectedItemId` controls selection. Each
+branches, and the single- or multi-selection props control selection. Each
 visible node renders as a flat `treeitem`, while normal keyboard navigation
 keeps DOM focus on the `tree` container and identifies the active row with
 `aria-activedescendant`. Focus and selection are independent.
@@ -87,7 +87,8 @@ whose children are still loading. `icon`, `action`, and `className` customize
 the row. Actions stay live on plain hover, as in the native list, and are
 isolated from row selection and expansion.
 
-Arrow Up/Down, Home, and End move the active row through visible rows. Arrow Right
+Arrow Up/Down, Home, End, PageUp/PageDown, and buffered prefix/fuzzy typing
+move the active row through visible rows. Arrow Right
 expands a branch or enters it; Arrow Left collapses it or moves to its parent.
 
 `expandMode="singleClick"` is the default: clicking a branch selects
@@ -95,11 +96,36 @@ and toggles it, and Enter does the same. With `expandMode="doubleClick"`, a
 single click or Enter only selects and a double click toggles expansion. Space
 toggles a branch without selecting it, or selects a leaf. A normal-row twistie
 toggles without changing selection. Alt-click recursively toggles descendant
-branches.
+branches unless Alt is configured as the multi-selection modifier.
 
-Escape clears selection, then the active focus mark. Once neither remains,
-Escape is left to the host. The root `onKeyDown` runs first, so a host
+Escape clears selection. It also clears the active focus mark when the tree has
+at most one selected row; after a larger multi-selection, a second Escape
+clears the remaining focus mark. Once neither selection nor a focus mark
+remains, Escape is left to the host. The root `onKeyDown` runs first, so a host
 can intercept shortcuts with `preventDefault()`.
+
+`multiSelect` uses `selectedItemIds` and `onSelectedItemsChange` and sets
+`aria-multiselectable`. `multiSelectModifier` chooses the toggle modifier:
+`"ctrlCmd"` (the default) uses Ctrl/Cmd and `"alt"` uses Alt. Shift-click and
+Shift+Arrow extend from the selection anchor; modifier clicks take precedence
+over expansion. Ctrl/Cmd+A selects the visible rows in the active sibling
+scope.
+
+`stickyScroll` pins ancestors against the nearest scrolling ancestor. `true`
+uses a maximum of seven pinned rows; a number supplies the maximum, and the
+widget is also capped at 40% of the viewport. The pinned region is a separate
+tab stop: Arrow Up/Down move among pinned ancestors, Arrow Down/Right from the
+deepest row enters its first visible child, Enter reveals, focuses, and selects
+the real row, Arrow Left reveals and focuses it and collapses an expanded
+branch, and Space only reveals and focuses it. A plain pointer click reveals,
+focuses, and selects; a pinned twistie additionally toggles the branch.
+Selection-modifier clicks update selection without revealing the real row.
+
+Webviews do not receive `workbench.tree.*` settings automatically. Consumers
+that mirror native sticky-scroll preferences must read
+`workbench.tree.enableStickyScroll` and
+`workbench.tree.stickyScrollMaxItemCount` in the extension host and send the
+values to the webview.
 
 ```mermaid
 flowchart LR
@@ -113,6 +139,7 @@ flowchart LR
   Commands --> Transition
   Transition --> Adapter[useTreeAdapter.ts]
   Adapter --> Rows[Tree.tsx and TreeRow.tsx]
+  Adapter --> Sticky[StickyScroll.tsx]
 ```
 
 The model, policy, and transitions stay pure. The adapter owns React and DOM
