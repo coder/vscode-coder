@@ -9,6 +9,7 @@ import {
 	VscodeToolbarButton,
 } from "@vscode-elements/react-elements";
 import { useState } from "react";
+import { expect, waitFor } from "storybook/test";
 
 import { Button } from "./components/Button/Button";
 import {
@@ -184,11 +185,13 @@ const MenuParity = (): React.JSX.Element => (
 		style={{
 			display: "grid",
 			gridTemplateColumns: "220px 220px",
-			gap: "16px",
+			gap: "8px 16px",
 			alignItems: "start",
 			fontSize: "13px",
 		}}
 	>
+		<strong>Ours</strong>
+		<strong>VS Code Elements</strong>
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
 				<Button variant="secondary">Menu</Button>
@@ -230,5 +233,15 @@ export const Menu: Story = {
 	render: () => <MenuParity />,
 	play: async ({ canvasElement }) => {
 		await openMenu(canvasElement, "Menu");
+		const reference = canvasElement.querySelector("vscode-context-menu");
+		await expect(reference).not.toBeNull();
+		// Opening our portalled menu clicks outside the reference menu. Reopen
+		// it after that click so Pixel always captures both implementations.
+		reference?.setAttribute("show", "");
+		await waitFor(() =>
+			expect(
+				reference?.shadowRoot?.querySelector(".context-menu"),
+			).not.toBeNull(),
+		);
 	},
 };
