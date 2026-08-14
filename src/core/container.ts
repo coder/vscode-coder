@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
 import { AuthTelemetry } from "../instrumentation/auth";
-import { SessionLogger } from "../logging/sessionLogger";
+import { prefixLogger } from "../logging/prefixLogger";
 import { LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthCallback } from "../oauth/oauthCallback";
 import { buildSession, extractExtensionVersion } from "../telemetry/event";
@@ -51,7 +51,7 @@ export class ServiceContainer implements vscode.Disposable {
 		// One session ID per activation, shared by logs, API requests,
 		// telemetry, and the CLI so all data for a session correlates.
 		this.sessionId = newSessionId();
-		this.logger = new SessionLogger(this.outputChannel, this.sessionId);
+		this.logger = prefixLogger(this.outputChannel, `[${this.sessionId}]`);
 		this.pathResolver = new PathResolver(
 			context.globalStorageUri.fsPath,
 			context.logUri.fsPath,
