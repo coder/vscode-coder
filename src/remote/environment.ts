@@ -7,7 +7,7 @@ import type {
 } from "vscode";
 
 type Environment = Record<string, string | undefined>;
-type SshEnvironment = Partial<
+type SshProxyEnvironment = Partial<
 	Record<"HTTP_PROXY" | "HTTPS_PROXY" | "NO_PROXY", string>
 >;
 
@@ -70,7 +70,7 @@ export function applySshEnvironment(
 /** The proxy portion of the SSH environment, derived from VS Code's settings. */
 export function getSshProxyEnvironment(
 	cfg: Pick<WorkspaceConfiguration, "get">,
-): SshEnvironment {
+): SshProxyEnvironment {
 	if (cfg.get<string>("http.proxySupport") === "off") {
 		return {};
 	}
