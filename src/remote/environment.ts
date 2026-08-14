@@ -1,4 +1,5 @@
 import { joinNoProxy } from "../api/proxy";
+import { sessionId } from "../core/sessionId";
 
 import type {
 	GlobalEnvironmentVariableCollection,
@@ -41,7 +42,6 @@ export function applySshEnvironment(
 		GlobalEnvironmentVariableCollection,
 		"persistent" | "replace" | "clear"
 	>,
-	sessionId: string,
 	env: Environment = process.env,
 ): { dispose(): void } {
 	const values: Environment = {

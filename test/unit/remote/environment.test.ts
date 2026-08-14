@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { sessionId } from "@/core/sessionId";
 import {
 	applySshEnvironment,
 	getSshProxyEnvironment,
@@ -14,8 +15,7 @@ import {
 } from "../../mocks/testHelpers";
 
 const proxyEnv = { HTTP_PROXY: proxy, HTTPS_PROXY: proxy };
-const TEST_SESSION_ID = "0123456789abcdef0123456789abcdef";
-const sessionEnv = { CODER_TRACE_SESSION_ID: TEST_SESSION_ID };
+const sessionEnv = { CODER_TRACE_SESSION_ID: sessionId };
 type Environment = Record<string, string | undefined>;
 
 beforeEach(() => {
@@ -119,7 +119,6 @@ describe("applySshEnvironment", () => {
 		const applied = applySshEnvironment(
 			config(withProxy({ "coder.proxyBypass": "internal.example.com" })),
 			collection,
-			TEST_SESSION_ID,
 			env,
 		);
 
@@ -136,7 +135,7 @@ describe("applySshEnvironment", () => {
 		const env: Environment = {};
 		const collection = fakeEnvCollection();
 
-		applySshEnvironment(config(), collection, TEST_SESSION_ID, env);
+		applySshEnvironment(config(), collection, env);
 
 		expect(env).toEqual(sessionEnv);
 		expect(collection.vars).toEqual(sessionEnv);
@@ -153,7 +152,6 @@ describe("applySshEnvironment", () => {
 		applySshEnvironment(
 			config(withProxy({ "http.proxySupport": "off" })),
 			collection,
-			TEST_SESSION_ID,
 			env,
 		);
 
@@ -171,7 +169,6 @@ describe("applySshEnvironment", () => {
 		const applied = applySshEnvironment(
 			config(withProxy()),
 			fakeEnvCollection(),
-			TEST_SESSION_ID,
 			env,
 		);
 
@@ -188,7 +185,6 @@ describe("applySshEnvironment", () => {
 		const applied = applySshEnvironment(
 			config(withProxy()),
 			fakeEnvCollection(),
-			TEST_SESSION_ID,
 			env,
 		);
 		expect(env.HTTP_PROXY).toBe(proxy);
@@ -203,7 +199,6 @@ describe("applySshEnvironment", () => {
 		const applied = applySshEnvironment(
 			config(withProxy()),
 			fakeEnvCollection(),
-			TEST_SESSION_ID,
 		);
 
 		try {

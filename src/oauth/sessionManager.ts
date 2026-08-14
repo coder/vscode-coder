@@ -70,7 +70,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 			container.getLogger(),
 			onAuthRequired,
 			new AuthTelemetry(container.getTelemetryService()),
-			container.getSessionId(),
 		);
 		manager.setupTokenListener();
 		manager.scheduleNextRefresh();
@@ -83,7 +82,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 		private readonly logger: Logger,
 		private readonly onAuthRequired: () => Promise<void>,
 		private readonly authTelemetry: AuthTelemetry,
-		private readonly sessionId: string,
 	) {}
 
 	/**
@@ -301,13 +299,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		}) => Promise<T>,
 	): Promise<T> {
 		const deployment = this.requireDeployment();
-		const client = CoderApi.create(
-			deployment.url,
-			token,
-			this.logger,
-			undefined,
-			this.sessionId,
-		);
+		const client = CoderApi.create(deployment.url, token, this.logger);
 		try {
 			const axiosInstance = client.getAxiosInstance();
 			const metadataClient = new OAuthMetadataClient(
@@ -467,13 +459,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		deployment: Deployment,
 		accessToken: string,
 	): Promise<string | undefined> {
-		const client = CoderApi.create(
-			deployment.url,
-			accessToken,
-			this.logger,
-			undefined,
-			this.sessionId,
-		);
+		const client = CoderApi.create(deployment.url, accessToken, this.logger);
 		try {
 			return (await client.getAuthenticatedUser()).username;
 		} catch (error) {

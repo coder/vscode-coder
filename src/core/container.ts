@@ -6,7 +6,6 @@ import { shortId } from "../logging/utils";
 import { LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthCallback } from "../oauth/oauthCallback";
 import { buildSession, extractExtensionVersion } from "../telemetry/event";
-import { newSessionId } from "../telemetry/ids";
 import { TelemetryService } from "../telemetry/service";
 import { LocalJsonlSink } from "../telemetry/sinks/localJsonlSink";
 import { NetcheckPanelFactory } from "../webviews/netcheck/netcheckPanelFactory";
@@ -20,6 +19,7 @@ import { ContextManager } from "./contextManager";
 import { MementoManager } from "./mementoManager";
 import { PathResolver } from "./pathResolver";
 import { SecretsManager } from "./secretsManager";
+import { sessionId } from "./sessionId";
 
 import type { Logger } from "../logging/logger";
 
@@ -29,7 +29,6 @@ import type { Logger } from "../logging/logger";
  */
 export class ServiceContainer implements vscode.Disposable {
 	private readonly outputChannel: vscode.LogOutputChannel;
-	private readonly sessionId: string;
 	private readonly logger: Logger;
 	private readonly pathResolver: PathResolver;
 	private readonly mementoManager: MementoManager;
@@ -49,12 +48,9 @@ export class ServiceContainer implements vscode.Disposable {
 		this.outputChannel = vscode.window.createOutputChannel("Coder", {
 			log: true,
 		});
-		// One session ID per activation, shared by logs, API requests,
-		// telemetry, and the CLI so all data for a session correlates.
-		this.sessionId = newSessionId();
 		this.logger = prefixLogger(
 			this.outputChannel,
-			`[session ${shortId(this.sessionId)}]`,
+			`[session ${shortId(sessionId)}]`,
 		);
 		this.pathResolver = new PathResolver(
 			context.globalStorageUri.fsPath,
@@ -69,7 +65,7 @@ export class ServiceContainer implements vscode.Disposable {
 
 		const session = buildSession(
 			extractExtensionVersion(context.extension.packageJSON),
-			this.sessionId,
+			sessionId,
 		);
 		const localJsonlSink = LocalJsonlSink.start(
 			{
@@ -118,7 +114,6 @@ export class ServiceContainer implements vscode.Disposable {
 			new AuthTelemetry(this.telemetryService),
 			this.oauthCallback,
 			context.extension.id,
-			this.sessionId,
 		);
 		this.duplicateWorkspaceIpc = new DuplicateWorkspaceIpc(
 			context.secrets,
@@ -151,10 +146,6 @@ export class ServiceContainer implements vscode.Disposable {
 
 	getLogger(): Logger {
 		return this.logger;
-	}
-
-	getSessionId(): string {
-		return this.sessionId;
 	}
 
 	getCliManager(): CliManager {

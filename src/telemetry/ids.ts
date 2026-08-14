@@ -12,9 +12,3 @@ export function newTraceId(): string {
 export function newSpanId(): string {
 	return randomBytes(8).toString("hex");
 }
-
-/** Our own session id (16 bytes / 32 hex). Avoids `vscode.env.sessionId`,
- * which is a UUID concatenated with a timestamp. */
-export function newSessionId(): string {
-	return randomBytes(16).toString("hex");
-}

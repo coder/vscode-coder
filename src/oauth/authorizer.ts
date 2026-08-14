@@ -51,7 +51,6 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		private readonly oauthCallback: OAuthCallback,
 		private readonly logger: Logger,
 		private readonly extensionId: string,
-		private readonly sessionId: string,
 	) {}
 
 	/**
@@ -64,13 +63,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		progress: vscode.Progress<{ message?: string; increment?: number }>,
 		cancellationToken: vscode.CancellationToken,
 	): Promise<{ tokenResponse: OAuth2TokenResponse; user: User }> {
-		const client = CoderApi.create(
-			deployment.url,
-			undefined,
-			this.logger,
-			undefined,
-			this.sessionId,
-		);
+		const client = CoderApi.create(deployment.url, undefined, this.logger);
 		try {
 			return await this.runLoginFlow(
 				client,

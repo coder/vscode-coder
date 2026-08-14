@@ -12,6 +12,7 @@ import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
 	watchConfigurationChanges,
 } from "../configWatcher";
+import { sessionId } from "../core/sessionId";
 import { ClientCertificateError } from "../error/clientCertificateError";
 import { toError } from "../error/errorUtils";
 import { ServerCertificateError } from "../error/serverCertificateError";
@@ -124,7 +125,6 @@ export class CoderApi extends Api implements vscode.Disposable {
 		private readonly telemetry: TelemetryReporter,
 		private readonly httpRequestsTelemetry: HttpRequestsTelemetry,
 		private readonly authConfigTracker: AuthConfigTracker,
-		private readonly sessionId: string | undefined,
 	) {
 		super();
 		wrapWithValidation(this);
@@ -136,16 +136,15 @@ export class CoderApi extends Api implements vscode.Disposable {
 	 * Automatically sets up logging interceptors, certificate handling,
 	 * HTTP request telemetry, and WebSocket connection telemetry. All
 	 * telemetry routes through the single reporter passed in (defaults to
-	 * NOOP_TELEMETRY_REPORTER for throwaway clients). When a session ID is
-	 * provided it is attached to every request via the `baggage` header so the
-	 * server can correlate requests with the session's logs and telemetry.
+	 * NOOP_TELEMETRY_REPORTER for throwaway clients). The session ID is
+	 * attached to every request via the `baggage` header so the server can
+	 * correlate requests with the session's logs and telemetry.
 	 */
 	static create(
 		baseUrl: string,
 		token: string | undefined,
 		output: Logger,
 		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
-		sessionId?: string,
 	): CoderApi {
 		const httpRequestsTelemetry = new HttpRequestsTelemetry(telemetry);
 		const authConfigTracker = new AuthConfigTracker();
@@ -154,13 +153,10 @@ export class CoderApi extends Api implements vscode.Disposable {
 			telemetry,
 			httpRequestsTelemetry,
 			authConfigTracker,
-			sessionId,
 		);
 		client.getAxiosInstance().defaults.timeout = DEFAULT_REQUEST_TIMEOUT_MS;
-		if (sessionId) {
-			client.getAxiosInstance().defaults.headers.common[baggageHeader] =
-				`${SESSION_ID_BAGGAGE_KEY}=${sessionId}`;
-		}
+		client.getAxiosInstance().defaults.headers.common[baggageHeader] =
+			`${SESSION_ID_BAGGAGE_KEY}=${sessionId}`;
 		client.setCredentials(baseUrl, token);
 
 		setupInterceptors(client, output, httpRequestsTelemetry, authConfigTracker);
@@ -395,9 +391,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 			...(token ? { [coderSessionTokenHeader]: token } : {}),
 			...configs.options?.headers,
 			...headersFromCommand,
-			...(this.sessionId
-				? { [baggageHeader]: `${SESSION_ID_BAGGAGE_KEY}=${this.sessionId}` }
-				: {}),
+			[baggageHeader]: `${SESSION_ID_BAGGAGE_KEY}=${sessionId}`,
 		};
 
 		const baseUrl = new URL(baseUrlRaw);

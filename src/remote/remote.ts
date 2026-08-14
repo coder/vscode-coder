@@ -231,7 +231,6 @@ export class Remote {
 				applySshEnvironment(
 					vscode.workspace.getConfiguration(),
 					this.extensionContext.environmentVariableCollection,
-					this.serviceContainer.getSessionId(),
 				),
 			);
 			// Create OAuth session manager for this remote deployment
@@ -257,7 +256,6 @@ export class Remote {
 				token,
 				this.logger,
 				this.serviceContainer.getTelemetryService(),
-				this.serviceContainer.getSessionId(),
 			);
 			disposables.push(workspaceClient);
 
