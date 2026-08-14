@@ -11,6 +11,7 @@ import {
 	pointerCommands,
 	type KeyboardCommandInput,
 	type PointerCommandInput,
+	type TreeModifiers,
 } from "@repo/ui/components/Tree/treePolicy";
 
 const NODES: readonly TreeNode[] = [
@@ -29,46 +30,101 @@ const row = (id: string, from: TreeModel = model): TreeRowModel => {
 	return found;
 };
 
+const NO_MODIFIERS: TreeModifiers = {
+	ctrlKey: false,
+	metaKey: false,
+	altKey: false,
+	shiftKey: false,
+};
+/** The modifiers a gesture holds down, by name. */
+const held = (...pressed: Array<keyof TreeModifiers>): TreeModifiers => ({
+	...NO_MODIFIERS,
+	...Object.fromEntries(pressed.map((key) => [key, true])),
+});
+
 const pointer = (overrides: Partial<PointerCommandInput> = {}) =>
 	pointerCommands({
 		expandMode: "singleClick",
+		multiSelect: false,
+		multiSelectModifier: "ctrlCmd",
 		row: row("parent"),
+		source: "row",
 		onTwistie: false,
 		detail: 1,
-		altKey: false,
+		modifiers: NO_MODIFIERS,
 		...overrides,
 	});
 const keyboard = (overrides: Partial<KeyboardCommandInput> = {}) =>
 	keyboardCommands({
 		expandMode: "singleClick",
+		multiSelect: false,
+		multiSelectModifier: "ctrlCmd",
 		key: "ArrowDown",
 		row: row("parent"),
 		visibleRows: model.visibleRows,
 		fromAction: false,
 		selectedCount: 0,
 		hasFocusedRow: false,
+		modifiers: NO_MODIFIERS,
 		...overrides,
 	});
 
 const FOCUS_PARENT = { type: "focus", id: "parent" };
-const SELECT_PARENT = { type: "select", id: "parent" };
 const TOGGLE_PARENT = { type: "toggle", id: "parent", recursive: false };
+/** Selects replace the selection and keep hidden rows unless told otherwise. */
+const select = (
+	id: string,
+	options: { toggle?: boolean; range?: boolean; preserveHidden?: boolean } = {},
+) => ({
+	type: "select",
+	id,
+	toggle: false,
+	range: false,
+	preserveHidden: true,
+	...options,
+});
 
 describe("pointerCommands", () => {
 	it("focuses and selects before expanding, so a click cannot reorder them", () => {
-		expect(pointer()).toEqual([FOCUS_PARENT, SELECT_PARENT, TOGGLE_PARENT]);
+		expect(pointer()).toEqual([
+			{ type: "focus", id: "parent" },
+			{
+				type: "select",
+				id: "parent",
+				toggle: false,
+				range: false,
+				preserveHidden: true,
+			},
+			{ type: "toggle", id: "parent", recursive: false },
+		]);
 	});
 
 	it("keeps a twistie click off the selection, and Alt recursive", () => {
-		expect(pointer({ onTwistie: true, detail: 2, altKey: true })).toEqual([
+		expect(
+			pointer({ onTwistie: true, detail: 2, modifiers: held("altKey") }),
+		).toEqual([
 			FOCUS_PARENT,
 			{ type: "toggle", id: "parent", recursive: true },
 		]);
 	});
 
+	it("leaves Alt to selection when it is the selection modifier", () => {
+		expect(
+			pointer({
+				onTwistie: true,
+				multiSelect: true,
+				multiSelectModifier: "alt",
+				modifiers: held("altKey"),
+			}),
+		).toEqual([
+			FOCUS_PARENT,
+			select("parent", { toggle: true, preserveHidden: false }),
+		]);
+	});
+
 	it.each([
-		[1, [FOCUS_PARENT, SELECT_PARENT]],
-		[2, [FOCUS_PARENT, SELECT_PARENT, TOGGLE_PARENT]],
+		[1, [FOCUS_PARENT, select("parent")]],
+		[2, [FOCUS_PARENT, select("parent"), TOGGLE_PARENT]],
 	])("expands on click %i under doubleClick", (detail, commands) => {
 		expect(pointer({ expandMode: "doubleClick", detail })).toEqual(commands);
 	});
@@ -76,21 +132,77 @@ describe("pointerCommands", () => {
 	it("leaves a leaf nothing to expand", () => {
 		expect(pointer({ row: row("last") })).toEqual([
 			{ type: "focus", id: "last" },
-			{ type: "select", id: "last" },
+			select("last"),
 		]);
+	});
+
+	it("gives a selection gesture precedence over twistie expansion", () => {
+		expect(
+			pointer({
+				multiSelect: true,
+				onTwistie: true,
+				modifiers: held("ctrlKey", "shiftKey"),
+			}),
+		).toEqual([
+			FOCUS_PARENT,
+			select("parent", { toggle: true, range: true, preserveHidden: false }),
+		]);
+	});
+
+	it("selects from a pinned row without expanding it, twistie aside", () => {
+		expect(pointer({ source: "sticky" })).toEqual([
+			FOCUS_PARENT,
+			select("parent"),
+		]);
+		expect(pointer({ source: "sticky", onTwistie: true })).toEqual([
+			FOCUS_PARENT,
+			select("parent"),
+			TOGGLE_PARENT,
+		]);
+		// A selection gesture on a pinned row never moves focus to it.
+		expect(
+			pointer({
+				source: "sticky",
+				multiSelect: true,
+				modifiers: held("shiftKey"),
+			}),
+		).toEqual([select("parent", { range: true, preserveHidden: false })]);
 	});
 });
 
 describe("keyboardCommands", () => {
 	it.each([
-		["ArrowDown", 1],
-		["ArrowUp", -1],
-	] as const)("moves the active row on %s", (key, offset) => {
+		["ArrowDown", 1, false],
+		["ArrowUp", -1, false],
+		["PageDown", 1, true],
+		["PageUp", -1, true],
+	] as const)("moves the active row on %s", (key, offset, page) => {
 		expect(keyboard({ key })).toEqual({
-			commands: [{ type: "move", id: "parent", offset }],
+			commands: [{ type: "move", id: "parent", offset, page, extend: false }],
 			preventDefault: true,
 			focusRowElementId: undefined,
 		});
+	});
+
+	it("extends the selection with Shift, but never by the page", () => {
+		expect(
+			keyboard({ multiSelect: true, modifiers: held("shiftKey") }).commands,
+		).toEqual([
+			{ type: "move", id: "parent", offset: 1, page: false, extend: true },
+		]);
+		expect(
+			keyboard({
+				key: "PageDown",
+				multiSelect: true,
+				modifiers: held("shiftKey"),
+			}).commands,
+		).toEqual([
+			{ type: "move", id: "parent", offset: 1, page: true, extend: false },
+		]);
+		// Shift alone extends nothing without multi-selection.
+		expect(keyboard({ modifiers: held("shiftKey") }).commands).toEqual([
+			{ type: "move", id: "parent", offset: 1, page: false, extend: false },
+		]);
 	});
 
 	it.each([
@@ -119,16 +231,38 @@ describe("keyboardCommands", () => {
 
 	it("keeps selection and expansion apart on Enter and Space", () => {
 		expect(keyboard({ key: "Enter" }).commands).toEqual([
-			SELECT_PARENT,
+			select("parent"),
 			TOGGLE_PARENT,
 		]);
 		expect(
 			keyboard({ key: "Enter", expandMode: "doubleClick" }).commands,
-		).toEqual([SELECT_PARENT]);
+		).toEqual([select("parent")]);
 		expect(keyboard({ key: " " }).commands).toEqual([TOGGLE_PARENT]);
 		expect(keyboard({ key: " ", row: row("child") }).commands).toEqual([
-			{ type: "select", id: "child" },
+			select("child"),
 		]);
+	});
+
+	it("adds to the selection with the selection modifier held", () => {
+		expect(
+			keyboard({
+				key: "Enter",
+				multiSelect: true,
+				modifiers: held("ctrlKey", "shiftKey"),
+			}).commands,
+		).toEqual([select("parent", { toggle: true })]);
+		expect(
+			keyboard({
+				key: " ",
+				row: row("child"),
+				multiSelect: true,
+				modifiers: held("metaKey"),
+			}).commands,
+		).toEqual([select("child", { toggle: true })]);
+		expect(
+			keyboard({ key: "a", multiSelect: true, modifiers: held("ctrlKey") })
+				.commands,
+		).toEqual([{ type: "selectScope", id: "parent" }]);
 	});
 
 	it.each([
@@ -147,7 +281,16 @@ describe("keyboardCommands", () => {
 		},
 	);
 
-	it("leaves unclaimed keys, Tab included, to the host", () => {
+	it("types ahead on a bare printable key, and leaves the rest to the host", () => {
+		expect(keyboard({ key: "B" })).toMatchObject({
+			commands: [{ type: "typeahead", id: "parent", key: "b" }],
+			preventDefault: true,
+		});
+		expect(keyboard({ key: "b", modifiers: held("ctrlKey") })).toEqual({
+			commands: [],
+			preventDefault: false,
+			focusRowElementId: undefined,
+		});
 		expect(keyboard({ key: "Tab" })).toEqual({
 			commands: [],
 			preventDefault: false,
@@ -162,7 +305,9 @@ describe("keyboardCommands", () => {
 			focusRowElementId: undefined,
 		});
 		expect(keyboard({ key: "ArrowDown", fromAction: true })).toMatchObject({
-			commands: [{ type: "move", id: "parent", offset: 1 }],
+			commands: [
+				{ type: "move", id: "parent", offset: 1, page: false, extend: false },
+			],
 			preventDefault: true,
 			focusRowElementId: "parent",
 		});

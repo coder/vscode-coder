@@ -54,7 +54,7 @@ describe("Tree rows", () => {
 		expect(
 			row("Lazy").querySelector(".ui-tree-item__chevron > .ui-icon"),
 		).toHaveClass("codicon-chevron-right");
-		press("ArrowRight", "Lazy");
+		press("ArrowRight", { from: "Lazy" });
 		expect(row("Lazy")).toHaveAttribute("aria-expanded", "true");
 		expect(emitted.expandedIds.at(-1)).toEqual(["lazy"]);
 	});

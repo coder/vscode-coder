@@ -1,5 +1,7 @@
-import { fireEvent, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { Tree, type TreeNode, type TreeProps } from "@repo/ui";
 
 import {
 	BASIC_NODES,
@@ -14,8 +16,6 @@ import {
 	selectedRows,
 	tree,
 } from "./treeTestHelpers";
-
-import type { TreeNode, TreeProps } from "@repo/ui";
 
 /** Two branches and a leaf whose rich label holds a live control. */
 const NAV_NODES: readonly TreeNode[] = [
@@ -65,9 +65,9 @@ describe("Tree keyboard navigation", () => {
 
 	it("expands, enters, leaves, and collapses a branch", () => {
 		navTree();
-		press("ArrowRight", "Beta");
+		press("ArrowRight", { from: "Beta" });
 		expect(rowNames()).toContain("Blue");
-		press("ArrowRight", "Beta");
+		press("ArrowRight", { from: "Beta" });
 		expect(activeRow()).toBe("Blue");
 		press("ArrowLeft");
 		expect(activeRow()).toBe("Beta");
@@ -77,20 +77,20 @@ describe("Tree keyboard navigation", () => {
 
 	it("selects with Enter and toggles with Space", () => {
 		navTree({ expandedIds: [] });
-		press("Enter", "Beta");
+		press("Enter", { from: "Beta" });
 		expect(selectedRows()).toEqual(["Beta"]);
 		expect(expandedRows()).toEqual(["Beta"]);
-		press(" ", "Alpha");
+		press(" ", { from: "Alpha" });
 		expect(expandedRows()).toEqual(["Alpha", "Beta"]);
 		expect(selectedRows()).toEqual(["Beta"]);
 		// A leaf has nothing to toggle, so Space selects it.
-		press(" ", "Bravo");
+		press(" ", { from: "Bravo" });
 		expect(selectedRows()).toEqual(["Bravo"]);
 	});
 
 	it("only selects on Enter under doubleClick", () => {
 		navTree({ expandedIds: [], expandMode: "doubleClick" });
-		press("Enter", "Beta");
+		press("Enter", { from: "Beta" });
 		expect(selectedRows()).toEqual(["Beta"]);
 		expect(expandedRows()).toEqual([]);
 	});
@@ -145,5 +145,87 @@ describe("Tree keyboard navigation", () => {
 		view.update({ nodes: [...nodes].reverse() });
 		press("ArrowDown");
 		expect(activeRow()).toBe("One");
+	});
+	it("moves by viewport pages, clamped at either end", () => {
+		render(
+			<div data-testid="scroller" style={{ overflowY: "auto" }}>
+				<Tree
+					aria-label="Paged"
+					nodes={Array.from({ length: 12 }, (_, index) => ({
+						id: `row-${index}`,
+						label: `Row ${index}`,
+					}))}
+				/>
+			</div>,
+		);
+		// jsdom lays nothing out, so a page is the scroller's height in rows.
+		Object.defineProperty(screen.getByTestId("scroller"), "clientHeight", {
+			value: 5 * 22,
+		});
+		for (const [key, active] of [
+			["PageDown", "Row 5"],
+			["PageDown", "Row 10"],
+			["PageDown", "Row 11"],
+			["PageUp", "Row 6"],
+		] as const) {
+			press(key);
+			expect(activeRow()).toBe(active);
+		}
+	});
+
+	describe("type-ahead", () => {
+		beforeEach(() => vi.useFakeTimers());
+		afterEach(() => vi.useRealTimers());
+
+		it("matches the labels the rows currently carry", () => {
+			const view = renderTree({
+				"aria-label": "Names",
+				nodes: [
+					{ id: "alpha", label: "Alpha" },
+					{ id: "cedar", label: "Amber" },
+				],
+			});
+			view.update({
+				nodes: [
+					{ id: "alpha", label: "Alpha" },
+					{ id: "cedar", label: "Cedar" },
+				],
+			});
+			press("c");
+			expect(activeRow()).toBe("Cedar");
+		});
+
+		it("walks the matches when the same key repeats", () => {
+			navTree();
+			for (const active of ["Beta", "Bravo", "Beta"]) {
+				press("b");
+				expect(activeRow()).toBe(active);
+			}
+		});
+
+		it("buffers keys into one query until it expires", () => {
+			navTree();
+			press("a");
+			expect(activeRow()).toBe("Apricot");
+			press("m");
+			expect(activeRow()).toBe("Amber");
+			void act(() => vi.advanceTimersByTime(800));
+			press("a");
+			expect(activeRow()).toBe("Alpha");
+		});
+
+		it("keeps a longer query on the row it already matched", () => {
+			renderTree({
+				"aria-label": "Prefixes",
+				nodes: [
+					{ id: "amber", label: "Amber" },
+					{ id: "amethyst", label: "Amethyst" },
+				],
+			});
+			press("a");
+			expect(activeRow()).toBe("Amethyst");
+			press("m");
+			expect(activeRow()).toBe("Amethyst");
+		});
 	});
 });

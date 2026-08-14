@@ -1,12 +1,16 @@
 /**
- * The interaction state props cannot hold: focus, the tab stop, and container
- * focus. `deriveTreeInteractionView` reads it against the current model and
- * resolves what the rows render; `transitionTree` folds commands into it.
+ * The interaction state props cannot hold: focus, the tab stop, the selection
+ * anchor, the type-ahead buffer, and container focus. `deriveTreeInteractionView`
+ * reads it against the current model and resolves what the rows render;
+ * `transitionTree` folds commands into it.
  */
 
 import { parentId, type TreeModel, type TreeRowModel } from "./treeModel";
 
 import type { TreeCommand } from "./treePolicy";
+
+/** How long a type-ahead query keeps collecting keys, as in the native list. */
+const TYPE_QUERY_MS = 800;
 
 /** The focused row, with its ancestors to fall back on if it disappears. */
 interface FocusTarget {
@@ -20,7 +24,13 @@ export interface TreeInteractionState {
 	readonly tabTargetId?: string;
 	/** The selection whose tab stop the user already moved away from. */
 	readonly dismissedSelectionKey?: string;
+	/** The selection the anchor belongs to; a new one from props resets it. */
+	readonly anchorKey: string;
+	/** Where a range selection measures from. */
+	readonly anchorId?: string;
 	readonly hasDomFocus: boolean;
+	readonly typeQuery?: string;
+	readonly typeExpires?: number;
 }
 
 /** What the rows render from, derived fresh on every render. */
@@ -29,6 +39,7 @@ interface TreeInteractionView {
 	readonly controlledKey: string;
 	readonly selectedIds: ReadonlySet<string>;
 	readonly focusedId: string | undefined;
+	readonly anchorId: string | undefined;
 	readonly guideOwnerIds: ReadonlySet<string>;
 	readonly tabStopId: string | undefined;
 }
@@ -37,6 +48,10 @@ interface TransitionInput {
 	readonly model: TreeModel;
 	readonly controlledIds: readonly string[];
 	readonly expandedIds: readonly string[];
+	readonly multiSelect: boolean;
+	/** Rows a page key should travel, measured against the scroller. */
+	readonly pageOffset?: number;
+	readonly now: number;
 }
 
 interface TreeTransition {
@@ -57,8 +72,14 @@ const focusTarget = (row: TreeRowModel): FocusTarget => ({
 	pathIds: row.pathIds,
 });
 
-export function initialTreeInteractionState(): TreeInteractionState {
-	return { hasDomFocus: false };
+export function initialTreeInteractionState(
+	controlledIds: readonly string[],
+): TreeInteractionState {
+	return {
+		anchorKey: selectionKey(controlledIds),
+		anchorId: controlledIds[0],
+		hasDomFocus: false,
+	};
 }
 
 /**
@@ -132,6 +153,10 @@ export function deriveTreeInteractionView(
 		controlledKey,
 		selectedIds,
 		focusedId,
+		anchorId:
+			nextState.anchorKey === controlledKey
+				? nextState.anchorId
+				: controlledIds[0],
 		guideOwnerIds: activeGuideOwners(
 			visibleRows,
 			selectedIds,
@@ -172,6 +197,108 @@ export function rowFocused(
 		tabTargetId: row.node.id,
 		dismissedSelectionKey: controlledKey,
 	};
+}
+
+/**
+ * The native range: the run of selected rows around the anchor is released
+ * first, so shrinking a range back over itself deselects what it passes.
+ */
+function selectionRange(
+	visibleRows: readonly TreeRowModel[],
+	selectedIds: ReadonlySet<string>,
+	anchorId: string,
+	targetId: string,
+): Set<string> | undefined {
+	const rowIds = visibleRows.map((row) => row.node.id);
+	const anchor = rowIds.indexOf(anchorId);
+	const target = rowIds.indexOf(targetId);
+	if (anchor < 0 || target < 0) {
+		return undefined;
+	}
+	const ids = new Set(selectedIds);
+	let start = anchor;
+	let end = anchor;
+	while (start > 0 && ids.has(rowIds[start - 1] ?? "")) {
+		start--;
+	}
+	while (end < rowIds.length - 1 && ids.has(rowIds[end + 1] ?? "")) {
+		end++;
+	}
+	for (const id of rowIds.slice(start, end + 1)) {
+		ids.delete(id);
+	}
+	for (const id of rowIds.slice(
+		Math.min(anchor, target),
+		Math.max(anchor, target) + 1,
+	)) {
+		ids.add(id);
+	}
+	return ids;
+}
+
+interface SelectionResult {
+	readonly ids: ReadonlySet<string>;
+	readonly anchorId: string;
+}
+
+/** The selection a `select` command produces, and the anchor it leaves. */
+function selectRow(
+	model: TreeModel,
+	selectedIds: ReadonlySet<string>,
+	anchorId: string | undefined,
+	multiSelect: boolean,
+	row: TreeRowModel,
+	options: { toggle: boolean; range: boolean; preserveHidden: boolean },
+): SelectionResult {
+	const id = row.node.id;
+	if (!multiSelect) {
+		return { ids: new Set([id]), anchorId: id };
+	}
+	const ids = new Set(
+		options.preserveHidden
+			? selectedIds
+			: [...selectedIds].filter((selectedId) =>
+					model.visibleIds.has(selectedId),
+				),
+	);
+	if (options.range && anchorId) {
+		const rangeIds = selectionRange(model.visibleRows, ids, anchorId, id);
+		if (rangeIds) {
+			return { ids: rangeIds, anchorId };
+		}
+	}
+	if (options.toggle && ids.delete(id)) {
+		return { ids, anchorId: id };
+	}
+	if (!options.toggle) {
+		ids.clear();
+	}
+	ids.add(id);
+	return { ids, anchorId: id };
+}
+
+/**
+ * `list.selectAll` on a tree: the row's sibling group, widening to include the
+ * parent once that whole group is already selected.
+ */
+function scopedSelection(
+	model: TreeModel,
+	selectedIds: ReadonlySet<string>,
+	row: TreeRowModel,
+): Set<string> {
+	const scopeId = parentId(row);
+	const scoped = model.rows.filter(
+		(candidate) => scopeId === undefined || candidate.pathIds.includes(scopeId),
+	);
+	const ids = new Set(scoped.map((candidate) => candidate.node.id));
+	const scope = scopeId ? model.rowsById.get(scopeId) : undefined;
+	if (
+		scope &&
+		scoped.every((candidate) => selectedIds.has(candidate.node.id))
+	) {
+		ids.add(scope.node.id);
+	}
+	return ids;
 }
 
 function togglingBranches(
@@ -215,6 +342,41 @@ function toggleExpansion(
 	];
 }
 
+/**
+ * Prefix first, then a fuzzy subsequence, as the native list does. A repeated
+ * single key walks the rows starting with it instead of matching the run.
+ */
+function typeaheadMatch(
+	visibleRows: readonly TreeRowModel[],
+	query: string,
+	current: TreeRowModel,
+): TreeRowModel | undefined {
+	const repeated =
+		query.length > 1 && [...query].every((key) => key === query[0]);
+	const value = (repeated ? query[0] : query)?.toLocaleLowerCase() ?? "";
+	const from =
+		query.length === 1 || repeated
+			? visibleRows.indexOf(current) + 1
+			: visibleRows.indexOf(current);
+	const ordered = visibleRows.map(
+		(_, offset) => visibleRows[(from + offset) % visibleRows.length],
+	);
+	const fuzzy = (row: TreeRowModel): boolean => {
+		let index = 0;
+		for (const character of row.textValue.toLocaleLowerCase()) {
+			if (character === value[index] && ++index === value.length) {
+				return true;
+			}
+		}
+		return false;
+	};
+	return (
+		ordered.find((row) =>
+			row?.textValue.toLocaleLowerCase().startsWith(value),
+		) ?? ordered.find((row) => row && fuzzy(row))
+	);
+}
+
 export function transitionTree(
 	state: TreeInteractionState,
 	commands: readonly TreeCommand[],
@@ -223,17 +385,27 @@ export function transitionTree(
 	const { model } = input;
 	const view = deriveTreeInteractionView(state, model, input.controlledIds);
 	let nextState = view.state;
+	let selectedIds = view.selectedIds;
 	let currentKey = view.controlledKey;
+	let anchorId = view.anchorId;
 	let selection: readonly string[] | undefined;
 	let expandedIds: readonly string[] | undefined;
 	let focusTree = false;
 
-	const select = (ids: ReadonlySet<string>): void => {
+	const setAnchor = (id: string | undefined): void => {
+		anchorId = id;
+		nextState = { ...nextState, anchorKey: currentKey, anchorId: id };
+	};
+	const select = (ids: ReadonlySet<string>, nextAnchor?: string): void => {
 		selection = model.rows
 			.filter((row) => ids.has(row.node.id))
 			.map((row) => row.node.id);
+		selectedIds = new Set(selection);
 		currentKey = selectionKey(selection);
 		nextState = { ...nextState, dismissedSelectionKey: currentKey };
+		if (nextAnchor !== undefined) {
+			setAnchor(nextAnchor);
+		}
 	};
 	const focus = (row: TreeRowModel | undefined): void => {
 		if (!row || !model.visibleIds.has(row.node.id)) {
@@ -251,7 +423,20 @@ export function transitionTree(
 				break;
 			case "select":
 				if (row) {
-					select(new Set([row.node.id]));
+					const result = selectRow(
+						model,
+						selectedIds,
+						anchorId,
+						input.multiSelect,
+						row,
+						command,
+					);
+					select(result.ids, result.anchorId);
+				}
+				break;
+			case "selectScope":
+				if (row) {
+					select(scopedSelection(model, selectedIds, row));
 				}
 				break;
 			case "move": {
@@ -259,8 +444,29 @@ export function transitionTree(
 					break;
 				}
 				const rows = model.visibleRows;
-				const index = rows.indexOf(row) + command.offset;
-				focus(rows[Math.min(Math.max(index, 0), rows.length - 1)]);
+				const offset = command.page
+					? (input.pageOffset ?? command.offset)
+					: command.offset;
+				const index = rows.indexOf(row) + offset;
+				const target = rows[Math.min(Math.max(index, 0), rows.length - 1)];
+				if (!target) {
+					break;
+				}
+				if (command.extend) {
+					const rangeAnchor = anchorId ?? row.node.id;
+					const ids = selectionRange(
+						rows,
+						selectedIds,
+						rangeAnchor,
+						target.node.id,
+					);
+					if (ids) {
+						select(ids, rangeAnchor);
+					}
+				} else {
+					setAnchor(target.node.id);
+				}
+				focus(target);
 				break;
 			}
 			case "toggle":
@@ -273,6 +479,22 @@ export function transitionTree(
 					);
 				}
 				break;
+			case "typeahead": {
+				if (!row) {
+					break;
+				}
+				const query =
+					nextState.typeQuery && input.now < (nextState.typeExpires ?? 0)
+						? nextState.typeQuery + command.key
+						: command.key;
+				nextState = {
+					...nextState,
+					typeQuery: query,
+					typeExpires: input.now + TYPE_QUERY_MS,
+				};
+				focus(typeaheadMatch(model.visibleRows, query, row));
+				break;
+			}
 			case "dismiss":
 				if (command.clearSelection) {
 					select(new Set());
@@ -282,6 +504,7 @@ export function transitionTree(
 					focusTree = true;
 				}
 				currentKey = NO_SELECTION_KEY;
+				setAnchor(undefined);
 				break;
 		}
 	}

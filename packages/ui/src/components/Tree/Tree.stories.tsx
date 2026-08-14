@@ -126,6 +126,77 @@ export const RowStatesStable: Story = {
 	globals: { uiStyle: "stable" },
 };
 
+/** Two deep branches, so a short scroller always has ancestors to pin. */
+const DEEP_FILES: readonly TreeNode[] = ["alpha", "beta"].map((name) =>
+	branch(name, [
+		branch(
+			`${name}/src`,
+			Array.from({ length: 12 }, (_, index) =>
+				node(`${name}/src/file-${index}`, {
+					label: `file-${index}.ts`,
+					icon: "symbol-class",
+				}),
+			),
+			{ label: "src" },
+		),
+	]),
+);
+
+export const StickyScroll: Story = {
+	render: () => (
+		<div
+			data-testid="scroller"
+			style={{ height: "140px", overflow: "auto", width: "280px" }}
+			ref={(scroller) => {
+				if (scroller) scroller.scrollTop = 143;
+			}}
+		>
+			<TreeDemo
+				aria-label="Sticky explorer"
+				variant="explorer"
+				stickyScroll
+				nodes={DEEP_FILES}
+			/>
+		</div>
+	),
+	play: async ({ canvasElement }) => {
+		await waitFor(() =>
+			expect(
+				canvasElement.querySelector(".ui-tree-sticky__rows"),
+			).not.toBeNull(),
+		);
+		await expect(
+			within(canvasElement).getByTestId("scroller").scrollTop,
+		).toBeGreaterThan(0);
+	},
+};
+
+export const MultiSelect: Story = {
+	render: () =>
+		tree({
+			"aria-label": "Multi-select explorer",
+			nodes: FILES,
+			variant: "explorer",
+			multiSelect: true,
+			selectedItemIds: ["tree", "styles"],
+		}),
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const treeElement = canvas.getByRole("tree");
+		const readme = canvas.getByRole("treeitem", { name: "README.md" });
+		await fireEvent.click(readme, { ctrlKey: true });
+		await expect(readme).toHaveAttribute("aria-selected", "true");
+		await expect(
+			canvas.getByRole("treeitem", { name: "Tree.tsx" }),
+		).toHaveAttribute("aria-selected", "true");
+		await expect(canvasElement.ownerDocument.activeElement).toBe(treeElement);
+		await expect(treeElement).toHaveAttribute(
+			"aria-activedescendant",
+			readme.id,
+		);
+	},
+};
+
 export const Focused: Story = {
 	render: () =>
 		tree({
