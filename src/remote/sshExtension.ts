@@ -11,31 +11,24 @@ export const REMOTE_SSH_EXTENSION_IDS = [
 export type RemoteSshExtensionId = (typeof REMOTE_SSH_EXTENSION_IDS)[number];
 
 /**
- * Sections each extension reads, in order. The rebranded forks renamed the
- * whole `remote.SSH` section, so reading it directly misses them.
+ * Extensions that spawn ssh without `-F`, so it always reads ~/.ssh/config
+ * and their renamed configFile setting never applies.
  */
-const SETTING_SECTIONS: Readonly<
-	Record<RemoteSshExtensionId, readonly string[]>
-> = {
-	"jeanp413.open-remote-ssh": ["remote.SSH"],
-	// Windsurf became Devin and reads both, preferring the new name.
-	"codeium.windsurf-remote-openssh": ["remote.devinSSH", "remote.windsurfSSH"],
-	"anysphere.remote-ssh": ["remote.SSH"],
-	"ms-vscode-remote.remote-ssh": ["remote.SSH"],
-	"google.antigravity-remote-openssh": ["remote.antigravitySSH"],
-};
+const IGNORED_CONFIG_FILE: readonly RemoteSshExtensionId[] = [
+	"google.antigravity-remote-openssh",
+	"codeium.windsurf-remote-openssh",
+];
 
-/** First non-empty value for a string setting, e.g. `configFile`. */
-export function getRemoteSshSetting(key: string): string | undefined {
+/** The SSH config file the active extension connects through, if configured. */
+export function getRemoteSshConfigFile(): string | undefined {
 	const id = getRemoteSshExtension()?.id;
-	const sections = id ? SETTING_SECTIONS[id] : ["remote.SSH"];
-	for (const section of sections) {
-		const value = vscode.workspace.getConfiguration(section).get<string>(key);
-		if (value) {
-			return value;
-		}
+	if (id && IGNORED_CONFIG_FILE.includes(id)) {
+		return undefined;
 	}
-	return undefined;
+	return (
+		vscode.workspace.getConfiguration("remote.SSH").get<string>("configFile") ||
+		undefined
+	);
 }
 
 /**

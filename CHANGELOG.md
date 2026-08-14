@@ -5,6 +5,41 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Added
+
+- Add a **Coder: Open Generated SSH Configuration File** command that opens
+  this editor's generated workspace hosts file in a read-only editor. A
+  connected window opens its own deployment's file; a local window asks which
+  deployment to open when there are several.
+
+### Changed
+
+- Write workspace SSH hosts to generated files under your platform's data
+  directory (`coder.coder-remote/ssh`) instead of into your SSH config. Your
+  config now carries only an include of that directory, which moves back to the
+  top on every connection. Because ssh uses the first value it finds for each
+  option, global options in your config, such as a catch-all `Host *`, no
+  longer change how the extension connects. To override the generated options,
+  set them in `coder.sshConfig`, which still takes precedence.
+- Generate one file per editor and deployment, all behind the same include, so
+  VS Code, Cursor, Windsurf, and other forks no longer overwrite one another's
+  workspace hosts. Each fork keeps its own SSH host prefix, and legacy
+  `coder-vscode` authorities are migrated by automatically reopening the window
+  once.
+- Stop aborting the connection with "Unexpected SSH Config Option". The include
+  now sits at the top of your config, so the generated options always take
+  effect and there is nothing left to warn about. Validation of the options
+  your deployment sends is unchanged.
+
+### Fixed
+
+- Ignore the SSH config file setting on Antigravity and Windsurf/Devin. They
+  launch ssh without pointing it at a config file, so it always reads
+  `~/.ssh/config`, and honoring the setting wrote the workspace host where the
+  connection never looked.
+
 ## [v1.16.0](https://github.com/coder/vscode-coder/releases/tag/v1.16.0) 2026-08-06
 
 ### Added

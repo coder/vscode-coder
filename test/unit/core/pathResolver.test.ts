@@ -1,5 +1,6 @@
+import * as os from "node:os";
 import * as path from "path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PathResolver } from "@/core/pathResolver";
 
@@ -35,6 +36,107 @@ describe("PathResolver", () => {
 				pathResolver.getGlobalConfigDir("deployment"),
 				path.join(basePath, "deployment"),
 			);
+		});
+	});
+
+	describe("getSshConfigDir", () => {
+		const realPlatform = process.platform;
+		afterEach(() => {
+			Object.defineProperty(process, "platform", { value: realPlatform });
+		});
+
+		interface SharedDirCase {
+			name: string;
+			platform: NodeJS.Platform;
+			env: Record<string, string>;
+			expected: string;
+		}
+		it.each<SharedDirCase>([
+			{
+				name: "XDG_DATA_HOME on Linux",
+				platform: "linux",
+				env: { XDG_DATA_HOME: "/xdg/data" },
+				expected: path.join("/xdg/data", "coder.coder-remote", "ssh"),
+			},
+			{
+				name: "the XDG default on Linux",
+				platform: "linux",
+				env: { XDG_DATA_HOME: "" },
+				expected: path.join(
+					os.homedir(),
+					".local",
+					"share",
+					"coder.coder-remote",
+					"ssh",
+				),
+			},
+			{
+				name: "Application Support on macOS",
+				platform: "darwin",
+				env: {},
+				expected: path.join(
+					os.homedir(),
+					"Library",
+					"Application Support",
+					"coder.coder-remote",
+					"ssh",
+				),
+			},
+			{
+				name: "APPDATA on Windows",
+				platform: "win32",
+				env: {
+					APPDATA: path.join("C:", "Users", "jane", "AppData", "Roaming"),
+				},
+				expected: path.join(
+					"C:",
+					"Users",
+					"jane",
+					"AppData",
+					"Roaming",
+					"coder.coder-remote",
+					"ssh",
+				),
+			},
+			{
+				name: "the profile default on Windows",
+				platform: "win32",
+				env: { APPDATA: "" },
+				expected: path.join(
+					os.homedir(),
+					"AppData",
+					"Roaming",
+					"coder.coder-remote",
+					"ssh",
+				),
+			},
+		])("uses $name", ({ platform, env, expected }) => {
+			Object.defineProperty(process, "platform", { value: platform });
+			for (const [key, value] of Object.entries(env)) {
+				vi.stubEnv(key, value);
+			}
+			expectPathsEqual(pathResolver.getSshConfigDir(), expected);
+		});
+	});
+
+	describe("getSshConfigPath", () => {
+		it("names the file after the editor and deployment", () => {
+			expectPathsEqual(
+				pathResolver.getSshConfigPath("dev.coder.com"),
+				path.join(pathResolver.getSshConfigDir(), "vscode--dev.coder.com.conf"),
+			);
+		});
+
+		it("parses the hostname only from this editor's generated files", () => {
+			expect(
+				pathResolver.parseSshConfigFile("vscode--dev.coder.com.conf"),
+			).toBe("dev.coder.com");
+			expect(
+				pathResolver.parseSshConfigFile("cursor--dev.coder.com.conf"),
+			).toBeUndefined();
+			expect(
+				pathResolver.parseSshConfigFile("vscode--notes.txt"),
+			).toBeUndefined();
 		});
 	});
 

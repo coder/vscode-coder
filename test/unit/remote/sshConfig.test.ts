@@ -1,35 +1,30 @@
-import { it, afterEach, vi, expect, describe, beforeEach } from "vitest";
+import { vol } from "memfs";
+import * as fsPromises from "node:fs/promises";
+import * as os from "node:os";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-	SshConfig,
+	mergeSshConfigValues,
 	parseCoderSshOptions,
 	parseSshConfig,
-	mergeSshConfigValues,
-	validateDeploymentSshOptions,
+	SshConfig,
 	type SshValues,
+	validateDeploymentSshOptions,
 } from "@/remote/sshConfig";
 
 import { createMockLogger } from "../../mocks/testHelpers";
 
-// This is not the usual path to ~/.ssh/config, but
-// setting it to a different path makes it easier to test
-// and makes mistakes abundantly clear.
+vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
+vi.mock("node:os", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:os")>();
+	return { ...actual, homedir: vi.fn(() => "/Path/To/UserHomeDir") };
+});
+
+const homeDir = "/Path/To/UserHomeDir";
 const sshFilePath = "/Path/To/UserHomeDir/.sshConfigDir/sshConfigFile";
-const sshTempFilePrefix =
-	"/Path/To/UserHomeDir/.sshConfigDir/.sshConfigFile.vscode-coder-tmp-";
-const managedHeader = `# This section is managed by the Coder VS Code extension.
-# Changes will be overwritten on the next workspace connection.`;
-
-const mockFileSystem = {
-	mkdir: vi.fn(),
-	readFile: vi.fn(),
-	rename: vi.fn(),
-	stat: vi.fn(),
-	unlink: vi.fn().mockResolvedValue(undefined),
-	writeFile: vi.fn(),
-};
-
-const mockLogger = createMockLogger();
+const hostname = "dev.coder.com";
+const fileHeader = `# Coder workspace hosts. Do not edit; the Coder extension rewrites this file
+# on every connection. Override options with the "coder.sshConfig" setting.`;
 
 const BASE_SSH_VALUES = {
 	Host: "coder-vscode.dev.coder.com--*",
@@ -54,528 +49,139 @@ const BENIGN_DEPLOYMENT_OPTIONS = {
 	serveraliveinterval: "5",
 } as const;
 
-afterEach(() => {
-	vi.clearAllMocks();
-});
-
-it("creates a new file and adds the config", async () => {
-	mockFileSystem.readFile.mockRejectedValueOnce("No file found");
-	mockFileSystem.stat.mockRejectedValueOnce({ code: "ENOENT" });
-
-	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-	await sshConfig.load();
-	await sshConfig.update("dev.coder.com", BASE_SSH_VALUES);
-
-	const expectedOutput = `# --- START CODER VSCODE dev.coder.com ---
-${managedHeader}
-Host coder-vscode.dev.coder.com--*
+const deploymentBlock = `Host coder-vscode.dev.coder.com--*
   ConnectTimeout 0
   LogLevel ERROR
   ProxyCommand some-command-here
   ServerAliveCountMax 3
   ServerAliveInterval 10
   StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
+  UserKnownHostsFile /dev/null`;
+// Released versions wrote deployment blocks with the VSCODE label.
+const legacyDeploymentBlock = `# --- START CODER VSCODE dev.coder.com ---
+Host stale
 # --- END CODER VSCODE dev.coder.com ---`;
-
-	expect(mockFileSystem.readFile).toHaveBeenCalledWith(
-		sshFilePath,
-		expect.anything(),
-	);
-	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		expectedOutput,
-		expect.objectContaining({
-			encoding: "utf-8",
-			mode: 0o600, // Default mode for new files.
-		}),
-	);
-	expect(mockFileSystem.rename).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		sshFilePath,
-	);
-});
-
-it("adds a new coder config in an existent SSH configuration", async () => {
-	const existentSSHConfig = `Host coder.something
-  ConnectTimeout=0
-  LogLevel ERROR
-  HostName coder.something
-  ProxyCommand command
-  StrictHostKeyChecking=no
-  UserKnownHostsFile=/dev/null`;
-	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
-	mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 });
-
-	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-	await sshConfig.load();
-	await sshConfig.update("dev.coder.com", BASE_SSH_VALUES);
-
-	const expectedOutput = `${existentSSHConfig}
-
-# --- START CODER VSCODE dev.coder.com ---
-${managedHeader}
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  ServerAliveCountMax 3
-  ServerAliveInterval 10
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE dev.coder.com ---`;
-
-	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		expectedOutput,
-		{
-			encoding: "utf-8",
-			mode: 0o644,
-		},
-	);
-	expect(mockFileSystem.rename).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		sshFilePath,
-	);
-});
-
-it("updates an existent coder config", async () => {
-	const keepSSHConfig = `Host coder.something
-  HostName coder.something
-  ConnectTimeout=0
-  StrictHostKeyChecking=no
-  UserKnownHostsFile=/dev/null
-  LogLevel ERROR
-  ProxyCommand command
-
-# --- START CODER VSCODE dev2.coder.com ---
-Host coder-vscode.dev2.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE dev2.coder.com ---`;
-
-	const existentSSHConfig = `${keepSSHConfig}
-
-# --- START CODER VSCODE dev.coder.com ---
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE dev.coder.com ---
-
-Host *
-  SetEnv TEST=1`;
-	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
-	mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 });
-
-	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-	await sshConfig.load();
-	await sshConfig.update("dev.coder.com", {
-		...BASE_SSH_VALUES,
-		Host: "coder-vscode.dev-updated.coder.com--*",
-		ProxyCommand: "some-updated-command-here",
-		ConnectTimeout: "1",
-		StrictHostKeyChecking: "yes",
-	});
-
-	const expectedOutput = `${keepSSHConfig}
-
-# --- START CODER VSCODE dev.coder.com ---
-${managedHeader}
-Host coder-vscode.dev-updated.coder.com--*
-  ConnectTimeout 1
-  LogLevel ERROR
-  ProxyCommand some-updated-command-here
-  ServerAliveCountMax 3
-  ServerAliveInterval 10
-  StrictHostKeyChecking yes
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE dev.coder.com ---
-
-Host *
-  SetEnv TEST=1`;
-
-	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		expectedOutput,
-		{
-			encoding: "utf-8",
-			mode: 0o644,
-		},
-	);
-	expect(mockFileSystem.rename).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		sshFilePath,
-	);
-});
-
-it("does not remove deployment-unaware SSH config and adds the new one", async () => {
-	// Before the plugin supported multiple deployments, it would only write and
-	// overwrite this one block.  We need to leave it alone so existing
-	// connections keep working.  Only replace blocks specific to the deployment
-	// that we are targeting.  Going forward, all new connections will use the new
-	// deployment-specific block.
-	const existentSSHConfig = `# --- START CODER VSCODE ---
+const legacyOtherDeploymentBlock = `# --- START CODER VSCODE other.coder.com ---
+Host coder-vscode.other.coder.com--*
+# --- END CODER VSCODE other.coder.com ---`;
+const deploymentUnawareBlock = `# --- START CODER VSCODE ---
 Host coder-vscode--*
-  ConnectTimeout=0
-  HostName coder.something
-  LogLevel ERROR
-  ProxyCommand command
-  StrictHostKeyChecking=no
-  UserKnownHostsFile=/dev/null
 # --- END CODER VSCODE ---`;
-	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
-	mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 });
 
-	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
+const includeDir = "~/.ssh/coder";
+
+function renderIncludeBlock(dir: string): string {
+	return `# --- START CODER INCLUDE CODER-REMOTE ---
+# Managed by the Coder extension for VS Code and its forks.
+# Moves back to the top on connect; override options via coder.sshConfig.
+Include "${dir}/*.conf"
+# --- END CODER INCLUDE CODER-REMOTE ---`;
+}
+
+const includeBlock = renderIncludeBlock(includeDir);
+
+const mockLogger = createMockLogger();
+
+const readConfig = () => fsPromises.readFile(sshFilePath, "utf-8");
+
+async function loadSshConfig(
+	contents?: string,
+	mode = 0o644,
+): Promise<SshConfig> {
+	if (contents !== undefined) {
+		vol.fromJSON({ [sshFilePath]: contents });
+		vol.chmodSync(sshFilePath, mode);
+	}
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, fsPromises);
 	await sshConfig.load();
-	await sshConfig.update("dev.coder.com", BASE_SSH_VALUES);
+	return sshConfig;
+}
 
-	const expectedOutput = `${existentSSHConfig}
+async function updateDeployment(
+	contents?: string,
+	values: SshValues = BASE_SSH_VALUES,
+	overrides?: Record<string, string>,
+): Promise<void> {
+	const sshConfig = await loadSshConfig(contents);
+	await sshConfig.update(values, overrides);
+}
 
-# --- START CODER VSCODE dev.coder.com ---
-${managedHeader}
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  ServerAliveCountMax 3
-  ServerAliveInterval 10
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE dev.coder.com ---`;
+async function updateInclude(
+	contents: string,
+	dir: string = includeDir,
+): Promise<void> {
+	const sshConfig = await loadSshConfig(contents);
+	await sshConfig.updateInclude(dir, hostname);
+}
 
-	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		expectedOutput,
-		{
-			encoding: "utf-8",
-			mode: 0o644,
-		},
-	);
-	expect(mockFileSystem.rename).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		sshFilePath,
-	);
+beforeEach(() => {
+	vol.reset();
+	vi.mocked(os.homedir).mockReturnValue(homeDir);
 });
 
-it("it does not remove a user-added block that only matches the host of an old coder SSH config", async () => {
-	const existentSSHConfig = `Host coder-vscode--*
-  ForwardAgent=yes`;
-	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
-	mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 });
-
-	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-	await sshConfig.load();
-	await sshConfig.update("dev.coder.com", BASE_SSH_VALUES);
-
-	const expectedOutput = `Host coder-vscode--*
-  ForwardAgent=yes
-
-# --- START CODER VSCODE dev.coder.com ---
-${managedHeader}
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  ServerAliveCountMax 3
-  ServerAliveInterval 10
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE dev.coder.com ---`;
-
-	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		expectedOutput,
-		{
-			encoding: "utf-8",
-			mode: 0o644,
-		},
-	);
-	expect(mockFileSystem.rename).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		sshFilePath,
-	);
+afterEach(() => {
+	vi.restoreAllMocks();
 });
 
-it("throws an error if there is a missing end block", async () => {
-	// The below config is missing an end block.
-	// This is a malformed config and should throw an error.
-	const existentSSHConfig = `Host beforeconfig
-  HostName before.config.tld
-  User before
-
-# --- START CODER VSCODE dev.coder.com ---
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-
-Host afterconfig
-  HostName after.config.tld
-  User after`;
-
-	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
-	await sshConfig.load();
-
-	// When we try to update the config, it should throw an error.
-	await expect(
-		sshConfig.update("dev.coder.com", BASE_SSH_VALUES),
-	).rejects.toThrow(
-		`Malformed config: ${sshFilePath} has an unterminated START CODER VSCODE dev.coder.com block. Each START block must have an END block.`,
-	);
+describe("SshConfig.getRaw", () => {
+	it("throws before load", () => {
+		const sshConfig = new SshConfig(sshFilePath, mockLogger, fsPromises);
+		expect(() => sshConfig.getRaw()).toThrow("SshConfig is not loaded");
+	});
 });
 
-it("throws an error if there is a mismatched start and end block count", async () => {
-	// The below config contains two start blocks and one end block.
-	// This is a malformed config and should throw an error.
-	// Previously were were simply taking the first occurrences of the start and
-	// end blocks, which would potentially lead to loss of any content between the
-	// missing end block and the next start block.
-	const existentSSHConfig = `Host beforeconfig
-  HostName before.config.tld
-  User before
+describe("SshConfig.update", () => {
+	it("renders the exact header and deployment config", async () => {
+		await updateDeployment();
 
-# --- START CODER VSCODE dev.coder.com ---
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# missing END CODER VSCODE dev.coder.com ---
-
-Host donotdelete
-  HostName dont.delete.me
-  User please
-
-# --- START CODER VSCODE dev.coder.com ---
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE dev.coder.com ---
-
-Host afterconfig
-  HostName after.config.tld
-  User after`;
-
-	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
-	await sshConfig.load();
-
-	// When we try to update the config, it should throw an error.
-	await expect(
-		sshConfig.update("dev.coder.com", BASE_SSH_VALUES),
-	).rejects.toThrow(
-		`Malformed config: ${sshFilePath} has an unterminated START CODER VSCODE dev.coder.com block. Each START block must have an END block.`,
-	);
-});
-
-it("throws an error if there are more than one sections with the same label", async () => {
-	const existentSSHConfig = `Host beforeconfig
-  HostName before.config.tld
-  User before
-
-# --- START CODER VSCODE dev.coder.com ---
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE dev.coder.com ---
-
-Host donotdelete
-  HostName dont.delete.me
-  User please
-
-# --- START CODER VSCODE dev.coder.com ---
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE dev.coder.com ---
-
-Host afterconfig
-  HostName after.config.tld
-  User after`;
-
-	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
-	await sshConfig.load();
-
-	// When we try to update the config, it should throw an error.
-	await expect(
-		sshConfig.update("dev.coder.com", BASE_SSH_VALUES),
-	).rejects.toThrow(
-		`Malformed config: ${sshFilePath} has 2 START CODER VSCODE dev.coder.com sections. Please remove all but one.`,
-	);
-});
-
-it("correctly handles interspersed blocks with and without label", async () => {
-	const existentSSHConfig = `Host beforeconfig
-  HostName before.config.tld
-  User before
-
-# --- START CODER VSCODE ---
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE ---
-
-Host donotdelete
-  HostName dont.delete.me
-  User please
-
-# --- START CODER VSCODE dev.coder.com ---
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE dev.coder.com ---
-
-Host afterconfig
-  HostName after.config.tld
-  User after`;
-
-	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
-	mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o644 });
-	await sshConfig.load();
-
-	const expectedOutput = `Host beforeconfig
-  HostName before.config.tld
-  User before
-
-# --- START CODER VSCODE ---
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE ---
-
-Host donotdelete
-  HostName dont.delete.me
-  User please
-
-# --- START CODER VSCODE dev.coder.com ---
-${managedHeader}
-Host coder-vscode.dev.coder.com--*
-  ConnectTimeout 0
-  LogLevel ERROR
-  ProxyCommand some-command-here
-  ServerAliveCountMax 3
-  ServerAliveInterval 10
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-# --- END CODER VSCODE dev.coder.com ---
-
-Host afterconfig
-  HostName after.config.tld
-  User after`;
-
-	await sshConfig.update("dev.coder.com", BASE_SSH_VALUES);
-
-	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		expectedOutput,
-		{
-			encoding: "utf-8",
-			mode: 0o644,
-		},
-	);
-	expect(mockFileSystem.rename).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		sshFilePath,
-	);
-});
-
-it("override values", async () => {
-	mockFileSystem.readFile.mockRejectedValueOnce("No file found");
-	mockFileSystem.stat.mockRejectedValueOnce({ code: "ENOENT" });
-
-	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-	await sshConfig.load();
-	await sshConfig.update("dev.coder.com", BASE_SSH_VALUES, {
-		loglevel: "DEBUG", // This tests case insensitive
-		ConnectTimeout: "500",
-		ExtraKey: "ExtraValue",
-		Foo: "bar",
-		Buzz: "baz",
-		// Remove this key
-		StrictHostKeyChecking: "",
-		ExtraRemove: "",
+		expect(await readConfig()).toBe(`${fileHeader}\n\n${deploymentBlock}`);
+		const configDir = vol.statSync("/Path/To/UserHomeDir/.sshConfigDir");
+		expect(configDir.mode & 0o777).toBe(0o700);
 	});
 
-	const expectedOutput = `# --- START CODER VSCODE dev.coder.com ---
-${managedHeader}
+	it("regenerates the whole file over existing content", async () => {
+		await updateDeployment("Host personal\n  HostName example.com\n\n");
+		expect(await readConfig()).toBe(`${fileHeader}\n\n${deploymentBlock}`);
+	});
+
+	it("rewrites an unchanged file so its mtime marks the last connect", async () => {
+		const renameSpy = vi.spyOn(fsPromises, "rename");
+		await updateDeployment(`${fileHeader}\n\n${deploymentBlock}`);
+		expect(renameSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("applies sorted case-insensitive overrides, additions, and removals", async () => {
+		await updateDeployment(undefined, BASE_SSH_VALUES, {
+			loglevel: "DEBUG",
+			ConnectTimeout: "500",
+			ExtraKey: "ExtraValue",
+			StrictHostKeyChecking: "",
+			ExtraRemove: "",
+		});
+
+		expect(await readConfig()).toBe(`${fileHeader}
+
 Host coder-vscode.dev.coder.com--*
-  Buzz baz
   ConnectTimeout 500
   ExtraKey ExtraValue
-  Foo bar
   ProxyCommand some-command-here
   ServerAliveCountMax 3
   ServerAliveInterval 10
   UserKnownHostsFile /dev/null
-  loglevel DEBUG
-# --- END CODER VSCODE dev.coder.com ---`;
+  loglevel DEBUG`);
+	});
 
-	expect(mockFileSystem.readFile).toHaveBeenCalledWith(
-		sshFilePath,
-		expect.anything(),
-	);
-	expect(mockFileSystem.writeFile).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		expectedOutput,
-		expect.objectContaining({
-			encoding: "utf-8",
-			mode: 0o600, // Default mode for new files.
-		}),
-	);
-	expect(mockFileSystem.rename).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-		sshFilePath,
-	);
-});
-
-describe("SSH config serialization", () => {
 	/**
 	 * One case per input surface; the full character matrix is covered by the
 	 * validateDeploymentSshOptions tests below.
 	 */
 	interface RejectCase {
 		name: string;
-		safeHostname?: string;
 		values?: SshValues;
 		overrides?: Record<string, string>;
 	}
 
 	it.each<RejectCase>([
-		{
-			name: "deployment hostname newline",
-			safeHostname: "dev.coder.com\nHost *",
-		},
 		{
 			name: "Host value carriage return",
 			values: { ...BASE_SSH_VALUES, Host: "coder-vscode--*\rMatch all" },
@@ -596,69 +202,312 @@ describe("SSH config serialization", () => {
 			overrides: { ForwardAgent: "yes\nRemoteCommand calc" },
 		},
 	])(
-		"rejects $name",
-		async ({
-			safeHostname = "dev.coder.com",
-			values = BASE_SSH_VALUES,
-			overrides,
-		}) => {
-			mockFileSystem.readFile.mockRejectedValueOnce("No file found");
-			const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-			await sshConfig.load();
+		"rejects unsafe serialization: $name",
+		async ({ values = BASE_SSH_VALUES, overrides }) => {
+			const sshConfig = await loadSshConfig();
 
-			await expect(
-				sshConfig.update(safeHostname, values, overrides),
-			).rejects.toThrow();
-			expect(mockFileSystem.writeFile).not.toHaveBeenCalled();
+			await expect(sshConfig.update(values, overrides)).rejects.toThrow();
+			expect(vol.existsSync(sshFilePath)).toBe(false);
 		},
 	);
 
 	it("accepts benign override options", async () => {
-		mockFileSystem.readFile.mockRejectedValueOnce("No file found");
-		mockFileSystem.stat.mockRejectedValueOnce({ code: "ENOENT" });
-		const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-		await sshConfig.load();
+		await updateDeployment(undefined, BASE_SSH_VALUES, USER_OVERRIDES);
 
-		await sshConfig.update("dev.coder.com", BASE_SSH_VALUES, USER_OVERRIDES);
-
-		const writtenConfig = mockFileSystem.writeFile.mock.calls[0]?.[1];
+		const writtenConfig = await readConfig();
 		expect(writtenConfig).toContain("  ForwardAgent yes");
 		expect(writtenConfig).toContain("  IdentityFile ~/.ssh/coder identity");
 	});
+});
 
-	it("uses literal replacement text and preserves surrounding config", async () => {
-		const existentSshConfig = `Host before
-  IdentityFile ~/.ssh/before
+describe("SshConfig.updateInclude", () => {
+	interface IncludePositionCase {
+		name: string;
+		existing: string;
+		expected: string;
+	}
+	it.each<IncludePositionCase>([
+		{ name: "empty config", existing: "", expected: includeBlock },
+		{
+			name: "prepends to user config",
+			existing: "Host *\n  ConnectTimeout 5",
+			expected: `${includeBlock}\n\nHost *\n  ConnectTimeout 5`,
+		},
+		{
+			name: "already first",
+			existing: `${includeBlock}\n\nHost *`,
+			expected: `${includeBlock}\n\nHost *`,
+		},
+		{
+			name: "moves a stale block to first",
+			existing: `Host *\n\n${includeBlock.replace("coder/*.conf", "old/*.conf")}`,
+			expected: `${includeBlock}\n\nHost *`,
+		},
+	])("handles $name", async ({ existing, expected }) => {
+		await updateInclude(existing);
+		expect(await readConfig()).toBe(expected);
+	});
 
-# --- START CODER VSCODE dev.coder.com ---
-Host coder-vscode.dev.coder.com--*
-# --- END CODER VSCODE dev.coder.com ---
+	it("removes the current deployment and preserves other and deployment-unaware blocks", async () => {
+		await updateInclude(
+			`${legacyOtherDeploymentBlock}\n\n${legacyDeploymentBlock}\n\n${deploymentUnawareBlock}`,
+		);
+		expect(await readConfig()).toBe(
+			`${includeBlock}\n\n${legacyOtherDeploymentBlock}\n\n${deploymentUnawareBlock}`,
+		);
+	});
 
-Host after
-  IdentityFile ~/.ssh/after`;
-		mockFileSystem.readFile.mockResolvedValueOnce(existentSshConfig);
-		mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o600 });
+	interface MalformedEditorCase {
+		name: string;
+		existing: string;
+		error: string;
+	}
+	it.each<MalformedEditorCase>([
+		{
+			name: "extra end marker",
+			existing: `${includeBlock}\n# --- END CODER INCLUDE CODER-REMOTE ---`,
+			error:
+				'has 1 "# --- START CODER INCLUDE CODER-REMOTE ---" and 2 "# --- END CODER INCLUDE CODER-REMOTE ---" markers',
+		},
+		{
+			name: "duplicate blocks",
+			existing: `${includeBlock}\n${includeBlock}`,
+			error: 'has 2 "# --- START CODER INCLUDE CODER-REMOTE ---" blocks',
+		},
+		{
+			name: "end before start",
+			existing:
+				"# --- END CODER INCLUDE CODER-REMOTE ---\n# --- START CODER INCLUDE CODER-REMOTE ---",
+			error:
+				'"# --- END CODER INCLUDE CODER-REMOTE ---" marker before its "# --- START CODER INCLUDE CODER-REMOTE ---" marker',
+		},
+	])("rejects $name", async ({ existing, error }) => {
+		await expect(updateInclude(existing)).rejects.toThrow(error);
+		expect(await readConfig()).toBe(existing);
+	});
 
-		const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-		await sshConfig.load();
-		await sshConfig.update("dev.coder.com", BASE_SSH_VALUES, {
-			IdentityFile: "$& $` $' $<name> $$",
-		});
+	interface IncludePathEscapeCase {
+		dir: string;
+		escaped: string;
+	}
+	it.each<IncludePathEscapeCase>([
+		{
+			dir: "~/.ssh/we[i]rd/*?[dir]",
+			escaped: "~/.ssh/we\\[i\\]rd/\\*\\?\\[dir\\]",
+		},
+		{
+			dir: "C:\\Users\\Jane Doe\\ssh",
+			escaped: "C:/Users/Jane Doe/ssh",
+		},
+	])("escapes $dir", async ({ dir, escaped }) => {
+		await updateInclude("", dir);
+		expect(await readConfig()).toContain(`Include "${escaped}/*.conf"`);
+	});
 
-		const writtenConfig = String(mockFileSystem.writeFile.mock.calls[0]?.[1]);
-		expect(writtenConfig).toContain("  IdentityFile $& $` $' $<name> $$");
-		expect(
-			writtenConfig.startsWith(`Host before
-  IdentityFile ~/.ssh/before
+	// A tilde swallows home-path quirks that ssh could not read back otherwise.
+	it("writes a home-relative include path with a tilde", async () => {
+		const home = "/home/we[i]rd %user";
+		vi.mocked(os.homedir).mockReturnValue(home);
+		await updateInclude("", `${home}/.local/share/coder.coder-remote/ssh`);
+		expect(await readConfig()).toContain(
+			'Include "~/.local/share/coder.coder-remote/ssh/*.conf"',
+		);
+	});
 
-`),
-		).toBe(true);
-		expect(
-			writtenConfig.endsWith(`
+	type InvalidIncludeDir = string;
+	it.each<InvalidIncludeDir>([
+		"path\rname",
+		"path\nname",
+		"path\0name",
+		'path"name',
+		"path%name",
+	])("rejects unrepresentable include paths", async (dir) => {
+		await expect(updateInclude("", dir)).rejects.toThrow(
+			"must not contain CR, LF, NUL",
+		);
+	});
+});
 
-Host after
-  IdentityFile ~/.ssh/after`),
-		).toBe(true);
+describe("persistence", () => {
+	interface FileModeCase {
+		name: string;
+		existing: string | undefined;
+		mode: number;
+	}
+	it.each<FileModeCase>([
+		{ name: "new file", existing: undefined, mode: 0o600 },
+		{ name: "existing file", existing: "Host *", mode: 0o640 },
+	])("uses the correct mode for a $name", async ({ existing, mode }) => {
+		const sshConfig = await loadSshConfig(existing, mode);
+		await sshConfig.update(BASE_SSH_VALUES);
+		expect(vol.statSync(sshFilePath).mode & 0o777).toBe(mode);
+	});
+
+	type FileSystemErrorStage = "load" | "include read" | "stat";
+	it.each<FileSystemErrorStage>(["load", "include read", "stat"])(
+		"propagates non-ENOENT %s errors",
+		async (stage) => {
+			const denied = Object.assign(new Error("denied"), { code: "EACCES" });
+			if (stage === "load") {
+				vol.fromJSON({ [sshFilePath]: "Host initial" });
+				vi.spyOn(fsPromises, "readFile").mockRejectedValueOnce(denied);
+				const sshConfig = new SshConfig(sshFilePath, mockLogger, fsPromises);
+				await expect(sshConfig.load()).rejects.toBe(denied);
+				return;
+			}
+			const sshConfig = await loadSshConfig("Host initial");
+			if (stage === "include read") {
+				vi.spyOn(fsPromises, "readFile").mockRejectedValueOnce(denied);
+				await expect(
+					sshConfig.updateInclude(includeDir, hostname),
+				).rejects.toThrow("denied");
+				return;
+			}
+			vi.spyOn(fsPromises, "stat").mockRejectedValueOnce(denied);
+			await expect(sshConfig.update(BASE_SSH_VALUES)).rejects.toThrow("denied");
+		},
+	);
+
+	it("wraps write failures", async () => {
+		const sshConfig = await loadSshConfig("Host initial");
+		vi.spyOn(fsPromises, "writeFile").mockRejectedValueOnce(
+			new Error("EACCES"),
+		);
+		await expect(sshConfig.update(BASE_SSH_VALUES)).rejects.toThrow(
+			/Failed to write temporary SSH config file.*EACCES/,
+		);
+	});
+
+	it("wraps rename failures and removes the temporary file", async () => {
+		const sshConfig = await loadSshConfig("Host initial");
+		const error = Object.assign(new Error("EXDEV"), { code: "EXDEV" });
+		vi.spyOn(fsPromises, "rename").mockRejectedValueOnce(error);
+		await expect(sshConfig.update(BASE_SSH_VALUES)).rejects.toThrow(
+			"Failed to rename temporary SSH config file",
+		);
+		const leftoverTempFiles = Object.keys(vol.toJSON()).filter((filePath) =>
+			filePath.includes("vscode-coder-tmp"),
+		);
+		expect(leftoverTempFiles).toEqual([]);
+	});
+
+	it("writes over a concurrent change using the freshly read content", async () => {
+		const sshConfig = await loadSshConfig("Host initial");
+		// The include update reads right before merging, so it picks up content
+		// written after load().
+		vol.writeFileSync(sshFilePath, "Host concurrent");
+		await sshConfig.updateInclude(includeDir, hostname);
+		expect(await readConfig()).toBe(`${includeBlock}\n\nHost concurrent`);
+	});
+
+	it("does not rewrite the file when the include is already in place", async () => {
+		const sshConfig = await loadSshConfig(`${includeBlock}\n\nHost *`);
+		const writeFileSpy = vi.spyOn(fsPromises, "writeFile");
+		const renameSpy = vi.spyOn(fsPromises, "rename");
+		await sshConfig.updateInclude(includeDir, hostname);
+		expect(writeFileSpy).not.toHaveBeenCalled();
+		expect(renameSpy).not.toHaveBeenCalled();
+	});
+});
+
+describe("parseSshConfig", () => {
+	interface ParseSshConfigCase {
+		name: string;
+		input: string[];
+		expected: Record<string, string>;
+	}
+	it.each<ParseSshConfigCase>([
+		{
+			name: "parses space and equals separators",
+			input: ["ConnectTimeout 10", "LogLevel=DEBUG"],
+			expected: { ConnectTimeout: "10", LogLevel: "DEBUG" },
+		},
+		{
+			name: "accumulates non-empty SetEnv values",
+			input: ["SetEnv A=1", "setenv=B=2 C=3", "SetEnv="],
+			expected: { SetEnv: "A=1 B=2 C=3" },
+		},
+		{
+			name: "skips malformed lines",
+			input: ["malformed", "Key:value", "# comment", "key=value"],
+			expected: { key: "value" },
+		},
+	])("$name", ({ input, expected }) => {
+		expect(parseSshConfig(input)).toEqual(expected);
+	});
+});
+
+describe("mergeSshConfigValues", () => {
+	interface MergeSshConfigCase {
+		name: string;
+		config: Record<string, string>;
+		overrides: Record<string, string>;
+		expected: Record<string, string>;
+	}
+	it.each<MergeSshConfigCase>([
+		{
+			name: "overrides case-insensitively and preserves other values",
+			config: { LogLevel: "ERROR", Keep: "yes" },
+			overrides: { loglevel: "DEBUG" },
+			expected: { loglevel: "DEBUG", Keep: "yes" },
+		},
+		{
+			name: "adds and removes keys",
+			config: { Remove: "value" },
+			overrides: { Remove: "", Add: "value" },
+			expected: { Add: "value" },
+		},
+		{
+			name: "combines SetEnv and ignores an empty override",
+			config: { SetEnv: "A=1" },
+			overrides: { setenv: "B=2" },
+			expected: { SetEnv: "A=1 B=2" },
+		},
+		{
+			name: "keeps SetEnv for an empty override",
+			config: { SetEnv: "A=1" },
+			overrides: { SetEnv: "" },
+			expected: { SetEnv: "A=1" },
+		},
+		{
+			name: "adds SetEnv from overrides",
+			config: {},
+			overrides: { SetEnv: "A=1" },
+			expected: { SetEnv: "A=1" },
+		},
+	])("$name", ({ config, overrides, expected }) => {
+		expect(mergeSshConfigValues(config, overrides)).toEqual(expected);
+	});
+});
+
+describe("parseCoderSshOptions", () => {
+	const coderBlock = (...lines: string[]) =>
+		`# ------------START-CODER-----------\n${lines.join("\n")}\n# ------------END-CODER------------`;
+
+	interface ParseCoderOptionsCase {
+		name: string;
+		raw: string;
+		expected: Record<string, string>;
+	}
+	it.each<ParseCoderOptionsCase>([
+		{ name: "no block", raw: "Host personal", expected: {} },
+		{
+			name: "options only",
+			raw: coderBlock(
+				"# :wait=yes",
+				"# :ssh-option=ForwardX11=yes",
+				"# :ssh-option=SetEnv=FOO=1",
+				"# :ssh-option=SetEnv=BAR=2",
+			),
+			expected: { ForwardX11: "yes", SetEnv: "FOO=1 BAR=2" },
+		},
+		{
+			name: "flexible marker dashes",
+			raw: "# ---START-CODER---\n# :ssh-option=ForwardX11=yes\n# ---END-CODER---",
+			expected: { ForwardX11: "yes" },
+		},
+	])("$name", ({ raw, expected }) => {
+		expect(parseCoderSshOptions(raw)).toEqual(expected);
 	});
 });
 
@@ -750,7 +599,7 @@ describe("validateDeploymentSshOptions", () => {
 		).toThrow(
 			'To allow "LocalCommand", set the option yourself in the "coder.sshConfig" setting',
 		);
-		// Overriding a pinned option fails the post-write check instead.
+		// Coder always writes the pinned options itself.
 		expect(() =>
 			validateDeploymentSshOptions({ ProxyCommand: "evil" }, {}),
 		).toThrow('Coder manages "ProxyCommand", which cannot be overridden.');
@@ -782,318 +631,5 @@ describe("validateDeploymentSshOptions", () => {
 				{ ProxyCommand: "user value" },
 			),
 		).toThrow('"LocalCommand"');
-	});
-});
-
-it("fails if we are unable to write the temporary file", async () => {
-	const existentSSHConfig = `Host beforeconfig
-  HostName before.config.tld
-  User before`;
-
-	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-	mockFileSystem.readFile.mockResolvedValueOnce(existentSSHConfig);
-	mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o600 });
-	mockFileSystem.writeFile.mockRejectedValueOnce(new Error("EACCES"));
-
-	await sshConfig.load();
-
-	expect(mockFileSystem.readFile).toHaveBeenCalledWith(
-		sshFilePath,
-		expect.anything(),
-	);
-	await expect(
-		sshConfig.update("dev.coder.com", BASE_SSH_VALUES),
-	).rejects.toThrow(/Failed to write temporary SSH config file.*EACCES/);
-});
-
-it("cleans up temp file when rename fails", async () => {
-	mockFileSystem.readFile.mockResolvedValueOnce("Host existing\n  HostName x");
-	mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o600 });
-	mockFileSystem.writeFile.mockResolvedValueOnce("");
-	const err = new Error("EXDEV");
-	(err as NodeJS.ErrnoException).code = "EXDEV";
-	mockFileSystem.rename.mockRejectedValueOnce(err);
-
-	const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-	await sshConfig.load();
-	await expect(
-		sshConfig.update("dev.coder.com", {
-			...BASE_SSH_VALUES,
-			ProxyCommand: "cmd",
-		}),
-	).rejects.toThrow(/Failed to rename temporary SSH config file/);
-	expect(mockFileSystem.unlink).toHaveBeenCalledWith(
-		expect.stringContaining(sshTempFilePrefix),
-	);
-});
-
-describe("rename retry on Windows", () => {
-	const realPlatform = process.platform;
-
-	beforeEach(() => {
-		Object.defineProperty(process, "platform", { value: "win32" });
-		vi.useFakeTimers();
-	});
-	afterEach(() => {
-		vi.useRealTimers();
-		Object.defineProperty(process, "platform", { value: realPlatform });
-	});
-
-	it("retries on transient EPERM and succeeds", async () => {
-		mockFileSystem.readFile.mockResolvedValueOnce(
-			"Host existing\n  HostName x",
-		);
-		mockFileSystem.stat.mockResolvedValueOnce({ mode: 0o600 });
-		mockFileSystem.writeFile.mockResolvedValueOnce("");
-		const err = new Error("EPERM");
-		(err as NodeJS.ErrnoException).code = "EPERM";
-		mockFileSystem.rename
-			.mockRejectedValueOnce(err)
-			.mockResolvedValueOnce(undefined);
-
-		const sshConfig = new SshConfig(sshFilePath, mockLogger, mockFileSystem);
-		await sshConfig.load();
-		const promise = sshConfig.update("dev.coder.com", {
-			...BASE_SSH_VALUES,
-			ProxyCommand: "cmd",
-		});
-
-		await vi.advanceTimersByTimeAsync(100);
-		await promise;
-
-		expect(mockFileSystem.rename).toHaveBeenCalledTimes(2);
-		expect(mockFileSystem.unlink).not.toHaveBeenCalled();
-	});
-});
-
-describe("parseSshConfig", () => {
-	interface ParseTest {
-		name: string;
-		input: string[];
-		expected: Record<string, string>;
-	}
-
-	it.each<ParseTest>([
-		{
-			name: "space separator",
-			input: ["Key value"],
-			expected: { Key: "value" },
-		},
-		{
-			name: "equals separator",
-			input: ["Key=value"],
-			expected: { Key: "value" },
-		},
-		{
-			name: "SetEnv with space",
-			input: ["SetEnv MY_VAR=value OTHER_VAR=othervalue"],
-			expected: { SetEnv: "MY_VAR=value OTHER_VAR=othervalue" },
-		},
-		{
-			name: "SetEnv with equals",
-			input: ["SetEnv=MY_VAR=value OTHER_VAR=othervalue"],
-			expected: { SetEnv: "MY_VAR=value OTHER_VAR=othervalue" },
-		},
-		{
-			name: "accumulates SetEnv entries",
-			input: ["SetEnv A=1", "setenv B=2 C=3"],
-			expected: { SetEnv: "A=1 B=2 C=3" },
-		},
-		{
-			name: "skips malformed lines",
-			input: ["malformed", "# comment", "key=value", "  indented"],
-			expected: { key: "value" },
-		},
-		{
-			name: "value with spaces",
-			input: ["ProxyCommand ssh -W %h:%p proxy"],
-			expected: { ProxyCommand: "ssh -W %h:%p proxy" },
-		},
-		{
-			name: "quoted value with spaces",
-			input: ['SetEnv key="Hello world"'],
-			expected: { SetEnv: 'key="Hello world"' },
-		},
-		{
-			name: "multiple keys",
-			input: ["ConnectTimeout 10", "LogLevel=DEBUG", "SetEnv VAR=1"],
-			expected: { ConnectTimeout: "10", LogLevel: "DEBUG", SetEnv: "VAR=1" },
-		},
-		{
-			name: "ignores empty SetEnv",
-			input: ["SetEnv=", "SetEnv "],
-			expected: {},
-		},
-	])("$name", ({ input, expected }) => {
-		expect(parseSshConfig(input)).toEqual(expected);
-	});
-});
-
-describe("mergeSshConfigValues", () => {
-	interface MergeTest {
-		name: string;
-		config: Record<string, string>;
-		overrides: Record<string, string>;
-		expected: Record<string, string>;
-	}
-
-	it.each<MergeTest>([
-		{
-			name: "overrides case-insensitively",
-			config: { LogLevel: "ERROR" },
-			overrides: { loglevel: "DEBUG" },
-			expected: { loglevel: "DEBUG" },
-		},
-		{
-			name: "removes keys with empty string",
-			config: { LogLevel: "ERROR", Foo: "bar" },
-			overrides: { LogLevel: "" },
-			expected: { Foo: "bar" },
-		},
-		{
-			name: "adds new keys from overrides",
-			config: { LogLevel: "ERROR" },
-			overrides: { NewKey: "value" },
-			expected: { LogLevel: "ERROR", NewKey: "value" },
-		},
-		{
-			name: "preserves keys not in overrides",
-			config: { A: "1", B: "2" },
-			overrides: { B: "3" },
-			expected: { A: "1", B: "3" },
-		},
-		{
-			name: "concatenates SetEnv values",
-			config: { SetEnv: "A=1" },
-			overrides: { SetEnv: "B=2" },
-			expected: { SetEnv: "A=1 B=2" },
-		},
-		{
-			name: "concatenates SetEnv case-insensitively",
-			config: { SetEnv: "A=1" },
-			overrides: { setenv: "B=2" },
-			expected: { SetEnv: "A=1 B=2" },
-		},
-		{
-			name: "SetEnv only in override",
-			config: {},
-			overrides: { SetEnv: "B=2" },
-			expected: { SetEnv: "B=2" },
-		},
-		{
-			name: "SetEnv only in config",
-			config: { SetEnv: "A=1" },
-			overrides: {},
-			expected: { SetEnv: "A=1" },
-		},
-		{
-			name: "SetEnv with other values",
-			config: { SetEnv: "A=1", LogLevel: "ERROR" },
-			overrides: { SetEnv: "B=2", Timeout: "10" },
-			expected: { SetEnv: "A=1 B=2", LogLevel: "ERROR", Timeout: "10" },
-		},
-		{
-			name: "ignores empty SetEnv override",
-			config: { SetEnv: "A=1 B=2" },
-			overrides: { SetEnv: "" },
-			expected: { SetEnv: "A=1 B=2" },
-		},
-	])("$name", ({ config, overrides, expected }) => {
-		expect(mergeSshConfigValues(config, overrides)).toEqual(expected);
-	});
-});
-
-describe("parseCoderSshOptions", () => {
-	const coderBlock = (...lines: string[]) =>
-		`# ------------START-CODER-----------\n${lines.join("\n")}\n# ------------END-CODER------------`;
-
-	interface SshOptionTestCase {
-		name: string;
-		raw: string;
-		expected: Record<string, string>;
-	}
-	it.each<SshOptionTestCase>([
-		{
-			name: "empty string",
-			raw: "",
-			expected: {},
-		},
-		{
-			name: "no CLI block",
-			raw: "Host myhost\n  HostName example.com",
-			expected: {},
-		},
-		{
-			name: "single option",
-			raw: coderBlock("# :ssh-option=ForwardX11=yes"),
-			expected: { ForwardX11: "yes" },
-		},
-		{
-			name: "multiple options",
-			raw: coderBlock(
-				"# :ssh-option=ForwardX11=yes",
-				"# :ssh-option=ForwardX11Trusted=yes",
-			),
-			expected: { ForwardX11: "yes", ForwardX11Trusted: "yes" },
-		},
-		{
-			name: "ignores non-ssh-option keys",
-			raw: coderBlock(
-				"# :wait=yes",
-				"# :disable-autostart=true",
-				"# :ssh-option=ForwardX11=yes",
-			),
-			expected: { ForwardX11: "yes" },
-		},
-		{
-			name: "accumulates SetEnv across lines",
-			raw: coderBlock(
-				"# :ssh-option=SetEnv=FOO=1",
-				"# :ssh-option=SetEnv=BAR=2",
-			),
-			expected: { SetEnv: "FOO=1 BAR=2" },
-		},
-		{
-			name: "tolerates different dash counts in markers",
-			raw: `# ---START-CODER---\n# :ssh-option=ForwardX11=yes\n# ---END-CODER---`,
-			expected: { ForwardX11: "yes" },
-		},
-	])("$name", ({ raw, expected }) => {
-		expect(parseCoderSshOptions(raw)).toEqual(expected);
-	});
-
-	it("extracts only ssh-options from a full config", () => {
-		const raw = `Host personal-server
-  HostName 10.0.0.1
-  User admin
-
-# ------------START-CODER-----------
-# This file is managed by coder. DO NOT EDIT.
-#
-# You should not hand-edit this file, changes may be overwritten.
-# For more information, see https://coder.com/docs
-#
-# :wait=yes
-# :disable-autostart=true
-# :ssh-option=ForwardX11=yes
-# :ssh-option=ForwardX11Trusted=yes
-
-Host coder.mydeployment--*
-  ConnectTimeout 0
-  ForwardX11 yes
-  ForwardX11Trusted yes
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-  LogLevel ERROR
-  ProxyCommand /usr/bin/coder ssh --stdio --ssh-host-prefix coder.mydeployment-- %h
-# ------------END-CODER------------
-
-Host work-server
-  HostName 10.0.0.2
-  User work`;
-		expect(parseCoderSshOptions(raw)).toEqual({
-			ForwardX11: "yes",
-			ForwardX11Trusted: "yes",
-		});
 	});
 });

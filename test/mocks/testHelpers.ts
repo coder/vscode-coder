@@ -25,12 +25,15 @@ import type { IncomingMessage } from "node:http";
 import type { AgentMetadataEvent } from "@/api/api-helper";
 import type { CoderApi } from "@/api/coderApi";
 import type { CliCredentialManager } from "@/core/cliCredentialManager";
+import type { CliManager } from "@/core/cliManager";
 import type { ServiceContainer } from "@/core/container";
 import type { ContextManager } from "@/core/contextManager";
 import type { MementoManager } from "@/core/mementoManager";
+import type { PathResolver } from "@/core/pathResolver";
 import type { SecretsManager } from "@/core/secretsManager";
 import type { Deployment } from "@/deployment/types";
 import type { Logger } from "@/logging/logger";
+import type { LoginCoordinator } from "@/login/loginCoordinator";
 import type { NetworkInfo } from "@/remote/sshProcess";
 import type { TelemetryService } from "@/telemetry/service";
 import type {
@@ -48,6 +51,10 @@ interface ContextManagerLike {
 	set(key: string, value: boolean): void;
 	get(key: string): boolean;
 	dispose(): void;
+}
+
+interface LoginCoordinatorLike {
+	ensureLoggedInWithDialog: LoginCoordinator["ensureLoggedInWithDialog"];
 }
 
 export function makeNetworkInfo(
@@ -249,6 +256,7 @@ export interface MessageCall {
  */
 export class MockUserInteraction {
 	private readonly responses = new Map<string, string | undefined>();
+	private readonly patternResponses: Array<[RegExp, string | undefined]> = [];
 	private readonly _messageCalls: MessageCall[] = [];
 	private inputBoxValue: string | undefined;
 	private inputBoxValidateInput: ((value: string) => Promise<void>) | undefined;
@@ -259,10 +267,14 @@ export class MockUserInteraction {
 	}
 
 	/**
-	 * Set a response for a specific message dialog
+	 * Set a response for a message dialog, matched exactly or by pattern.
 	 */
-	setResponse(message: string, response: string | undefined): void {
-		this.responses.set(message, response);
+	setResponse(message: string | RegExp, response: string | undefined): void {
+		if (typeof message === "string") {
+			this.responses.set(message, response);
+		} else {
+			this.patternResponses.push([message, response]);
+		}
 	}
 
 	/**
@@ -307,6 +319,7 @@ export class MockUserInteraction {
 	 */
 	clear(): void {
 		this.responses.clear();
+		this.patternResponses.length = 0;
 		this._messageCalls.length = 0;
 		this.inputBoxValue = undefined;
 		this.inputBoxValidateInput = undefined;
@@ -318,7 +331,12 @@ export class MockUserInteraction {
 	 */
 	private setupVSCodeMock(): void {
 		const getResponse = (message: string): string | undefined => {
-			return this.responses.get(message);
+			if (this.responses.has(message)) {
+				return this.responses.get(message);
+			}
+			return this.patternResponses.find(([pattern]) =>
+				pattern.test(message),
+			)?.[1];
 		};
 
 		const handleMessage =
@@ -581,7 +599,10 @@ export function createMockServiceContainer(
 		secretsManager?: SecretsManager;
 		mementoManager?: MementoManager;
 		cliCredentialManager?: CliCredentialManager;
+		cliManager?: CliManager;
+		pathResolver?: PathResolver;
 		contextManager?: ContextManagerLike;
+		loginCoordinator?: LoginCoordinatorLike;
 	} = {},
 ): ServiceContainer {
 	const telemetry = overrides.telemetry ?? createTestTelemetryService();
@@ -601,8 +622,12 @@ export function createMockServiceContainer(
 			require("mementoManager", overrides.mementoManager),
 		getCliCredentialManager: () =>
 			require("cliCredentialManager", overrides.cliCredentialManager),
+		getCliManager: () => require("cliManager", overrides.cliManager),
+		getPathResolver: () => require("pathResolver", overrides.pathResolver),
 		getContextManager: () =>
 			require("contextManager", overrides.contextManager) as ContextManager,
+		getLoginCoordinator: () =>
+			require("loginCoordinator", overrides.loginCoordinator) as LoginCoordinator,
 	} as ServiceContainer;
 }
 

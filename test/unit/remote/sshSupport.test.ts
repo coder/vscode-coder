@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 
 import {
 	computeSshProperties,
-	findSshPropertyProblems,
 	sshSupportsSetEnv,
 	sshVersionSupportsSetEnv,
 } from "@/remote/sshSupport";
@@ -191,34 +190,5 @@ Host coder-vscode.dev.coder.com--*
 				'"/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/bin/coder-darwin-arm64" vscodessh --network-info-dir "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/net" --session-token-file "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/session" --url-file "/Users/matifali/Library/Application Support/Code/User/globalStorage/coder.coder-remote/dev.coder.com/url" %h',
 			userknownhostsfile: "/dev/null",
 		});
-	});
-});
-
-describe("findSshPropertyProblems", () => {
-	const EXPECTED = {
-		ProxyCommand: "coder ssh --stdio %h",
-		StrictHostKeyChecking: "no",
-	};
-	const MATCHING = {
-		proxycommand: "coder ssh --stdio %h",
-		stricthostkeychecking: "no",
-	};
-
-	it("passes when values match, ignoring options Coder does not pin", () => {
-		expect(
-			findSshPropertyProblems(
-				{ ...MATCHING, localcommand: "echo hello" },
-				EXPECTED,
-			),
-		).toEqual([]);
-	});
-
-	it("reports every mismatch at once", () => {
-		expect(findSshPropertyProblems({ proxycommand: "evil" }, EXPECTED)).toEqual(
-			[
-				'"ProxyCommand" is set to "evil", but Coder expects "coder ssh --stdio %h"',
-				'"StrictHostKeyChecking" is not set, but Coder expects "no"',
-			],
-		);
 	});
 });

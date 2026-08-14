@@ -122,25 +122,3 @@ export function computeSshProperties(
 	});
 	return merged;
 }
-
-/**
- * Compare effective SSH properties against what Coder wrote, one problem per
- * unexpected value.
- */
-export function findSshPropertyProblems(
-	computed: SshProperties,
-	expected: Record<string, string>,
-): string[] {
-	const problems: string[] = [];
-	for (const [key, value] of Object.entries(expected)) {
-		const computedValue = computed[lowercase(key)];
-		if (computedValue !== value) {
-			const actual =
-				computedValue === undefined
-					? "is not set"
-					: `is set to "${computedValue}"`;
-			problems.push(`"${key}" ${actual}, but Coder expects "${value}"`);
-		}
-	}
-	return problems;
-}

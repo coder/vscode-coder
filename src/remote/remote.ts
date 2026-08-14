@@ -39,9 +39,10 @@ import {
 import { getHeaderCommand } from "../settings/headers";
 import { escapeCommandArg, expandPath } from "../util";
 import {
-	AuthorityPrefix,
 	type AuthorityParts,
+	classifySshHost,
 	parseRemoteAuthority,
+	retargetRemoteAuthority,
 } from "../util/authority";
 import { createStatusBarItem } from "../util/statusBar";
 import { vscodeProposed } from "../vscodeProposed";
@@ -57,12 +58,11 @@ import {
 	parseSshConfig,
 	validateDeploymentSshOptions,
 } from "./sshConfig";
-import { getRemoteSshSetting } from "./sshExtension";
+import { getRemoteSshConfigFile } from "./sshExtension";
 import { applySettingOverrides, buildSshOverrides } from "./sshOverrides";
 import { SshProcessMonitor } from "./sshProcess";
 import {
 	computeSshProperties,
-	findSshPropertyProblems,
 	sshSupportsSetEnv,
 	type SshProperties,
 } from "./sshSupport";
@@ -158,6 +158,15 @@ export class Remote {
 		}
 		if (!parts) {
 			return;
+		}
+
+		// parseRemoteAuthority returned null for foreign hosts, so this is
+		// either the current editor's authority or a migratable legacy one.
+		if (classifySshHost(parts.sshHost) === "legacy") {
+			if (await this.migrateLegacyAuthority(remoteAuthority, startupMode)) {
+				return;
+			}
+			// Not reopened: keep going so the legacy host still connects.
 		}
 
 		this.logger.info("Setting up remote connection", {
@@ -667,8 +676,7 @@ export class Remote {
 			this.logger.info("Updating SSH config...");
 			return await this.updateSSHConfig(
 				workspaceClient,
-				context.parts.safeHostname,
-				context.parts.sshHost,
+				context.parts,
 				binaryPath,
 				logDir,
 				featureSet,
@@ -716,6 +724,70 @@ export class Remote {
 		// User cancelled or login failed
 		await this.closeRemote();
 		return undefined;
+	}
+
+	/**
+	 * Reopen the window on this editor's own authority. Returns false when the
+	 * workspace cannot be reopened losslessly, so the caller connects over the
+	 * legacy host instead.
+	 */
+	private async migrateLegacyAuthority(
+		remoteAuthority: string,
+		startupMode: StartupMode,
+	): Promise<boolean> {
+		const migratedAuthority = retargetRemoteAuthority(remoteAuthority);
+		const workspaceFile = vscode.workspace.workspaceFile;
+		const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+		const savedWorkspaceFile =
+			workspaceFile?.scheme === "untitled" ? undefined : workspaceFile;
+		if (!savedWorkspaceFile && workspaceFolders.length > 1) {
+			this.logger.warn(
+				"Cannot migrate an unsaved multi-root workspace; connecting over the legacy host",
+				remoteAuthority,
+			);
+			// Fire-and-forget: the connection proceeds either way.
+			void vscode.window
+				.showWarningMessage(
+					"This workspace still opens over the old coder-vscode SSH host. " +
+						"To switch it to this editor's own host, save the workspace, then reload the window.",
+					"Learn More",
+				)
+				.then(async (choice) => {
+					if (choice === "Learn More") {
+						await vscode.env.openExternal(
+							vscode.Uri.parse(
+								"https://code.visualstudio.com/docs/editing/workspaces/multi-root-workspaces",
+							),
+						);
+					}
+				});
+			return false;
+		}
+
+		await this.serviceContainer
+			.getMementoManager()
+			.setStartupMode(startupMode === "none" ? "start" : startupMode);
+		this.logger.info("Migrating legacy remote authority", {
+			from: remoteAuthority,
+			to: migratedAuthority,
+		});
+
+		const currentUri = savedWorkspaceFile ?? workspaceFolders[0]?.uri;
+		if (currentUri) {
+			await vscode.commands.executeCommand(
+				"vscode.openFolder",
+				currentUri.with({
+					authority: retargetRemoteAuthority(currentUri.authority),
+				}),
+				false,
+			);
+			return true;
+		}
+		await vscode.commands.executeCommand("vscode.newWindow", {
+			remoteAuthority: migratedAuthority,
+			reuseWindow: true,
+		});
+		return true;
 	}
 
 	private async resolveRemoteBinary(workspaceClient: Api): Promise<string> {
@@ -881,8 +953,8 @@ export class Remote {
 		return ["--log-dir", escapeCommandArg(logDir), "-v"];
 	}
 
-	private getSshConfigPath(): string {
-		const configured = getRemoteSshSetting("configFile");
+	private getMainSshConfigPath(): string {
+		const configured = getRemoteSshConfigFile();
 		return expandPath(configured || path.join("~", ".ssh", "config"));
 	}
 
@@ -890,26 +962,31 @@ export class Remote {
 	// all Coder entries.
 	private async updateSSHConfig(
 		restClient: Api,
-		safeHostname: string,
-		hostName: string,
+		parts: AuthorityParts,
 		binaryPath: string,
 		logDir: string,
 		featureSet: FeatureSet,
 		cliAuth: CliAuth,
 	): Promise<SshProperties> {
-		const sshConfigFile = this.getSshConfigPath();
-
-		const sshConfig = new SshConfig(sshConfigFile, this.logger);
+		// Taken from the authority, so an unmigrated legacy host keeps working.
+		const { hostPrefix, safeHostname } = parts;
+		// One file per (editor, deployment); the user's config gains one shared include.
+		const sshConfig = new SshConfig(this.getMainSshConfigPath(), this.logger);
 		await sshConfig.load();
+		// Never loaded: update() regenerates it without reading the old content.
+		const coderConfig = new SshConfig(
+			this.pathResolver.getSshConfigPath(safeHostname),
+			this.logger,
+		);
 
 		// Options the user set themselves win the merge below, so they are exempt
 		// from the deny list. Both sources are local and already trusted: whoever
-		// can write the SSH config could write any Host block directly, and the
-		// post-write check below still pins the critical options.
+		// can write the SSH config could write any Host block directly.
 		const userConfigSsh = vscode.workspace
 			.getConfiguration("coder")
 			.get<string[]>("sshConfig", []);
 		const userConfig = parseSshConfig(userConfigSsh);
+		// The CLI writes its block to the user's config, so read it from there.
 		const configSshOptions = parseCoderSshOptions(sshConfig.getRaw());
 
 		let deploymentSshConfig = {};
@@ -944,10 +1021,6 @@ export class Remote {
 			userConfig,
 		);
 
-		const hostPrefix = safeHostname
-			? `${AuthorityPrefix}.${safeHostname}--`
-			: `${AuthorityPrefix}--`;
-
 		const proxyCommand = await this.buildProxyCommand(
 			binaryPath,
 			safeHostname,
@@ -973,51 +1046,18 @@ export class Remote {
 			sshValues.SetEnv = "CODER_SSH_SESSION_TYPE=vscode";
 		}
 
-		await sshConfig.update(safeHostname, sshValues, sshConfigOverrides);
-
-		// A user can provide a "Host *" entry in their SSH config to add options
-		// to all hosts. We need to ensure that the options we set are not
-		// overridden by the user's config.
-		const computedProperties = computeSshProperties(
-			hostName,
-			sshConfig.getRaw(),
+		// Write our file before including it, so the include never dangles.
+		await coderConfig.update(sshValues, sshConfigOverrides);
+		await sshConfig.updateInclude(
+			this.pathResolver.getSshConfigDir(),
+			safeHostname,
 		);
-		const problems = findSshPropertyProblems(computedProperties, {
-			ProxyCommand: sshValues.ProxyCommand,
-			UserKnownHostsFile: sshValues.UserKnownHostsFile,
-			StrictHostKeyChecking: sshValues.StrictHostKeyChecking,
-		});
-		if (problems.length > 0) {
-			await this.failSshConfigCheck(hostName, problems);
-		}
 
-		return computedProperties;
-	}
-
-	/** Show every unexpected option at once, close the remote, and abort. */
-	private async failSshConfigCheck(
-		hostName: string,
-		problems: string[],
-	): Promise<never> {
-		const title = `Unexpected SSH Config Option${problems.length > 1 ? "s" : ""}`;
-		const detail =
-			`Your SSH config sets unexpected values for the "${hostName}" host. ` +
-			`Please fix the following and try again:\n\n` +
-			problems.map((problem) => `- ${problem}.`).join("\n");
-		const result = await vscodeProposed.window.showErrorMessage(
-			title,
-			{
-				useCustom: true,
-				modal: true,
-				detail,
-			},
-			"Reload Window",
+		// Mirror SSH's parse order; RemoteCommand can come from the user's config.
+		return computeSshProperties(
+			parts.sshHost,
+			`${coderConfig.getRaw()}\n${sshConfig.getRaw()}`,
 		);
-		if (result === "Reload Window") {
-			await this.reloadWindow();
-		}
-		await this.closeRemote();
-		throw new Error("SSH config mismatch, closing remote");
 	}
 
 	private watchSettings(

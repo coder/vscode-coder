@@ -351,6 +351,10 @@ async function doActivate(
 	});
 	commandManager.register("coder.viewLogs", commands.viewLogs.bind(commands));
 	commandManager.register(
+		"coder.openSshConfig",
+		commands.openSshConfig.bind(commands),
+	);
+	commandManager.register(
 		"coder.exportTelemetry",
 		commands.exportTelemetry.bind(commands),
 	);

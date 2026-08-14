@@ -50,7 +50,11 @@ import {
 	toRemoteLogGlobs,
 } from "./supportBundle/remoteServerDataPath";
 import { runExportTelemetryCommand } from "./telemetry/export/command";
-import { toRemoteAuthority } from "./util/authority";
+import {
+	isRemoteAuthorityCompatible,
+	parseRemoteAuthority,
+	toRemoteAuthority,
+} from "./util/authority";
 import { openInBrowser, toSafeHost } from "./util/uri";
 import { vscodeProposed } from "./vscodeProposed";
 import { parseNetcheckReport } from "./webviews/netcheck/types";
@@ -82,6 +86,9 @@ import type {
 	DuplicateWorkspaceIpc,
 	PongMessage,
 } from "./workspace/duplicateWorkspaceIpc";
+
+const NO_SSH_CONFIG_MESSAGE =
+	"No SSH config has been generated yet. It is written when you connect to a workspace.";
 
 interface OpenOptions {
 	workspaceOwner?: string;
@@ -563,6 +570,56 @@ export class Commands {
 			this.telemetryService.getContext(),
 			telemetry,
 		);
+	}
+
+	/** Open this editor's generated SSH config, picking a deployment when several exist. */
+	public async openSshConfig(): Promise<void> {
+		const hostname = await this.pickSshHostname();
+		if (!hostname) {
+			return;
+		}
+		try {
+			await openFile(this.pathResolver.getSshConfigPath(hostname));
+		} catch {
+			vscode.window.showInformationMessage(NO_SSH_CONFIG_MESSAGE);
+			return;
+		}
+		// The file is rewritten on every connection, so edits would be lost.
+		await vscode.commands.executeCommand(
+			"workbench.action.files.setActiveEditorReadonlyInSession",
+		);
+	}
+
+	/** A connected window resolves to its own deployment; otherwise ask. */
+	private async pickSshHostname(): Promise<string | undefined> {
+		try {
+			// remoteAuthority is a proposed API; our own vscode module may not read it.
+			const remoteAuthority = vscodeProposed.env.remoteAuthority;
+			if (remoteAuthority) {
+				const parts = parseRemoteAuthority(remoteAuthority);
+				if (parts) {
+					return parts.safeHostname;
+				}
+			}
+		} catch {
+			// Malformed Coder authority or unavailable API; fall through to the picker.
+		}
+		const hostnames = (
+			await readdirOrEmpty(this.pathResolver.getSshConfigDir())
+		)
+			.map((file) => this.pathResolver.parseSshConfigFile(file))
+			.filter((name) => name !== undefined);
+		if (hostnames.length === 0) {
+			vscode.window.showInformationMessage(NO_SSH_CONFIG_MESSAGE);
+			return undefined;
+		}
+		if (hostnames.length === 1) {
+			return hostnames[0];
+		}
+		return vscode.window.showQuickPick(hostnames, {
+			title: "Open generated SSH configuration",
+			placeHolder: "Select a deployment",
+		});
 	}
 
 	/**
@@ -1475,12 +1532,11 @@ export class Commands {
 			const output: {
 				workspaces: Array<{ folderUri: vscode.Uri; remoteAuthority: string }>;
 			} = await vscode.commands.executeCommand("_workbench.getRecentlyOpened");
-			const opened = output.workspaces.filter(
-				// Remove recents that do not belong to this connection.  The remote
-				// authority maps to a workspace/agent combination (using the SSH host
-				// name).  There may also be some legacy connections that still may
-				// reference a workspace without an agent name, which will be missed.
-				(opened) => opened.folderUri?.authority === remoteAuthority,
+			const opened = output.workspaces.filter((opened) =>
+				isRemoteAuthorityCompatible(
+					opened.folderUri?.authority,
+					remoteAuthority,
+				),
 			);
 			// openRecent will always use the most recent.  Otherwise, if there are
 			// multiple we ask the user which to use.
