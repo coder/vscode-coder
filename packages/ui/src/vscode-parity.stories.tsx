@@ -189,10 +189,19 @@ const MenuParity = (): React.JSX.Element => (
 		}}
 	>
 		<DropdownMenu defaultOpen>
-			<DropdownMenuTrigger asChild>
-				<span />
-			</DropdownMenuTrigger>
-			<DropdownMenuContent>
+			<DropdownMenuTrigger
+				asChild
+				aria-label="Menu"
+				style={{
+					display: "block",
+					width: "100%",
+					height: 0,
+					padding: 0,
+					border: 0,
+					opacity: 0,
+				}}
+			/>
+			<DropdownMenuContent sideOffset={0}>
 				<DropdownMenuItem>Start workspace</DropdownMenuItem>
 				<DropdownMenuItem>Open logs</DropdownMenuItem>
 				<DropdownMenuSeparator />
