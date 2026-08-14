@@ -393,11 +393,11 @@ export class CoderApi extends Api implements vscode.Disposable {
 		 */
 		const headers = {
 			...(token ? { [coderSessionTokenHeader]: token } : {}),
+			...configs.options?.headers,
+			...headersFromCommand,
 			...(this.sessionId
 				? { [baggageHeader]: `${SESSION_ID_BAGGAGE_KEY}=${this.sessionId}` }
 				: {}),
-			...configs.options?.headers,
-			...headersFromCommand,
 		};
 
 		const baseUrl = new URL(baseUrlRaw);
