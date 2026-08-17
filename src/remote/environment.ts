@@ -1,4 +1,5 @@
 import { joinNoProxy } from "../api/proxy";
+import { sessionId } from "../core/sessionId";
 
 import type {
 	GlobalEnvironmentVariableCollection,
@@ -6,7 +7,7 @@ import type {
 } from "vscode";
 
 type Environment = Record<string, string | undefined>;
-type SshEnvironment = Partial<
+type SshProxyEnvironment = Partial<
 	Record<"HTTP_PROXY" | "HTTPS_PROXY" | "NO_PROXY", string>
 >;
 
@@ -26,13 +27,14 @@ export const SSH_PROXY_SETTINGS: ReadonlyArray<{
 
 /**
  * Apply the SSH environment that the spawned `coder ssh` ProxyCommand inherits.
- * Currently just the proxy config (HTTP_PROXY/HTTPS_PROXY/NO_PROXY), read by the
- * coder CLI like any Go HTTP client. Applied via both process.env (ssh spawned as
- * a child, `remote.SSH.useLocalServer=true`) and the terminal env collection (ssh
- * spawned in a terminal, `useLocalServer=false`, which can't see process.env),
- * since the mode isn't knowable up front. Mutating env rather than the SSH config
- * keeps credentialed URLs off disk and windows independent. Disposable restores
- * both.
+ * Includes the proxy config (HTTP_PROXY/HTTPS_PROXY/NO_PROXY), read by the coder
+ * CLI like any Go HTTP client, and the session ID via CODER_TRACE_SESSION_ID so
+ * the CLI reuses the plugin's session ID instead of generating its own. Applied
+ * via both process.env (ssh spawned as a child, `remote.SSH.useLocalServer=true`)
+ * and the terminal env collection (ssh spawned in a terminal,
+ * `useLocalServer=false`, which can't see process.env), since the mode isn't
+ * knowable up front. Mutating env rather than the SSH config keeps credentialed
+ * URLs off disk and windows independent. Disposable restores both.
  */
 export function applySshEnvironment(
 	cfg: Pick<WorkspaceConfiguration, "get">,
@@ -42,7 +44,10 @@ export function applySshEnvironment(
 	>,
 	env: Environment = process.env,
 ): { dispose(): void } {
-	const values = getSshProxyEnvironment(cfg);
+	const values: Environment = {
+		...getSshProxyEnvironment(cfg),
+		CODER_TRACE_SESSION_ID: sessionId,
+	};
 	const restoreEnv = applyEnvironment(values, env);
 
 	collection.persistent = false;
@@ -65,7 +70,7 @@ export function applySshEnvironment(
 /** The proxy portion of the SSH environment, derived from VS Code's settings. */
 export function getSshProxyEnvironment(
 	cfg: Pick<WorkspaceConfiguration, "get">,
-): SshEnvironment {
+): SshProxyEnvironment {
 	if (cfg.get<string>("http.proxySupport") === "off") {
 		return {};
 	}
@@ -83,7 +88,7 @@ export function getSshProxyEnvironment(
 }
 
 function applyEnvironment(
-	values: SshEnvironment,
+	values: Environment,
 	env: Environment,
 ): { dispose(): void } {
 	// Stored `undefined` means the key was absent and should be deleted on cleanup.

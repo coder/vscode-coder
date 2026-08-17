@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { sessionId } from "@/core/sessionId";
 import {
 	applySshEnvironment,
 	getSshProxyEnvironment,
@@ -14,6 +15,7 @@ import {
 } from "../../mocks/testHelpers";
 
 const proxyEnv = { HTTP_PROXY: proxy, HTTPS_PROXY: proxy };
+const sessionEnv = { CODER_TRACE_SESSION_ID: sessionId };
 type Environment = Record<string, string | undefined>;
 
 beforeEach(() => {
@@ -108,7 +110,11 @@ describe("applySshEnvironment", () => {
 	it("applies proxy variables to process.env and the collection, and restores on dispose", () => {
 		const env: Environment = {};
 		const collection = fakeEnvCollection();
-		const expected = { ...proxyEnv, NO_PROXY: "internal.example.com" };
+		const expected = {
+			...proxyEnv,
+			NO_PROXY: "internal.example.com",
+			...sessionEnv,
+		};
 
 		const applied = applySshEnvironment(
 			config(withProxy({ "coder.proxyBypass": "internal.example.com" })),
@@ -125,14 +131,14 @@ describe("applySshEnvironment", () => {
 		expect(collection.vars).toEqual({});
 	});
 
-	it("sets nothing when no proxy is configured", () => {
+	it("sets the session ID even when no proxy is configured", () => {
 		const env: Environment = {};
 		const collection = fakeEnvCollection();
 
 		applySshEnvironment(config(), collection, env);
 
-		expect(env).toEqual({});
-		expect(collection.vars).toEqual({});
+		expect(env).toEqual(sessionEnv);
+		expect(collection.vars).toEqual(sessionEnv);
 	});
 
 	it("does not clear existing env proxy variables when proxy support is off", () => {
@@ -149,8 +155,8 @@ describe("applySshEnvironment", () => {
 			env,
 		);
 
-		expect(env).toEqual(original);
-		expect(collection.vars).toEqual({});
+		expect(env).toEqual({ ...original, ...sessionEnv });
+		expect(collection.vars).toEqual(sessionEnv);
 	});
 
 	it("does not overwrite existing lowercase variables", () => {
@@ -166,7 +172,7 @@ describe("applySshEnvironment", () => {
 			env,
 		);
 
-		expect(env).toEqual({ ...original, ...proxyEnv });
+		expect(env).toEqual({ ...original, ...proxyEnv, ...sessionEnv });
 
 		applied.dispose();
 		expect(env).toEqual(original);

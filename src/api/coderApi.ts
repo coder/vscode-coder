@@ -12,6 +12,7 @@ import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
 	watchConfigurationChanges,
 } from "../configWatcher";
+import { sessionId } from "../core/sessionId";
 import { ClientCertificateError } from "../error/clientCertificateError";
 import { toError } from "../error/errorUtils";
 import { ServerCertificateError } from "../error/serverCertificateError";
@@ -77,6 +78,11 @@ import type {
 
 const coderSessionTokenHeader = "Coder-Session-Token";
 
+/** W3C baggage header used to propagate the session ID to the server. */
+const BAGGAGE_HEADER = "baggage";
+const SESSION_ID_BAGGAGE_KEY = "client_session_id";
+const SESSION_ID_BAGGAGE = `${SESSION_ID_BAGGAGE_KEY}=${sessionId}`;
+
 /**
  * Default timeout for REST requests, so requests hung on half-open TCP
  * connections (e.g. after system sleep) don't stall pollers forever.
@@ -130,7 +136,9 @@ export class CoderApi extends Api implements vscode.Disposable {
 	 * Automatically sets up logging interceptors, certificate handling,
 	 * HTTP request telemetry, and WebSocket connection telemetry. All
 	 * telemetry routes through the single reporter passed in (defaults to
-	 * NOOP_TELEMETRY_REPORTER for throwaway clients).
+	 * NOOP_TELEMETRY_REPORTER for throwaway clients). The session ID is
+	 * attached to every request via the `baggage` header so the server can
+	 * correlate requests with the session's logs and telemetry.
 	 */
 	static create(
 		baseUrl: string,
@@ -147,6 +155,8 @@ export class CoderApi extends Api implements vscode.Disposable {
 			authConfigTracker,
 		);
 		client.getAxiosInstance().defaults.timeout = DEFAULT_REQUEST_TIMEOUT_MS;
+		client.getAxiosInstance().defaults.headers.common[BAGGAGE_HEADER] =
+			SESSION_ID_BAGGAGE;
 		client.setCredentials(baseUrl, token);
 
 		setupInterceptors(client, output, httpRequestsTelemetry, authConfigTracker);
@@ -381,6 +391,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 			...(token ? { [coderSessionTokenHeader]: token } : {}),
 			...configs.options?.headers,
 			...headersFromCommand,
+			[BAGGAGE_HEADER]: SESSION_ID_BAGGAGE,
 		};
 
 		const baseUrl = new URL(baseUrlRaw);

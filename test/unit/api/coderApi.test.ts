@@ -29,6 +29,7 @@ import {
 } from "@/api/responseValidation";
 import { createHttpAgent } from "@/api/utils";
 import { CONFIG_CHANGE_DEBOUNCE_MS } from "@/configWatcher";
+import { sessionId } from "@/core/sessionId";
 import { ClientCertificateError } from "@/error/clientCertificateError";
 import { ServerCertificateError } from "@/error/serverCertificateError";
 import { getHeaders } from "@/headers";
@@ -145,6 +146,16 @@ describe("CoderApi", () => {
 
 			expect(api.getAxiosInstance().defaults.timeout).toBe(
 				DEFAULT_REQUEST_TIMEOUT_MS,
+			);
+		});
+
+		it("attaches the session ID to every request as a baggage header", async () => {
+			api = createApi();
+
+			const response = await api.getAxiosInstance().get("/api/v2/users/me");
+
+			expect(response.config.headers["baggage"]).toBe(
+				`client_session_id=${sessionId}`,
 			);
 		});
 
@@ -473,6 +484,7 @@ describe("CoderApi", () => {
 				headers: {
 					"X-Custom-Header": "custom-value",
 					"Coder-Session-Token": AXIOS_TOKEN,
+					baggage: `client_session_id=${sessionId}`,
 				},
 			});
 		});
@@ -486,6 +498,7 @@ describe("CoderApi", () => {
 				followRedirects: true,
 				headers: {
 					"Coder-Session-Token": AXIOS_TOKEN,
+					baggage: `client_session_id=${sessionId}`,
 				},
 			});
 
@@ -503,6 +516,7 @@ describe("CoderApi", () => {
 				headers: {
 					"Coder-Session-Token": "from-config",
 					"X-Config-Header": "config-value",
+					baggage: `client_session_id=${sessionId}`,
 				},
 			});
 
@@ -522,6 +536,7 @@ describe("CoderApi", () => {
 				followRedirects: true,
 				headers: {
 					"Coder-Session-Token": "from-header-command",
+					baggage: `client_session_id=${sessionId}`,
 				},
 			});
 		});
