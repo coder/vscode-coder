@@ -72,6 +72,40 @@ describe("REST HTTP Logger", () => {
 		});
 	});
 
+	describe("request identifiers", () => {
+		const REQUEST_ID = "abcdef1234567890abcdef1234567890";
+		const config = {
+			method: "GET",
+			url: "https://api.example.com/endpoint",
+			headers: {} as unknown as AxiosHeaders,
+			metadata: { requestId: REQUEST_ID, startedAt: Date.now() },
+		} as RequestConfigWithMeta;
+
+		it("labels the shortened request ID on requests", () => {
+			const logger = createMockLogger();
+
+			logRequest(logger, config, HttpClientLogLevel.BASIC);
+
+			expect(logger.trace).toHaveBeenCalledWith(
+				expect.stringContaining("[request abcdef12]"),
+			);
+		});
+
+		it("labels the shortened request ID on responses", () => {
+			const logger = createMockLogger();
+
+			logResponse(
+				logger,
+				{ status: 200, config, headers: {}, data: {} } as AxiosResponse,
+				HttpClientLogLevel.BASIC,
+			);
+
+			expect(logger.trace).toHaveBeenCalledWith(
+				expect.stringContaining("[request abcdef12]"),
+			);
+		});
+	});
+
 	describe("error handling", () => {
 		it("distinguishes between network errors and response errors", () => {
 			const logger = createMockLogger();

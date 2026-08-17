@@ -45,7 +45,7 @@ export function logRequest(
 	const { requestId, method, url, requestSize } = parseConfig(config);
 
 	const msg = [
-		`→ ${shortId(requestId)} ${method} ${url} ${requestSize}`,
+		`→ [request ${shortId(requestId)}] ${method} ${url} ${requestSize}`,
 		...buildExtraLogs(
 			config.headers,
 			config.data,
@@ -73,7 +73,7 @@ export function logResponse(
 	);
 
 	const msg = [
-		`← ${shortId(requestId)} ${response.status} ${method} ${url} ${responseSize} ${time}`,
+		`← [request ${shortId(requestId)}] ${response.status} ${method} ${url} ${responseSize} ${time}`,
 		...buildExtraLogs(
 			response.headers,
 			response.data,
@@ -115,7 +115,7 @@ export function logError(
 				);
 			}
 
-			logPrefix = `← ${shortId(requestId)} ${error.response.status} ${method} ${url} ${time}`;
+			logPrefix = `← [request ${shortId(requestId)}] ${error.response.status} ${method} ${url} ${time}`;
 			extraLines = buildExtraLogs(
 				error.response.headers,
 				error.response.data,
@@ -126,7 +126,7 @@ export function logError(
 			if (errorParts.length === 0) {
 				errorParts.push(error.code || "Network error");
 			}
-			logPrefix = `✗ ${shortId(requestId)} ${method} ${url} ${time}`;
+			logPrefix = `✗ [request ${shortId(requestId)}] ${method} ${url} ${time}`;
 			extraLines = buildExtraLogs(
 				error?.config?.headers ?? {},
 				error.config?.data,

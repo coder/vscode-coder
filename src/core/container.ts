@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 
 import { AuthTelemetry } from "../instrumentation/auth";
+import { prefixLogger } from "../logging/prefixLogger";
+import { shortId } from "../logging/utils";
 import { LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthCallback } from "../oauth/oauthCallback";
 import { buildSession, extractExtensionVersion } from "../telemetry/event";
@@ -26,7 +28,9 @@ import type { Logger } from "../logging/logger";
  * Centralizes the creation and management of all core services.
  */
 export class ServiceContainer implements vscode.Disposable {
-	private readonly logger: vscode.LogOutputChannel;
+	private readonly outputChannel: vscode.LogOutputChannel;
+	private readonly sessionId: string;
+	private readonly logger: Logger;
 	private readonly pathResolver: PathResolver;
 	private readonly mementoManager: MementoManager;
 	private readonly secretsManager: SecretsManager;
@@ -42,7 +46,16 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly commandManager: CommandManager;
 
 	constructor(context: vscode.ExtensionContext) {
-		this.logger = vscode.window.createOutputChannel("Coder", { log: true });
+		this.outputChannel = vscode.window.createOutputChannel("Coder", {
+			log: true,
+		});
+		// One session ID per activation, shared by logs, API requests,
+		// telemetry, and the CLI so all data for a session correlates.
+		this.sessionId = newSessionId();
+		this.logger = prefixLogger(
+			this.outputChannel,
+			`[session ${shortId(this.sessionId)}]`,
+		);
 		this.pathResolver = new PathResolver(
 			context.globalStorageUri.fsPath,
 			context.logUri.fsPath,
@@ -56,7 +69,7 @@ export class ServiceContainer implements vscode.Disposable {
 
 		const session = buildSession(
 			extractExtensionVersion(context.extension.packageJSON),
-			newSessionId(),
+			this.sessionId,
 		);
 		const localJsonlSink = LocalJsonlSink.start(
 			{
@@ -187,7 +200,7 @@ export class ServiceContainer implements vscode.Disposable {
 		try {
 			await this.telemetryService.dispose();
 		} finally {
-			this.logger.dispose();
+			this.outputChannel.dispose();
 		}
 	}
 }
