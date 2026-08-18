@@ -1,5 +1,5 @@
 import { extractAgents } from "../api/api-helper";
-import { TransitionTracker } from "../util/transitionTracker";
+import { TransitionTracker } from "../instrumentation/workspace";
 
 import type {
 	Workspace,
