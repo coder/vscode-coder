@@ -14,8 +14,8 @@ The Coder Remote extension connects your editor to
 
 - **One-click workspace access** - open workspaces from the Coder dashboard or
   the editor sidebar. Workspaces start automatically when opened.
-- **Multi-editor support** - works with VS Code, Cursor, Windsurf, and other
-  VS Code forks.
+- **Multi-editor support** - works with VS Code, Cursor, Devin Desktop
+  (formerly Windsurf), and other VS Code forks.
 - **Workspace sidebar** - browse, search, and create workspaces. View agent
   metadata and app statuses at a glance.
 - **Coder Tasks** - create, monitor, and manage AI agent tasks directly from
@@ -34,7 +34,7 @@ The Coder Remote extension connects your editor to
 > The extension builds on VS Code-provided implementations of SSH. Make sure you
 > have the correct SSH extension installed for your editor
 > (`ms-vscode-remote.remote-ssh`, `anysphere.remote-ssh` for Cursor, or
-> `codeium.windsurf-remote-openssh` for Windsurf).
+> `codeium.windsurf-remote-openssh` for Devin Desktop).
 
 ## Getting Started
 
@@ -71,7 +71,7 @@ values can depend on the specific machine or network where they were set.
 
 The extension registers a URI handler that can open workspaces from outside
 the editor, such as links on the Coder dashboard. The scheme matches the
-editor (`vscode://`, `cursor://`, `windsurf://`, etc.), followed by the
+editor (`vscode://`, `cursor://`, `devin://`, etc.), followed by the
 extension ID and a path:
 
 ```text

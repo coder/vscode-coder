@@ -35,8 +35,8 @@ const REMOTE_AUTHORITY =
 	"ssh-remote+coder-vscode.coder.example.com--testuser--test-workspace.main";
 const CURSOR_REMOTE_AUTHORITY =
 	"ssh-remote+coder-cursor.coder.example.com--testuser--test-workspace.main";
-const WINDSURF_REMOTE_AUTHORITY =
-	"ssh-remote+coder-windsurf.coder.example.com--testuser--test-workspace.main";
+const DEVIN_REMOTE_AUTHORITY =
+	"ssh-remote+coder-devin.coder.example.com--testuser--test-workspace.main";
 const REMOTE_SSH_EXTENSION_ID = "anysphere.remote-ssh";
 const MISMATCHED_URL =
 	"https://cursor.example.com/private?token=sensitive-url-token";
@@ -277,7 +277,7 @@ describe("Remote", () => {
 		const { remote, ensureLoggedInWithDialog, mementoManager } = createRemote();
 
 		await expect(
-			remote.setup(WINDSURF_REMOTE_AUTHORITY, "none", REMOTE_SSH_EXTENSION_ID),
+			remote.setup(DEVIN_REMOTE_AUTHORITY, "none", REMOTE_SSH_EXTENSION_ID),
 		).resolves.toBeUndefined();
 
 		expect(ensureLoggedInWithDialog).not.toHaveBeenCalled();

@@ -60,7 +60,7 @@ async function doActivate(
 	// This is janky, but that's alright since it provides such minimal
 	// functionality to the extension.
 	//
-	// Cursor and VSCode are covered by ms remote, and the only other is windsurf for now
+	// Cursor and VSCode are covered by ms remote, and the only other is Devin Desktop for now
 	// Means that vscodium is not supported by this for now
 
 	const remoteSshExtension = getRemoteSshExtension();

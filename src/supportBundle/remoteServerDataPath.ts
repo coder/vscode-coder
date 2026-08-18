@@ -106,7 +106,7 @@ function getConfiguredServerDataPath(
 			"serverInstallPath",
 			{},
 		);
-		// Windsurf and Antigravity have no install path setting; their
+		// Devin Desktop and Antigravity have no install path setting; their
 		// servers always live in the home default.
 		let installPath: string | undefined;
 		if (extensionId === "jeanp413.open-remote-ssh") {

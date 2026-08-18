@@ -229,7 +229,7 @@ describe("findPort", () => {
 			54321,
 		],
 		[
-			"windsurf/open-remote-ssh/antigravity",
+			"devin/open-remote-ssh/antigravity",
 			"[INFO] Connection => 9999(socks) => target",
 			9999,
 		],
