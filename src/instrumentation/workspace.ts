@@ -1,4 +1,5 @@
 import { WorkspaceUpdateCancelledError } from "../api/updateParameters";
+import { TransitionTracker } from "../util/transitionTracker";
 
 import type {
 	Workspace,
@@ -47,7 +48,12 @@ interface ObservedAgentState {
  * Construct one per workspace; `WorkspaceMonitor` is the sole call site.
  */
 export class WorkspaceStateTelemetry {
-	private observed: ObservedWorkspaceState | undefined;
+	private readonly tracker = new TransitionTracker<ObservedWorkspaceState>(
+		(a, b) =>
+			a.status === b.status &&
+			a.buildTransition === b.buildTransition &&
+			a.buildReason === b.buildReason,
+	);
 	/** Set on first observation of a provisioning status; cleared when the build resolves. */
 	private buildStartedAtMs: number | undefined;
 
@@ -62,16 +68,18 @@ export class WorkspaceStateTelemetry {
 			transition: buildTransition,
 			reason: buildReason,
 		} = workspace.latest_build;
-		const previous = this.observed;
-		if (
-			previous?.status === status &&
-			previous.buildTransition === buildTransition &&
-			previous.buildReason === buildReason
-		) {
+		const now = performance.now();
+		const change = this.tracker.observe({
+			status,
+			buildTransition,
+			buildReason,
+			observedAtMs: now,
+		});
+		if (!change) {
 			return;
 		}
+		const previous = change.from;
 
-		const now = performance.now();
 		const measurements: Record<string, number> = previous
 			? { observed_duration_ms: now - previous.observedAtMs }
 			: {};
@@ -99,12 +107,6 @@ export class WorkspaceStateTelemetry {
 			},
 			measurements,
 		);
-		this.observed = {
-			status,
-			buildTransition,
-			buildReason,
-			observedAtMs: now,
-		};
 	}
 }
 
@@ -115,7 +117,9 @@ export class WorkspaceStateTelemetry {
  * workspace.
  */
 export class WorkspaceAgentTelemetry {
-	private observed: ObservedAgentState | undefined;
+	private readonly tracker = new TransitionTracker<ObservedAgentState>(
+		(a, b) => a.status === b.status && a.lifecycleState === b.lifecycleState,
+	);
 
 	public constructor(
 		private readonly telemetry: TelemetryReporter,
@@ -123,14 +127,16 @@ export class WorkspaceAgentTelemetry {
 	) {}
 
 	public observe(agent: WorkspaceAgent): void {
-		const previous = this.observed;
-		if (
-			previous?.status === agent.status &&
-			previous.lifecycleState === agent.lifecycle_state
-		) {
+		const now = performance.now();
+		const change = this.tracker.observe({
+			status: agent.status,
+			lifecycleState: agent.lifecycle_state,
+			observedAtMs: now,
+		});
+		if (!change) {
 			return;
 		}
-		const now = performance.now();
+		const previous = change.from;
 
 		this.telemetry.log(
 			"workspace.agent.state_transitioned",
@@ -144,15 +150,10 @@ export class WorkspaceAgentTelemetry {
 			},
 			previous ? { observed_duration_ms: now - previous.observedAtMs } : {},
 		);
-		this.observed = {
-			status: agent.status,
-			lifecycleState: agent.lifecycle_state,
-			observedAtMs: now,
-		};
 	}
 
 	public reset(): void {
-		this.observed = undefined;
+		this.tracker.reset();
 	}
 }
 

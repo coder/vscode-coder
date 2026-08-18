@@ -29,101 +29,68 @@ function workspaceWith(
 }
 
 describe("WorkspaceStateLogger", () => {
-	it("logs the initial observed state with a `none` origin", () => {
+	it("logs the initial observed status with a `none` origin", () => {
 		const logger = createMockLogger();
 		const stateLogger = new WorkspaceStateLogger(logger, "testuser/ws");
 
-		stateLogger.observe(
-			workspaceWith("running", [
-				createAgent({ status: "connected", lifecycle_state: "ready" }),
-			]),
-		);
+		stateLogger.observe(workspaceWith("running"));
 
 		expect(logger.info).toHaveBeenCalledTimes(1);
 		expect(logger.info).toHaveBeenCalledWith(
 			"Workspace testuser/ws state changed",
-			{
-				workspaceStatus: { from: "none", to: "running" },
-				agentStatus: { from: "none", to: "connected" },
-				lifecycleState: { from: "none", to: "ready" },
-			},
+			{ status: { from: "none", to: "running" } },
 		);
 	});
 
-	it("logs a transition when the agent status and lifecycle change", () => {
+	it("logs once when the workspace status changes", () => {
 		const logger = createMockLogger();
 		const stateLogger = new WorkspaceStateLogger(logger, "testuser/ws");
 
-		stateLogger.observe(
-			workspaceWith("starting", [
-				createAgent({ status: "connecting", lifecycle_state: "starting" }),
-			]),
-		);
-		stateLogger.observe(
-			workspaceWith("running", [
-				createAgent({ status: "connected", lifecycle_state: "ready" }),
-			]),
-		);
+		stateLogger.observe(workspaceWith("starting"));
+		stateLogger.observe(workspaceWith("running"));
 
 		expect(logger.info).toHaveBeenCalledTimes(2);
 		expect(logger.info).toHaveBeenLastCalledWith(
 			"Workspace testuser/ws state changed",
-			{
-				workspaceStatus: { from: "starting", to: "running" },
-				agentStatus: { from: "connecting", to: "connected" },
-				lifecycleState: { from: "starting", to: "ready" },
-			},
+			{ status: { from: "starting", to: "running" } },
 		);
 	});
 
-	it("does not log when nothing changes", () => {
+	it("does not log when the workspace status is unchanged", () => {
 		const logger = createMockLogger();
 		const stateLogger = new WorkspaceStateLogger(logger, "testuser/ws");
-		const snapshot = workspaceWith("running", [
-			createAgent({ status: "connected", lifecycle_state: "ready" }),
-		]);
 
-		stateLogger.observe(snapshot);
-		stateLogger.observe(snapshot);
+		stateLogger.observe(workspaceWith("running"));
+		stateLogger.observe(workspaceWith("running"));
 
 		expect(logger.info).toHaveBeenCalledTimes(1);
 	});
 
-	it("uses `none` for the agent dimensions while no agent exists yet", () => {
+	it("logs a workspace change exactly once regardless of agent count", () => {
 		const logger = createMockLogger();
 		const stateLogger = new WorkspaceStateLogger(logger, "testuser/ws");
 
-		stateLogger.observe(workspaceWith("pending"));
-
-		expect(logger.info).toHaveBeenCalledWith(
-			"Workspace testuser/ws state changed",
-			{
-				workspaceStatus: { from: "none", to: "pending" },
-				agentStatus: { from: "none", to: "none" },
-				lifecycleState: { from: "none", to: "none" },
-			},
+		stateLogger.observe(
+			workspaceWith("running", [
+				createAgent({ id: "a1", name: "first" }),
+				createAgent({ id: "a2", name: "second" }),
+			]),
 		);
+
+		expect(logger.info).toHaveBeenCalledTimes(1);
 	});
 
-	it("tracks each agent independently", () => {
+	it("ignores agent-only changes", () => {
 		const logger = createMockLogger();
 		const stateLogger = new WorkspaceStateLogger(logger, "testuser/ws");
 
 		stateLogger.observe(
-			workspaceWith("running", [
-				createAgent({ id: "a1", name: "first", status: "connected" }),
-				createAgent({ id: "a2", name: "second", status: "connecting" }),
-			]),
+			workspaceWith("running", [createAgent({ status: "connecting" })]),
 		);
-		expect(logger.info).toHaveBeenCalledTimes(2);
-
-		// Only the second agent changes; expect a single new log.
 		stateLogger.observe(
-			workspaceWith("running", [
-				createAgent({ id: "a1", name: "first", status: "connected" }),
-				createAgent({ id: "a2", name: "second", status: "connected" }),
-			]),
+			workspaceWith("running", [createAgent({ status: "connected" })]),
 		);
-		expect(logger.info).toHaveBeenCalledTimes(3);
+
+		expect(logger.info).toHaveBeenCalledTimes(1);
 	});
 });
