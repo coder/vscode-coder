@@ -140,6 +140,14 @@
 	}
 }
 
+/* data-pixel is set in .storybook/preview.ts via isPixel(). */
+@media (prefers-reduced-motion: no-preference) {
+	:where(:root[data-pixel]) .ui-menu[data-state="open"],
+	:where(:root[data-pixel]) .ui-menu[data-state="closed"] {
+		animation: none;
+	}
+}
+
 @media (forced-colors: active) {
 	.ui-menu__item[data-highlighted],
 	.ui-menu__item[data-state="open"] {

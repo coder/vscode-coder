@@ -109,6 +109,8 @@ jobs:
         run: pnpm exec pixel-storybook
         env:
           PIXEL_KEY: ${{ secrets.PIXEL_KEY }}
+          # On pull_request, github.sha is a synthetic merge commit, not the PR head.
+          PIXEL_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
           # Auto-approve on mainline to avoid blocking CI after squash merges.
           PIXEL_AUTO_REVIEW: ${{ github.ref == 'refs/heads/main' }}
 
