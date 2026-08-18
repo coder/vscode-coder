@@ -15,6 +15,7 @@
 			"@repo/tasks/*": ["../packages/tasks/src/*"],
 			"@repo/ui": ["../packages/ui/src/index.ts"],
 			"@repo/ui/*": ["../packages/ui/src/*"],
+			"@repo/workspaces/*": ["../packages/workspaces/src/*"],
 			"@repo/netcheck/*": ["../packages/netcheck/src/*"],
 			"@repo/speedtest/*": ["../packages/speedtest/src/*"]
 		}

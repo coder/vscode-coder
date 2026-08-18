@@ -45,6 +45,11 @@ export function createWebviewConfig(
 		resolve: {
 			alias: {
 				"@repo/webview-shared": resolve(dirname, "../webview-shared/src"),
+				// @repo/ui ships TypeScript source and its package-internal
+				// subpath imports; bundling it needs the same direct resolution
+				"@repo/ui": resolve(dirname, "../ui/src"),
+				"#cx": resolve(dirname, "../ui/src/cx.ts"),
+				"#codicons": resolve(dirname, "../ui/src/codicons.ts"),
 			},
 		},
 	});

@@ -297,7 +297,7 @@ async function doActivate(
 
 	const workspacesPanelEnabled = vscode.workspace
 		.getConfiguration("coder")
-		.get<boolean>("experimental.workspacesPanel", false);
+		.get<boolean>("experimental.workspacesPanel", true);
 
 	contextManager.set("coder.workspacesPanelEnabled", workspacesPanelEnabled);
 

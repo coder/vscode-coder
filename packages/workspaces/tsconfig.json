@@ -1,8 +1,10 @@
 {
 	"extends": "../tsconfig.packages.json",
 	"compilerOptions": {
+		"resolveJsonModule": true,
 		"paths": {
 			"@repo/shared": ["../shared/src"],
+			"@repo/ui": ["../ui/src"],
 			"@repo/webview-shared": ["../webview-shared/src"]
 		}
 	},
