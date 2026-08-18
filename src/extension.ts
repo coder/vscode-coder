@@ -4,6 +4,7 @@ import axios, { isAxiosError } from "axios";
 import { getErrorMessage } from "coder/site/src/api/errors";
 import { createRequire } from "node:module";
 import * as path from "node:path";
+import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { AnnouncementManager } from "./announcements/manager";
@@ -15,6 +16,7 @@ import { ServiceContainer } from "./core/container";
 import { DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
 import { getErrorDetail, toError } from "./error/errorUtils";
+import { tasksSupported } from "./featureSet";
 import {
 	ActivationTelemetry,
 	type ActivationTracer,
@@ -202,12 +204,32 @@ async function doActivate(
 	);
 	ctx.subscriptions.push(sharedWorkspacesProvider);
 
+	// The deprecated Tasks panel only shows on deployments old enough to
+	// still support it, which requires fetching the deployment version.
+	const updateTasksSupported = async () => {
+		let supported = false;
+		if (deploymentManager.session.current.kind === "signedIn") {
+			try {
+				const buildInfo = await client.getBuildInfo();
+				supported = tasksSupported(semver.parse(buildInfo.version));
+			} catch (error) {
+				output.warn(
+					"Unable to fetch deployment version for Tasks panel",
+					error,
+				);
+			}
+		}
+		contextManager.set("coder.tasksSupported", supported);
+	};
+	void updateTasksSupported();
+
 	// Re-probe support on session change (login, logout, deployment switch);
 	// the next fetch clears the message again if still unsupported.
 	ctx.subscriptions.push(
-		deploymentManager.session.onDidChange(() =>
-			contextManager.set("coder.sharedWorkspacesSupported", true),
-		),
+		deploymentManager.session.onDidChange(() => {
+			contextManager.set("coder.sharedWorkspacesSupported", true);
+			void updateTasksSupported();
+		}),
 	);
 
 	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API

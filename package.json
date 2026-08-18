@@ -313,7 +313,7 @@
 				},
 				{
 					"id": "coderTasks",
-					"title": "Coder Tasks",
+					"title": "Coder Tasks (Deprecated)",
 					"icon": "media/tasks-logo.svg"
 				},
 				{
@@ -354,14 +354,14 @@
 					"id": "coder.tasksLogin",
 					"name": "Coder Tasks",
 					"icon": "media/tasks-logo.svg",
-					"when": "!coder.authenticated"
+					"when": "!coder.authenticated && coder.tasksSupported"
 				},
 				{
 					"type": "webview",
 					"id": "coder.tasksPanel",
 					"name": "Coder Tasks",
 					"icon": "media/tasks-logo.svg",
-					"when": "coder.authenticated"
+					"when": "coder.authenticated && coder.tasksSupported"
 				}
 			],
 			"coderExperimentalWorkspaces": [
