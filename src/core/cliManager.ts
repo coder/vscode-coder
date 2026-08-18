@@ -799,6 +799,8 @@ export class CliManager {
 						? "unknown"
 						: prettyBytes(contentLength);
 
+					let progressWrite: Promise<void> = Promise.resolve();
+
 					// Pipe data received from the request to the stream.
 					readStream.on("data", (buffer: Buffer) => {
 						writeStream.write(buffer, () => {
@@ -810,7 +812,7 @@ export class CliManager {
 									: (buffer.byteLength / contentLength) * 100,
 							});
 							if (onProgress) {
-								onProgress(
+								progressWrite = onProgress(
 									written,
 									Number.isNaN(contentLength) ? null : contentLength,
 								).catch((error) => {
@@ -827,27 +829,33 @@ export class CliManager {
 					return new Promise<boolean>((resolve, reject) => {
 						writeStream.on("error", (error) => {
 							readStream.destroy();
-							reject(
-								new Error(
-									`Unable to download binary: ${errToStr(error, "no reason given")}`,
+							void progressWrite.then(() =>
+								reject(
+									new Error(
+										`Unable to download binary: ${errToStr(error, "no reason given")}`,
+									),
 								),
 							);
 						});
 						readStream.on("error", (error) => {
 							writeStream.close();
-							reject(
-								new Error(
-									`Unable to download binary: ${errToStr(error, "no reason given")}`,
+							void progressWrite.then(() =>
+								reject(
+									new Error(
+										`Unable to download binary: ${errToStr(error, "no reason given")}`,
+									),
 								),
 							);
 						});
 						readStream.on("close", () => {
 							writeStream.close();
-							if (cancelled) {
-								resolve(false);
-							} else {
-								resolve(true);
-							}
+							void progressWrite.then(() => {
+								if (cancelled) {
+									resolve(false);
+								} else {
+									resolve(true);
+								}
+							});
 						});
 					});
 				},
