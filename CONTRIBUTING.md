@@ -188,6 +188,13 @@ pnpm test:integration
 > this extension from a coder workspace. We currently recommend cloning the
 > repo locally
 
+To view your local changes to the extension within VS Code:
+
+1. Run `pnpm package`. This creates a file named coder-remote-VERSION.vsix in your repo directory.
+2. In the "Extensions" tab of VS Code, open the kebab menu and select "Install from VSIX...". You can also run "Extensions: Install from VSIX..." from the command palette.
+
+Alternatively:
+
 1. Run `pnpm watch` in the background.
 2. OPTIONAL: Compile the `coder` binary and place it in the equivalent of
    `os.tmpdir() + "/coder"`. If this is missing, it will download the binary
