@@ -148,7 +148,6 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		this.updateStatusBar(workspace);
 	}
 
-	/** Detect a workspace status change, then log it inline and record telemetry. */
 	private observeState(workspace: Workspace) {
 		const transition = this.stateObserver.observe(workspace);
 		if (!transition) {
@@ -165,7 +164,6 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		recordWorkspaceState(this.telemetry, this.name, transition);
 	}
 
-	/** Detect agent status/lifecycle changes and removals, logging and recording each. */
 	private observeAgents(workspace: Workspace) {
 		const { transitions, removed } = this.agentObserver.observe(workspace);
 		for (const transition of transitions) {
