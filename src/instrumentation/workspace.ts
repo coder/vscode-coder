@@ -78,7 +78,7 @@ interface ObservedAgentState {
 	readonly observedAtMs: number;
 }
 
-/** A detected workspace status change, reported by `WorkspaceStateObserver`. */
+/** Reported by `WorkspaceStateObserver`. */
 export interface WorkspaceStateTransition {
 	/** Previous status, or `undefined` on the first observation. */
 	readonly from: WorkspaceStatus | undefined;
@@ -91,7 +91,7 @@ export interface WorkspaceStateTransition {
 	readonly buildDurationMs: number | undefined;
 }
 
-/** A detected agent status/lifecycle change, reported by `WorkspaceAgentObserver`. */
+/** Reported by `WorkspaceAgentObserver`. */
 export interface AgentStateTransition {
 	readonly agentName: string;
 	readonly status: {
@@ -106,22 +106,17 @@ export interface AgentStateTransition {
 	readonly durationMs: number | undefined;
 }
 
-/** An agent present on a prior observation and absent now (e.g. after a rebuild). */
 export interface RemovedAgent {
 	readonly name: string;
 }
 
-/** The result of observing all agents in a workspace snapshot. */
 export interface AgentObservation {
 	readonly transitions: AgentStateTransition[];
 	readonly removed: RemovedAgent[];
 }
 
 /**
- * Detects workspace status changes as a workspace progresses through statuses,
- * reporting a transition object plus timing (including build duration when a
- * provisioner run resolves). Stateful but effect-free: it holds no logger or
- * telemetry references. Construct one per workspace.
+ * Construct one per workspace.
  */
 export class WorkspaceStateObserver {
 	private readonly tracker = new TransitionTracker<ObservedWorkspaceState>(
@@ -181,9 +176,6 @@ export class WorkspaceStateObserver {
 }
 
 /**
- * Detects agent status/lifecycle changes for every agent in a workspace,
- * keyed by agent ID so each is tracked independently, and reports agents that
- * have disappeared since the previous observation. Stateful but effect-free.
  * Construct one per workspace.
  */
 export class WorkspaceAgentObserver {
