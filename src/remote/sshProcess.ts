@@ -488,7 +488,7 @@ export class SshProcessMonitor implements vscode.Disposable {
 
 /**
  * Finds the Remote SSH extension's log file path.
- * Tries extension-specific folder first (Cursor, Devin Desktop, Antigravity),
+ * Tries extension-specific folder first (Cursor, Devin Desktop / Windsurf, Antigravity),
  * then output_logging_ fallback (MS VS Code).
  */
 async function findRemoteSshLogPath(

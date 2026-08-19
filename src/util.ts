@@ -24,7 +24,7 @@ export function findPort(text: string): number | null {
 	const lastMatch = allMatches[allMatches.length - 1];
 	// Each capture group corresponds to a different Remote SSH extension log format:
 	// [0] full match, [1] and [2] ms-vscode-remote.remote-ssh,
-	// [3] devin/open-remote-ssh/antigravity, [4] anysphere.remote-ssh
+	// [3] devin/windsurf/open-remote-ssh/antigravity, [4] anysphere.remote-ssh
 	const portStr = lastMatch[1] || lastMatch[2] || lastMatch[3] || lastMatch[4];
 	if (!portStr) {
 		return null;

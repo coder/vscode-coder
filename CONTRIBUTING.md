@@ -15,7 +15,7 @@ indicates that it should connect to the provided host name using SSH.
 
 The host name takes the format
 `coder-<editor>.<domain>--<username>--<workspace>`, where `<editor>` comes from
-that product's URI scheme, such as `vscode`, `cursor`, or `devin`. The CLI is
+that product's URI scheme, such as `vscode`, `cursor`, or `devin`/`windsurf`. The CLI is
 invoked through SSH's `ProxyCommand` with this prefix so it can route SSH to the
 right workspace. A legacy `coder-vscode` authority opened in another editor is
 reopened once with that editor's prefix; legacy recent-folder entries remain
