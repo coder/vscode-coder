@@ -786,7 +786,7 @@
 		"@repo/shared": "workspace:*",
 		"axios": "^1.19.0",
 		"date-fns": "catalog:",
-		"eventsource": "^4.1.1",
+		"eventsource": "^5.0.0",
 		"fflate": "^0.8.3",
 		"find-process": "^2.1.1",
 		"jsonc-parser": "^3.3.1",
