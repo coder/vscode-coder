@@ -6,7 +6,13 @@ import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
 
 import { createWorkspaceIdentifier, errToStr } from "../api/api-helper";
-import { WorkspaceStateTelemetry } from "../instrumentation/workspace";
+import {
+	INITIAL_STATE,
+	recordAgentState,
+	recordWorkspaceState,
+	WorkspaceAgentObserver,
+	WorkspaceStateObserver,
+} from "../instrumentation/workspace";
 import {
 	areNotificationsDisabled,
 	areUpdateNotificationsDisabled,
@@ -14,13 +20,11 @@ import {
 import { createStatusBarItem } from "../util/statusBar";
 import { vscodeProposed } from "../vscodeProposed";
 
-import { WorkspaceAgentLogger } from "./workspaceAgentLogger";
-import { WorkspaceStateLogger } from "./workspaceStateLogger";
-
 import type { CoderApi } from "../api/coderApi";
 import type { ServiceContainer } from "../core/container";
 import type { ContextManager } from "../core/contextManager";
 import type { Logger } from "../logging/logger";
+import type { TelemetryReporter } from "../telemetry/reporter";
 import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
 
 /**
@@ -48,9 +52,9 @@ export class WorkspaceMonitor implements vscode.Disposable {
 
 	// For logging.
 	private readonly name: string;
-	private readonly telemetry: WorkspaceStateTelemetry;
-	private readonly stateLogger: WorkspaceStateLogger;
-	private readonly agentLogger: WorkspaceAgentLogger;
+	private readonly telemetry: TelemetryReporter;
+	private readonly stateObserver = new WorkspaceStateObserver();
+	private readonly agentObserver = new WorkspaceAgentObserver();
 	private readonly logger: Logger;
 	private readonly contextManager: ContextManager;
 
@@ -64,12 +68,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		this.logger = container.getLogger();
 		this.contextManager = container.getContextManager();
 		this.name = createWorkspaceIdentifier(workspace);
-		this.telemetry = new WorkspaceStateTelemetry(
-			container.getTelemetryService(),
-			this.name,
-		);
-		this.stateLogger = new WorkspaceStateLogger(this.logger, this.name);
-		this.agentLogger = new WorkspaceAgentLogger(this.logger, this.name);
+		this.telemetry = container.getTelemetryService();
 		this.latestWorkspace = workspace;
 
 		const statusBarItem = createStatusBarItem("workspaceUpdate");
@@ -142,12 +141,52 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	private update(workspace: Workspace) {
-		this.telemetry.observe(workspace);
-		this.stateLogger.observe(workspace);
-		this.agentLogger.observe(workspace);
+		this.observeState(workspace);
+		this.observeAgents(workspace);
 		this.latestWorkspace = workspace;
 		this.updateContext(workspace);
 		this.updateStatusBar(workspace);
+	}
+
+	/** Detect a workspace status change, then log it inline and record telemetry. */
+	private observeState(workspace: Workspace) {
+		const transition = this.stateObserver.observe(workspace);
+		if (!transition) {
+			return;
+		}
+		const verb =
+			transition.from === undefined ? "state observed" : "state changed";
+		this.logger.info(`Workspace ${this.name} ${verb}`, {
+			from: transition.from ?? INITIAL_STATE,
+			to: transition.to,
+			transition: transition.buildTransition,
+			reason: transition.buildReason,
+		});
+		recordWorkspaceState(this.telemetry, this.name, transition);
+	}
+
+	/** Detect agent status/lifecycle changes and removals, logging and recording each. */
+	private observeAgents(workspace: Workspace) {
+		const { transitions, removed } = this.agentObserver.observe(workspace);
+		for (const transition of transitions) {
+			const verb =
+				transition.status.from === undefined
+					? "state observed"
+					: "state changed";
+			this.logger.info(
+				`Workspace ${this.name} agent ${transition.agentName} ${verb}`,
+				{
+					statusFrom: transition.status.from ?? INITIAL_STATE,
+					statusTo: transition.status.to,
+					lifecycleFrom: transition.lifecycleState.from ?? INITIAL_STATE,
+					lifecycleTo: transition.lifecycleState.to,
+				},
+			);
+			recordAgentState(this.telemetry, this.name, transition);
+		}
+		for (const agent of removed) {
+			this.logger.info(`Workspace ${this.name} agent ${agent.name} removed`);
+		}
 	}
 
 	private maybeNotify(workspace: Workspace) {

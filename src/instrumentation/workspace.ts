@@ -1,8 +1,8 @@
+import { extractAgents } from "../api/api-helper";
 import { WorkspaceUpdateCancelledError } from "../api/updateParameters";
 
 import type {
 	Workspace,
-	WorkspaceAgent,
 	WorkspaceAgentLifecycle,
 	WorkspaceAgentStatus,
 	WorkspaceBuild,
@@ -14,7 +14,7 @@ import type { TelemetryReporter } from "../telemetry/reporter";
 import type { Span } from "../telemetry/span";
 
 /** Sentinel for `from*` before any state is observed. `"unknown"` is a real server-reported value, so avoid it. */
-const INITIAL_STATE = "none";
+export const INITIAL_STATE = "none";
 
 /** Statuses where a provisioner job is actively running. */
 const PROVISIONING_STATUSES: ReadonlySet<WorkspaceStatus> = new Set([
@@ -78,12 +78,52 @@ interface ObservedAgentState {
 	readonly observedAtMs: number;
 }
 
+/** A detected workspace status change, reported by `WorkspaceStateObserver`. */
+export interface WorkspaceStateTransition {
+	/** Previous status, or `undefined` on the first observation. */
+	readonly from: WorkspaceStatus | undefined;
+	readonly to: WorkspaceStatus;
+	readonly buildTransition: WorkspaceBuild["transition"];
+	readonly buildReason: WorkspaceBuild["reason"];
+	/** Time spent in the previous state; `undefined` on the first observation. */
+	readonly durationMs: number | undefined;
+	/** Set only on the observation where a provisioner run resolves. */
+	readonly buildDurationMs: number | undefined;
+}
+
+/** A detected agent status/lifecycle change, reported by `WorkspaceAgentObserver`. */
+export interface AgentStateTransition {
+	readonly agentName: string;
+	readonly status: {
+		readonly from: WorkspaceAgentStatus | undefined;
+		readonly to: WorkspaceAgentStatus;
+	};
+	readonly lifecycleState: {
+		readonly from: WorkspaceAgentLifecycle | undefined;
+		readonly to: WorkspaceAgentLifecycle;
+	};
+	/** Time since the previous observation of this agent; `undefined` on the first. */
+	readonly durationMs: number | undefined;
+}
+
+/** An agent present on a prior observation and absent now (e.g. after a rebuild). */
+export interface RemovedAgent {
+	readonly name: string;
+}
+
+/** The result of observing all agents in a workspace snapshot. */
+export interface AgentObservation {
+	readonly transitions: AgentStateTransition[];
+	readonly removed: RemovedAgent[];
+}
+
 /**
- * Emits `workspace.state_transitioned` as a workspace progresses through
- * statuses, plus `observed_build_duration_ms` when a provisioner run resolves.
- * Construct one per workspace; `WorkspaceMonitor` is the sole call site.
+ * Detects workspace status changes as a workspace progresses through statuses,
+ * reporting a transition object plus timing (including build duration when a
+ * provisioner run resolves). Stateful but effect-free: it holds no logger or
+ * telemetry references. Construct one per workspace.
  */
-export class WorkspaceStateTelemetry {
+export class WorkspaceStateObserver {
 	private readonly tracker = new TransitionTracker<ObservedWorkspaceState>(
 		(a, b) =>
 			a.status === b.status &&
@@ -93,12 +133,7 @@ export class WorkspaceStateTelemetry {
 	/** Set on first observation of a provisioning status; cleared when the build resolves. */
 	private buildStartedAtMs: number | undefined;
 
-	public constructor(
-		private readonly telemetry: TelemetryReporter,
-		private readonly workspaceName: string,
-	) {}
-
-	public observe(workspace: Workspace): void {
+	public observe(workspace: Workspace): WorkspaceStateTransition | undefined {
 		const {
 			status,
 			transition: buildTransition,
@@ -112,85 +147,154 @@ export class WorkspaceStateTelemetry {
 			observedAtMs: now,
 		});
 		if (!change) {
-			return;
+			return undefined;
 		}
 		const previous = change.from;
-
-		const measurements: Record<string, number> = previous
-			? { observed_duration_ms: now - previous.observedAtMs }
-			: {};
 
 		const wasProvisioning =
 			previous && PROVISIONING_STATUSES.has(previous.status);
 		const isProvisioning = PROVISIONING_STATUSES.has(status);
+		let buildDurationMs: number | undefined;
 		if (isProvisioning) {
 			this.buildStartedAtMs ??= now;
 		} else {
 			if (wasProvisioning && this.buildStartedAtMs !== undefined) {
-				measurements.observed_build_duration_ms = now - this.buildStartedAtMs;
+				buildDurationMs = now - this.buildStartedAtMs;
 			}
 			this.buildStartedAtMs = undefined;
 		}
 
-		this.telemetry.log(
-			"workspace.state_transitioned",
-			{
-				workspace_name: this.workspaceName,
-				from: previous?.status ?? INITIAL_STATE,
-				to: status,
-				"build.transition": buildTransition,
-				"build.reason": buildReason,
-			},
-			measurements,
-		);
-	}
-}
-
-/**
- * Emits `workspace.agent.state_transitioned` as the agent's `status` and
- * `lifecycle_state` change. The agent has two state dimensions so the event
- * carries `status.*` and `lifecycle_state.*` properties. Construct one per
- * workspace.
- */
-export class WorkspaceAgentTelemetry {
-	private readonly tracker = new TransitionTracker<ObservedAgentState>(
-		(a, b) => a.status === b.status && a.lifecycleState === b.lifecycleState,
-	);
-
-	public constructor(
-		private readonly telemetry: TelemetryReporter,
-		private readonly workspaceName: string,
-	) {}
-
-	public observe(agent: WorkspaceAgent): void {
-		const now = performance.now();
-		const change = this.tracker.observe({
-			status: agent.status,
-			lifecycleState: agent.lifecycle_state,
-			observedAtMs: now,
-		});
-		if (!change) {
-			return;
-		}
-		const previous = change.from;
-
-		this.telemetry.log(
-			"workspace.agent.state_transitioned",
-			{
-				workspace_name: this.workspaceName,
-				agent_name: agent.name,
-				"status.from": previous?.status ?? INITIAL_STATE,
-				"status.to": agent.status,
-				"lifecycle_state.from": previous?.lifecycleState ?? INITIAL_STATE,
-				"lifecycle_state.to": agent.lifecycle_state,
-			},
-			previous ? { observed_duration_ms: now - previous.observedAtMs } : {},
-		);
+		return {
+			from: previous?.status,
+			to: status,
+			buildTransition,
+			buildReason,
+			durationMs: previous ? now - previous.observedAtMs : undefined,
+			buildDurationMs,
+		};
 	}
 
 	public reset(): void {
 		this.tracker.reset();
+		this.buildStartedAtMs = undefined;
 	}
+}
+
+/**
+ * Detects agent status/lifecycle changes for every agent in a workspace,
+ * keyed by agent ID so each is tracked independently, and reports agents that
+ * have disappeared since the previous observation. Stateful but effect-free.
+ * Construct one per workspace.
+ */
+export class WorkspaceAgentObserver {
+	private readonly tracker = new TransitionTracker<ObservedAgentState>(
+		(a, b) => a.status === b.status && a.lifecycleState === b.lifecycleState,
+	);
+	/** Last-seen agent name per ID, so removals can be reported by name. */
+	private readonly names = new Map<string, string>();
+
+	public observe(workspace: Workspace): AgentObservation {
+		const now = performance.now();
+		const transitions: AgentStateTransition[] = [];
+		const seen = new Set<string>();
+
+		for (const agent of extractAgents(workspace.latest_build.resources)) {
+			seen.add(agent.id);
+			this.names.set(agent.id, agent.name);
+			const change = this.tracker.observe(
+				{
+					status: agent.status,
+					lifecycleState: agent.lifecycle_state,
+					observedAtMs: now,
+				},
+				agent.id,
+			);
+			if (!change) {
+				continue;
+			}
+			const previous = change.from;
+			transitions.push({
+				agentName: agent.name,
+				status: { from: previous?.status, to: agent.status },
+				lifecycleState: {
+					from: previous?.lifecycleState,
+					to: agent.lifecycle_state,
+				},
+				durationMs: previous ? now - previous.observedAtMs : undefined,
+			});
+		}
+
+		const removed: RemovedAgent[] = [];
+		for (const [id, name] of this.names) {
+			if (!seen.has(id)) {
+				removed.push({ name });
+				this.names.delete(id);
+				this.tracker.reset(id);
+			}
+		}
+
+		return { transitions, removed };
+	}
+
+	public reset(): void {
+		this.tracker.reset();
+		this.names.clear();
+	}
+}
+
+/**
+ * Emits `workspace.state_transitioned` for a detected workspace transition.
+ * Telemetry only; pair with `WorkspaceStateObserver`.
+ */
+export function recordWorkspaceState(
+	telemetry: TelemetryReporter,
+	workspaceName: string,
+	transition: WorkspaceStateTransition,
+): void {
+	const measurements: Record<string, number> = {};
+	if (transition.durationMs !== undefined) {
+		measurements.observed_duration_ms = transition.durationMs;
+	}
+	if (transition.buildDurationMs !== undefined) {
+		measurements.observed_build_duration_ms = transition.buildDurationMs;
+	}
+
+	telemetry.log(
+		"workspace.state_transitioned",
+		{
+			workspace_name: workspaceName,
+			from: transition.from ?? INITIAL_STATE,
+			to: transition.to,
+			"build.transition": transition.buildTransition,
+			"build.reason": transition.buildReason,
+		},
+		measurements,
+	);
+}
+
+/**
+ * Emits `workspace.agent.state_transitioned` for a detected agent transition.
+ * Telemetry only; pair with `WorkspaceAgentObserver`.
+ */
+export function recordAgentState(
+	telemetry: TelemetryReporter,
+	workspaceName: string,
+	transition: AgentStateTransition,
+): void {
+	telemetry.log(
+		"workspace.agent.state_transitioned",
+		{
+			workspace_name: workspaceName,
+			agent_name: transition.agentName,
+			"status.from": transition.status.from ?? INITIAL_STATE,
+			"status.to": transition.status.to,
+			"lifecycle_state.from": transition.lifecycleState.from ?? INITIAL_STATE,
+			"lifecycle_state.to": transition.lifecycleState.to,
+		},
+		transition.durationMs !== undefined
+			? { observed_duration_ms: transition.durationMs }
+			: {},
+	);
 }
 
 /**
