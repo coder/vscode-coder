@@ -10,8 +10,6 @@ import {
 	INITIAL_STATE,
 	recordAgentState,
 	recordWorkspaceState,
-	WorkspaceAgentObserver,
-	WorkspaceStateObserver,
 } from "../instrumentation/workspace";
 import {
 	areNotificationsDisabled,
@@ -19,6 +17,8 @@ import {
 } from "../settings/notifications";
 import { createStatusBarItem } from "../util/statusBar";
 import { vscodeProposed } from "../vscodeProposed";
+
+import { WorkspaceAgentObserver, WorkspaceStateObserver } from "./observers";
 
 import type { CoderApi } from "../api/coderApi";
 import type { ServiceContainer } from "../core/container";
