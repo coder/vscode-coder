@@ -537,6 +537,9 @@ Opening a workspace from any entry point.
 
 ### Logs
 
+Both state-transition events are sampled from the workspace event stream, so
+intermediate hops between samples may coalesce into a single transition.
+
 #### `workspace.state_transitioned`
 
 | Attribute                                  | Values                                                   |
@@ -552,8 +555,6 @@ Opening a workspace from any entry point.
 
 Emitted for every agent in the workspace, deduped per agent, for the whole
 monitored session (not only the connected agent during connection setup).
-Transitions are sampled from the workspace event stream, so intermediate hops
-between samples may coalesce into a single transition.
 
 | Attribute                                    | Values                                               |
 | -------------------------------------------- | ---------------------------------------------------- |
