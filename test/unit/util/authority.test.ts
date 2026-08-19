@@ -14,8 +14,7 @@ import {
 const env = vscode.env as typeof vscode.env & { uriScheme: string };
 const CURSOR_AUTHORITY = "ssh-remote+coder-cursor.dev.coder.com--foo--bar.main";
 const LEGACY_AUTHORITY = "ssh-remote+coder-vscode.dev.coder.com--foo--bar.main";
-const WINDSURF_AUTHORITY =
-	"ssh-remote+coder-windsurf.dev.coder.com--foo--bar.main";
+const DEVIN_AUTHORITY = "ssh-remote+coder-devin.dev.coder.com--foo--bar.main";
 
 const parts = (prefix: string): AuthorityParts => ({
 	agent: "main",
@@ -82,7 +81,7 @@ describe("parseRemoteAuthority", () => {
 		expect(parseRemoteAuthority("ssh-remote+coder-vscode")).toBeNull();
 		env.uriScheme = "cursor";
 		expect(
-			parseRemoteAuthority("ssh-remote+coder-windsurf.dev.coder.com--foo"),
+			parseRemoteAuthority("ssh-remote+coder-devin.dev.coder.com--foo"),
 		).toBeNull();
 	});
 
@@ -223,7 +222,7 @@ describe("authority migration", () => {
 			authority: "ssh-remote+coder-vscode",
 			expected: false,
 		},
-		{ label: "foreign", authority: WINDSURF_AUTHORITY, expected: false },
+		{ label: "foreign", authority: DEVIN_AUTHORITY, expected: false },
 		{
 			label: "different wrapper",
 			authority: `dev-container+abc@${LEGACY_AUTHORITY}`,
