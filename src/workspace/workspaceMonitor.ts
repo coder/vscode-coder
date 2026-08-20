@@ -30,6 +30,9 @@ import type { Logger } from "../logging/logger";
 import type { TelemetryReporter } from "../telemetry/reporter";
 import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
 
+const stateVerb = (from: string | undefined) =>
+	from === undefined ? "state observed" : "state changed";
+
 /**
  * Monitor a single workspace using a WebSocket for events like shutdown and deletion.
  * Notify the user about relevant changes and update contexts as needed. The
@@ -156,8 +159,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		if (!transition) {
 			return;
 		}
-		const verb =
-			transition.from === undefined ? "state observed" : "state changed";
+		const verb = stateVerb(transition.from);
 		this.logger.info(`Workspace ${this.name} ${verb}`, {
 			from: transition.from ?? INITIAL_STATE,
 			to: transition.to,
@@ -170,10 +172,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	private observeAgents(workspace: Workspace) {
 		const { transitions, removed } = this.agentObserver.observe(workspace);
 		for (const transition of transitions) {
-			const verb =
-				transition.statusFrom === undefined
-					? "state observed"
-					: "state changed";
+			const verb = stateVerb(transition.statusFrom);
 			this.logger.info(
 				`Workspace ${this.name} agent ${transition.agentName} ${verb}`,
 				{
