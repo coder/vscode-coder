@@ -32,7 +32,7 @@ import type { CoderApi } from "@/api/coderApi";
 import type { TelemetryService } from "@/telemetry/service";
 
 function workspaceEvent(
-	overrides?: Parameters<typeof createWorkspace>[0],
+	overrides?: Parameters<typeof createWorkspace>[0] | Workspace,
 ): ServerSentEvent {
 	return { type: "data", data: createWorkspace(overrides) };
 }
@@ -197,13 +197,14 @@ describe("WorkspaceMonitor", () => {
 				]),
 			);
 
-			stream.pushMessage({
-				type: "data",
-				data: workspaceWith("running", [
-					createAgent({ id: "a1", name: "first", status: "connected" }),
-					createAgent({ id: "a2", name: "second", status: "connected" }),
-				]),
-			});
+			stream.pushMessage(
+				workspaceEvent(
+					workspaceWith("running", [
+						createAgent({ id: "a1", name: "first", status: "connected" }),
+						createAgent({ id: "a2", name: "second", status: "connected" }),
+					]),
+				),
+			);
 
 			const events = sink.eventsNamed("workspace.agent.state_transitioned");
 			// Two initial observations plus the one "second" transition.
@@ -225,12 +226,11 @@ describe("WorkspaceMonitor", () => {
 				]),
 			);
 
-			stream.pushMessage({
-				type: "data",
-				data: workspaceWith("running", [
-					createAgent({ id: "a1", name: "first" }),
-				]),
-			});
+			stream.pushMessage(
+				workspaceEvent(
+					workspaceWith("running", [createAgent({ id: "a1", name: "first" })]),
+				),
+			);
 
 			expect(logger.info).toHaveBeenCalledWith(
 				expect.stringContaining("agent second removed"),
