@@ -101,8 +101,30 @@ jobs:
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
 
+      - name: Get Playwright version
+        id: playwright-version
+        run: echo "version=$(pnpm exec playwright-core --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      # Cache the browser to avoid relying on azure.archive.ubuntu.com, which
+      # can be flaky. Only the default branch is trusted to write the cache,
+      # so PR runs cannot poison it.
+      - name: Restore Chromium cache
+        id: playwright-chromium-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
       - name: Install Chromium
-        run: pnpm exec playwright-core install --with-deps chromium
+        run: pnpm exec playwright-core install chromium
+        timeout-minutes: 5
+
+      - name: Save Chromium cache
+        if: github.ref == 'refs/heads/main' && steps.playwright-chromium-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.playwright-chromium-cache.outputs.cache-primary-key }}
 
       # Builds the Storybook (buildCommand in pixel.jsonc) and snapshots it.
       - name: Snapshot
