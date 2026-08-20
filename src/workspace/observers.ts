@@ -25,6 +25,7 @@ interface ObservedWorkspaceState {
 }
 
 interface ObservedAgentState {
+	readonly name: string;
 	readonly status: WorkspaceAgentStatus;
 	readonly lifecycleState: WorkspaceAgentLifecycle;
 	readonly observedAtMs: number;
@@ -122,8 +123,6 @@ export class WorkspaceStateObserver {
 export class WorkspaceAgentObserver {
 	/** Previous observed state per agent ID, tracked independently. */
 	private readonly previous = new Map<string, ObservedAgentState>();
-	/** Last-seen agent name per ID, so removals can be reported by name. */
-	private readonly names = new Map<string, string>();
 
 	public observe(workspace: Workspace): AgentObservation {
 		const now = performance.now();
@@ -132,7 +131,6 @@ export class WorkspaceAgentObserver {
 
 		for (const agent of extractAgents(workspace.latest_build.resources)) {
 			seen.add(agent.id);
-			this.names.set(agent.id, agent.name);
 			const previous = this.previous.get(agent.id);
 			if (
 				previous?.status === agent.status &&
@@ -141,6 +139,7 @@ export class WorkspaceAgentObserver {
 				continue;
 			}
 			this.previous.set(agent.id, {
+				name: agent.name,
 				status: agent.status,
 				lifecycleState: agent.lifecycle_state,
 				observedAtMs: now,
@@ -156,10 +155,9 @@ export class WorkspaceAgentObserver {
 		}
 
 		const removed: RemovedAgent[] = [];
-		for (const [id, name] of this.names) {
+		for (const [id, { name }] of this.previous) {
 			if (!seen.has(id)) {
 				removed.push({ name });
-				this.names.delete(id);
 				this.previous.delete(id);
 			}
 		}
