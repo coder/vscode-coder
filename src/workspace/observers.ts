@@ -46,14 +46,10 @@ export interface WorkspaceStateTransition {
 /** Reported by `WorkspaceAgentObserver`. */
 export interface AgentStateTransition {
 	readonly agentName: string;
-	readonly status: {
-		readonly from: WorkspaceAgentStatus | undefined;
-		readonly to: WorkspaceAgentStatus;
-	};
-	readonly lifecycleState: {
-		readonly from: WorkspaceAgentLifecycle | undefined;
-		readonly to: WorkspaceAgentLifecycle;
-	};
+	readonly statusFrom: WorkspaceAgentStatus | undefined;
+	readonly statusTo: WorkspaceAgentStatus;
+	readonly lifecycleFrom: WorkspaceAgentLifecycle | undefined;
+	readonly lifecycleTo: WorkspaceAgentLifecycle;
 	/** Time since the previous observation of this agent; `undefined` on the first. */
 	readonly durationMs: number | undefined;
 }
@@ -148,11 +144,10 @@ export class WorkspaceAgentObserver {
 			});
 			transitions.push({
 				agentName: agent.name,
-				status: { from: previous?.status, to: agent.status },
-				lifecycleState: {
-					from: previous?.lifecycleState,
-					to: agent.lifecycle_state,
-				},
+				statusFrom: previous?.status,
+				statusTo: agent.status,
+				lifecycleFrom: previous?.lifecycleState,
+				lifecycleTo: agent.lifecycle_state,
 				durationMs: previous ? now - previous.observedAtMs : undefined,
 			});
 		}

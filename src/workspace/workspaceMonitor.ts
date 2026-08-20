@@ -168,16 +168,16 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		const { transitions, removed } = this.agentObserver.observe(workspace);
 		for (const transition of transitions) {
 			const verb =
-				transition.status.from === undefined
+				transition.statusFrom === undefined
 					? "state observed"
 					: "state changed";
 			this.logger.info(
 				`Workspace ${this.name} agent ${transition.agentName} ${verb}`,
 				{
-					statusFrom: transition.status.from ?? INITIAL_STATE,
-					statusTo: transition.status.to,
-					lifecycleFrom: transition.lifecycleState.from ?? INITIAL_STATE,
-					lifecycleTo: transition.lifecycleState.to,
+					statusFrom: transition.statusFrom ?? INITIAL_STATE,
+					statusTo: transition.statusTo,
+					lifecycleFrom: transition.lifecycleFrom ?? INITIAL_STATE,
+					lifecycleTo: transition.lifecycleTo,
 				},
 			);
 			recordAgentState(this.telemetry, this.name, transition);

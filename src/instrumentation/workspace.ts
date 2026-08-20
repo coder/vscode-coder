@@ -59,10 +59,10 @@ export function recordAgentState(
 		{
 			workspace_name: workspaceName,
 			agent_name: transition.agentName,
-			"status.from": transition.status.from ?? INITIAL_STATE,
-			"status.to": transition.status.to,
-			"lifecycle_state.from": transition.lifecycleState.from ?? INITIAL_STATE,
-			"lifecycle_state.to": transition.lifecycleState.to,
+			"status.from": transition.statusFrom ?? INITIAL_STATE,
+			"status.to": transition.statusTo,
+			"lifecycle_state.from": transition.lifecycleFrom ?? INITIAL_STATE,
+			"lifecycle_state.to": transition.lifecycleTo,
 		},
 		transition.durationMs !== undefined
 			? { observed_duration_ms: transition.durationMs }

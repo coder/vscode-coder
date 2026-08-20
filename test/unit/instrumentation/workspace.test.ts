@@ -233,8 +233,10 @@ describe("recordAgentState", () => {
 
 		recordAgentState(service, WORKSPACE_NAME, {
 			agentName: "main",
-			status: { from: "connecting", to: "connected" },
-			lifecycleState: { from: "starting", to: "ready" },
+			statusFrom: "connecting",
+			statusTo: "connected",
+			lifecycleFrom: "starting",
+			lifecycleTo: "ready",
 			durationMs: 800,
 		});
 
@@ -255,8 +257,10 @@ describe("recordAgentState", () => {
 
 		recordAgentState(service, WORKSPACE_NAME, {
 			agentName: "main",
-			status: { from: undefined, to: "connecting" },
-			lifecycleState: { from: undefined, to: "created" },
+			statusFrom: undefined,
+			statusTo: "connecting",
+			lifecycleFrom: undefined,
+			lifecycleTo: "created",
 			durationMs: undefined,
 		});
 
