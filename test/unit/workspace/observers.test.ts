@@ -137,6 +137,29 @@ describe("WorkspaceAgentObserver", () => {
 		expect(observer.observe(ws).transitions).toEqual([]);
 	});
 
+	it("reports a change when only the lifecycle state changes", () => {
+		const observer = new WorkspaceAgentObserver();
+
+		observer.observe(
+			workspaceWith("running", [
+				createAgent({ status: "connected", lifecycle_state: "starting" }),
+			]),
+		);
+		const { transitions } = observer.observe(
+			workspaceWith("running", [
+				createAgent({ status: "connected", lifecycle_state: "ready" }),
+			]),
+		);
+
+		expect(transitions).toHaveLength(1);
+		expect(transitions[0]).toMatchObject({
+			statusFrom: "connected",
+			statusTo: "connected",
+			lifecycleFrom: "starting",
+			lifecycleTo: "ready",
+		});
+	});
+
 	it("tracks each agent independently", () => {
 		const observer = new WorkspaceAgentObserver();
 
