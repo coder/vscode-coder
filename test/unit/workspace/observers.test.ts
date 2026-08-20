@@ -101,7 +101,7 @@ describe("WorkspaceStateObserver", () => {
 });
 
 describe("WorkspaceAgentObserver", () => {
-	it("reports the first observation of each agent with from=undefined", () => {
+	it("reports the first observation of each agent with statusFrom=undefined", () => {
 		const observer = new WorkspaceAgentObserver();
 
 		const { transitions, removed } = observer.observe(
@@ -118,8 +118,10 @@ describe("WorkspaceAgentObserver", () => {
 		expect(transitions).toHaveLength(1);
 		expect(transitions[0]).toMatchObject({
 			agentName: "main",
-			status: { from: undefined, to: "connecting" },
-			lifecycleState: { from: undefined, to: "created" },
+			statusFrom: undefined,
+			statusTo: "connecting",
+			lifecycleFrom: undefined,
+			lifecycleTo: "created",
 			durationMs: undefined,
 		});
 	});
@@ -155,7 +157,8 @@ describe("WorkspaceAgentObserver", () => {
 		expect(transitions).toHaveLength(1);
 		expect(transitions[0]).toMatchObject({
 			agentName: "second",
-			status: { from: "connecting", to: "connected" },
+			statusFrom: "connecting",
+			statusTo: "connected",
 		});
 	});
 
@@ -191,6 +194,6 @@ describe("WorkspaceAgentObserver", () => {
 			]),
 		);
 
-		expect(transitions[0].status.from).toBeUndefined();
+		expect(transitions[0].statusFrom).toBeUndefined();
 	});
 });
