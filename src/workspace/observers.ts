@@ -90,16 +90,11 @@ export class WorkspaceStateObserver {
 		}
 		this.previous = { status, buildTransition, buildReason, observedAtMs: now };
 
-		const wasProvisioning =
-			previous && PROVISIONING_STATUSES.has(previous.status);
-		const isProvisioning = PROVISIONING_STATUSES.has(status);
 		let buildDurationMs: number | undefined;
-		if (isProvisioning) {
+		if (PROVISIONING_STATUSES.has(status)) {
 			this.buildStartedAtMs ??= now;
-		} else {
-			if (wasProvisioning && this.buildStartedAtMs !== undefined) {
-				buildDurationMs = now - this.buildStartedAtMs;
-			}
+		} else if (this.buildStartedAtMs !== undefined) {
+			buildDurationMs = now - this.buildStartedAtMs;
 			this.buildStartedAtMs = undefined;
 		}
 
