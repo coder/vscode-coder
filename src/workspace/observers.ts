@@ -17,43 +17,6 @@ const PROVISIONING_STATUSES: ReadonlySet<WorkspaceStatus> = new Set([
 	"deleting",
 ]);
 
-/**
- * Tracks the last observed value per key and reports the previous value each
- * time it changes. Shared by the workspace/agent observers so transition
- * detection lives in one place.
- *
- * A single tracked entity (e.g. a workspace) can omit the key; callers that
- * track many entities (e.g. agents keyed by ID) pass a distinct key each time.
- */
-export class TransitionTracker<T> {
-	private readonly previous = new Map<string, T>();
-
-	public constructor(private readonly equals: (a: T, b: T) => boolean) {}
-
-	/**
-	 * Record `next` for `key`. Returns `{ from }` when it differs from the last
-	 * recorded value (`from` is `undefined` on the first observation), or
-	 * `undefined` when unchanged.
-	 */
-	public observe(next: T, key = ""): { from: T | undefined } | undefined {
-		const prior = this.previous.get(key);
-		if (prior !== undefined && this.equals(prior, next)) {
-			return undefined;
-		}
-		this.previous.set(key, next);
-		return { from: prior };
-	}
-
-	/** Forget a single key, or all keys when `key` is omitted. */
-	public reset(key?: string): void {
-		if (key === undefined) {
-			this.previous.clear();
-		} else {
-			this.previous.delete(key);
-		}
-	}
-}
-
 interface ObservedWorkspaceState {
 	readonly status: WorkspaceStatus;
 	readonly buildTransition: WorkspaceBuild["transition"];
@@ -108,12 +71,7 @@ export interface AgentObservation {
  * Construct one per workspace.
  */
 export class WorkspaceStateObserver {
-	private readonly tracker = new TransitionTracker<ObservedWorkspaceState>(
-		(a, b) =>
-			a.status === b.status &&
-			a.buildTransition === b.buildTransition &&
-			a.buildReason === b.buildReason,
-	);
+	private previous: ObservedWorkspaceState | undefined;
 	/** Set on first observation of a provisioning status; cleared when the build resolves. */
 	private buildStartedAtMs: number | undefined;
 
@@ -124,16 +82,16 @@ export class WorkspaceStateObserver {
 			reason: buildReason,
 		} = workspace.latest_build;
 		const now = performance.now();
-		const change = this.tracker.observe({
-			status,
-			buildTransition,
-			buildReason,
-			observedAtMs: now,
-		});
-		if (!change) {
+		const previous = this.previous;
+
+		if (
+			previous?.status === status &&
+			previous?.buildTransition === buildTransition &&
+			previous?.buildReason === buildReason
+		) {
 			return undefined;
 		}
-		const previous = change.from;
+		this.previous = { status, buildTransition, buildReason, observedAtMs: now };
 
 		const wasProvisioning =
 			previous && PROVISIONING_STATUSES.has(previous.status);
@@ -159,7 +117,7 @@ export class WorkspaceStateObserver {
 	}
 
 	public reset(): void {
-		this.tracker.reset();
+		this.previous = undefined;
 		this.buildStartedAtMs = undefined;
 	}
 }
@@ -168,9 +126,8 @@ export class WorkspaceStateObserver {
  * Construct one per workspace.
  */
 export class WorkspaceAgentObserver {
-	private readonly tracker = new TransitionTracker<ObservedAgentState>(
-		(a, b) => a.status === b.status && a.lifecycleState === b.lifecycleState,
-	);
+	/** Previous observed state per agent ID, tracked independently. */
+	private readonly previous = new Map<string, ObservedAgentState>();
 	/** Last-seen agent name per ID, so removals can be reported by name. */
 	private readonly names = new Map<string, string>();
 
@@ -182,18 +139,18 @@ export class WorkspaceAgentObserver {
 		for (const agent of extractAgents(workspace.latest_build.resources)) {
 			seen.add(agent.id);
 			this.names.set(agent.id, agent.name);
-			const change = this.tracker.observe(
-				{
-					status: agent.status,
-					lifecycleState: agent.lifecycle_state,
-					observedAtMs: now,
-				},
-				agent.id,
-			);
-			if (!change) {
+			const previous = this.previous.get(agent.id);
+			if (
+				previous?.status === agent.status &&
+				previous?.lifecycleState === agent.lifecycle_state
+			) {
 				continue;
 			}
-			const previous = change.from;
+			this.previous.set(agent.id, {
+				status: agent.status,
+				lifecycleState: agent.lifecycle_state,
+				observedAtMs: now,
+			});
 			transitions.push({
 				agentName: agent.name,
 				status: { from: previous?.status, to: agent.status },
@@ -210,7 +167,7 @@ export class WorkspaceAgentObserver {
 			if (!seen.has(id)) {
 				removed.push({ name });
 				this.names.delete(id);
-				this.tracker.reset(id);
+				this.previous.delete(id);
 			}
 		}
 
@@ -218,7 +175,7 @@ export class WorkspaceAgentObserver {
 	}
 
 	public reset(): void {
-		this.tracker.reset();
+		this.previous.clear();
 		this.names.clear();
 	}
 }
