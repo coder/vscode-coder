@@ -98,15 +98,6 @@ describe("WorkspaceStateObserver", () => {
 		expect(second?.buildDurationMs).toBeUndefined();
 		expect(third?.buildDurationMs).toEqual(expect.any(Number));
 	});
-
-	it("reset() makes the next observation report from=undefined again", () => {
-		const observer = new WorkspaceStateObserver();
-
-		observer.observe(workspaceWith("running"));
-		observer.reset();
-
-		expect(observer.observe(workspaceWith("running"))?.from).toBeUndefined();
-	});
 });
 
 describe("WorkspaceAgentObserver", () => {
@@ -201,15 +192,5 @@ describe("WorkspaceAgentObserver", () => {
 		);
 
 		expect(transitions[0].status.from).toBeUndefined();
-	});
-
-	it("reset() forgets all agents", () => {
-		const observer = new WorkspaceAgentObserver();
-		const ws = workspaceWith("running", [createAgent({ status: "connected" })]);
-
-		observer.observe(ws);
-		observer.reset();
-
-		expect(observer.observe(ws).transitions[0].status.from).toBeUndefined();
 	});
 });

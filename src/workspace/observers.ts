@@ -115,11 +115,6 @@ export class WorkspaceStateObserver {
 			buildDurationMs,
 		};
 	}
-
-	public reset(): void {
-		this.previous = undefined;
-		this.buildStartedAtMs = undefined;
-	}
 }
 
 /**
@@ -172,10 +167,5 @@ export class WorkspaceAgentObserver {
 		}
 
 		return { transitions, removed };
-	}
-
-	public reset(): void {
-		this.previous.clear();
-		this.names.clear();
 	}
 }
