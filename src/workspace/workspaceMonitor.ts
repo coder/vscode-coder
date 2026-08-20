@@ -7,7 +7,6 @@ import * as vscode from "vscode";
 
 import { createWorkspaceIdentifier, errToStr } from "../api/api-helper";
 import {
-	INITIAL_STATE,
 	recordAgentState,
 	recordWorkspaceState,
 } from "../instrumentation/workspace";
@@ -18,7 +17,11 @@ import {
 import { createStatusBarItem } from "../util/statusBar";
 import { vscodeProposed } from "../vscodeProposed";
 
-import { WorkspaceAgentObserver, WorkspaceStateObserver } from "./observers";
+import {
+	INITIAL_STATE,
+	WorkspaceAgentObserver,
+	WorkspaceStateObserver,
+} from "./observers";
 
 import type { CoderApi } from "../api/coderApi";
 import type { ServiceContainer } from "../core/container";

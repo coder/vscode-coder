@@ -30,6 +30,9 @@ interface ObservedAgentState {
 	readonly observedAtMs: number;
 }
 
+/** Sentinel for `from*` before any state is observed. `"unknown"` is a real server-reported value, so avoid it. */
+export const INITIAL_STATE = "none";
+
 /** Reported by `WorkspaceStateObserver`. */
 export interface WorkspaceStateTransition {
 	/** Previous status, or `undefined` on the first observation. */

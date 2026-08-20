@@ -1,16 +1,14 @@
 import { WorkspaceUpdateCancelledError } from "../api/updateParameters";
+import {
+	INITIAL_STATE,
+	type AgentStateTransition,
+	type WorkspaceStateTransition,
+} from "../workspace/observers";
 
 import type { WorkspaceBuildParameter } from "coder/site/src/api/typesGenerated";
 
 import type { TelemetryReporter } from "../telemetry/reporter";
 import type { Span } from "../telemetry/span";
-import type {
-	AgentStateTransition,
-	WorkspaceStateTransition,
-} from "../workspace/observers";
-
-/** Sentinel for `from*` before any state is observed. `"unknown"` is a real server-reported value, so avoid it. */
-export const INITIAL_STATE = "none";
 
 export type WorkspacePromptAction = "start" | "update";
 export type WorkspaceUpdatePrompt = "parameters" | "confirmation";
