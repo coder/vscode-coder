@@ -184,8 +184,8 @@ export class WorkspaceMonitor implements vscode.Disposable {
 			);
 			recordAgentState(this.telemetry, this.name, transition);
 		}
-		for (const agent of removed) {
-			this.logger.info(`Workspace ${this.name} agent ${agent.name} removed`);
+		for (const name of removed) {
+			this.logger.info(`Workspace ${this.name} agent ${name} removed`);
 		}
 	}
 

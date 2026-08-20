@@ -176,7 +176,7 @@ describe("WorkspaceAgentObserver", () => {
 			workspaceWith("running", [createAgent({ id: "a1", name: "first" })]),
 		);
 
-		expect(removed).toEqual([{ name: "second" }]);
+		expect(removed).toEqual(["second"]);
 	});
 
 	it("treats a returning agent id as a fresh observation after removal", () => {

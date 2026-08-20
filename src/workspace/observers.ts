@@ -58,13 +58,10 @@ export interface AgentStateTransition {
 	readonly durationMs: number | undefined;
 }
 
-export interface RemovedAgent {
-	readonly name: string;
-}
-
 export interface AgentObservation {
 	readonly transitions: AgentStateTransition[];
-	readonly removed: RemovedAgent[];
+	/** Names of agents present on a prior observation and absent now. */
+	readonly removed: string[];
 }
 
 /**
@@ -154,10 +151,10 @@ export class WorkspaceAgentObserver {
 			});
 		}
 
-		const removed: RemovedAgent[] = [];
+		const removed: string[] = [];
 		for (const [id, { name }] of this.previous) {
 			if (!seen.has(id)) {
-				removed.push({ name });
+				removed.push(name);
 				this.previous.delete(id);
 			}
 		}
