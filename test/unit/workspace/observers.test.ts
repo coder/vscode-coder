@@ -5,32 +5,9 @@ import {
 	WorkspaceStateObserver,
 } from "@/workspace/observers";
 
-import {
-	agent as createAgent,
-	resource as createResource,
-	workspace as createWorkspace,
-} from "@repo/mocks";
+import { agent as createAgent } from "@repo/mocks";
 
-import type {
-	Workspace,
-	WorkspaceAgent,
-	WorkspaceBuild,
-	WorkspaceStatus,
-} from "coder/site/src/api/typesGenerated";
-
-function workspaceWith(
-	status: WorkspaceStatus,
-	agents: WorkspaceAgent[] = [],
-	build: Partial<WorkspaceBuild> = {},
-): Workspace {
-	return createWorkspace({
-		latest_build: {
-			status,
-			resources: [createResource({ agents })],
-			...build,
-		},
-	});
-}
+import { workspaceWith } from "../../mocks/testHelpers";
 
 describe("WorkspaceStateObserver", () => {
 	it("reports the first observation with from=undefined and no durations", () => {

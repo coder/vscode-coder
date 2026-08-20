@@ -5,7 +5,6 @@ import { WorkspaceMonitor } from "@/workspace/workspaceMonitor";
 
 import {
 	agent as createAgent,
-	resource as createResource,
 	workspace as createWorkspace,
 } from "@repo/mocks";
 
@@ -21,6 +20,7 @@ import {
 	MockEventStream,
 	MockStatusBarItem,
 	createMockLogger,
+	workspaceWith,
 } from "../../mocks/testHelpers";
 
 import type {
@@ -156,25 +156,18 @@ describe("WorkspaceMonitor", () => {
 	});
 
 	describe("agent state", () => {
-		const agentWorkspace = (
-			agents: Array<Parameters<typeof createAgent>[0]>,
-			status = "running" as const,
-		) =>
-			createWorkspace({
-				latest_build: {
-					status,
-					resources: [createResource({ agents: agents.map(createAgent) })],
-				},
-			});
-
 		it("logs the initial agent state and records telemetry", async () => {
 			enableLocalTelemetry();
 			const sink = new TestSink();
 			const { logger } = await setup(
 				new MockEventStream<ServerSentEvent>(),
 				createTestTelemetryService(sink),
-				agentWorkspace([
-					{ name: "main", status: "connecting", lifecycle_state: "created" },
+				workspaceWith("running", [
+					createAgent({
+						name: "main",
+						status: "connecting",
+						lifecycle_state: "created",
+					}),
 				]),
 			);
 
@@ -198,17 +191,17 @@ describe("WorkspaceMonitor", () => {
 			const { stream } = await setup(
 				new MockEventStream<ServerSentEvent>(),
 				createTestTelemetryService(sink),
-				agentWorkspace([
-					{ id: "a1", name: "first", status: "connected" },
-					{ id: "a2", name: "second", status: "connecting" },
+				workspaceWith("running", [
+					createAgent({ id: "a1", name: "first", status: "connected" }),
+					createAgent({ id: "a2", name: "second", status: "connecting" }),
 				]),
 			);
 
 			stream.pushMessage({
 				type: "data",
-				data: agentWorkspace([
-					{ id: "a1", name: "first", status: "connected" },
-					{ id: "a2", name: "second", status: "connected" },
+				data: workspaceWith("running", [
+					createAgent({ id: "a1", name: "first", status: "connected" }),
+					createAgent({ id: "a2", name: "second", status: "connected" }),
 				]),
 			});
 
@@ -226,15 +219,17 @@ describe("WorkspaceMonitor", () => {
 			const { stream, logger } = await setup(
 				new MockEventStream<ServerSentEvent>(),
 				undefined,
-				agentWorkspace([
-					{ id: "a1", name: "first" },
-					{ id: "a2", name: "second" },
+				workspaceWith("running", [
+					createAgent({ id: "a1", name: "first" }),
+					createAgent({ id: "a2", name: "second" }),
 				]),
 			);
 
 			stream.pushMessage({
 				type: "data",
-				data: agentWorkspace([{ id: "a1", name: "first" }]),
+				data: workspaceWith("running", [
+					createAgent({ id: "a1", name: "first" }),
+				]),
 			});
 
 			expect(logger.info).toHaveBeenCalledWith(
