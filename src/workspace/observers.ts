@@ -1,0 +1,159 @@
+import { extractAgents } from "../api/api-helper";
+
+import type {
+	Workspace,
+	WorkspaceAgentLifecycle,
+	WorkspaceAgentStatus,
+	WorkspaceBuild,
+	WorkspaceStatus,
+} from "coder/site/src/api/typesGenerated";
+
+/** Statuses where a provisioner job is actively running. */
+const PROVISIONING_STATUSES: ReadonlySet<WorkspaceStatus> = new Set([
+	"pending",
+	"starting",
+	"stopping",
+	"canceling",
+	"deleting",
+]);
+
+interface ObservedWorkspaceState {
+	readonly status: WorkspaceStatus;
+	readonly buildTransition: WorkspaceBuild["transition"];
+	readonly buildReason: WorkspaceBuild["reason"];
+	readonly observedAtMs: number;
+}
+
+interface ObservedAgentState {
+	readonly name: string;
+	readonly status: WorkspaceAgentStatus;
+	readonly lifecycleState: WorkspaceAgentLifecycle;
+	readonly observedAtMs: number;
+}
+
+/** Sentinel for `from*` before any state is observed. `"unknown"` is a real server-reported value, so avoid it. */
+export const INITIAL_STATE = "none";
+
+/** Reported by `WorkspaceStateObserver`. */
+export interface WorkspaceStateTransition {
+	/** Previous status, or `undefined` on the first observation. */
+	readonly from: WorkspaceStatus | undefined;
+	readonly to: WorkspaceStatus;
+	readonly buildTransition: WorkspaceBuild["transition"];
+	readonly buildReason: WorkspaceBuild["reason"];
+	/** Time spent in the previous state; `undefined` on the first observation. */
+	readonly durationMs: number | undefined;
+	/** Set only on the observation where a provisioner run resolves. */
+	readonly buildDurationMs: number | undefined;
+}
+
+/** Reported by `WorkspaceAgentObserver`. */
+export interface AgentStateTransition {
+	readonly agentName: string;
+	readonly statusFrom: WorkspaceAgentStatus | undefined;
+	readonly statusTo: WorkspaceAgentStatus;
+	readonly lifecycleFrom: WorkspaceAgentLifecycle | undefined;
+	readonly lifecycleTo: WorkspaceAgentLifecycle;
+	/** Time since the previous observation of this agent; `undefined` on the first. */
+	readonly durationMs: number | undefined;
+}
+
+export interface AgentObservation {
+	readonly transitions: AgentStateTransition[];
+	/** Names of agents present on a prior observation and absent now. */
+	readonly removed: string[];
+}
+
+/**
+ * Construct one per workspace.
+ */
+export class WorkspaceStateObserver {
+	private previous: ObservedWorkspaceState | undefined;
+	/** Set on first observation of a provisioning status; cleared when the build resolves. */
+	private buildStartedAtMs: number | undefined;
+
+	public observe(workspace: Workspace): WorkspaceStateTransition | undefined {
+		const {
+			status,
+			transition: buildTransition,
+			reason: buildReason,
+		} = workspace.latest_build;
+		const now = performance.now();
+		const previous = this.previous;
+
+		if (
+			previous?.status === status &&
+			previous?.buildTransition === buildTransition &&
+			previous?.buildReason === buildReason
+		) {
+			return undefined;
+		}
+		this.previous = { status, buildTransition, buildReason, observedAtMs: now };
+
+		let buildDurationMs: number | undefined;
+		if (PROVISIONING_STATUSES.has(status)) {
+			this.buildStartedAtMs ??= now;
+		} else if (this.buildStartedAtMs !== undefined) {
+			buildDurationMs = now - this.buildStartedAtMs;
+			this.buildStartedAtMs = undefined;
+		}
+
+		return {
+			from: previous?.status,
+			to: status,
+			buildTransition,
+			buildReason,
+			durationMs: previous ? now - previous.observedAtMs : undefined,
+			buildDurationMs,
+		};
+	}
+}
+
+/**
+ * Construct one per workspace.
+ */
+export class WorkspaceAgentObserver {
+	/** Previous observed state per agent ID, tracked independently. */
+	private readonly previous = new Map<string, ObservedAgentState>();
+
+	public observe(workspace: Workspace): AgentObservation {
+		const now = performance.now();
+		const transitions: AgentStateTransition[] = [];
+		const seen = new Set<string>();
+
+		for (const agent of extractAgents(workspace.latest_build.resources)) {
+			seen.add(agent.id);
+			const previous = this.previous.get(agent.id);
+			if (
+				previous?.status === agent.status &&
+				previous?.lifecycleState === agent.lifecycle_state
+			) {
+				continue;
+			}
+			this.previous.set(agent.id, {
+				name: agent.name,
+				status: agent.status,
+				lifecycleState: agent.lifecycle_state,
+				observedAtMs: now,
+			});
+			transitions.push({
+				agentName: agent.name,
+				statusFrom: previous?.status,
+				statusTo: agent.status,
+				lifecycleFrom: previous?.lifecycleState,
+				lifecycleTo: agent.lifecycle_state,
+				durationMs: previous ? now - previous.observedAtMs : undefined,
+			});
+		}
+
+		const removed: string[] = [];
+		for (const [id, { name }] of this.previous) {
+			if (!seen.has(id)) {
+				removed.push(name);
+				this.previous.delete(id);
+			}
+		}
+
+		return { transitions, removed };
+	}
+}

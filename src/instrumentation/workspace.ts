@@ -1,159 +1,71 @@
 import { WorkspaceUpdateCancelledError } from "../api/updateParameters";
+import {
+	INITIAL_STATE,
+	type AgentStateTransition,
+	type WorkspaceStateTransition,
+} from "../workspace/observers";
 
-import type {
-	Workspace,
-	WorkspaceAgent,
-	WorkspaceAgentLifecycle,
-	WorkspaceAgentStatus,
-	WorkspaceBuild,
-	WorkspaceBuildParameter,
-	WorkspaceStatus,
-} from "coder/site/src/api/typesGenerated";
+import type { WorkspaceBuildParameter } from "coder/site/src/api/typesGenerated";
 
 import type { TelemetryReporter } from "../telemetry/reporter";
 import type { Span } from "../telemetry/span";
 
-/** Sentinel for `from*` before any state is observed. `"unknown"` is a real server-reported value, so avoid it. */
-const INITIAL_STATE = "none";
-
-/** Statuses where a provisioner job is actively running. */
-const PROVISIONING_STATUSES: ReadonlySet<WorkspaceStatus> = new Set([
-	"pending",
-	"starting",
-	"stopping",
-	"canceling",
-	"deleting",
-]);
-
 export type WorkspacePromptAction = "start" | "update";
 export type WorkspaceUpdatePrompt = "parameters" | "confirmation";
 
-interface ObservedWorkspaceState {
-	readonly status: WorkspaceStatus;
-	readonly buildTransition: WorkspaceBuild["transition"];
-	readonly buildReason: WorkspaceBuild["reason"];
-	readonly observedAtMs: number;
-}
+/**
+ * Emits `workspace.state_transitioned` for a detected workspace transition.
+ * Telemetry only; pair with `WorkspaceStateObserver`.
+ */
+export function recordWorkspaceState(
+	telemetry: TelemetryReporter,
+	workspaceName: string,
+	transition: WorkspaceStateTransition,
+): void {
+	const measurements: Record<string, number> = {};
+	if (transition.durationMs !== undefined) {
+		measurements.observed_duration_ms = transition.durationMs;
+	}
+	if (transition.buildDurationMs !== undefined) {
+		measurements.observed_build_duration_ms = transition.buildDurationMs;
+	}
 
-interface ObservedAgentState {
-	readonly status: WorkspaceAgentStatus;
-	readonly lifecycleState: WorkspaceAgentLifecycle;
-	readonly observedAtMs: number;
+	telemetry.log(
+		"workspace.state_transitioned",
+		{
+			workspace_name: workspaceName,
+			from: transition.from ?? INITIAL_STATE,
+			to: transition.to,
+			"build.transition": transition.buildTransition,
+			"build.reason": transition.buildReason,
+		},
+		measurements,
+	);
 }
 
 /**
- * Emits `workspace.state_transitioned` as a workspace progresses through
- * statuses, plus `observed_build_duration_ms` when a provisioner run resolves.
- * Construct one per workspace; `WorkspaceMonitor` is the sole call site.
+ * Emits `workspace.agent.state_transitioned` for a detected agent transition.
+ * Telemetry only; pair with `WorkspaceAgentObserver`.
  */
-export class WorkspaceStateTelemetry {
-	private observed: ObservedWorkspaceState | undefined;
-	/** Set on first observation of a provisioning status; cleared when the build resolves. */
-	private buildStartedAtMs: number | undefined;
-
-	public constructor(
-		private readonly telemetry: TelemetryReporter,
-		private readonly workspaceName: string,
-	) {}
-
-	public observe(workspace: Workspace): void {
-		const {
-			status,
-			transition: buildTransition,
-			reason: buildReason,
-		} = workspace.latest_build;
-		const previous = this.observed;
-		if (
-			previous?.status === status &&
-			previous.buildTransition === buildTransition &&
-			previous.buildReason === buildReason
-		) {
-			return;
-		}
-
-		const now = performance.now();
-		const measurements: Record<string, number> = previous
-			? { observed_duration_ms: now - previous.observedAtMs }
-			: {};
-
-		const wasProvisioning =
-			previous && PROVISIONING_STATUSES.has(previous.status);
-		const isProvisioning = PROVISIONING_STATUSES.has(status);
-		if (isProvisioning) {
-			this.buildStartedAtMs ??= now;
-		} else {
-			if (wasProvisioning && this.buildStartedAtMs !== undefined) {
-				measurements.observed_build_duration_ms = now - this.buildStartedAtMs;
-			}
-			this.buildStartedAtMs = undefined;
-		}
-
-		this.telemetry.log(
-			"workspace.state_transitioned",
-			{
-				workspace_name: this.workspaceName,
-				from: previous?.status ?? INITIAL_STATE,
-				to: status,
-				"build.transition": buildTransition,
-				"build.reason": buildReason,
-			},
-			measurements,
-		);
-		this.observed = {
-			status,
-			buildTransition,
-			buildReason,
-			observedAtMs: now,
-		};
-	}
-}
-
-/**
- * Emits `workspace.agent.state_transitioned` as the agent's `status` and
- * `lifecycle_state` change. The agent has two state dimensions so the event
- * carries `status.*` and `lifecycle_state.*` properties. Construct one per
- * workspace.
- */
-export class WorkspaceAgentTelemetry {
-	private observed: ObservedAgentState | undefined;
-
-	public constructor(
-		private readonly telemetry: TelemetryReporter,
-		private readonly workspaceName: string,
-	) {}
-
-	public observe(agent: WorkspaceAgent): void {
-		const previous = this.observed;
-		if (
-			previous?.status === agent.status &&
-			previous.lifecycleState === agent.lifecycle_state
-		) {
-			return;
-		}
-		const now = performance.now();
-
-		this.telemetry.log(
-			"workspace.agent.state_transitioned",
-			{
-				workspace_name: this.workspaceName,
-				agent_name: agent.name,
-				"status.from": previous?.status ?? INITIAL_STATE,
-				"status.to": agent.status,
-				"lifecycle_state.from": previous?.lifecycleState ?? INITIAL_STATE,
-				"lifecycle_state.to": agent.lifecycle_state,
-			},
-			previous ? { observed_duration_ms: now - previous.observedAtMs } : {},
-		);
-		this.observed = {
-			status: agent.status,
-			lifecycleState: agent.lifecycle_state,
-			observedAtMs: now,
-		};
-	}
-
-	public reset(): void {
-		this.observed = undefined;
-	}
+export function recordAgentState(
+	telemetry: TelemetryReporter,
+	workspaceName: string,
+	transition: AgentStateTransition,
+): void {
+	telemetry.log(
+		"workspace.agent.state_transitioned",
+		{
+			workspace_name: workspaceName,
+			agent_name: transition.agentName,
+			"status.from": transition.statusFrom ?? INITIAL_STATE,
+			"status.to": transition.statusTo,
+			"lifecycle_state.from": transition.lifecycleFrom ?? INITIAL_STATE,
+			"lifecycle_state.to": transition.lifecycleTo,
+		},
+		transition.durationMs !== undefined
+			? { observed_duration_ms: transition.durationMs }
+			: {},
+	);
 }
 
 /**

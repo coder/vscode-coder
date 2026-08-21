@@ -16,10 +16,7 @@ import {
 	streamAgentLogs,
 	streamBuildLogs,
 } from "../api/workspace";
-import {
-	WorkspaceAgentTelemetry,
-	WorkspaceOperationTelemetry,
-} from "../instrumentation/workspace";
+import { WorkspaceOperationTelemetry } from "../instrumentation/workspace";
 import { maybeAskAgent } from "../promptUtils";
 import { vscodeProposed } from "../vscodeProposed";
 
@@ -47,7 +44,6 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 	private readonly terminal: TerminalOutputChannel;
 	private readonly buildLogStream = new LazyStream<ProvisionerJobLog>();
 	private readonly agentLogStream = new LazyStream<WorkspaceAgentLog[]>();
-	private readonly agentTelemetry: WorkspaceAgentTelemetry;
 	private readonly operationTelemetry: WorkspaceOperationTelemetry;
 
 	private agent: { id: string; name: string } | undefined;
@@ -68,7 +64,6 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		this.terminal = new TerminalOutputChannel("Coder: Workspace Build");
 		const telemetry = container.getTelemetryService();
 		const workspaceName = `${parts.username}/${parts.workspace}`;
-		this.agentTelemetry = new WorkspaceAgentTelemetry(telemetry, workspaceName);
 		this.operationTelemetry = new WorkspaceOperationTelemetry(
 			telemetry,
 			workspaceName,
@@ -184,7 +179,6 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				`Agent ${this.agent.name} not found in ${workspaceName} resources`,
 			);
 		}
-		this.agentTelemetry.observe(agent);
 
 		switch (agent.status) {
 			case "connecting":
@@ -365,7 +359,6 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 
 	private resetAgent(): void {
 		this.agent = undefined;
-		this.agentTelemetry.reset();
 	}
 
 	dispose(): void {

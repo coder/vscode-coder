@@ -11,6 +11,11 @@ import * as vscode from "vscode";
 
 import { SessionStore, type SessionData } from "@/deployment/sessionStore";
 
+import {
+	resource as createResource,
+	workspace as createWorkspace,
+} from "@repo/mocks";
+
 import { createTestTelemetryService } from "./telemetry";
 import { window as vscodeWindow } from "./vscode.runtime";
 
@@ -18,6 +23,9 @@ import type {
 	Experiment,
 	User,
 	Workspace,
+	WorkspaceAgent,
+	WorkspaceBuild,
+	WorkspaceStatus,
 } from "coder/site/src/api/typesGenerated";
 import type { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import type { IncomingMessage } from "node:http";
@@ -921,6 +929,24 @@ export class MockOAuthInterceptor {
 	readonly setDeployment = vi.fn().mockResolvedValue(undefined);
 	readonly clearDeployment = vi.fn();
 	readonly dispose = vi.fn();
+}
+
+/**
+ * Build a workspace in `status` with the given agents on its latest build.
+ * `build` overrides other `latest_build` fields.
+ */
+export function workspaceWith(
+	status: WorkspaceStatus,
+	agents: WorkspaceAgent[] = [],
+	build: Partial<WorkspaceBuild> = {},
+): Workspace {
+	return createWorkspace({
+		latest_build: {
+			status,
+			resources: [createResource({ agents })],
+			...build,
+		},
+	});
 }
 
 /**

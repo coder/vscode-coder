@@ -2,15 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { WorkspaceUpdateCancelledError } from "@/api/updateParameters";
 import {
-	WorkspaceAgentTelemetry,
+	recordAgentState,
+	recordWorkspaceState,
 	WorkspaceOperationTelemetry,
-	WorkspaceStateTelemetry,
 } from "@/instrumentation/workspace";
-
-import {
-	agent as createAgent,
-	workspace as createWorkspace,
-} from "@repo/mocks";
 
 import { createTelemetryHarness } from "../../mocks/telemetry";
 
@@ -25,10 +20,6 @@ function setup<T>(make: (svc: TelemetryService, name: string) => T) {
 
 const newOps = (svc: TelemetryService, name: string) =>
 	new WorkspaceOperationTelemetry(svc, name);
-const newState = (svc: TelemetryService, name: string) =>
-	new WorkspaceStateTelemetry(svc, name);
-const newAgentTelemetry = (svc: TelemetryService, name: string) =>
-	new WorkspaceAgentTelemetry(svc, name);
 
 describe("WorkspaceOperationTelemetry", () => {
 	it.each([
@@ -190,113 +181,92 @@ describe("WorkspaceOperationTelemetry", () => {
 	});
 });
 
-describe("WorkspaceStateTelemetry.observe", () => {
-	it("emits the first observation with from=none and no duration", () => {
-		const { sink, instance: state } = setup(newState);
+describe("recordWorkspaceState", () => {
+	it("emits workspace.state_transitioned with flat dotted keys", () => {
+		const { sink, service } = createTelemetryHarness();
 
-		state.observe(
-			createWorkspace({
-				latest_build: {
-					status: "running",
-					transition: "start",
-					reason: "initiator",
-				},
-			}),
-		);
+		recordWorkspaceState(service, WORKSPACE_NAME, {
+			from: "starting",
+			to: "running",
+			buildTransition: "start",
+			buildReason: "initiator",
+			durationMs: 1200,
+			buildDurationMs: 3400,
+		});
 
 		const event = sink.expectOne("workspace.state_transitioned");
 		expect(event.properties).toMatchObject({
 			workspace_name: WORKSPACE_NAME,
-			from: "none",
+			from: "starting",
 			to: "running",
 			"build.transition": "start",
 			"build.reason": "initiator",
 		});
-		expect(event.measurements.observed_duration_ms).toBeUndefined();
-	});
-
-	it("ignores duplicate observations of the same state", () => {
-		const { sink, instance: state } = setup(newState);
-		const ws = createWorkspace({ latest_build: { status: "running" } });
-
-		state.observe(ws);
-		state.observe(ws);
-
-		expect(sink.eventsNamed("workspace.state_transitioned")).toHaveLength(1);
-	});
-
-	it("records observed_duration_ms across transitions and observed_build_duration_ms once a build resolves", () => {
-		const { sink, instance: state } = setup(newState);
-
-		state.observe(createWorkspace({ latest_build: { status: "stopped" } }));
-		state.observe(createWorkspace({ latest_build: { status: "starting" } }));
-		state.observe(createWorkspace({ latest_build: { status: "running" } }));
-
-		const [first, second, third] = sink.eventsNamed(
-			"workspace.state_transitioned",
-		);
-		expect(first.measurements.observed_duration_ms).toBeUndefined();
-		expect(second.measurements.observed_duration_ms).toEqual(
-			expect.any(Number),
-		);
-		expect(second.measurements.observed_build_duration_ms).toBeUndefined();
-		expect(third.measurements.observed_build_duration_ms).toEqual(
-			expect.any(Number),
-		);
-	});
-});
-
-describe("WorkspaceAgentTelemetry.observe", () => {
-	it("emits the first observation with from=none", () => {
-		const { sink, instance: agentTelemetry } = setup(newAgentTelemetry);
-
-		agentTelemetry.observe(
-			createAgent({ status: "connecting", lifecycle_state: "created" }),
-		);
-
-		expect(sink.expectOne("workspace.agent.state_transitioned")).toMatchObject({
-			properties: {
-				"status.from": "none",
-				"status.to": "connecting",
-				"lifecycle_state.from": "none",
-				"lifecycle_state.to": "created",
-			},
+		expect(event.measurements).toMatchObject({
+			observed_duration_ms: 1200,
+			observed_build_duration_ms: 3400,
 		});
 	});
 
-	it("dedupes consecutive identical observations", () => {
-		const { sink, instance: agentTelemetry } = setup(newAgentTelemetry);
-		const a = createAgent({ status: "connected", lifecycle_state: "ready" });
+	it("uses the sentinel for from and omits absent measurements", () => {
+		const { sink, service } = createTelemetryHarness();
 
-		agentTelemetry.observe(a);
-		agentTelemetry.observe(a);
+		recordWorkspaceState(service, WORKSPACE_NAME, {
+			from: undefined,
+			to: "running",
+			buildTransition: "start",
+			buildReason: "initiator",
+			durationMs: undefined,
+			buildDurationMs: undefined,
+		});
 
-		expect(sink.eventsNamed("workspace.agent.state_transitioned")).toHaveLength(
-			1,
-		);
+		const event = sink.expectOne("workspace.state_transitioned");
+		expect(event.properties.from).toBe("none");
+		expect(event.measurements.observed_duration_ms).toBeUndefined();
+		expect(event.measurements.observed_build_duration_ms).toBeUndefined();
+	});
+});
+
+describe("recordAgentState", () => {
+	it("emits workspace.agent.state_transitioned with flat dotted keys", () => {
+		const { sink, service } = createTelemetryHarness();
+
+		recordAgentState(service, WORKSPACE_NAME, {
+			agentName: "main",
+			statusFrom: "connecting",
+			statusTo: "connected",
+			lifecycleFrom: "starting",
+			lifecycleTo: "ready",
+			durationMs: 800,
+		});
+
+		const event = sink.expectOne("workspace.agent.state_transitioned");
+		expect(event.properties).toMatchObject({
+			workspace_name: WORKSPACE_NAME,
+			agent_name: "main",
+			"status.from": "connecting",
+			"status.to": "connected",
+			"lifecycle_state.from": "starting",
+			"lifecycle_state.to": "ready",
+		});
+		expect(event.measurements.observed_duration_ms).toBe(800);
 	});
 
-	it("reset() makes the next observation emit from=none again", () => {
-		const { sink, instance: agentTelemetry } = setup(newAgentTelemetry);
+	it("uses the sentinel for absent from values and omits duration", () => {
+		const { sink, service } = createTelemetryHarness();
 
-		agentTelemetry.observe(createAgent({ status: "connected" }));
-		agentTelemetry.reset();
-		agentTelemetry.observe(createAgent({ status: "connecting" }));
+		recordAgentState(service, WORKSPACE_NAME, {
+			agentName: "main",
+			statusFrom: undefined,
+			statusTo: "connecting",
+			lifecycleFrom: undefined,
+			lifecycleTo: "created",
+			durationMs: undefined,
+		});
 
-		const events = sink.eventsNamed("workspace.agent.state_transitioned");
-		expect(events).toHaveLength(2);
-		expect(events[1].properties["status.from"]).toBe("none");
-	});
-
-	it("includes observed_duration_ms between transitions", () => {
-		const { sink, instance: agentTelemetry } = setup(newAgentTelemetry);
-
-		agentTelemetry.observe(createAgent({ status: "connecting" }));
-		agentTelemetry.observe(createAgent({ status: "connected" }));
-
-		const events = sink.eventsNamed("workspace.agent.state_transitioned");
-		expect(events[1].measurements.observed_duration_ms).toEqual(
-			expect.any(Number),
-		);
+		const event = sink.expectOne("workspace.agent.state_transitioned");
+		expect(event.properties["status.from"]).toBe("none");
+		expect(event.properties["lifecycle_state.from"]).toBe("none");
+		expect(event.measurements.observed_duration_ms).toBeUndefined();
 	});
 });

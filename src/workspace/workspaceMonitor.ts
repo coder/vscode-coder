@@ -6,7 +6,10 @@ import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
 
 import { createWorkspaceIdentifier, errToStr } from "../api/api-helper";
-import { WorkspaceStateTelemetry } from "../instrumentation/workspace";
+import {
+	recordAgentState,
+	recordWorkspaceState,
+} from "../instrumentation/workspace";
 import {
 	areNotificationsDisabled,
 	areUpdateNotificationsDisabled,
@@ -14,11 +17,21 @@ import {
 import { createStatusBarItem } from "../util/statusBar";
 import { vscodeProposed } from "../vscodeProposed";
 
+import {
+	INITIAL_STATE,
+	WorkspaceAgentObserver,
+	WorkspaceStateObserver,
+} from "./observers";
+
 import type { CoderApi } from "../api/coderApi";
 import type { ServiceContainer } from "../core/container";
 import type { ContextManager } from "../core/contextManager";
 import type { Logger } from "../logging/logger";
+import type { TelemetryReporter } from "../telemetry/reporter";
 import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
+
+const stateVerb = (from: string | undefined) =>
+	from === undefined ? "state observed" : "state changed";
 
 /**
  * Monitor a single workspace using a WebSocket for events like shutdown and deletion.
@@ -45,7 +58,9 @@ export class WorkspaceMonitor implements vscode.Disposable {
 
 	// For logging.
 	private readonly name: string;
-	private readonly telemetry: WorkspaceStateTelemetry;
+	private readonly telemetry: TelemetryReporter;
+	private readonly stateObserver = new WorkspaceStateObserver();
+	private readonly agentObserver = new WorkspaceAgentObserver();
 	private readonly logger: Logger;
 	private readonly contextManager: ContextManager;
 
@@ -59,10 +74,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		this.logger = container.getLogger();
 		this.contextManager = container.getContextManager();
 		this.name = createWorkspaceIdentifier(workspace);
-		this.telemetry = new WorkspaceStateTelemetry(
-			container.getTelemetryService(),
-			this.name,
-		);
+		this.telemetry = container.getTelemetryService();
 		this.latestWorkspace = workspace;
 
 		const statusBarItem = createStatusBarItem("workspaceUpdate");
@@ -135,10 +147,46 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	}
 
 	private update(workspace: Workspace) {
-		this.telemetry.observe(workspace);
+		this.observeState(workspace);
+		this.observeAgents(workspace);
 		this.latestWorkspace = workspace;
 		this.updateContext(workspace);
 		this.updateStatusBar(workspace);
+	}
+
+	private observeState(workspace: Workspace) {
+		const transition = this.stateObserver.observe(workspace);
+		if (!transition) {
+			return;
+		}
+		const verb = stateVerb(transition.from);
+		this.logger.info(`Workspace ${this.name} ${verb}`, {
+			from: transition.from ?? INITIAL_STATE,
+			to: transition.to,
+			transition: transition.buildTransition,
+			reason: transition.buildReason,
+		});
+		recordWorkspaceState(this.telemetry, this.name, transition);
+	}
+
+	private observeAgents(workspace: Workspace) {
+		const { transitions, removed } = this.agentObserver.observe(workspace);
+		for (const transition of transitions) {
+			const verb = stateVerb(transition.statusFrom);
+			this.logger.info(
+				`Workspace ${this.name} agent ${transition.agentName} ${verb}`,
+				{
+					statusFrom: transition.statusFrom ?? INITIAL_STATE,
+					statusTo: transition.statusTo,
+					lifecycleFrom: transition.lifecycleFrom ?? INITIAL_STATE,
+					lifecycleTo: transition.lifecycleTo,
+				},
+			);
+			recordAgentState(this.telemetry, this.name, transition);
+		}
+		for (const name of removed) {
+			this.logger.info(`Workspace ${this.name} agent ${name} removed`);
+		}
 	}
 
 	private maybeNotify(workspace: Workspace) {

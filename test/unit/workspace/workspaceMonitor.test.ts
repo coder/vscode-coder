@@ -3,7 +3,10 @@ import * as vscode from "vscode";
 
 import { WorkspaceMonitor } from "@/workspace/workspaceMonitor";
 
-import { workspace as createWorkspace } from "@repo/mocks";
+import {
+	agent as createAgent,
+	workspace as createWorkspace,
+} from "@repo/mocks";
 
 import {
 	createTestTelemetryService,
@@ -17,6 +20,7 @@ import {
 	MockEventStream,
 	MockStatusBarItem,
 	createMockLogger,
+	workspaceWith,
 } from "../../mocks/testHelpers";
 
 import type {
@@ -28,7 +32,7 @@ import type { CoderApi } from "@/api/coderApi";
 import type { TelemetryService } from "@/telemetry/service";
 
 function workspaceEvent(
-	overrides?: Parameters<typeof createWorkspace>[0],
+	overrides?: Parameters<typeof createWorkspace>[0] | Workspace,
 ): ServerSentEvent {
 	return { type: "data", data: createWorkspace(overrides) };
 }
@@ -50,6 +54,7 @@ describe("WorkspaceMonitor", () => {
 		const config = new MockConfigurationProvider();
 		const statusBar = new MockStatusBarItem();
 		const contextManager = new MockContextManager();
+		const logger = createMockLogger();
 		const client = {
 			watchWorkspace: vi.fn().mockResolvedValue(stream),
 			getTemplate: vi.fn().mockResolvedValue({
@@ -64,24 +69,26 @@ describe("WorkspaceMonitor", () => {
 			client,
 			createMockServiceContainer({
 				telemetry,
-				logger: createMockLogger(),
+				logger,
 				contextManager,
 			}),
 		);
-		return { monitor, client, stream, config, statusBar, contextManager };
+		return {
+			monitor,
+			client,
+			stream,
+			config,
+			statusBar,
+			contextManager,
+			logger,
+		};
 	}
 
 	describe("telemetry", () => {
-		const buildSinkContext = () => {
+		it("records the initial state, then again on a change", async () => {
 			enableLocalTelemetry();
-			return {
-				stream: new MockEventStream<ServerSentEvent>(),
-				sink: new TestSink(),
-			};
-		};
-
-		it("emits initial state plus subsequent transitions with duration", async () => {
-			const { stream, sink } = buildSinkContext();
+			const sink = new TestSink();
+			const stream = new MockEventStream<ServerSentEvent>();
 
 			await setup(
 				stream,
@@ -89,13 +96,7 @@ describe("WorkspaceMonitor", () => {
 				createWorkspace({ latest_build: { status: "running" } }),
 			);
 			stream.pushMessage(
-				workspaceEvent({
-					latest_build: {
-						status: "stopping",
-						transition: "stop",
-						reason: "autostop",
-					},
-				}),
+				workspaceEvent({ latest_build: { status: "stopping" } }),
 			);
 
 			const events = sink.eventsNamed("workspace.state_transitioned");
@@ -104,92 +105,136 @@ describe("WorkspaceMonitor", () => {
 				from: "none",
 				to: "running",
 			});
-			expect(events[0].measurements.observed_duration_ms).toBeUndefined();
-			expect(events[1]).toMatchObject({
-				properties: {
-					from: "running",
-					to: "stopping",
-					"build.transition": "stop",
-					"build.reason": "autostop",
-				},
-				measurements: { observed_duration_ms: expect.any(Number) },
+			expect(events[1].properties).toMatchObject({
+				from: "running",
+				to: "stopping",
 			});
 		});
+	});
 
-		it("dedupes on (status, build transition, build reason); re-emits when only reason changes", async () => {
-			const { stream, sink } = buildSinkContext();
-
-			await setup(
-				stream,
-				createTestTelemetryService(sink),
+	describe("state logging", () => {
+		it("logs the initial workspace state as observed with flat scalars", async () => {
+			const { logger } = await setup(
+				new MockEventStream<ServerSentEvent>(),
+				undefined,
 				createWorkspace({
 					latest_build: {
-						status: "stopping",
-						transition: "stop",
-						reason: "autostop",
-					},
-				}),
-			);
-			// Same status with a different reason: must not dedupe.
-			stream.pushMessage(
-				workspaceEvent({
-					latest_build: {
-						status: "stopping",
-						transition: "stop",
-						reason: "initiator",
-					},
-				}),
-			);
-			// Identical to the previous: deduped.
-			stream.pushMessage(
-				workspaceEvent({
-					latest_build: {
-						status: "stopping",
-						transition: "stop",
+						status: "running",
+						transition: "start",
 						reason: "initiator",
 					},
 				}),
 			);
 
-			const reasons = sink
-				.eventsNamed("workspace.state_transitioned")
-				.map((e) => e.properties["build.reason"]);
-			expect(reasons).toEqual(["autostop", "initiator"]);
+			expect(logger.info).toHaveBeenCalledWith(
+				expect.stringContaining("state observed"),
+				{
+					from: "none",
+					to: "running",
+					transition: "start",
+					reason: "initiator",
+				},
+			);
 		});
 
-		it("emits observed_build_duration_ms on the event that resolves a build run", async () => {
-			const { stream, sink } = buildSinkContext();
+		it("logs subsequent workspace changes as changed", async () => {
+			const { stream, logger } = await setup(
+				new MockEventStream<ServerSentEvent>(),
+				undefined,
+				createWorkspace({ latest_build: { status: "running" } }),
+			);
 
-			await setup(
-				stream,
-				createTestTelemetryService(sink),
-				createWorkspace({ latest_build: { status: "pending" } }),
-			);
-			stream.pushMessage(
-				workspaceEvent({ latest_build: { status: "starting" } }),
-			);
-			stream.pushMessage(
-				workspaceEvent({ latest_build: { status: "running" } }),
-			);
 			stream.pushMessage(
 				workspaceEvent({ latest_build: { status: "stopping" } }),
 			);
 
-			const events = sink.eventsNamed("workspace.state_transitioned");
-			// pending and starting are intermediate; only running carries observed_build_duration_ms.
-			expect(events.map((e) => e.properties.to)).toEqual([
-				"pending",
-				"starting",
-				"running",
-				"stopping",
-			]);
-			expect(events[0].measurements.observed_build_duration_ms).toBeUndefined();
-			expect(events[1].measurements.observed_build_duration_ms).toBeUndefined();
-			expect(events[2].measurements.observed_build_duration_ms).toEqual(
-				expect.any(Number),
+			expect(logger.info).toHaveBeenCalledWith(
+				expect.stringContaining("state changed"),
+				expect.objectContaining({ from: "running", to: "stopping" }),
 			);
-			// Next build cycle resets; stopping doesn't carry the previous duration.
-			expect(events[3].measurements.observed_build_duration_ms).toBeUndefined();
+		});
+	});
+
+	describe("agent state", () => {
+		it("logs the initial agent state and records telemetry", async () => {
+			enableLocalTelemetry();
+			const sink = new TestSink();
+			const { logger } = await setup(
+				new MockEventStream<ServerSentEvent>(),
+				createTestTelemetryService(sink),
+				workspaceWith("running", [
+					createAgent({
+						name: "main",
+						status: "connecting",
+						lifecycle_state: "created",
+					}),
+				]),
+			);
+
+			expect(logger.info).toHaveBeenCalledWith(
+				expect.stringContaining("agent main state observed"),
+				{
+					statusFrom: "none",
+					statusTo: "connecting",
+					lifecycleFrom: "none",
+					lifecycleTo: "created",
+				},
+			);
+			expect(
+				sink.eventsNamed("workspace.agent.state_transitioned"),
+			).toHaveLength(1);
+		});
+
+		it("logs and records each agent transition across all agents", async () => {
+			enableLocalTelemetry();
+			const sink = new TestSink();
+			const { stream } = await setup(
+				new MockEventStream<ServerSentEvent>(),
+				createTestTelemetryService(sink),
+				workspaceWith("running", [
+					createAgent({ id: "a1", name: "first", status: "connected" }),
+					createAgent({ id: "a2", name: "second", status: "connecting" }),
+				]),
+			);
+
+			stream.pushMessage(
+				workspaceEvent(
+					workspaceWith("running", [
+						createAgent({ id: "a1", name: "first", status: "connected" }),
+						createAgent({ id: "a2", name: "second", status: "connected" }),
+					]),
+				),
+			);
+
+			const events = sink.eventsNamed("workspace.agent.state_transitioned");
+			// Two initial observations plus the one "second" transition.
+			expect(events).toHaveLength(3);
+			expect(events[2].properties).toMatchObject({
+				agent_name: "second",
+				"status.from": "connecting",
+				"status.to": "connected",
+			});
+		});
+
+		it("logs when an agent disappears", async () => {
+			const { stream, logger } = await setup(
+				new MockEventStream<ServerSentEvent>(),
+				undefined,
+				workspaceWith("running", [
+					createAgent({ id: "a1", name: "first" }),
+					createAgent({ id: "a2", name: "second" }),
+				]),
+			);
+
+			stream.pushMessage(
+				workspaceEvent(
+					workspaceWith("running", [createAgent({ id: "a1", name: "first" })]),
+				),
+			);
+
+			expect(logger.info).toHaveBeenCalledWith(
+				expect.stringContaining("agent second removed"),
+			);
 		});
 	});
 

@@ -474,8 +474,8 @@ success or termination).
 
 Emitted by `WorkspaceOperationTelemetry` (start and update),
 `WorkspaceOpenTelemetry` (open, picker, dev container), and
-`WorkspaceStateTelemetry` / `WorkspaceAgentTelemetry` (the state-transition
-logs).
+`recordWorkspaceState` / `recordAgentState` (the state-transition events, from
+transitions detected by `WorkspaceStateObserver` / `WorkspaceAgentObserver`).
 
 ### Spans
 
@@ -537,6 +537,9 @@ Opening a workspace from any entry point.
 
 ### Logs
 
+Both state-transition events are sampled from the workspace event stream, so
+intermediate hops between samples may coalesce into a single transition.
+
 #### `workspace.state_transitioned`
 
 | Attribute                                  | Values                                                   |
@@ -549,6 +552,9 @@ Opening a workspace from any entry point.
 | `observed_build_duration_ms` (measurement) | only when a provisioner run resolves                     |
 
 #### `workspace.agent.state_transitioned`
+
+Emitted for every agent in the workspace, deduped per agent, for the whole
+monitored session (not only the connected agent during connection setup).
 
 | Attribute                                    | Values                                               |
 | -------------------------------------------- | ---------------------------------------------------- |
