@@ -5,7 +5,7 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
-## Unreleased
+## [v1.16.1](https://github.com/coder/vscode-coder/releases/tag/v1.16.1) 2026-08-24
 
 ### Added
 
@@ -13,6 +13,14 @@
   this editor's generated workspace hosts file in a read-only editor. A
   connected window opens its own deployment's file; a local window asks which
   deployment to open when there are several.
+- Prefix every line in the Coder output channel with a per-session ID, and
+  send that same ID to your deployment and to the `coder` CLI. Searching for
+  it in the logs or a support bundle picks out everything one session did,
+  even when several windows are connected at once.
+- Log workspace, agent, and lifecycle status changes as they happen, including
+  agents that disappear. A slow or failed connection now leaves a record of
+  what the workspace and its agents were doing at the time, instead of only
+  the error at the end.
 
 ### Changed
 
@@ -32,6 +40,8 @@
   now sits at the top of your config, so the generated options always take
   effect and there is nothing left to warn about. Validation of the options
   your deployment sends is unchanged.
+- The Tasks panel is deprecated. It is now titled **Coder Tasks
+  (Deprecated)**, and is hidden entirely on Coder 2.35 and newer.
 
 ### Fixed
 
@@ -39,6 +49,11 @@
   launch ssh without pointing it at a config file, so it always reads
   `~/.ssh/config`, and honoring the setting wrote the workspace host where the
   connection never looked.
+- Report a malformed response from your deployment or proxy as an error naming
+  the endpoint that sent it, instead of an unrelated crash later on. Waiting on
+  a workspace build now fails on a bad response rather than hanging forever.
+- Stop showing stale progress in other windows waiting on the same CLI
+  download.
 
 ## [v1.16.0](https://github.com/coder/vscode-coder/releases/tag/v1.16.0) 2026-08-06
 
