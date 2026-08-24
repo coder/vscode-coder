@@ -18,6 +18,8 @@ tsconfig.json
 eslint.config.mjs
 .eslintcache
 esbuild.mjs
+vitest.config.mts
+pixel.jsonc
 .editorconfig
 .prettierignore
 **/.gitignore
