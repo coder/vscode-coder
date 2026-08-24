@@ -18,7 +18,6 @@ export default defineConfig(
 		"out/**",
 		"dist/**",
 		"**/*.d.ts",
-		"vitest.config.ts",
 		"**/vite.config*.ts",
 		".vscode-test/**",
 		"test/fixtures/scripts/**",
@@ -27,13 +26,21 @@ export default defineConfig(
 
 	// Base ESLint recommended rules (for JS/TS/TSX files only)
 	{
-		files: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.mjs", "**/*.cjs"],
+		files: [
+			"**/*.ts",
+			"**/*.tsx",
+			"**/*.mts",
+			"**/*.cts",
+			"**/*.js",
+			"**/*.mjs",
+			"**/*.cjs",
+		],
 		...eslint.configs.recommended,
 	},
 
 	// TypeScript configuration with type-checked rules
 	{
-		files: ["**/*.ts", "**/*.tsx"],
+		files: ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
 		extends: [
 			...tseslint.configs.recommendedTypeChecked,
 			...tseslint.configs.stylisticTypeChecked,
@@ -41,7 +48,9 @@ export default defineConfig(
 		],
 		languageOptions: {
 			parserOptions: {
-				projectService: true,
+				projectService: {
+					allowDefaultProject: ["vitest.config.mts"],
+				},
 				tsconfigRootDir: import.meta.dirname,
 			},
 		},

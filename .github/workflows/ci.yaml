@@ -40,16 +40,15 @@ jobs:
       matrix:
         # Minimum supported version: VS Code 1.105 (Sept 2025) -> Electron 37 -> Node 22
         # See https://github.com/ewanharris/vscode-versions for version mapping.
-        # Newer Electron is pinned (not "latest"): 42.3.1+ breaks the oxc transform on macOS arm64.
         include:
           - { os: ubuntu-24.04, name: Linux, electron-version: "37" }
-          - { os: ubuntu-24.04, name: Linux, electron-version: "42.3.0" }
+          - { os: ubuntu-24.04, name: Linux, electron-version: "latest" }
           - {
               os: windows-2025-vs2026,
               name: Windows,
-              electron-version: "42.3.0",
+              electron-version: "latest",
             }
-          - { os: macos-15, name: macOS, electron-version: "42.3.0" }
+          - { os: macos-15, name: macOS, electron-version: "latest" }
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

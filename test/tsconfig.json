@@ -19,5 +19,5 @@
 			"@repo/speedtest/*": ["../packages/speedtest/src/*"]
 		}
 	},
-	"include": [".", "../src"]
+	"include": [".", "../src", "../vitest.config.mts"]
 }
