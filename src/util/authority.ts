@@ -2,7 +2,9 @@ import * as vscode from "vscode";
 
 import { toSafeHost } from "./uri";
 
-export const LegacyAuthorityPrefix = "coder-vscode";
+/** The editor every host was named after before per-editor prefixes existed. */
+export const LegacyEditorId = "vscode";
+const LegacyAuthorityPrefix = `coder-${LegacyEditorId}`;
 
 export interface AuthorityParts {
 	agent: string | undefined;
@@ -68,10 +70,19 @@ export function classifySshHost(sshHost: string): AuthorityClassification {
 	return "foreign";
 }
 
-function authorityPrefix(classification: AuthorityClassification): string {
-	return classification === "legacy"
-		? LegacyAuthorityPrefix
-		: currentAuthorityPrefix();
+function editorIdFor(classification: AuthorityClassification): string {
+	return classification === "legacy" ? LegacyEditorId : currentEditorId();
+}
+
+/** Editor named in a host's prefix; legacy hosts stay VS Code's in any editor. */
+export function hostEditorId(sshHost: string): string {
+	return editorIdFor(classifySshHost(sshHost));
+}
+
+/** The SSH host an authority connects over, nested or not. */
+export function sshHostOf(authority: string): string | undefined {
+	const sshHostStart = getSshHostStart(authority);
+	return sshHostStart === undefined ? undefined : authority.slice(sshHostStart);
 }
 
 /**
@@ -100,7 +111,7 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 	}
 
 	// The classification guarantees the host starts with "<prefix>.".
-	const prefix = `${authorityPrefix(classification)}.`;
+	const prefix = `coder-${editorIdFor(classification)}.`;
 	const parts = sshHost.slice(prefix.length).split("--");
 	if (parts.length < 3) {
 		throw new Error(invalidAuthorityMessage);
@@ -149,17 +160,20 @@ export function toRemoteAuthority(
 	return remoteAuthority;
 }
 
-export function retargetRemoteAuthority(authority: string): string {
+/**
+ * The same authority on the shared legacy host, keeping any wrapper. Returns it
+ * unchanged when the host is not this editor's, the legacy one included.
+ */
+export function toLegacyAuthority(authority: string): string {
 	const sshHostStart = getSshHostStart(authority);
 	if (sshHostStart === undefined) {
 		return authority;
 	}
-
+	const currentPrefix = currentAuthorityPrefix();
 	const sshHost = authority.slice(sshHostStart);
-	if (classifySshHost(sshHost) !== "legacy") {
-		return authority;
-	}
-	return `${authority.slice(0, sshHostStart)}${currentAuthorityPrefix()}${sshHost.slice(LegacyAuthorityPrefix.length)}`;
+	return sshHost.startsWith(`${currentPrefix}.`)
+		? `${authority.slice(0, sshHostStart)}${LegacyAuthorityPrefix}${sshHost.slice(currentPrefix.length)}`
+		: authority;
 }
 
 export function isRemoteAuthorityCompatible(
@@ -171,6 +185,6 @@ export function isRemoteAuthorityCompatible(
 	}
 	return (
 		authority === targetAuthority ||
-		retargetRemoteAuthority(authority) === targetAuthority
+		authority === toLegacyAuthority(targetAuthority)
 	);
 }

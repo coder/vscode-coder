@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import { MementoManager } from "@/core/mementoManager";
 import { PathResolver } from "@/core/pathResolver";
 import { SecretsManager } from "@/core/secretsManager";
-import { Remote } from "@/remote/remote";
+import { Remote, workspaceLabelSuffix } from "@/remote/remote";
 
 import { createTestTelemetryService } from "../../mocks/telemetry";
 import {
@@ -16,6 +16,7 @@ import {
 	LogCollector,
 	MockConfigurationProvider,
 	MockUserInteraction,
+	useEditor,
 } from "../../mocks/testHelpers";
 
 import type { Commands } from "@/commands";
@@ -26,7 +27,6 @@ const mockWorkspace = vscode.workspace as typeof vscode.workspace & {
 	workspaceFile: vscode.Uri | undefined;
 	workspaceFolders: vscode.WorkspaceFolder[];
 };
-const mockEnv = vscode.env as typeof vscode.env & { uriScheme: string };
 
 vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
 
@@ -93,7 +93,6 @@ describe("Remote", () => {
 		vol.reset();
 		mockWorkspace.workspaceFile = undefined;
 		mockWorkspace.workspaceFolders = [];
-		mockEnv.uriScheme = "vscode";
 	});
 
 	type UriOptions = Partial<
@@ -118,126 +117,46 @@ describe("Remote", () => {
 		return mockWorkspace.workspaceFolders;
 	};
 
-	it("migrates a legacy folder with its full URI", async () => {
-		mockEnv.uriScheme = "cursor";
-		const { remote, mementoManager } = createRemote();
-		setWorkspace([
-			createUri("/workspace", {
-				query: "window=active",
-				fragment: "selection",
-			}),
-		]);
-
-		await expect(
-			remote.setup(REMOTE_AUTHORITY, "none", REMOTE_SSH_EXTENSION_ID),
-		).resolves.toBeUndefined();
-
-		expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-			"vscode.openFolder",
-			createUri("/workspace", {
-				authority: CURSOR_REMOTE_AUTHORITY,
-				query: "window=active",
-				fragment: "selection",
-			}),
-			false,
-		);
-		expect(await mementoManager.getAndClearStartupMode()).toBe("start");
-	});
-
-	it("migrates a saved multi-root workspace file", async () => {
-		mockEnv.uriScheme = "cursor";
-		const { remote, mementoManager } = createRemote();
-		setWorkspace(
-			[createUri("/first-folder"), createUri("/second-folder")],
-			createUri("/project.code-workspace", {
-				query: "window=active",
-				fragment: "selection",
-			}),
-		);
-
-		await expect(
-			remote.setup(REMOTE_AUTHORITY, "none", REMOTE_SSH_EXTENSION_ID),
-		).resolves.toBeUndefined();
-
-		expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-			"vscode.openFolder",
-			createUri("/project.code-workspace", {
-				authority: CURSOR_REMOTE_AUTHORITY,
-				query: "window=active",
-				fragment: "selection",
-			}),
-			false,
-		);
-		expect(await mementoManager.getAndClearStartupMode()).toBe("start");
-	});
-
-	interface EmptyWindowMigrationCase {
-		startupMode: "none" | "start" | "update";
-		expectedStartupMode: "start" | "update";
+	interface LegacyWindowCase {
+		label: string;
+		open: () => void;
 	}
-	it.each<EmptyWindowMigrationCase>([
-		{ startupMode: "none", expectedStartupMode: "start" },
-		{ startupMode: "start", expectedStartupMode: "start" },
-		{ startupMode: "update", expectedStartupMode: "update" },
-	])(
-		"migrates an empty window and preserves $startupMode startup mode",
-		async ({ startupMode, expectedStartupMode }) => {
-			mockEnv.uriScheme = "cursor";
-			const { remote, mementoManager } = createRemote();
-
-			await expect(
-				remote.setup(REMOTE_AUTHORITY, startupMode, REMOTE_SSH_EXTENSION_ID),
-			).resolves.toBeUndefined();
-
-			expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-				"vscode.newWindow",
-				{
-					remoteAuthority: CURSOR_REMOTE_AUTHORITY,
-					reuseWindow: true,
-				},
-			);
-			expect(await mementoManager.getAndClearStartupMode()).toBe(
-				expectedStartupMode,
-			);
-		},
-	);
-
-	it.each([
-		{ choice: undefined, docsUrls: [] },
+	it.each<LegacyWindowCase>([
+		{ label: "a folder", open: () => setWorkspace([createUri("/workspace")]) },
 		{
-			choice: "Learn More",
-			docsUrls: [expect.stringContaining("multi-root-workspaces")],
+			label: "a saved multi-root workspace",
+			open: () =>
+				setWorkspace(
+					[createUri("/first-folder"), createUri("/second-folder")],
+					createUri("/project.code-workspace"),
+				),
 		},
+		{
+			label: "an untitled multi-root workspace",
+			open: () =>
+				setWorkspace(
+					[createUri("/first-folder"), createUri("/second-folder")],
+					createUri("/Untitled-1.code-workspace", {
+						scheme: "untitled",
+						authority: "",
+					}),
+				),
+		},
+		{ label: "an empty window", open: () => setWorkspace() },
 	])(
-		"sets up an untitled multi-root workspace on the old host (choice: $choice)",
-		async ({ choice, docsUrls }) => {
-			mockEnv.uriScheme = "cursor";
-			const {
-				remote,
-				ensureLoggedInWithDialog,
-				mementoManager,
-				userInteraction,
-			} = createRemote();
-			setWorkspace(
-				[createUri("/first-folder"), createUri("/second-folder")],
-				createUri("/Untitled-1.code-workspace", {
-					scheme: "untitled",
-					authority: "",
-				}),
-			);
-			userInteraction.setResponse(/coder-vscode SSH host/, choice);
+		"connects $label over the legacy host without reopening it",
+		async ({ open }) => {
+			useEditor("cursor");
+			const { remote, ensureLoggedInWithDialog, userInteraction } =
+				createRemote();
+			open();
 
 			await expect(
-				remote.setup(REMOTE_AUTHORITY, "update", REMOTE_SSH_EXTENSION_ID),
+				remote.setup(REMOTE_AUTHORITY, "none", REMOTE_SSH_EXTENSION_ID),
 			).resolves.toBeUndefined();
 
-			const warning = userInteraction
-				.getMessageCalls()
-				.find((call) => call.level === "warning");
-			expect(warning?.message).toContain("coder-vscode SSH host");
-			expect(warning?.items).toEqual(["Learn More"]);
-			expect(userInteraction.getExternalUrls()).toEqual(docsUrls);
-			// Setup continues over the legacy host instead of reopening the window.
+			// Reopening would change the authority, and with it the identity the
+			// editor keeps window state under.
 			expect(ensureLoggedInWithDialog).toHaveBeenCalledOnce();
 			expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith(
 				"vscode.openFolder",
@@ -248,12 +167,14 @@ describe("Remote", () => {
 				"vscode.newWindow",
 				expect.anything(),
 			);
-			expect(await mementoManager.getAndClearStartupMode()).toBe("none");
+			expect(
+				userInteraction.getMessageCalls().find((c) => c.level === "warning"),
+			).toBeUndefined();
 		},
 	);
 
 	it("continues setup for the current authority without reopening", async () => {
-		mockEnv.uriScheme = "cursor";
+		useEditor("cursor");
 		const { remote, ensureLoggedInWithDialog } = createRemote();
 
 		await expect(
@@ -273,7 +194,7 @@ describe("Remote", () => {
 	});
 
 	it("ignores a foreign authority", async () => {
-		mockEnv.uriScheme = "cursor";
+		useEditor("cursor");
 		const { remote, ensureLoggedInWithDialog, mementoManager } = createRemote();
 
 		await expect(
@@ -304,5 +225,48 @@ describe("Remote", () => {
 				),
 			],
 		});
+	});
+});
+
+describe("workspaceLabelSuffix", () => {
+	it.each([
+		{
+			label: "this editor's",
+			editor: "cursor",
+			host: "coder-cursor",
+			agent: "main",
+			expected: "Coder: foo∕bar∕main",
+		},
+		{
+			label: "the shared",
+			editor: "cursor",
+			host: "coder-vscode",
+			agent: "main",
+			expected: "Coder: foo∕bar∕main (legacy)",
+		},
+		{
+			label: "VS Code's own",
+			editor: "vscode",
+			host: "coder-vscode",
+			agent: "main",
+			expected: "Coder: foo∕bar∕main",
+		},
+		{
+			label: "this editor's, agentless",
+			editor: "cursor",
+			host: "coder-cursor",
+			agent: undefined,
+			expected: "Coder: foo∕bar",
+		},
+	])("labels $label host in $editor", ({ editor, host, agent, expected }) => {
+		useEditor(editor);
+		expect(
+			workspaceLabelSuffix(
+				`ssh-remote+${host}.dev.coder.com--foo--bar.main`,
+				"foo",
+				"bar",
+				agent,
+			),
+		).toBe(expected);
 	});
 });

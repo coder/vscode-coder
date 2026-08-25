@@ -1,17 +1,18 @@
-import { afterEach, describe, expect, it } from "vitest";
-import * as vscode from "vscode";
+import { describe, expect, it } from "vitest";
 
 import {
 	type AuthorityClassification,
 	type AuthorityParts,
 	classifySshHost,
+	hostEditorId,
 	isRemoteAuthorityCompatible,
 	parseRemoteAuthority,
-	retargetRemoteAuthority,
+	toLegacyAuthority,
 	toRemoteAuthority,
 } from "@/util/authority";
 
-const env = vscode.env as typeof vscode.env & { uriScheme: string };
+import { useEditor } from "../../mocks/testHelpers";
+
 const CURSOR_AUTHORITY = "ssh-remote+coder-cursor.dev.coder.com--foo--bar.main";
 const LEGACY_AUTHORITY = "ssh-remote+coder-vscode.dev.coder.com--foo--bar.main";
 const DEVIN_AUTHORITY = "ssh-remote+coder-devin.dev.coder.com--foo--bar.main";
@@ -23,10 +24,6 @@ const parts = (prefix: string): AuthorityParts => ({
 	safeHostname: "dev.coder.com",
 	username: "foo",
 	workspace: "bar",
-});
-
-afterEach(() => {
-	env.uriScheme = "vscode";
 });
 
 describe("parseRemoteAuthority", () => {
@@ -52,7 +49,7 @@ describe("parseRemoteAuthority", () => {
 	])(
 		"classifies $prefix as $expected in $editor",
 		({ editor, prefix, expected }) => {
-			env.uriScheme = editor;
+			useEditor(editor);
 			expect(classifySshHost(parts(prefix).sshHost)).toBe(expected);
 		},
 	);
@@ -70,7 +67,7 @@ describe("parseRemoteAuthority", () => {
 		{ editor: "vscode", sshHost: "coder-vscode.dev.coder.com--foo--.main" },
 		{ editor: "vscode", sshHost: "coder-vscode.dev.coder.com--foo--bar." },
 	])("rejects malformed current or legacy authority", ({ editor, sshHost }) => {
-		env.uriScheme = editor;
+		useEditor(editor);
 		expect(() => parseRemoteAuthority(`ssh-remote+${sshHost}`)).toThrow(
 			"Invalid Coder SSH authority",
 		);
@@ -79,7 +76,7 @@ describe("parseRemoteAuthority", () => {
 	it("ignores unrelated and malformed foreign authorities", () => {
 		expect(parseRemoteAuthority("github.com")).toBeNull();
 		expect(parseRemoteAuthority("ssh-remote+coder-vscode")).toBeNull();
-		env.uriScheme = "cursor";
+		useEditor("cursor");
 		expect(
 			parseRemoteAuthority("ssh-remote+coder-devin.dev.coder.com--foo"),
 		).toBeNull();
@@ -88,7 +85,7 @@ describe("parseRemoteAuthority", () => {
 	it.each(["vscode", "cursor"])(
 		"ignores deployment-unaware historical hosts in %s",
 		(editor) => {
-			env.uriScheme = editor;
+			useEditor(editor);
 			// Old versions created hosts matching the preserved `Host coder-vscode--*` block.
 			expect(
 				parseRemoteAuthority("ssh-remote+coder-vscode--user--workspace.main"),
@@ -141,7 +138,7 @@ describe("parseRemoteAuthority", () => {
 			authority: `attached-container+def@dev-container+abc@${CURSOR_AUTHORITY}`,
 		},
 	])("parses $label wrapper", ({ authority }) => {
-		env.uriScheme = "cursor";
+		useEditor("cursor");
 		expect(parseRemoteAuthority(authority)).toStrictEqual(
 			parts("coder-cursor"),
 		);
@@ -150,7 +147,7 @@ describe("parseRemoteAuthority", () => {
 
 describe("authority construction", () => {
 	it("preserves the editor URI scheme and integrates with toSafeHost", () => {
-		env.uriScheme = "cursor--dev";
+		useEditor("cursor--dev");
 		expect(
 			toRemoteAuthority("https://ほげ", "alice", "workspace", "main"),
 		).toBe("ssh-remote+coder-cursor--dev.xn--18j4d--alice--workspace.main");
@@ -163,7 +160,7 @@ describe("authority construction", () => {
 	});
 
 	it("formats the current host prefix", () => {
-		env.uriScheme = "vscode-insiders";
+		useEditor("vscode-insiders");
 		expect(
 			parseRemoteAuthority(
 				"ssh-remote+coder-vscode-insiders.dev.coder.com--foo--bar",
@@ -172,42 +169,14 @@ describe("authority construction", () => {
 	});
 
 	it("rejects an empty editor URI scheme at prefix construction", () => {
-		env.uriScheme = "";
+		useEditor("");
 		expect(() =>
 			toRemoteAuthority("https://dev.coder.com", "foo", "bar", undefined),
 		).toThrow("must not be empty");
 	});
 });
 
-describe("authority migration", () => {
-	it("leaves unrelated authorities unchanged", () => {
-		expect(retargetRemoteAuthority("github.com")).toBe("github.com");
-	});
-
-	interface RetargetCase {
-		label: string;
-		authority: string;
-		expected: string;
-	}
-	it.each<RetargetCase>([
-		{
-			label: "plain",
-			authority: LEGACY_AUTHORITY,
-			expected: CURSOR_AUTHORITY,
-		},
-		{
-			label: "multiply nested",
-			authority: `attached-container+def@dev-container+abc@${LEGACY_AUTHORITY}`,
-			expected: `attached-container+def@dev-container+abc@${CURSOR_AUTHORITY}`,
-		},
-	])(
-		"preserves the $label wrapper while retargeting",
-		({ authority, expected }) => {
-			env.uriScheme = "cursor";
-			expect(retargetRemoteAuthority(authority)).toBe(expected);
-		},
-	);
-
+describe("legacy authority compatibility", () => {
 	interface CompatibilityCase {
 		label: string;
 		authority: string | undefined;
@@ -229,9 +198,62 @@ describe("authority migration", () => {
 			expected: false,
 		},
 	])("requires exact compatibility for $label", ({ authority, expected }) => {
-		env.uriScheme = "cursor";
+		useEditor("cursor");
 		expect(isRemoteAuthorityCompatible(authority, CURSOR_AUTHORITY)).toBe(
 			expected,
 		);
 	});
+
+	it.each([
+		{ label: "plain", authority: CURSOR_AUTHORITY, expected: LEGACY_AUTHORITY },
+		{
+			label: "multiply nested",
+			authority: `attached-container+def@dev-container+abc@${CURSOR_AUTHORITY}`,
+			expected: `attached-container+def@dev-container+abc@${LEGACY_AUTHORITY}`,
+		},
+		{
+			label: "already legacy",
+			authority: LEGACY_AUTHORITY,
+			expected: LEGACY_AUTHORITY,
+		},
+		{ label: "foreign", authority: DEVIN_AUTHORITY, expected: DEVIN_AUTHORITY },
+		{ label: "non-remote", authority: "github.com", expected: "github.com" },
+	])(
+		"moves the $label authority to the legacy host",
+		({ authority, expected }) => {
+			useEditor("cursor");
+			expect(toLegacyAuthority(authority)).toBe(expected);
+		},
+	);
+});
+
+describe("hostEditorId", () => {
+	interface HostEditorCase {
+		editor: string;
+		sshHost: string;
+		expected: string;
+	}
+	it.each<HostEditorCase>([
+		{
+			editor: "cursor",
+			sshHost: "coder-cursor.dev--foo--bar",
+			expected: "cursor",
+		},
+		{
+			editor: "cursor",
+			sshHost: "coder-vscode.dev--foo--bar",
+			expected: "vscode",
+		},
+		{
+			editor: "vscode",
+			sshHost: "coder-vscode.dev--foo--bar",
+			expected: "vscode",
+		},
+	])(
+		"$editor serves $sshHost from $expected's file",
+		({ editor, sshHost, expected }) => {
+			useEditor(editor);
+			expect(hostEditorId(sshHost)).toBe(expected);
+		},
+	);
 });

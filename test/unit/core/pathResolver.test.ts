@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PathResolver } from "@/core/pathResolver";
 
-import { MockConfigurationProvider } from "../../mocks/testHelpers";
+import { MockConfigurationProvider, useEditor } from "../../mocks/testHelpers";
 import { expectPathsEqual } from "../../utils/platform";
 
 describe("PathResolver", () => {
@@ -127,9 +127,20 @@ describe("PathResolver", () => {
 			);
 		});
 
-		it("parses the hostname only from this editor's generated files", () => {
+		it("names a legacy host's file after VS Code, whichever editor asks", () => {
+			useEditor("cursor");
+			expectPathsEqual(
+				pathResolver.getSshConfigPath("dev.coder.com", "vscode"),
+				path.join(pathResolver.getSshConfigDir(), "vscode--dev.coder.com.conf"),
+			);
+		});
+
+		it("parses the hostname only from the named editor's files", () => {
 			expect(
 				pathResolver.parseSshConfigFile("vscode--dev.coder.com.conf"),
+			).toBe("dev.coder.com");
+			expect(
+				pathResolver.parseSshConfigFile("cursor--dev.coder.com.conf", "cursor"),
 			).toBe("dev.coder.com");
 			expect(
 				pathResolver.parseSshConfigFile("cursor--dev.coder.com.conf"),

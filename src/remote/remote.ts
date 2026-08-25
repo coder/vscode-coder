@@ -41,8 +41,9 @@ import { escapeCommandArg, expandPath } from "../util";
 import {
 	type AuthorityParts,
 	classifySshHost,
+	hostEditorId,
 	parseRemoteAuthority,
-	retargetRemoteAuthority,
+	sshHostOf,
 } from "../util/authority";
 import { createStatusBarItem } from "../util/statusBar";
 import { vscodeProposed } from "../vscodeProposed";
@@ -107,6 +108,29 @@ interface RemoteSetupContext {
 	disposables: vscode.Disposable[];
 }
 
+/**
+ * What Open Recent shows after the path. VS Code splits the label on the
+ * separator, so "/" would display "/home/kyle [Coder: kyle/workspace]" as
+ * "workspace] /home/kyle [Coder: kyle"; "∕" looks the same in the UI font.
+ */
+export function workspaceLabelSuffix(
+	remoteAuthority: string,
+	owner: string,
+	workspace: string,
+	agent?: string,
+): string {
+	let suffix = `Coder: ${owner}∕${workspace}`;
+	if (agent) {
+		suffix += `∕${agent}`;
+	}
+	// Mark the shared host, so a workspace with an entry on each is not two
+	// identical lines. Only a fork sees it; in VS Code it is the only host.
+	const sshHost = sshHostOf(remoteAuthority);
+	return sshHost && classifySshHost(sshHost) === "legacy"
+		? `${suffix} (legacy)`
+		: suffix;
+}
+
 export class Remote {
 	private readonly logger: Logger;
 	private readonly pathResolver: PathResolver;
@@ -158,15 +182,6 @@ export class Remote {
 		}
 		if (!parts) {
 			return;
-		}
-
-		// parseRemoteAuthority returned null for foreign hosts, so this is
-		// either the current editor's authority or a migratable legacy one.
-		if (classifySshHost(parts.sshHost) === "legacy") {
-			if (await this.migrateLegacyAuthority(remoteAuthority, startupMode)) {
-				return;
-			}
-			// Not reopened: keep going so the legacy host still connects.
 		}
 
 		this.logger.info("Setting up remote connection", {
@@ -726,70 +741,6 @@ export class Remote {
 		return undefined;
 	}
 
-	/**
-	 * Reopen the window on this editor's own authority. Returns false when the
-	 * workspace cannot be reopened losslessly, so the caller connects over the
-	 * legacy host instead.
-	 */
-	private async migrateLegacyAuthority(
-		remoteAuthority: string,
-		startupMode: StartupMode,
-	): Promise<boolean> {
-		const migratedAuthority = retargetRemoteAuthority(remoteAuthority);
-		const workspaceFile = vscode.workspace.workspaceFile;
-		const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
-		const savedWorkspaceFile =
-			workspaceFile?.scheme === "untitled" ? undefined : workspaceFile;
-		if (!savedWorkspaceFile && workspaceFolders.length > 1) {
-			this.logger.warn(
-				"Cannot migrate an unsaved multi-root workspace; connecting over the legacy host",
-				remoteAuthority,
-			);
-			// Fire-and-forget: the connection proceeds either way.
-			void vscode.window
-				.showWarningMessage(
-					"This workspace still opens over the old coder-vscode SSH host. " +
-						"To switch it to this editor's own host, save the workspace, then reload the window.",
-					"Learn More",
-				)
-				.then(async (choice) => {
-					if (choice === "Learn More") {
-						await vscode.env.openExternal(
-							vscode.Uri.parse(
-								"https://code.visualstudio.com/docs/editing/workspaces/multi-root-workspaces",
-							),
-						);
-					}
-				});
-			return false;
-		}
-
-		await this.serviceContainer
-			.getMementoManager()
-			.setStartupMode(startupMode === "none" ? "start" : startupMode);
-		this.logger.info("Migrating legacy remote authority", {
-			from: remoteAuthority,
-			to: migratedAuthority,
-		});
-
-		const currentUri = savedWorkspaceFile ?? workspaceFolders[0]?.uri;
-		if (currentUri) {
-			await vscode.commands.executeCommand(
-				"vscode.openFolder",
-				currentUri.with({
-					authority: retargetRemoteAuthority(currentUri.authority),
-				}),
-				false,
-			);
-			return true;
-		}
-		await vscode.commands.executeCommand("vscode.newWindow", {
-			remoteAuthority: migratedAuthority,
-			reuseWindow: true,
-		});
-		return true;
-	}
-
 	private async resolveRemoteBinary(workspaceClient: Api): Promise<string> {
 		if (
 			this.extensionContext.extensionMode === vscode.ExtensionMode.Production
@@ -968,14 +919,14 @@ export class Remote {
 		featureSet: FeatureSet,
 		cliAuth: CliAuth,
 	): Promise<SshProperties> {
-		// Taken from the authority, so an unmigrated legacy host keeps working.
-		const { hostPrefix, safeHostname } = parts;
-		// One file per (editor, deployment); the user's config gains one shared include.
+		// Taken from the authority, so a legacy host keeps working.
+		const { hostPrefix, safeHostname, sshHost } = parts;
+		// One file per (host prefix, deployment); the user's config gains one shared include.
 		const sshConfig = new SshConfig(this.getMainSshConfigPath(), this.logger);
 		await sshConfig.load();
 		// Never loaded: update() regenerates it without reading the old content.
 		const coderConfig = new SshConfig(
-			this.pathResolver.getSshConfigPath(safeHostname),
+			this.pathResolver.getSshConfigPath(safeHostname, hostEditorId(sshHost)),
 			this.logger,
 		);
 
@@ -1156,16 +1107,6 @@ export class Remote {
 		workspace: string,
 		agent?: string,
 	): vscode.Disposable {
-		// VS Code splits based on the separator when displaying the label
-		// in a recently opened dialog. If the workspace suffix contains /,
-		// then it'll visually display weird:
-		// "/home/kyle [Coder: kyle/workspace]" displays as "workspace] /home/kyle [Coder: kyle"
-		// For this reason, we use a different / that visually appears the
-		// same on non-monospace fonts "∕".
-		let suffix = `Coder: ${owner}∕${workspace}`;
-		if (agent) {
-			suffix += `∕${agent}`;
-		}
 		// VS Code caches resource label formatters in it's global storage SQLite database
 		// under the key "memento/cachedResourceLabelFormatters2".
 		return vscodeProposed.workspace.registerResourceLabelFormatter({
@@ -1177,7 +1118,12 @@ export class Remote {
 				label: "${path}",
 				separator: "/",
 				tildify: true,
-				workspaceSuffix: suffix,
+				workspaceSuffix: workspaceLabelSuffix(
+					remoteAuthority,
+					owner,
+					workspace,
+					agent,
+				),
 			},
 		});
 	}

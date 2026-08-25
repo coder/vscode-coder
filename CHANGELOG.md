@@ -5,6 +5,31 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Fixed
+
+- Reopen a workspace on the SSH host it was last opened on. v1.16.1 moved
+  existing workspaces onto a host named after your editor, and an editor
+  remembers a window by its full address, host included, so the workspace
+  looked new: Cursor's chats, your window layout, and anything else kept per
+  workspace appeared to be gone. Nothing was deleted. The host now follows the
+  workspace wherever you open it from: the Coder panel, a dashboard or
+  devcontainer link, or **File > Open Recent**, and whether it opens as a
+  folder or as a multi-root workspace. Only a workspace you have never opened
+  gets your editor's host.
+- Mark the shared `coder-vscode` host as `(legacy)` in **File > Open Recent**,
+  so a workspace listed on both hosts is no longer two identical lines. The
+  folder picker lists each folder once.
+- Look for a workspace's remote logs under the host it opens on when collecting
+  a support bundle for a workspace you are not connected to. The lookup always
+  used a host named after your editor, so a `remote.SSH.serverInstallPath` set
+  for the shared host was missed and the bundle fell back to the default.
+- Serve the shared `coder-vscode` host from one generated SSH config file
+  instead of one per editor, so a connection over it always uses the CLI and
+  credentials of the editor that started it. **Coder: Open Generated SSH
+  Configuration File** can open that file too.
+
 ## [v1.16.1](https://github.com/coder/vscode-coder/releases/tag/v1.16.1) 2026-08-24
 
 ### Added

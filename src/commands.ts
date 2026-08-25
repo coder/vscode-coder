@@ -51,8 +51,13 @@ import {
 } from "./supportBundle/remoteServerDataPath";
 import { runExportTelemetryCommand } from "./telemetry/export/command";
 import {
+	LegacyEditorId,
+	currentEditorId,
+	hostEditorId,
 	isRemoteAuthorityCompatible,
 	parseRemoteAuthority,
+	sshHostOf,
+	toLegacyAuthority,
 	toRemoteAuthority,
 } from "./util/authority";
 import { openInBrowser, toSafeHost } from "./util/uri";
@@ -86,6 +91,12 @@ import type {
 	DuplicateWorkspaceIpc,
 	PongMessage,
 } from "./workspace/duplicateWorkspaceIpc";
+
+/** One entry from the private `_workbench.getRecentlyOpened` command. */
+interface RecentlyOpened {
+	folderUri?: vscode.Uri;
+	workspace?: { configPath?: vscode.Uri };
+}
 
 const NO_SSH_CONFIG_MESSAGE =
 	"No SSH config has been generated yet. It is written when you connect to a workspace.";
@@ -572,14 +583,15 @@ export class Commands {
 		);
 	}
 
-	/** Open this editor's generated SSH config, picking a deployment when several exist. */
+	/** Open the generated SSH config, picking a file when several exist. */
 	public async openSshConfig(): Promise<void> {
-		const hostname = await this.pickSshHostname();
-		if (!hostname) {
+		const configPath =
+			this.connectedSshConfigPath() ?? (await this.pickSshConfigPath());
+		if (!configPath) {
 			return;
 		}
 		try {
-			await openFile(this.pathResolver.getSshConfigPath(hostname));
+			await openFile(configPath);
 		} catch {
 			vscode.window.showInformationMessage(NO_SSH_CONFIG_MESSAGE);
 			return;
@@ -590,36 +602,51 @@ export class Commands {
 		);
 	}
 
-	/** A connected window resolves to its own deployment; otherwise ask. */
-	private async pickSshHostname(): Promise<string | undefined> {
+	/** The file serving this window's connection, if it has one. */
+	private connectedSshConfigPath(): string | undefined {
 		try {
 			// remoteAuthority is a proposed API; our own vscode module may not read it.
-			const remoteAuthority = vscodeProposed.env.remoteAuthority;
-			if (remoteAuthority) {
-				const parts = parseRemoteAuthority(remoteAuthority);
-				if (parts) {
-					return parts.safeHostname;
-				}
-			}
+			const authority = vscodeProposed.env.remoteAuthority;
+			const parts = authority ? parseRemoteAuthority(authority) : null;
+			return parts
+				? this.pathResolver.getSshConfigPath(
+						parts.safeHostname,
+						hostEditorId(parts.sshHost),
+					)
+				: undefined;
 		} catch {
-			// Malformed Coder authority or unavailable API; fall through to the picker.
+			// Malformed Coder authority or unavailable API; fall back to the picker.
+			return undefined;
 		}
-		const hostnames = (
-			await readdirOrEmpty(this.pathResolver.getSshConfigDir())
-		)
-			.map((file) => this.pathResolver.parseSshConfigFile(file))
-			.filter((name) => name !== undefined);
-		if (hostnames.length === 0) {
+	}
+
+	/** Ask which config to open, of this editor's prefixes and the legacy one. */
+	private async pickSshConfigPath(): Promise<string | undefined> {
+		const files = await readdirOrEmpty(this.pathResolver.getSshConfigDir());
+		const items = [...new Set([currentEditorId(), LegacyEditorId])].flatMap(
+			(editorId) =>
+				files
+					.map((file) => this.pathResolver.parseSshConfigFile(file, editorId))
+					.filter((safeHostname) => safeHostname !== undefined)
+					.map((safeHostname) => ({
+						label: safeHostname,
+						// Which hosts it serves; two files can share a deployment.
+						description: `coder-${editorId}.${safeHostname}--*`,
+						path: this.pathResolver.getSshConfigPath(safeHostname, editorId),
+					})),
+		);
+		if (items.length === 0) {
 			vscode.window.showInformationMessage(NO_SSH_CONFIG_MESSAGE);
 			return undefined;
 		}
-		if (hostnames.length === 1) {
-			return hostnames[0];
+		if (items.length === 1) {
+			return items[0].path;
 		}
-		return vscode.window.showQuickPick(hostnames, {
+		const picked = await vscode.window.showQuickPick(items, {
 			title: "Open generated SSH configuration",
 			placeHolder: "Select a deployment",
 		});
+		return picked?.path;
 	}
 
 	/**
@@ -1107,6 +1134,43 @@ export class Commands {
 		);
 	}
 
+	/** Recently opened folders, and every entry including workspace files. */
+	private async recentlyOpened(): Promise<{
+		folders: vscode.Uri[];
+		entries: vscode.Uri[];
+	}> {
+		let recents: RecentlyOpened[] = [];
+		try {
+			// Private command; without it there is just no history to reuse.
+			const output: { workspaces?: RecentlyOpened[] } =
+				await vscode.commands.executeCommand("_workbench.getRecentlyOpened");
+			recents = output?.workspaces ?? [];
+		} catch (error) {
+			this.logger.warn("Failed to read recently opened folders", error);
+		}
+		return {
+			folders: recents.flatMap((recent) => recent.folderUri ?? []),
+			entries: recents.flatMap(
+				(recent) => recent.folderUri ?? recent.workspace?.configPath ?? [],
+			),
+		};
+	}
+
+	/**
+	 * The host this workspace was last opened on, or this editor's own. Only the
+	 * host carries over, never a recent entry's authority itself: that can name
+	 * another devcontainer of the same workspace.
+	 */
+	private reusableAuthority(recents: vscode.Uri[], target: string): string {
+		const legacyAuthority = toLegacyAuthority(target);
+		const legacyHost = sshHostOf(legacyAuthority);
+		const currentHost = sshHostOf(target);
+		const lastUsed = recents
+			.map((uri) => sshHostOf(uri.authority))
+			.find((host) => host === currentHost || host === legacyHost);
+		return lastUsed === legacyHost ? legacyAuthority : target;
+	}
+
 	private async runOpenDevContainer(
 		workspaceOwner: string,
 		workspaceName: string,
@@ -1144,12 +1208,17 @@ export class Commands {
 		).toString("hex");
 
 		const type = localWorkspaceFolder ? "dev-container" : "attached-container";
-		const devContainerAuthority = `${type}+${devContainer}@${remoteAuthority}`;
+		const target = `${type}+${devContainer}@${remoteAuthority}`;
 
 		let newWindow = true;
 		if (!vscode.workspace.workspaceFolders?.length) {
 			newWindow = false;
 		}
+
+		const { entries } = await this.recentlyOpened();
+		const authority = this.reusableAuthority(entries, target);
+
+		this.logger.info("Opening devcontainer", { remoteAuthority: authority });
 
 		// Only set the memento when opening a new folder
 		await this.mementoManager.setStartupMode("start");
@@ -1157,7 +1226,7 @@ export class Commands {
 			"vscode.openFolder",
 			vscode.Uri.from({
 				scheme: "vscode-remote",
-				authority: devContainerAuthority,
+				authority,
 				path: devContainerFolder,
 			}),
 			newWindow,
@@ -1252,7 +1321,7 @@ export class Commands {
 				agentName,
 				client: this.extensionClient,
 				workspaceId: createWorkspaceIdentifier(item.workspace),
-				remoteAuthority: this.toWorkspaceAuthority(
+				remoteAuthority: await this.toWorkspaceAuthority(
 					this.extensionClient,
 					item.workspace,
 					agentName,
@@ -1279,7 +1348,7 @@ export class Commands {
 				status: "selected",
 				client: this.extensionClient,
 				workspaceId: createWorkspaceIdentifier(pick.workspace),
-				remoteAuthority: this.toWorkspaceAuthority(
+				remoteAuthority: await this.toWorkspaceAuthority(
 					this.extensionClient,
 					pick.workspace,
 				),
@@ -1292,20 +1361,24 @@ export class Commands {
 	 * Reconstruct the authority Remote-SSH would use, defaulting to the
 	 * first agent like the CLI does.
 	 */
-	private toWorkspaceAuthority(
+	private async toWorkspaceAuthority(
 		client: CoderApi,
 		workspace: Workspace,
 		agentName?: string,
-	): string | undefined {
+	): Promise<string | undefined> {
 		const baseUrl = client.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
 			return undefined;
 		}
-		return toRemoteAuthority(
-			baseUrl,
-			workspace.owner_name,
-			workspace.name,
-			agentName ?? extractAgents(workspace.latest_build.resources)[0]?.name,
+		const { entries } = await this.recentlyOpened();
+		return this.reusableAuthority(
+			entries,
+			toRemoteAuthority(
+				baseUrl,
+				workspace.owner_name,
+				workspace.name,
+				agentName ?? extractAgents(workspace.latest_build.resources)[0]?.name,
+			),
 		);
 	}
 
@@ -1510,7 +1583,7 @@ export class Commands {
 			...options,
 		};
 		let { folderPath } = options;
-		const remoteAuthority = toRemoteAuthority(
+		let remoteAuthority = toRemoteAuthority(
 			baseUrl,
 			workspace.owner_name,
 			workspace.name,
@@ -1526,25 +1599,26 @@ export class Commands {
 			folderPath = agent.expanded_directory;
 		}
 
+		const { folders, entries } = await this.recentlyOpened();
 		// If the agent had no folder or we have been asked to open the most recent,
 		// we can try to open a recently opened folder/workspace.
 		if (!folderPath || openRecent) {
-			const output: {
-				workspaces: Array<{ folderUri: vscode.Uri; remoteAuthority: string }>;
-			} = await vscode.commands.executeCommand("_workbench.getRecentlyOpened");
-			const opened = output.workspaces.filter((opened) =>
-				isRemoteAuthorityCompatible(
-					opened.folderUri?.authority,
-					remoteAuthority,
+			// One entry per folder: the same path can be in the list once per host.
+			const paths = [
+				...new Set(
+					folders
+						.filter((uri) =>
+							isRemoteAuthorityCompatible(uri.authority, remoteAuthority),
+						)
+						.map((uri) => uri.path),
 				),
-			);
+			];
 			// openRecent will always use the most recent.  Otherwise, if there are
 			// multiple we ask the user which to use.
-			if (opened.length === 1 || (opened.length > 1 && openRecent)) {
-				folderPath = opened[0].folderUri.path;
-			} else if (opened.length > 1) {
-				const items = opened.map((f) => f.folderUri.path);
-				folderPath = await vscode.window.showQuickPick(items, {
+			if (paths.length === 1 || (paths.length > 1 && openRecent)) {
+				folderPath = paths[0];
+			} else if (paths.length > 1) {
+				folderPath = await vscode.window.showQuickPick(paths, {
 					title: "Select a recently opened folder",
 				});
 				if (!folderPath) {
@@ -1553,6 +1627,7 @@ export class Commands {
 				}
 			}
 		}
+		remoteAuthority = this.reusableAuthority(entries, remoteAuthority);
 
 		// Only set the memento when opening a new folder/window
 		await this.mementoManager.setStartupMode("start");

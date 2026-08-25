@@ -71,17 +71,27 @@ export class PathResolver {
 		return path.join(platformDataDir(), "coder.coder-remote", "ssh");
 	}
 
-	/** This editor's generated SSH config for one deployment. */
-	public getSshConfigPath(safeHostname: string): string {
+	/**
+	 * Generated SSH config for one deployment, named after the editor in the
+	 * host prefix rather than the one writing it: two files declaring the same
+	 * host pattern would leave glob order to decide which one ssh reads.
+	 */
+	public getSshConfigPath(
+		safeHostname: string,
+		editorId: string = currentEditorId(),
+	): string {
 		return path.join(
 			this.getSshConfigDir(),
-			`${currentEditorId()}--${safeHostname}${SSH_CONFIG_EXT}`,
+			`${editorId}--${safeHostname}${SSH_CONFIG_EXT}`,
 		);
 	}
 
-	/** The deployment hostname if this editor generated the file, else undefined. */
-	public parseSshConfigFile(fileName: string): string | undefined {
-		const prefix = `${currentEditorId()}--`;
+	/** The deployment hostname if `editorId` named the file, else undefined. */
+	public parseSshConfigFile(
+		fileName: string,
+		editorId: string = currentEditorId(),
+	): string | undefined {
+		const prefix = `${editorId}--`;
 		return fileName.startsWith(prefix) && fileName.endsWith(SSH_CONFIG_EXT)
 			? fileName.slice(prefix.length, -SSH_CONFIG_EXT.length)
 			: undefined;
