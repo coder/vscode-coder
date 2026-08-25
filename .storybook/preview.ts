@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 
+import { isPixel } from "@coder/pixel-storybook/storyapi";
 import codiconCssUrl from "@vscode/codicons/dist/codicon.css?url";
 import { createElement } from "react";
 
@@ -27,6 +28,11 @@ if (typeof window !== "undefined") {
 		getState: () => undefined,
 		setState: (state) => state,
 	});
+}
+
+// Lets us skip motion animation during Pixel captures.
+if (typeof document !== "undefined" && isPixel()) {
+	document.documentElement.setAttribute("data-pixel", "true");
 }
 
 // Inject codicon stylesheet immediately (before any components render)

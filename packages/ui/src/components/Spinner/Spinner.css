@@ -50,3 +50,8 @@
 		border-inline-end-color: Highlight;
 	}
 }
+
+/* data-pixel is set in .storybook/preview.ts via isPixel(). */
+:root[data-pixel] .ui-spinner {
+	animation: none;
+}

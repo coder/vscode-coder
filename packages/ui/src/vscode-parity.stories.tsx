@@ -24,7 +24,7 @@ import { ProgressBar } from "./components/ProgressBar/ProgressBar";
 import { SearchInput } from "./components/SearchInput/SearchInput";
 import { Spinner } from "./components/Spinner/Spinner";
 import { StatusPill } from "./components/StatusPill/StatusPill";
-import { openMenu, PIXEL_ALL_THEMES } from "./storybook";
+import { PIXEL_ALL_THEMES } from "./storybook";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
@@ -177,8 +177,7 @@ const Parity = (): React.JSX.Element => (
 	</div>
 );
 
-/* The reference menu renders inline; ours is a real portalled DropdownMenu,
-   so the play function opens it under its trigger. */
+/* defaultOpen + an invisible trigger mirror the reference's `show`. */
 const MenuParity = (): React.JSX.Element => (
 	<div
 		style={{
@@ -189,9 +188,9 @@ const MenuParity = (): React.JSX.Element => (
 			fontSize: "13px",
 		}}
 	>
-		<DropdownMenu>
+		<DropdownMenu defaultOpen>
 			<DropdownMenuTrigger asChild>
-				<Button variant="secondary">Menu</Button>
+				<span />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent>
 				<DropdownMenuItem>Start workspace</DropdownMenuItem>
@@ -228,7 +227,4 @@ export const SideBySide: Story = {};
 
 export const Menu: Story = {
 	render: () => <MenuParity />,
-	play: async ({ canvasElement }) => {
-		await openMenu(canvasElement, "Menu");
-	},
 };

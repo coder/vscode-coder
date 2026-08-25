@@ -13,3 +13,8 @@
 		animation: none;
 	}
 }
+
+/* data-pixel is set in .storybook/preview.ts via isPixel(). */
+:root[data-pixel] .ui-icon--spin {
+	animation: none;
+}
