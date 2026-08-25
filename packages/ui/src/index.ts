@@ -72,4 +72,6 @@ export {
 	TooltipProvider,
 	type TooltipProviderProps,
 } from "./components/Tooltip/Tooltip";
+export { Tree, type TreeProps } from "./components/Tree/Tree";
+export type { TreeNode } from "./components/Tree/treeModel";
 export { useVscodeTheme, type VscodeThemeKind } from "./useVscodeTheme";
