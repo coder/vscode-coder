@@ -1,1 +1,14 @@
-/* TODO */
+/* UI library theme tokens and codicon font */
+@import "@repo/ui/codicon.css";
+@import "@repo/ui/tokens.css";
+
+body {
+	margin: 0;
+	padding: 0;
+	font-family: var(--ui-font-family);
+	font-size: var(--ui-font-size);
+	font-weight: var(--ui-font-weight-regular);
+	color: var(--ui-foreground);
+	background: var(--ui-background);
+	overflow: hidden;
+}

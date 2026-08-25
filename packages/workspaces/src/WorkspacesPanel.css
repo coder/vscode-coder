@@ -1,0 +1,50 @@
+.workspaces-panel {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+}
+
+.workspaces-panel__toolbar {
+	display: flex;
+	gap: var(--ui-spacing-40);
+	align-items: center;
+	padding: var(--ui-spacing-40);
+}
+
+.workspaces-panel__toolbar .ui-search-input {
+	flex: 1;
+	min-width: 0;
+}
+
+.workspaces-panel__filter {
+	gap: var(--ui-spacing-40);
+	flex: none;
+}
+
+.workspaces-panel__tree {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+}
+
+.workspaces-panel__row-label {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--ui-spacing-60);
+	min-width: 0;
+}
+
+.workspaces-panel__name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.workspaces-panel__owner {
+	color: var(--ui-description-foreground);
+	flex: none;
+}
+
+.workspaces-panel__highlight {
+	color: var(--vscode-list-highlightForeground, var(--ui-link-foreground));
+}

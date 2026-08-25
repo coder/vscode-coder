@@ -522,6 +522,9 @@ importers:
       '@repo/shared':
         specifier: workspace:*
         version: link:../shared
+      '@repo/ui':
+        specifier: workspace:*
+        version: link:../ui
       '@repo/webview-shared':
         specifier: workspace:*
         version: link:../webview-shared

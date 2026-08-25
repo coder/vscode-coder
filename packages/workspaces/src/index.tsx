@@ -1,3 +1,4 @@
+import { TooltipProvider } from "@repo/ui";
 import { ErrorBoundary } from "@repo/webview-shared/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
@@ -19,7 +20,9 @@ createRoot(root).render(
 	<StrictMode>
 		<QueryClientProvider client={queryClient}>
 			<ErrorBoundary>
-				<App />
+				<TooltipProvider>
+					<App />
+				</TooltipProvider>
 			</ErrorBoundary>
 		</QueryClientProvider>
 	</StrictMode>,
