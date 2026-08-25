@@ -7,7 +7,7 @@ import {
 	hostEditorId,
 	isRemoteAuthorityCompatible,
 	parseRemoteAuthority,
-	retargetRemoteAuthority,
+	toLegacyAuthority,
 	toRemoteAuthority,
 } from "@/util/authority";
 
@@ -177,34 +177,6 @@ describe("authority construction", () => {
 });
 
 describe("legacy authority compatibility", () => {
-	it("leaves unrelated authorities unchanged", () => {
-		expect(retargetRemoteAuthority("github.com")).toBe("github.com");
-	});
-
-	interface RetargetCase {
-		label: string;
-		authority: string;
-		expected: string;
-	}
-	it.each<RetargetCase>([
-		{
-			label: "plain",
-			authority: LEGACY_AUTHORITY,
-			expected: CURSOR_AUTHORITY,
-		},
-		{
-			label: "multiply nested",
-			authority: `attached-container+def@dev-container+abc@${LEGACY_AUTHORITY}`,
-			expected: `attached-container+def@dev-container+abc@${CURSOR_AUTHORITY}`,
-		},
-	])(
-		"preserves the $label wrapper while retargeting",
-		({ authority, expected }) => {
-			useEditor("cursor");
-			expect(retargetRemoteAuthority(authority)).toBe(expected);
-		},
-	);
-
 	interface CompatibilityCase {
 		label: string;
 		authority: string | undefined;
@@ -231,6 +203,28 @@ describe("legacy authority compatibility", () => {
 			expected,
 		);
 	});
+
+	it.each([
+		{ label: "plain", authority: CURSOR_AUTHORITY, expected: LEGACY_AUTHORITY },
+		{
+			label: "multiply nested",
+			authority: `attached-container+def@dev-container+abc@${CURSOR_AUTHORITY}`,
+			expected: `attached-container+def@dev-container+abc@${LEGACY_AUTHORITY}`,
+		},
+		{
+			label: "already legacy",
+			authority: LEGACY_AUTHORITY,
+			expected: LEGACY_AUTHORITY,
+		},
+		{ label: "foreign", authority: DEVIN_AUTHORITY, expected: DEVIN_AUTHORITY },
+		{ label: "non-remote", authority: "github.com", expected: "github.com" },
+	])(
+		"moves the $label authority to the legacy host",
+		({ authority, expected }) => {
+			useEditor("cursor");
+			expect(toLegacyAuthority(authority)).toBe(expected);
+		},
+	);
 });
 
 describe("hostEditorId", () => {

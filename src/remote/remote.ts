@@ -40,8 +40,10 @@ import { getHeaderCommand } from "../settings/headers";
 import { escapeCommandArg, expandPath } from "../util";
 import {
 	type AuthorityParts,
+	classifySshHost,
 	hostEditorId,
 	parseRemoteAuthority,
+	sshHostOf,
 } from "../util/authority";
 import { createStatusBarItem } from "../util/statusBar";
 import { vscodeProposed } from "../vscodeProposed";
@@ -104,6 +106,29 @@ interface RemoteSetupContext {
 	baseUrl: string;
 	token: string | undefined;
 	disposables: vscode.Disposable[];
+}
+
+/**
+ * What Open Recent shows after the path. VS Code splits the label on the
+ * separator, so "/" would display "/home/kyle [Coder: kyle/workspace]" as
+ * "workspace] /home/kyle [Coder: kyle"; "∕" looks the same in the UI font.
+ */
+export function workspaceLabelSuffix(
+	remoteAuthority: string,
+	owner: string,
+	workspace: string,
+	agent?: string,
+): string {
+	let suffix = `Coder: ${owner}∕${workspace}`;
+	if (agent) {
+		suffix += `∕${agent}`;
+	}
+	// Mark the shared host, so a workspace with an entry on each is not two
+	// identical lines. Only a fork sees it; in VS Code it is the only host.
+	const sshHost = sshHostOf(remoteAuthority);
+	return sshHost && classifySshHost(sshHost) === "legacy"
+		? `${suffix} (legacy)`
+		: suffix;
 }
 
 export class Remote {
@@ -1082,16 +1107,6 @@ export class Remote {
 		workspace: string,
 		agent?: string,
 	): vscode.Disposable {
-		// VS Code splits based on the separator when displaying the label
-		// in a recently opened dialog. If the workspace suffix contains /,
-		// then it'll visually display weird:
-		// "/home/kyle [Coder: kyle/workspace]" displays as "workspace] /home/kyle [Coder: kyle"
-		// For this reason, we use a different / that visually appears the
-		// same on non-monospace fonts "∕".
-		let suffix = `Coder: ${owner}∕${workspace}`;
-		if (agent) {
-			suffix += `∕${agent}`;
-		}
 		// VS Code caches resource label formatters in it's global storage SQLite database
 		// under the key "memento/cachedResourceLabelFormatters2".
 		return vscodeProposed.workspace.registerResourceLabelFormatter({
@@ -1103,7 +1118,12 @@ export class Remote {
 				label: "${path}",
 				separator: "/",
 				tildify: true,
-				workspaceSuffix: suffix,
+				workspaceSuffix: workspaceLabelSuffix(
+					remoteAuthority,
+					owner,
+					workspace,
+					agent,
+				),
 			},
 		});
 	}

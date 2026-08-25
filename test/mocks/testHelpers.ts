@@ -9,6 +9,7 @@ import * as fs from "node:fs/promises";
 import { onTestFinished, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { Commands } from "@/commands";
 import { SessionStore, type SessionData } from "@/deployment/sessionStore";
 
 import {
@@ -39,6 +40,7 @@ import type { ContextManager } from "@/core/contextManager";
 import type { MementoManager } from "@/core/mementoManager";
 import type { PathResolver } from "@/core/pathResolver";
 import type { SecretsManager } from "@/core/secretsManager";
+import type { DeploymentManager } from "@/deployment/deploymentManager";
 import type { Deployment } from "@/deployment/types";
 import type { Logger } from "@/logging/logger";
 import type { LoginCoordinator } from "@/login/loginCoordinator";
@@ -649,6 +651,68 @@ export function createMockServiceContainer(
 		getLoginCoordinator: () =>
 			require("loginCoordinator", overrides.loginCoordinator) as LoginCoordinator,
 	} as ServiceContainer;
+}
+
+/** Build `Commands`; services left unnamed stand in as empty objects. */
+export function createTestCommands(
+	options: {
+		services?: Record<string, unknown>;
+		baseUrl?: string;
+		client?: Partial<CoderApi>;
+	} = {},
+): Commands {
+	const services: Record<string, unknown> = {
+		getTelemetryService: createTestTelemetryService(),
+		getLogger: createMockLogger(),
+		getMementoManager: { setStartupMode: vi.fn() },
+		getDuplicateWorkspaceIpc: {
+			sendPing: vi.fn().mockResolvedValue(undefined),
+		},
+		...options.services,
+	};
+	return new Commands(
+		new Proxy({} as ServiceContainer, {
+			get: (_, name: string) => () => services[name] ?? {},
+		}),
+		{
+			getAxiosInstance: () => ({ defaults: { baseURL: options.baseUrl } }),
+			...options.client,
+		} as unknown as CoderApi,
+		{} as DeploymentManager,
+	);
+}
+
+/** Recently opened entries on one path; a multi-root file has no folder URI. */
+export function mockRecentlyOpened(
+	authorities: string[],
+	path: string,
+	kind: "folder" | "workspaceFile" = "folder",
+): void {
+	const workspaces = authorities.map((authority) => {
+		const uri = vscode.Uri.from({ scheme: "vscode-remote", authority, path });
+		return kind === "folder"
+			? { folderUri: uri }
+			: { workspace: { id: "workspace-1", configPath: uri } };
+	});
+	vi.mocked(vscode.commands.executeCommand).mockImplementation(
+		(command: string) =>
+			Promise.resolve(
+				command === "_workbench.getRecentlyOpened" ? { workspaces } : undefined,
+			),
+	);
+}
+
+/** The authority a window was handed: a folder by URI, an empty window by option. */
+export function openedAuthority(): string | undefined {
+	const [, handoff] =
+		vi
+			.mocked(vscode.commands.executeCommand)
+			.mock.calls.find(([command]) =>
+				["vscode.openFolder", "vscode.newWindow"].includes(command),
+			) ?? [];
+	return handoff instanceof vscode.Uri
+		? handoff.authority
+		: (handoff as { remoteAuthority?: string } | undefined)?.remoteAuthority;
 }
 
 /** Update the mocked active color theme and fire onDidChangeActiveColorTheme. */

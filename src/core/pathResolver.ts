@@ -86,9 +86,12 @@ export class PathResolver {
 		);
 	}
 
-	/** The deployment hostname if this editor generated the file, else undefined. */
-	public parseSshConfigFile(fileName: string): string | undefined {
-		const prefix = `${currentEditorId()}--`;
+	/** The deployment hostname if `editorId` named the file, else undefined. */
+	public parseSshConfigFile(
+		fileName: string,
+		editorId: string = currentEditorId(),
+	): string | undefined {
+		const prefix = `${editorId}--`;
 		return fileName.startsWith(prefix) && fileName.endsWith(SSH_CONFIG_EXT)
 			? fileName.slice(prefix.length, -SSH_CONFIG_EXT.length)
 			: undefined;

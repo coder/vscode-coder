@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import { MementoManager } from "@/core/mementoManager";
 import { PathResolver } from "@/core/pathResolver";
 import { SecretsManager } from "@/core/secretsManager";
-import { Remote } from "@/remote/remote";
+import { Remote, workspaceLabelSuffix } from "@/remote/remote";
 
 import { createTestTelemetryService } from "../../mocks/telemetry";
 import {
@@ -225,5 +225,48 @@ describe("Remote", () => {
 				),
 			],
 		});
+	});
+});
+
+describe("workspaceLabelSuffix", () => {
+	it.each([
+		{
+			label: "this editor's",
+			editor: "cursor",
+			host: "coder-cursor",
+			agent: "main",
+			expected: "Coder: foo∕bar∕main",
+		},
+		{
+			label: "the shared",
+			editor: "cursor",
+			host: "coder-vscode",
+			agent: "main",
+			expected: "Coder: foo∕bar∕main (legacy)",
+		},
+		{
+			label: "VS Code's own",
+			editor: "vscode",
+			host: "coder-vscode",
+			agent: "main",
+			expected: "Coder: foo∕bar∕main",
+		},
+		{
+			label: "this editor's, agentless",
+			editor: "cursor",
+			host: "coder-cursor",
+			agent: undefined,
+			expected: "Coder: foo∕bar",
+		},
+	])("labels $label host in $editor", ({ editor, host, agent, expected }) => {
+		useEditor(editor);
+		expect(
+			workspaceLabelSuffix(
+				`ssh-remote+${host}.dev.coder.com--foo--bar.main`,
+				"foo",
+				"bar",
+				agent,
+			),
+		).toBe(expected);
 	});
 });

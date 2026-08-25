@@ -135,9 +135,12 @@ describe("PathResolver", () => {
 			);
 		});
 
-		it("parses the hostname only from this editor's generated files", () => {
+		it("parses the hostname only from the named editor's files", () => {
 			expect(
 				pathResolver.parseSshConfigFile("vscode--dev.coder.com.conf"),
+			).toBe("dev.coder.com");
+			expect(
+				pathResolver.parseSshConfigFile("cursor--dev.coder.com.conf", "cursor"),
 			).toBe("dev.coder.com");
 			expect(
 				pathResolver.parseSshConfigFile("cursor--dev.coder.com.conf"),

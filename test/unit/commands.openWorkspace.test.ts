@@ -1,22 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { Commands } from "@/commands";
-
-import { workspace as createWorkspace } from "@repo/mocks";
-
-import { createTestTelemetryService } from "../mocks/telemetry";
 import {
-	createMockLogger,
+	agent as createAgent,
+	resource as createResource,
+	workspace as createWorkspace,
+} from "@repo/mocks";
+
+import {
+	createTestCommands,
 	MockConfigurationProvider,
+	mockRecentlyOpened,
+	openedAuthority,
 	useEditor,
 } from "../mocks/testHelpers";
 
 import type { WorkspaceAgent } from "coder/site/src/api/typesGenerated";
-
-import type { CoderApi } from "@/api/coderApi";
-import type { ServiceContainer } from "@/core/container";
-import type { DeploymentManager } from "@/deployment/deploymentManager";
 
 vi.mock("@/workspace/workspacesProvider", () => ({
 	AgentTreeItem: class {
@@ -30,6 +29,7 @@ vi.mock("@/workspace/workspacesProvider", () => ({
 
 const AGENT = { name: "main" } as WorkspaceAgent;
 const FOLDER = "/home/foo/project";
+const BASE_URL = "https://dev.coder.com";
 const CURSOR = "ssh-remote+coder-cursor.dev.coder.com--foo--bar.main";
 const LEGACY = "ssh-remote+coder-vscode.dev.coder.com--foo--bar.main";
 const DEVIN = "ssh-remote+coder-devin.dev.coder.com--foo--bar.main";
@@ -38,43 +38,14 @@ const DEVIN = "ssh-remote+coder-devin.dev.coder.com--foo--bar.main";
  * Open the workspace from the sidebar, with the given authorities standing in
  * for recently opened folders, and report the authority the window was handed.
  */
-async function openFromSidebar(recents: string[]): Promise<string | undefined> {
+async function openFromSidebar(
+	recents: string[],
+	path = FOLDER,
+	kind?: "folder" | "workspaceFile",
+): Promise<string | undefined> {
 	new MockConfigurationProvider();
-	const workspaces = recents.map((authority) => ({
-		folderUri: vscode.Uri.from({
-			scheme: "vscode-remote",
-			authority,
-			path: FOLDER,
-		}),
-	}));
-	const executeCommand = vi
-		.mocked(vscode.commands.executeCommand)
-		.mockImplementation((command: string) =>
-			Promise.resolve(
-				command === "_workbench.getRecentlyOpened" ? { workspaces } : undefined,
-			),
-		);
-
-	// The constructor reads every service, so name only the ones in play.
-	const services: Record<string, unknown> = {
-		getTelemetryService: createTestTelemetryService(),
-		getLogger: createMockLogger(),
-		getMementoManager: { setStartupMode: vi.fn() },
-		getDuplicateWorkspaceIpc: {
-			sendPing: vi.fn().mockResolvedValue(undefined),
-		},
-	};
-	const commands = new Commands(
-		new Proxy({} as ServiceContainer, {
-			get: (_, name: string) => () => services[name] ?? {},
-		}),
-		{
-			getAxiosInstance: () => ({
-				defaults: { baseURL: "https://dev.coder.com" },
-			}),
-		} as unknown as CoderApi,
-		{} as DeploymentManager,
-	);
+	mockRecentlyOpened(recents, path, kind);
+	const commands = createTestCommands({ baseUrl: BASE_URL });
 	const { AgentTreeItem } = await import("@/workspace/workspacesProvider");
 	await commands.openFromSidebar(
 		new AgentTreeItem(
@@ -82,15 +53,37 @@ async function openFromSidebar(recents: string[]): Promise<string | undefined> {
 			createWorkspace({ owner_name: "foo", name: "bar" }),
 		),
 	);
+	return openedAuthority();
+}
 
-	// A folder is handed off by URI, an empty window by option.
-	const [, handoff] =
-		executeCommand.mock.calls.find(([command]) =>
-			["vscode.openFolder", "vscode.newWindow"].includes(command),
-		) ?? [];
-	return handoff instanceof vscode.Uri
-		? handoff.authority
-		: (handoff as { remoteAuthority?: string } | undefined)?.remoteAuthority;
+/** Open as a link does, without openRecent, from an agent built as given. */
+async function openFromLink(
+	recents: string[],
+	agent: Partial<WorkspaceAgent> = {},
+): Promise<string | undefined> {
+	new MockConfigurationProvider();
+	mockRecentlyOpened(recents, FOLDER);
+	const commands = createTestCommands({
+		baseUrl: BASE_URL,
+		client: {
+			getWorkspaceByOwnerAndName: vi.fn().mockResolvedValue(
+				createWorkspace({
+					owner_name: "foo",
+					name: "bar",
+					latest_build: {
+						resources: [createResource({ agents: [createAgent(agent)] })],
+					},
+				}),
+			),
+		},
+	});
+	await commands.open({
+		workspaceOwner: "foo",
+		workspaceName: "bar",
+		agentName: "main",
+		source: "uri",
+	});
+	return openedAuthority();
 }
 
 describe("openWorkspace", () => {
@@ -113,7 +106,38 @@ describe("openWorkspace", () => {
 			recents: [DEVIN],
 			expected: CURSOR,
 		},
+		{
+			label: "the host it used last, of the two it has used",
+			recents: [CURSOR, LEGACY],
+			expected: CURSOR,
+		},
+		{
+			label: "the legacy host it used last",
+			recents: [LEGACY, CURSOR],
+			expected: LEGACY,
+		},
 	])("reopens the workspace on $label", async ({ recents, expected }) => {
 		expect(await openFromSidebar(recents)).toBe(expected);
+	});
+
+	it("reopens a multi-root workspace on the host its file used", async () => {
+		expect(
+			await openFromSidebar(
+				[LEGACY],
+				"/home/foo/project.code-workspace",
+				"workspaceFile",
+			),
+		).toBe(LEGACY);
+	});
+
+	it("reuses the host of a directory the agent supplies", async () => {
+		expect(await openFromLink([LEGACY], { expanded_directory: FOLDER })).toBe(
+			LEGACY,
+		);
+	});
+
+	it("does not ask between one folder recorded on both hosts", async () => {
+		expect(await openFromLink([CURSOR, LEGACY])).toBe(CURSOR);
+		expect(vscode.window.showQuickPick).not.toHaveBeenCalled();
 	});
 });
