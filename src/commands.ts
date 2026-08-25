@@ -1521,7 +1521,7 @@ export class Commands {
 			...options,
 		};
 		let { folderPath } = options;
-		const remoteAuthority = toRemoteAuthority(
+		let remoteAuthority = toRemoteAuthority(
 			baseUrl,
 			workspace.owner_name,
 			workspace.name,
@@ -1563,6 +1563,11 @@ export class Commands {
 					return { status: "cancelled", stage: "recent_folder_picker" };
 				}
 			}
+			// A compatible folder can still be on the legacy coder-vscode host.
+			// Reopen it there, since the editor keys window state by the whole URI.
+			remoteAuthority =
+				opened.find((f) => f.folderUri.path === folderPath)?.folderUri
+					.authority ?? remoteAuthority;
 		}
 
 		// Only set the memento when opening a new folder/window

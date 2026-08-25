@@ -15,6 +15,8 @@
   workspace looked new: Cursor's chats, your window layout, and anything else
   kept per workspace appeared to be gone. Nothing was deleted, and a workspace
   that already moved comes back when you reopen it from **File > Open Recent**.
+- Opening a workspace from the Coder panel reuses the host it was last opened
+  on, so it keeps its history instead of starting over.
 - Serve the shared `coder-vscode` host from one generated SSH config file
   rather than one per editor, so a connection over it always uses the CLI and
   credentials of the editor that started it.
