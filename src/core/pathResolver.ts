@@ -71,11 +71,18 @@ export class PathResolver {
 		return path.join(platformDataDir(), "coder.coder-remote", "ssh");
 	}
 
-	/** This editor's generated SSH config for one deployment. */
-	public getSshConfigPath(safeHostname: string): string {
+	/**
+	 * Generated SSH config for one deployment, named after the editor in the
+	 * host prefix rather than the one writing it: two files declaring the same
+	 * host pattern would leave glob order to decide which one ssh reads.
+	 */
+	public getSshConfigPath(
+		safeHostname: string,
+		editorId: string = currentEditorId(),
+	): string {
 		return path.join(
 			this.getSshConfigDir(),
-			`${currentEditorId()}--${safeHostname}${SSH_CONFIG_EXT}`,
+			`${editorId}--${safeHostname}${SSH_CONFIG_EXT}`,
 		);
 	}
 

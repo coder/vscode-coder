@@ -237,6 +237,8 @@ export const workspace = {
 		onDidChangeWorkspaceFolders.fire(e),
 };
 
+let uriScheme = "vscode";
+
 export const env = {
 	appName: "Visual Studio Code",
 	appRoot: "/app",
@@ -245,8 +247,17 @@ export const env = {
 	sessionId: "test-session-id",
 	remoteName: undefined as string | undefined,
 	shell: "/bin/bash",
-	uriScheme: "vscode",
+	get uriScheme(): string {
+		return uriScheme;
+	},
 	openExternal: vi.fn(),
+
+	// test-only trigger, returning the scheme it replaced:
+	__setUriScheme: (scheme: string): string => {
+		const previous = uriScheme;
+		uriScheme = scheme;
+		return previous;
+	},
 };
 
 export const extensions = {

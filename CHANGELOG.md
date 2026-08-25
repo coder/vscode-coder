@@ -5,6 +5,20 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Fixed
+
+- Keep opening a workspace on the SSH host it already uses. v1.16.1 moved
+  existing workspaces onto a host named after your editor, and since an editor
+  identifies a workspace by an address that includes the host name, the
+  workspace looked new: Cursor's chats, your window layout, and anything else
+  kept per workspace appeared to be gone. Nothing was deleted, and a workspace
+  that already moved comes back when you reopen it from **File > Open Recent**.
+- Serve the shared `coder-vscode` host from one generated SSH config file
+  rather than one per editor, so a connection over it always uses the CLI and
+  credentials of the editor that started it.
+
 ## [v1.16.1](https://github.com/coder/vscode-coder/releases/tag/v1.16.1) 2026-08-24
 
 ### Added

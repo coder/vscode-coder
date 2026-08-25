@@ -2,7 +2,9 @@ import * as vscode from "vscode";
 
 import { toSafeHost } from "./uri";
 
-export const LegacyAuthorityPrefix = "coder-vscode";
+/** The editor every host was named after before per-editor prefixes existed. */
+export const LegacyEditorId = "vscode";
+export const LegacyAuthorityPrefix = `coder-${LegacyEditorId}`;
 
 export interface AuthorityParts {
 	agent: string | undefined;
@@ -68,10 +70,13 @@ export function classifySshHost(sshHost: string): AuthorityClassification {
 	return "foreign";
 }
 
-function authorityPrefix(classification: AuthorityClassification): string {
-	return classification === "legacy"
-		? LegacyAuthorityPrefix
-		: currentAuthorityPrefix();
+function editorIdFor(classification: AuthorityClassification): string {
+	return classification === "legacy" ? LegacyEditorId : currentEditorId();
+}
+
+/** Editor named in a host's prefix; legacy hosts stay VS Code's in any editor. */
+export function hostEditorId(sshHost: string): string {
+	return editorIdFor(classifySshHost(sshHost));
 }
 
 /**
@@ -100,7 +105,7 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 	}
 
 	// The classification guarantees the host starts with "<prefix>.".
-	const prefix = `${authorityPrefix(classification)}.`;
+	const prefix = `coder-${editorIdFor(classification)}.`;
 	const parts = sshHost.slice(prefix.length).split("--");
 	if (parts.length < 3) {
 		throw new Error(invalidAuthorityMessage);

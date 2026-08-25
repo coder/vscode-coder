@@ -6,7 +6,7 @@ import axios, {
 	type InternalAxiosRequestConfig,
 } from "axios";
 import * as fs from "node:fs/promises";
-import { vi } from "vitest";
+import { onTestFinished, vi } from "vitest";
 import * as vscode from "vscode";
 
 import { SessionStore, type SessionData } from "@/deployment/sessionStore";
@@ -17,7 +17,7 @@ import {
 } from "@repo/mocks";
 
 import { createTestTelemetryService } from "./telemetry";
-import { window as vscodeWindow } from "./vscode.runtime";
+import { env as vscodeEnv, window as vscodeWindow } from "./vscode.runtime";
 
 import type {
 	Experiment,
@@ -63,6 +63,18 @@ interface ContextManagerLike {
 
 interface LoginCoordinatorLike {
 	ensureLoggedInWithDialog: LoginCoordinator["ensureLoggedInWithDialog"];
+}
+
+/**
+ * Run the rest of the test as the given editor, which is the identity
+ * `vscode.env.uriScheme` reports and the extension names its SSH hosts after.
+ * The previous editor is restored when the test ends.
+ */
+export function useEditor(uriScheme: string): void {
+	const previous = vscodeEnv.__setUriScheme(uriScheme);
+	onTestFinished(() => {
+		vscodeEnv.__setUriScheme(previous);
+	});
 }
 
 export function makeNetworkInfo(

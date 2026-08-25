@@ -51,6 +51,7 @@ import {
 } from "./supportBundle/remoteServerDataPath";
 import { runExportTelemetryCommand } from "./telemetry/export/command";
 import {
+	hostEditorId,
 	isRemoteAuthorityCompatible,
 	parseRemoteAuthority,
 	toRemoteAuthority,
@@ -574,12 +575,16 @@ export class Commands {
 
 	/** Open this editor's generated SSH config, picking a deployment when several exist. */
 	public async openSshConfig(): Promise<void> {
-		const hostname = await this.pickSshHostname();
-		if (!hostname) {
-			return;
+		let configPath = this.connectedSshConfigPath();
+		if (!configPath) {
+			const hostname = await this.pickSshHostname();
+			if (!hostname) {
+				return;
+			}
+			configPath = this.pathResolver.getSshConfigPath(hostname);
 		}
 		try {
-			await openFile(this.pathResolver.getSshConfigPath(hostname));
+			await openFile(configPath);
 		} catch {
 			vscode.window.showInformationMessage(NO_SSH_CONFIG_MESSAGE);
 			return;
@@ -590,20 +595,26 @@ export class Commands {
 		);
 	}
 
-	/** A connected window resolves to its own deployment; otherwise ask. */
-	private async pickSshHostname(): Promise<string | undefined> {
+	/** The file serving this window's connection, if it has one. */
+	private connectedSshConfigPath(): string | undefined {
 		try {
 			// remoteAuthority is a proposed API; our own vscode module may not read it.
-			const remoteAuthority = vscodeProposed.env.remoteAuthority;
-			if (remoteAuthority) {
-				const parts = parseRemoteAuthority(remoteAuthority);
-				if (parts) {
-					return parts.safeHostname;
-				}
-			}
+			const authority = vscodeProposed.env.remoteAuthority;
+			const parts = authority ? parseRemoteAuthority(authority) : null;
+			return parts
+				? this.pathResolver.getSshConfigPath(
+						parts.safeHostname,
+						hostEditorId(parts.sshHost),
+					)
+				: undefined;
 		} catch {
-			// Malformed Coder authority or unavailable API; fall through to the picker.
+			// Malformed Coder authority or unavailable API; fall back to the picker.
+			return undefined;
 		}
+	}
+
+	/** Ask which deployment, when this editor has generated more than one config. */
+	private async pickSshHostname(): Promise<string | undefined> {
 		const hostnames = (
 			await readdirOrEmpty(this.pathResolver.getSshConfigDir())
 		)
