@@ -1,6 +1,8 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+
+import { IconButton, Tree, TooltipProvider, type TreeNode } from "@repo/ui";
 
 import {
 	BASIC_NODES,
@@ -15,7 +17,9 @@ import {
 	tree,
 } from "./treeTestHelpers";
 
-import type { TreeNode } from "@repo/ui";
+/** Native hangs a row's hover off its label, so tests point at that. */
+const label = (name: string): Element =>
+	row(name).getElementsByClassName("ui-tree-item__content")[0];
 
 describe("Tree rows", () => {
 	it("renders icons, rich labels, class names, and an action slot", () => {
@@ -42,6 +46,73 @@ describe("Tree rows", () => {
 		expect(
 			screen.getByRole("button", { name: "Selected action" }).parentElement,
 		).toHaveClass("ui-tree-item__action");
+	});
+
+	it("moves one hover between labels, defaulting to the text value", async () => {
+		render(
+			<TooltipProvider delayDuration={0}>
+				<Tree
+					aria-label="Hovers"
+					nodes={[
+						{ id: "a", label: "Plain item" },
+						{ id: "b", label: <em>Rich</em>, textValue: "Rich item" },
+						{ id: "c", label: "Custom", tooltip: "The whole story" },
+						{ id: "d", label: "Quiet", tooltip: null },
+					]}
+				/>
+			</TooltipProvider>,
+		);
+		const user = userEvent.setup();
+		for (const [name, text] of [
+			["Plain item", "Plain item"],
+			["Rich item", "Rich item"],
+			["Custom", "The whole story"],
+		]) {
+			await user.hover(label(name));
+			expect(await screen.findByRole("tooltip")).toHaveTextContent(text);
+			expect(screen.getAllByRole("tooltip")).toHaveLength(1);
+		}
+		await user.unhover(label("Custom"));
+		await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+		await user.hover(label("Quiet"));
+		expect(screen.queryByRole("tooltip")).toBeNull();
+	});
+
+	it("waits for a new target but crosses an action bar at once", async () => {
+		render(
+			<TooltipProvider delayDuration={60}>
+				<Tree
+					aria-label="Handoff"
+					nodes={[
+						{
+							id: "row",
+							label: "Workspace",
+							action: (
+								<>
+									<IconButton icon="play" label="Start workspace" />
+									<IconButton icon="gear" label="Workspace settings" />
+								</>
+							),
+						},
+					]}
+				/>
+			</TooltipProvider>,
+		);
+		fireEvent.pointerEnter(label("Workspace"));
+		expect(await screen.findByRole("tooltip")).toHaveTextContent("Workspace");
+		// A different kind of target, so the bubble hides and waits again.
+		fireEvent.pointerEnter(
+			screen.getByRole("button", { name: "Start workspace" }),
+		);
+		expect(screen.queryByRole("tooltip")).toBeNull();
+		expect(await screen.findByRole("tooltip")).toHaveTextContent(
+			"Start workspace",
+		);
+		// One dense action bar is close enough to skip the delay.
+		fireEvent.pointerEnter(
+			screen.getByRole("button", { name: "Workspace settings" }),
+		);
+		expect(screen.getByRole("tooltip")).toHaveTextContent("Workspace settings");
 	});
 
 	it("treats an empty children array as a branch that has not loaded", () => {

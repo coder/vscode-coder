@@ -178,8 +178,8 @@ const Parity = (): React.JSX.Element => (
 	</div>
 );
 
-/* The reference menu renders inline; ours is a real portalled DropdownMenu,
-   so the play function opens it under its trigger. */
+/* The reference menu renders inline with no trigger, so ours hangs off a
+   collapsed one and both start at the same height. */
 const MenuParity = (): React.JSX.Element => (
 	<div
 		style={{
@@ -193,10 +193,18 @@ const MenuParity = (): React.JSX.Element => (
 		<strong>Ours</strong>
 		<strong>VS Code Elements</strong>
 		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<Button variant="secondary">Menu</Button>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent>
+			<DropdownMenuTrigger
+				aria-label="Menu"
+				style={{
+					display: "block",
+					width: "100%",
+					height: 0,
+					padding: 0,
+					border: 0,
+					opacity: 0,
+				}}
+			/>
+			<DropdownMenuContent sideOffset={0}>
 				<DropdownMenuItem>Start workspace</DropdownMenuItem>
 				<DropdownMenuItem>Open logs</DropdownMenuItem>
 				<DropdownMenuSeparator />
