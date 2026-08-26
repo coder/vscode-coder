@@ -55,6 +55,7 @@ describe("WorkspaceMonitor", () => {
 		const statusBar = new MockStatusBarItem();
 		const contextManager = new MockContextManager();
 		const logger = createMockLogger();
+		const connectionLogBuffer = { flush: vi.fn() };
 		const client = {
 			watchWorkspace: vi.fn().mockResolvedValue(stream),
 			getTemplate: vi.fn().mockResolvedValue({
@@ -71,6 +72,7 @@ describe("WorkspaceMonitor", () => {
 				telemetry,
 				logger,
 				contextManager,
+				connectionLogBuffer,
 			}),
 		);
 		return {
@@ -81,6 +83,7 @@ describe("WorkspaceMonitor", () => {
 			statusBar,
 			contextManager,
 			logger,
+			connectionLogBuffer,
 		};
 	}
 
@@ -109,6 +112,18 @@ describe("WorkspaceMonitor", () => {
 				from: "running",
 				to: "stopping",
 			});
+		});
+	});
+
+	describe("connection failure", () => {
+		it("flushes the connection log buffer when the socket errors", async () => {
+			const { stream, connectionLogBuffer } = await setup();
+
+			stream.pushError(new Error("socket boom"));
+
+			expect(connectionLogBuffer.flush).toHaveBeenCalledWith(
+				"workspace_monitor_error",
+			);
 		});
 	});
 

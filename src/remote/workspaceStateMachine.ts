@@ -32,6 +32,7 @@ import type { CoderApi } from "../api/coderApi";
 import type { ServiceContainer } from "../core/container";
 import type { StartupMode } from "../core/mementoManager";
 import type { FeatureSet } from "../featureSet";
+import type { ConnectionLogBuffer } from "../logging/logBuffer";
 import type { Logger } from "../logging/logger";
 import type { CliAuth } from "../settings/cli";
 import type { AuthorityParts } from "../util/authority";
@@ -50,6 +51,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 	private workspace: Workspace | undefined;
 
 	private readonly logger: Logger;
+	private readonly connectionLogBuffer: ConnectionLogBuffer;
 
 	constructor(
 		private readonly parts: AuthorityParts,
@@ -61,6 +63,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		container: ServiceContainer,
 	) {
 		this.logger = container.getLogger();
+		this.connectionLogBuffer = container.getConnectionLogBuffer();
 		this.terminal = new TerminalOutputChannel("Coder: Workspace Build");
 		const telemetry = container.getTelemetryService();
 		const workspaceName = `${parts.username}/${parts.workspace}`;
@@ -189,6 +192,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				return false;
 
 			case "disconnected":
+				this.connectionLogBuffer.flush("agent_disconnected");
 				throw new Error(`Agent ${workspaceName}/${agent.name} disconnected`);
 
 			case "timeout":

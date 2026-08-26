@@ -29,6 +29,22 @@ function toCloseEventError(event: CloseEvent): Error {
 }
 
 /**
+ * Terminal-failure reasons: the socket has given up and surfaced an error,
+ * rather than dropping transiently and auto-reconnecting. These are the moments
+ * worth flushing the connection log buffer.
+ */
+const CONNECTION_FAILURE_REASONS: ReadonlySet<ConnectionStateReason> = new Set([
+	"unrecoverable_close",
+	"unrecoverable_http",
+	"certificate_error",
+]);
+
+/** Whether a state-transition reason represents a genuine connection failure. */
+export function isConnectionFailure(reason: ConnectionStateReason): boolean {
+	return CONNECTION_FAILURE_REASONS.has(reason);
+}
+
+/**
  * Connection states for the ReconnectingWebSocket state machine.
  */
 export enum ConnectionState {
@@ -117,6 +133,8 @@ export interface ReconnectingWebSocketOptions {
 	telemetry: TelemetryReporter;
 	/** Callback invoked when a refreshable certificate error is detected. Returns true if refresh succeeded. */
 	onCertificateRefreshNeeded: () => Promise<boolean>;
+	/** Callback invoked when the connection fails terminally (not a transient drop). */
+	onConnectionFailure?: (reason: ConnectionStateReason) => void;
 }
 
 export class ReconnectingWebSocket<
@@ -125,7 +143,10 @@ export class ReconnectingWebSocket<
 	readonly #socketFactory: SocketFactory<TData>;
 	readonly #logger: Logger;
 	readonly #telemetry: WebSocketTelemetry;
-	readonly #options: Required<Omit<ReconnectingWebSocketOptions, "telemetry">>;
+	readonly #options: Required<
+		Omit<ReconnectingWebSocketOptions, "telemetry" | "onConnectionFailure">
+	>;
+	readonly #onConnectionFailure?: (reason: ConnectionStateReason) => void;
 	readonly #eventHandlers: {
 		[K in WebSocketEventType]: Set<EventHandler<TData, K>>;
 	} = {
@@ -179,6 +200,7 @@ export class ReconnectingWebSocket<
 			jitterFactor: options.jitterFactor ?? 0.1,
 			onCertificateRefreshNeeded: options.onCertificateRefreshNeeded,
 		};
+		this.#onConnectionFailure = options.onConnectionFailure;
 		this.#backoffMs = this.#options.initialBackoffMs;
 		this.#onDispose = onDispose;
 	}
@@ -293,6 +315,9 @@ export class ReconnectingWebSocket<
 			error: options.error,
 		});
 		this.clearCurrentSocket(options.code, options.closeReason);
+		if (isConnectionFailure(reason)) {
+			this.#onConnectionFailure?.(reason);
+		}
 	}
 
 	public close(code?: number, reason?: string): void {

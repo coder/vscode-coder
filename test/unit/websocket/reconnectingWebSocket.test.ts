@@ -8,6 +8,7 @@ import { WebSocketCloseCode, HttpStatusCode } from "@/websocket/codes";
 import {
 	ConnectionState,
 	ReconnectingWebSocket,
+	isConnectionFailure,
 	type SocketFactory,
 } from "@/websocket/reconnectingWebSocket";
 
@@ -20,6 +21,7 @@ import { createMockLogger } from "../../mocks/testHelpers";
 
 import type { CloseEvent, Event as WsEvent } from "ws";
 
+import type { ConnectionStateReason } from "@/instrumentation/websocket";
 import type { UnidirectionalStream } from "@/websocket/eventStreamConnection";
 
 describe("ReconnectingWebSocket", () => {
@@ -794,6 +796,91 @@ describe("ReconnectingWebSocket", () => {
 			ws.close();
 		});
 	});
+
+	describe("Connection failure callback", () => {
+		it.each([
+			"unrecoverable_close",
+			"unrecoverable_http",
+			"certificate_error",
+		] as const)("treats %s as a connection failure", (reason) => {
+			expect(isConnectionFailure(reason)).toBe(true);
+		});
+
+		it.each([
+			"initial_connect",
+			"manual_reconnect",
+			"scheduled_reconnect",
+			"open",
+			"disconnect",
+			"dispose",
+			"connection_error",
+			"normal_close",
+			"unexpected_close",
+		] as const)("does not treat %s as a connection failure", (reason) => {
+			expect(isConnectionFailure(reason)).toBe(false);
+		});
+
+		it("fires onConnectionFailure on an unrecoverable close code", async () => {
+			const onConnectionFailure = vi.fn();
+			const { ws, sockets } = await createReconnectingWebSocket({
+				onConnectionFailure,
+			});
+
+			sockets[0].fireOpen();
+			sockets[0].fireClose({
+				code: WebSocketCloseCode.PROTOCOL_ERROR,
+				reason: "Unrecoverable",
+			});
+
+			expect(onConnectionFailure).toHaveBeenCalledWith("unrecoverable_close");
+			ws.close();
+		});
+
+		it("does not fire onConnectionFailure on a normal close", async () => {
+			const onConnectionFailure = vi.fn();
+			const { ws, sockets } = await createReconnectingWebSocket({
+				onConnectionFailure,
+			});
+
+			sockets[0].fireOpen();
+			sockets[0].fireClose({
+				code: WebSocketCloseCode.NORMAL,
+				reason: "Normal",
+			});
+
+			expect(onConnectionFailure).not.toHaveBeenCalled();
+			ws.close();
+		});
+
+		it("does not fire onConnectionFailure on a manual disconnect", async () => {
+			const onConnectionFailure = vi.fn();
+			const { ws, sockets } = await createReconnectingWebSocket({
+				onConnectionFailure,
+			});
+
+			sockets[0].fireOpen();
+			ws.disconnect();
+
+			expect(onConnectionFailure).not.toHaveBeenCalled();
+			ws.close();
+		});
+
+		it("does not fire onConnectionFailure on a transient reconnecting drop", async () => {
+			const onConnectionFailure = vi.fn();
+			const { ws, sockets } = await createReconnectingWebSocket({
+				onConnectionFailure,
+			});
+
+			sockets[0].fireOpen();
+			sockets[0].fireClose({
+				code: WebSocketCloseCode.ABNORMAL,
+				reason: "Network error",
+			});
+
+			expect(onConnectionFailure).not.toHaveBeenCalled();
+			ws.close();
+		});
+	});
 });
 
 type MockSocket = UnidirectionalStream<unknown> & {
@@ -867,6 +954,7 @@ function createMockSocket(): MockSocket {
 interface FactoryOptions {
 	onDispose?: () => void;
 	onCertificateRefreshNeeded?: () => Promise<boolean>;
+	onConnectionFailure?: (reason: ConnectionStateReason) => void;
 	telemetry?: TelemetryReporter;
 }
 
@@ -929,6 +1017,7 @@ async function fromFactory<T>(
 			telemetry: options.telemetry ?? NOOP_TELEMETRY_REPORTER,
 			onCertificateRefreshNeeded:
 				options.onCertificateRefreshNeeded ?? (() => Promise.resolve(false)),
+			onConnectionFailure: options.onConnectionFailure,
 		},
 		options.onDispose,
 	);
