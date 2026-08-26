@@ -27,7 +27,8 @@ import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
 import { initVscodeProposed } from "./vscodeProposed";
 import { TasksPanelProvider } from "./webviews/tasks/tasksPanelProvider";
-import { WorkspacesPanelProvider } from "./webviews/workspaces/workspacesPanelProvider";
+import { WorkspacesPanelProvider } from "./webviews/workspaces/panelProvider";
+import { WorkspaceStore } from "./webviews/workspaces/store";
 import {
 	WorkspaceProvider,
 	WorkspaceQuery,
@@ -302,12 +303,28 @@ async function doActivate(
 	contextManager.set("coder.workspacesPanelEnabled", workspacesPanelEnabled);
 
 	if (workspacesPanelEnabled) {
-		const workspacesPanelProvider = new WorkspacesPanelProvider(
-			ctx.extensionUri,
+		const workspacesStore = new WorkspaceStore(
+			client,
 			output,
+			deploymentManager.session,
 		);
+		const workspacesPanelProvider = new WorkspacesPanelProvider({
+			extensionUri: ctx.extensionUri,
+			client,
+			logger: output,
+			store: workspacesStore,
+			openWorkspace: (workspace, agent) =>
+				commands.open({
+					workspaceOwner: workspace.owner_name,
+					workspaceName: workspace.name,
+					agentName: agent?.name,
+					openRecent: true,
+					source: agent ? "sidebar_agent" : "sidebar_workspace",
+				}),
+		});
 
 		ctx.subscriptions.push(
+			workspacesStore,
 			workspacesPanelProvider,
 			vscode.window.registerWebviewViewProvider(
 				WorkspacesPanelProvider.viewType,

@@ -30,5 +30,6 @@ export type {
 	NetcheckSeverity,
 } from "./netcheck/types";
 
-// Workspaces API
+// Workspaces types and API
+export * from "./workspaces/types";
 export { WorkspacesApi } from "./workspaces/api";

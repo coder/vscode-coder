@@ -594,10 +594,10 @@ export async function flush(): Promise<void> {
  * Drain only the microtask queue. Use instead of flush() under fake timers,
  * which leave the macrotask queue (setImmediate) untouched.
  */
-export async function flushPromises(): Promise<void> {
-	await Promise.resolve();
-	await Promise.resolve();
-	await Promise.resolve();
+export async function flushPromises(rounds = 3): Promise<void> {
+	for (let i = 0; i < rounds; i++) {
+		await Promise.resolve();
+	}
 }
 
 /**

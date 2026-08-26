@@ -13,6 +13,8 @@ export interface AgentMetadataWatcher {
 	dispose: () => void;
 	metadata?: AgentMetadataEvent[];
 	error?: unknown;
+	/** True once the socket closed on its own, so it reports nothing more. */
+	closed?: boolean;
 }
 
 /**
@@ -70,6 +72,7 @@ export async function createAgentMetadataWatcher(
 	socket.addEventListener("error", handleError);
 
 	socket.addEventListener("close", (event) => {
+		watcher.closed = true;
 		if (event.code !== 1000) {
 			handleError(
 				new Error(
