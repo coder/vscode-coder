@@ -314,9 +314,6 @@ export class WorkspaceStore implements vscode.Disposable {
 	}
 
 	private handleSessionChange(): void {
-		if (this.disposed) {
-			return;
-		}
 		this.unsupportedFilters.clear();
 		this.requestedAgents = [];
 		if (!this.state.capabilities.filters.includes(this.filter)) {

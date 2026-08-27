@@ -331,9 +331,6 @@ async function doActivate(
 				workspacesPanelProvider,
 				{ webviewOptions: { retainContextWhenHidden: true } },
 			),
-			secretsManager.onDidChangeCurrentDeployment(() =>
-				workspacesPanelProvider.refresh(),
-			),
 		);
 	}
 

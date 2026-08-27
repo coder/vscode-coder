@@ -7,6 +7,7 @@ import { WorkspaceStore, type PollOptions } from "@/webviews/workspaces/store";
 import {
 	createMockLogger,
 	createMockUser,
+	createMockWebviewView,
 	flushPromises,
 	MockWorkspacesClient,
 	TestSessionStore,
@@ -98,32 +99,9 @@ export function createPanel() {
 	});
 	disposables.push(provider);
 
-	let posted: Array<{ type: string; data?: unknown }> = [];
-	const messageEmitter = new vscode.EventEmitter<unknown>();
-	const visibilityEmitter = new vscode.EventEmitter<void>();
-	// Resolved while hidden so tests can stage responses before the first fetch.
-	let visible = false;
-
-	const view: vscode.WebviewView = {
-		viewType: WorkspacesPanelProvider.viewType,
-		webview: {
-			options: { enableScripts: false, localResourceRoots: [] },
-			html: "",
-			cspSource: "mock-csp",
-			onDidReceiveMessage: messageEmitter.event,
-			postMessage: (msg: unknown) => {
-				posted.push(msg as { type: string; data?: unknown });
-				return Promise.resolve(true);
-			},
-			asWebviewUri: (uri: vscode.Uri) => uri,
-		},
-		get visible() {
-			return visible;
-		},
-		show: vi.fn(),
-		onDidChangeVisibility: visibilityEmitter.event,
-		onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
-	};
+	const { view, hooks } = createMockWebviewView(
+		WorkspacesPanelProvider.viewType,
+	);
 
 	provider.resolveWebviewView(
 		view,
@@ -131,19 +109,14 @@ export function createPanel() {
 		new vscode.CancellationTokenSource().token,
 	);
 
-	const setVisible = (next: boolean) => {
-		visible = next;
-		visibilityEmitter.fire();
-	};
-
 	return {
 		...base,
 		provider,
 		view,
 		openWorkspace,
-		setVisible,
+		setVisible: hooks.setVisible,
 		show: async () => {
-			setVisible(true);
+			hooks.setVisible(true);
 			await base.store.settled;
 		},
 		/** Send a command from the webview and wait for its handler. */
@@ -151,22 +124,22 @@ export function createPanel() {
 			def: CommandDef<P>,
 			...args: P extends void ? [] : [params: P]
 		) => {
-			messageEmitter.fire({ method: def.method, params: args[0] });
+			hooks.sendFromWebview({ method: def.method, params: args[0] });
 			await flushPromises();
 			await base.store.settled;
 		},
 		/** Send anything the webview could post, valid or not. */
 		sendRaw: async (message: unknown) => {
-			messageEmitter.fire(message);
+			hooks.sendFromWebview(message);
 			await flushPromises();
 		},
 		/** Every state update pushed to the webview, oldest first. */
 		pushedUpdates: () =>
-			posted
-				.filter((message) => message.type === "stateUpdated")
-				.map((message) => message.data as WorkspacesUpdate),
-		clearPushes: () => {
-			posted = [];
-		},
+			hooks.postedMessages
+				.filter(
+					(message) => (message as { type?: string }).type === "stateUpdated",
+				)
+				.map((message) => (message as { data: WorkspacesUpdate }).data),
+		clearPushes: () => hooks.clearPostedMessages(),
 	};
 }

@@ -23,6 +23,7 @@ import {
 import {
 	createAxiosError,
 	createMockLogger,
+	createMockWebviewView,
 	MockConfigurationProvider,
 	MockUserInteraction,
 } from "../../../mocks/testHelpers";
@@ -129,33 +130,10 @@ function createHarness(): Harness {
 		createMockLogger(),
 	);
 
-	const posted: unknown[] = [];
-	let handler: ((msg: unknown) => void) | null = null;
-
-	const webview: vscode.WebviewView = {
-		viewType: "coder.tasksPanel",
-		webview: {
-			options: { enableScripts: false, localResourceRoots: [] },
-			html: "",
-			cspSource: "",
-			postMessage: vi.fn((msg: unknown) => {
-				posted.push(msg);
-				return Promise.resolve(true);
-			}),
-			onDidReceiveMessage: vi.fn((h) => {
-				handler = h;
-				return { dispose: vi.fn() };
-			}),
-			asWebviewUri: vi.fn((uri: vscode.Uri) => uri),
-		},
-		visible: true,
-		show: vi.fn(),
-		onDidChangeVisibility: vi.fn(() => ({ dispose: vi.fn() })),
-		onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
-	};
+	const { view, hooks } = createMockWebviewView("coder.tasksPanel");
 
 	panel.resolveWebviewView(
-		webview,
+		view,
 		{} as vscode.WebviewViewResolveContext,
 		{} as vscode.CancellationToken,
 	);
@@ -164,19 +142,19 @@ function createHarness(): Harness {
 		panel,
 		client,
 		ui,
-		messages: () => [...posted],
+		messages: () => [...hooks.postedMessages],
 		request: async <P, R>(
 			def: RequestDef<P, R>,
 			...args: P extends void ? [] : [params: P]
 		) => {
 			const params = args[0];
 			const requestId = `req-${Date.now()}-${Math.random()}`;
-			handler?.({ requestId, method: def.method, params });
+			hooks.sendFromWebview({ requestId, method: def.method, params });
 
 			await vi.waitFor(
 				() => {
 					if (
-						!posted.some(
+						!hooks.postedMessages.some(
 							(m) => (m as { requestId?: string }).requestId === requestId,
 						)
 					) {
@@ -186,7 +164,7 @@ function createHarness(): Harness {
 				{ timeout: 1000 },
 			);
 
-			return posted.find(
+			return hooks.postedMessages.find(
 				(m) => (m as { requestId?: string }).requestId === requestId,
 			) as { success: boolean; data?: R; error?: string };
 		},
@@ -194,7 +172,7 @@ function createHarness(): Harness {
 			def: CommandDef<P>,
 			...args: P extends void ? [] : [params: P]
 		) => {
-			handler?.({ method: def.method, params: args[0] });
+			hooks.sendFromWebview({ method: def.method, params: args[0] });
 			await new Promise((r) => setTimeout(r, 10));
 		},
 	};

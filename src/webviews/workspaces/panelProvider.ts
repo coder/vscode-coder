@@ -65,11 +65,11 @@ export class WorkspacesPanelProvider
 {
 	public static readonly viewType = "coder.workspacesPanel";
 
-	private readonly extensionUri: vscode.Uri;
-	private readonly client: CoderApi;
-	private readonly logger: Logger;
-	private readonly store: WorkspaceStore;
-	private readonly openWorkspace: WorkspacesPanelOptions["openWorkspace"];
+	declare private readonly extensionUri: vscode.Uri;
+	declare private readonly client: CoderApi;
+	declare private readonly logger: Logger;
+	declare private readonly store: WorkspaceStore;
+	declare private readonly openWorkspace: WorkspacesPanelOptions["openWorkspace"];
 
 	private readonly requestHandlers = buildRequestHandlers(WorkspacesApi, {});
 	private readonly commandHandlers = buildCommandHandlers(WorkspacesApi, {
@@ -85,17 +85,7 @@ export class WorkspacesPanelProvider
 	private disposables: vscode.Disposable[] = [];
 
 	constructor(options: WorkspacesPanelOptions) {
-		this.extensionUri = options.extensionUri;
-		this.client = options.client;
-		this.logger = options.logger;
-		this.store = options.store;
-		this.openWorkspace = options.openWorkspace;
-	}
-
-	public refresh(): void {
-		this.store.refresh().catch((err: unknown) => {
-			this.logger.error("Failed to refresh workspaces", err);
-		});
+		Object.assign(this, options);
 	}
 
 	resolveWebviewView(

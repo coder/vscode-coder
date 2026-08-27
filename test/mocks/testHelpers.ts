@@ -803,6 +803,75 @@ export function createMockWebviewPanel(
 	return { panel, hooks };
 }
 
+/** Hooks to drive lifecycle and inspect messages on a mocked WebviewView. */
+export interface WebviewViewTestHooks {
+	/** Flip `view.visible` and fire `onDidChangeVisibility`. */
+	setVisible(visible: boolean): void;
+	fireDispose(): void;
+	/** Deliver a message as if the webview sent it. */
+	sendFromWebview(msg: unknown): void;
+	/** Every message the extension posted to the webview, oldest first. */
+	readonly postedMessages: readonly unknown[];
+	clearPostedMessages(): void;
+}
+
+/**
+ * Build a WebviewView for tests with real event emitters, so providers can
+ * register, dispose, and be driven through the hooks. Starts hidden; reveal
+ * it with `hooks.setVisible` once responses are staged.
+ */
+export function createMockWebviewView(viewType: string): {
+	view: vscode.WebviewView;
+	hooks: WebviewViewTestHooks;
+} {
+	const messageEmitter = new vscode.EventEmitter<unknown>();
+	const visibilityEmitter = new vscode.EventEmitter<void>();
+	const disposeEmitter = new vscode.EventEmitter<void>();
+
+	const postedMessages: unknown[] = [];
+	let visible = false;
+
+	const view: vscode.WebviewView = {
+		viewType,
+		webview: {
+			options: { enableScripts: false, localResourceRoots: [] },
+			html: "",
+			cspSource: "mock-csp",
+			onDidReceiveMessage: messageEmitter.event,
+			postMessage: (msg: unknown) => {
+				postedMessages.push(msg);
+				return Promise.resolve(true);
+			},
+			asWebviewUri: (uri: vscode.Uri) => uri,
+		},
+		get visible() {
+			return visible;
+		},
+		show: vi.fn(),
+		onDidChangeVisibility: visibilityEmitter.event,
+		onDidDispose: disposeEmitter.event,
+	};
+
+	const hooks: WebviewViewTestHooks = {
+		setVisible(next) {
+			visible = next;
+			visibilityEmitter.fire();
+		},
+		fireDispose() {
+			disposeEmitter.fire();
+		},
+		sendFromWebview(msg) {
+			messageEmitter.fire(msg);
+		},
+		postedMessages,
+		clearPostedMessages() {
+			postedMessages.length = 0;
+		},
+	};
+
+	return { view, hooks };
+}
+
 export function createMockStream(
 	content: string,
 	options: {

@@ -23,13 +23,6 @@ const PENDING: AgentMetadataState = {
 	loading: true,
 };
 
-export interface AgentMetadataTrackerOptions {
-	/** How long a released socket stays open, in case it is wanted again. */
-	readonly lingerMs: number;
-}
-
-const DEFAULT_OPTIONS: AgentMetadataTrackerOptions = { lingerMs: 15_000 };
-
 interface WatchedAgent {
 	/** Absent while the socket is opening, or after it failed to open. */
 	watcher?: AgentMetadataWatcher;
@@ -54,7 +47,6 @@ function needsSocket(watched: WatchedAgent | undefined): boolean {
 export class AgentMetadataTracker implements vscode.Disposable {
 	private readonly changeEmitter = new vscode.EventEmitter<AgentMetadataMap>();
 	private readonly watched = new Map<AgentId, WatchedAgent>();
-	private readonly options: AgentMetadataTrackerOptions;
 
 	public readonly onDidChange = this.changeEmitter.event;
 
@@ -62,10 +54,9 @@ export class AgentMetadataTracker implements vscode.Disposable {
 
 	constructor(
 		private readonly client: CoderApi,
-		options: Partial<AgentMetadataTrackerOptions> = {},
-	) {
-		this.options = { ...DEFAULT_OPTIONS, ...options };
-	}
+		/** How long a released socket stays open, in case it is wanted again. */
+		private readonly lingerMs = 15_000,
+	) {}
 
 	/** The latest report of every watched agent, keyed by agent id. */
 	public get metadata(): AgentMetadataMap {
@@ -129,10 +120,7 @@ export class AgentMetadataTracker implements vscode.Disposable {
 		if (watched.closing) {
 			return false;
 		}
-		watched.closing = setTimeout(
-			() => this.close(agentId),
-			this.options.lingerMs,
-		);
+		watched.closing = setTimeout(() => this.close(agentId), this.lingerMs);
 		return true;
 	}
 

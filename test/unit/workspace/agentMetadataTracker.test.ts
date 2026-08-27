@@ -20,9 +20,10 @@ const REPORTED = { metadata: [agentMetadata()], error: null, loading: false };
 
 function setup() {
 	const client = new MockWorkspacesClient();
-	const tracker = new AgentMetadataTracker(client as unknown as CoderApi, {
-		lingerMs: LINGER_MS,
-	});
+	const tracker = new AgentMetadataTracker(
+		client as unknown as CoderApi,
+		LINGER_MS,
+	);
 	const reports: AgentMetadataMap[] = [];
 	tracker.onDidChange((metadata) => reports.push(metadata));
 	return {
