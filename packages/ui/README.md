@@ -71,6 +71,24 @@ from the trigger corner and fade out on close, with Radix holding unmount
 until the exit animation ends. High contrast, `forced-colors`, and
 `prefers-reduced-motion` are handled.
 
+## Form controls
+
+`Input`, `Textarea`, `Checkbox`, `Select`, and `Field`/`Label` cover forms
+the way VS Code's own settings editor does: text field, number field,
+checkbox, and dropdown. Richer shapes map onto that vocabulary instead of
+getting bespoke widgets — a switch renders as `Checkbox`, a radio group or
+slider-bounded number as `Select` or a number `Input`, a multi-select as
+stacked `Checkbox`es inside a `Field`.
+
+Controls are controlled-only and follow the `SearchInput` precedent:
+`value` plus `onChange(next)`, native-element props passed through. `Select`
+wraps `@radix-ui/react-select` and keeps Radix's compound parts as flat
+named exports (`SelectTrigger`, `SelectItem`, …) with Radix naming
+(`onValueChange`), like the menus. A password `Input` shows a reveal toggle
+styled like the find widget's in-field option buttons. `Field` lays out a
+semibold `Label`, the control, and muted description or error text, like a
+settings-editor entry.
+
 ## Known gaps
 
 - Overlay shadows are darker than native in dark themes: menus in VS Code
@@ -79,7 +97,8 @@ until the exit animation ends. High contrast, `forced-colors`, and
 - Keybinding hints show the contributed defaults the consumer passes, not
   user remaps: VS Code exposes no API for extensions to resolve a command's
   effective keybinding.
-- List/selection-row tokens are deferred to the Tree suite (#1037).
+- List/selection-row tokens are deferred to the Tree suite (#1037); the
+  `--ui-list-focus-*` rungs cover only the select dropdown's row highlight.
 
 ## Codicons
 
@@ -91,7 +110,7 @@ without a generated source file or a runtime list in the public API.
 
 ESLint rejects `@repo/*` imports and relative cross-package imports in
 `packages/ui` TypeScript and TSX source. `react` remains a peer dependency;
-the only runtime dependencies are the Radix overlay primitives and
+the only runtime dependencies are the Radix primitives and
 `@vscode/codicons`. Public consumers import from the package root or its
 declared CSS exports.
 

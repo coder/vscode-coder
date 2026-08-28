@@ -1,8 +1,5 @@
 export { Button, type ButtonProps } from "./components/Button/Button";
-export {
-	Checkbox,
-	type CheckboxProps,
-} from "./components/Checkbox/Checkbox";
+export { Checkbox, type CheckboxProps } from "./components/Checkbox/Checkbox";
 export {
 	EmptyState,
 	type EmptyStateProps,
@@ -49,10 +46,7 @@ export {
 	type StatusPillProps,
 	type StatusPillTone,
 } from "./components/StatusPill/StatusPill";
-export {
-	Textarea,
-	type TextareaProps,
-} from "./components/Textarea/Textarea";
+export { Textarea, type TextareaProps } from "./components/Textarea/Textarea";
 export type { CodiconName } from "./codicons";
 export {
 	ContextMenu,

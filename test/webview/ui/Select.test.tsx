@@ -71,7 +71,9 @@ describe("Select", () => {
 	});
 
 	it("does not open when disabled", () => {
-		render(<RegionSelect onValueChange={vi.fn()} value="eu-helsinki" disabled />);
+		render(
+			<RegionSelect onValueChange={vi.fn()} value="eu-helsinki" disabled />,
+		);
 		const trigger = screen.getByRole("combobox", { name: "Region" });
 		expect(trigger).toBeDisabled();
 		fireEvent.keyDown(trigger, { key: "Enter" });

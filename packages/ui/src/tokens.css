@@ -95,7 +95,10 @@
 		--vscode-dropdown-background,
 		var(--ui-input-background)
 	);
-	--ui-dropdown-foreground: var(--vscode-dropdown-foreground, var(--ui-foreground));
+	--ui-dropdown-foreground: var(
+		--vscode-dropdown-foreground,
+		var(--ui-foreground)
+	);
 	--ui-dropdown-border: var(
 		--vscode-dropdown-border,
 		var(--vscode-contrastBorder, transparent)
