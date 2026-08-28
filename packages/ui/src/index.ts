@@ -7,6 +7,12 @@ export {
 	ErrorState,
 	type ErrorStateProps,
 } from "./components/ErrorState/ErrorState";
+export {
+	Field,
+	type FieldProps,
+	Label,
+	type LabelProps,
+} from "./components/Field/Field";
 export { Icon, type IconProps } from "./components/Icon/Icon";
 export {
 	IconButton,
