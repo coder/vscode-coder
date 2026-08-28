@@ -1,6 +1,7 @@
 import {
 	VscodeBadge,
 	VscodeButton,
+	VscodeCheckbox,
 	VscodeContextMenu,
 	VscodeIcon,
 	VscodeProgressBar,
@@ -12,6 +13,7 @@ import {
 import { useState } from "react";
 
 import { Button } from "./components/Button/Button";
+import { Checkbox } from "./components/Checkbox/Checkbox";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -166,6 +168,15 @@ const Parity = (): React.JSX.Element => (
 					<VscodeButton secondary>Cancel</VscodeButton>
 				</>
 			}
+		/>
+		<Row
+			label="Checkbox"
+			ours={
+				<Checkbox checked onChange={() => undefined}>
+					Start on connect
+				</Checkbox>
+			}
+			reference={<VscodeCheckbox label="Start on connect" checked />}
 		/>
 		<Row
 			label="Link"

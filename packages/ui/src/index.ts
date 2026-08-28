@@ -1,5 +1,9 @@
 export { Button, type ButtonProps } from "./components/Button/Button";
 export {
+	Checkbox,
+	type CheckboxProps,
+} from "./components/Checkbox/Checkbox";
+export {
 	EmptyState,
 	type EmptyStateProps,
 } from "./components/EmptyState/EmptyState";

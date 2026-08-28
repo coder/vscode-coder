@@ -79,6 +79,18 @@
 		var(--vscode-contrastBorder, transparent)
 	);
 	--ui-input-placeholder-foreground: var(--vscode-input-placeholderForeground);
+	--ui-checkbox-background: var(
+		--vscode-checkbox-background,
+		var(--ui-input-background)
+	);
+	--ui-checkbox-foreground: var(
+		--vscode-checkbox-foreground,
+		var(--ui-input-foreground)
+	);
+	--ui-checkbox-border: var(
+		--vscode-checkbox-border,
+		var(--vscode-contrastBorder, var(--ui-input-border))
+	);
 	--ui-button-background: var(--vscode-button-background, var(--ui-background));
 	--ui-button-foreground: var(--vscode-button-foreground, var(--ui-foreground));
 	--ui-button-border: var(
