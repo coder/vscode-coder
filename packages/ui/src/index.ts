@@ -31,6 +31,10 @@ export {
 	type StatusPillProps,
 	type StatusPillTone,
 } from "./components/StatusPill/StatusPill";
+export {
+	Textarea,
+	type TextareaProps,
+} from "./components/Textarea/Textarea";
 export type { CodiconName } from "./codicons";
 export {
 	ContextMenu,

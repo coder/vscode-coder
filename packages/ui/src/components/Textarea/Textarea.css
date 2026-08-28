@@ -1,0 +1,29 @@
+.ui-textarea {
+	box-sizing: border-box;
+	display: block;
+	width: 100%;
+	min-height: 60px;
+	padding: 4px 6px;
+	font: inherit;
+	color: var(--ui-input-foreground);
+	background: var(--ui-input-background);
+	border: 1px solid var(--ui-input-border);
+	border-radius: var(--ui-radius-small);
+	outline: 0;
+	resize: vertical;
+}
+
+.ui-textarea:focus {
+	border-color: var(--ui-focus-border);
+}
+
+.ui-textarea::placeholder {
+	color: var(--ui-input-placeholder-foreground);
+	opacity: 1;
+}
+
+.ui-textarea:disabled {
+	opacity: var(--ui-disabled-opacity);
+	cursor: not-allowed;
+	resize: none;
+}

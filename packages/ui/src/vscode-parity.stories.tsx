@@ -5,6 +5,7 @@ import {
 	VscodeIcon,
 	VscodeProgressBar,
 	VscodeProgressRing,
+	VscodeTextarea,
 	VscodeTextfield,
 	VscodeToolbarButton,
 } from "@vscode-elements/react-elements";
@@ -25,6 +26,7 @@ import { ProgressBar } from "./components/ProgressBar/ProgressBar";
 import { SearchInput } from "./components/SearchInput/SearchInput";
 import { Spinner } from "./components/Spinner/Spinner";
 import { StatusPill } from "./components/StatusPill/StatusPill";
+import { Textarea } from "./components/Textarea/Textarea";
 import { PIXEL_ALL_THEMES } from "./storybook";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -129,6 +131,23 @@ const Parity = (): React.JSX.Element => (
 			}
 			reference={
 				<VscodeTextfield value="us-pittsburgh" style={{ width: "180px" }} />
+			}
+		/>
+		<Row
+			label="Textarea"
+			ours={
+				<Textarea
+					value={"#!/bin/sh\necho hello"}
+					onChange={() => undefined}
+					aria-label="Init script"
+					style={{ width: "180px" }}
+				/>
+			}
+			reference={
+				<VscodeTextarea
+					value={"#!/bin/sh\necho hello"}
+					style={{ width: "180px" }}
+				/>
 			}
 		/>
 		<Row
