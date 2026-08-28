@@ -12,6 +12,7 @@ export {
 	IconButton,
 	type IconButtonProps,
 } from "./components/IconButton/IconButton";
+export { Input, type InputProps } from "./components/Input/Input";
 export {
 	LoadingState,
 	type LoadingStateProps,

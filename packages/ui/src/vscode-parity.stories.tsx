@@ -20,6 +20,7 @@ import {
 	DropdownMenuTrigger,
 } from "./components/DropdownMenu/DropdownMenu";
 import { IconButton } from "./components/IconButton/IconButton";
+import { Input } from "./components/Input/Input";
 import { ProgressBar } from "./components/ProgressBar/ProgressBar";
 import { SearchInput } from "./components/SearchInput/SearchInput";
 import { Spinner } from "./components/Spinner/Spinner";
@@ -114,6 +115,20 @@ const Parity = (): React.JSX.Element => (
 				>
 					<VscodeIcon slot="content-before" name="search" />
 				</VscodeTextfield>
+			}
+		/>
+		<Row
+			label="Input"
+			ours={
+				<Input
+					value="us-pittsburgh"
+					onChange={() => undefined}
+					aria-label="Region"
+					style={{ width: "180px" }}
+				/>
+			}
+			reference={
+				<VscodeTextfield value="us-pittsburgh" style={{ width: "180px" }} />
 			}
 		/>
 		<Row

@@ -1,0 +1,48 @@
+.ui-input {
+	justify-content: flex-start;
+	width: 100%;
+	height: 26px;
+	color: var(--ui-input-foreground);
+	background: var(--ui-input-background);
+	border: 1px solid var(--ui-input-border);
+	border-radius: var(--ui-radius-small);
+}
+
+.ui-input:focus-within {
+	border-color: var(--ui-focus-border);
+}
+
+.ui-input__control {
+	min-width: 0;
+	flex: 1;
+	padding: 0 6px;
+	color: inherit;
+	background: transparent;
+	border: 0;
+	outline: 0;
+	font: inherit;
+}
+
+.ui-input__control::placeholder {
+	color: var(--ui-input-placeholder-foreground);
+	opacity: 1;
+}
+
+/* Native VS Code number fields are plain inputs without spinners */
+.ui-input__control::-webkit-inner-spin-button,
+.ui-input__control::-webkit-outer-spin-button {
+	display: none;
+}
+
+.ui-input__reveal {
+	flex: none;
+	margin-inline-end: 1px;
+}
+
+.ui-input--disabled {
+	opacity: var(--ui-disabled-opacity);
+}
+
+.ui-input__control:disabled {
+	cursor: not-allowed;
+}
