@@ -91,6 +91,30 @@
 		--vscode-checkbox-border,
 		var(--vscode-contrastBorder, var(--ui-input-border))
 	);
+	--ui-dropdown-background: var(
+		--vscode-dropdown-background,
+		var(--ui-input-background)
+	);
+	--ui-dropdown-foreground: var(--vscode-dropdown-foreground, var(--ui-foreground));
+	--ui-dropdown-border: var(
+		--vscode-dropdown-border,
+		var(--vscode-contrastBorder, transparent)
+	);
+	--ui-dropdown-list-background: var(
+		--vscode-dropdown-listBackground,
+		var(--ui-dropdown-background)
+	);
+	/* Native select dropdowns highlight rows with the quick input list colors
+	   (selectBoxStyles); the outline only resolves in high contrast. */
+	--ui-list-focus-background: var(
+		--vscode-quickInputList-focusBackground,
+		var(--vscode-list-activeSelectionBackground, transparent)
+	);
+	--ui-list-focus-foreground: var(
+		--vscode-quickInputList-focusForeground,
+		var(--vscode-list-activeSelectionForeground, var(--ui-dropdown-foreground))
+	);
+	--ui-list-focus-outline: var(--vscode-contrastActiveBorder, transparent);
 	--ui-button-background: var(--vscode-button-background, var(--ui-background));
 	--ui-button-foreground: var(--vscode-button-foreground, var(--ui-foreground));
 	--ui-button-border: var(

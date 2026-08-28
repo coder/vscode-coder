@@ -35,6 +35,14 @@ export {
 	SearchInput,
 	type SearchInputProps,
 } from "./components/SearchInput/SearchInput";
+export {
+	Select,
+	SelectContent,
+	SelectItem,
+	type SelectItemProps,
+	SelectTrigger,
+	SelectValue,
+} from "./components/Select/Select";
 export { Spinner, type SpinnerProps } from "./components/Spinner/Spinner";
 export {
 	StatusPill,

@@ -4,8 +4,10 @@ import {
 	VscodeCheckbox,
 	VscodeContextMenu,
 	VscodeIcon,
+	VscodeOption,
 	VscodeProgressBar,
 	VscodeProgressRing,
+	VscodeSingleSelect,
 	VscodeTextarea,
 	VscodeTextfield,
 	VscodeToolbarButton,
@@ -26,6 +28,13 @@ import { IconButton } from "./components/IconButton/IconButton";
 import { Input } from "./components/Input/Input";
 import { ProgressBar } from "./components/ProgressBar/ProgressBar";
 import { SearchInput } from "./components/SearchInput/SearchInput";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "./components/Select/Select";
 import { Spinner } from "./components/Spinner/Spinner";
 import { StatusPill } from "./components/StatusPill/StatusPill";
 import { Textarea } from "./components/Textarea/Textarea";
@@ -167,6 +176,28 @@ const Parity = (): React.JSX.Element => (
 					<VscodeButton>Try again</VscodeButton>
 					<VscodeButton secondary>Cancel</VscodeButton>
 				</>
+			}
+		/>
+		<Row
+			label="Select"
+			ours={
+				<Select value="us-pittsburgh" onValueChange={() => undefined}>
+					<SelectTrigger aria-label="Region" style={{ width: "180px" }}>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="us-pittsburgh">US East (Pittsburgh)</SelectItem>
+						<SelectItem value="eu-helsinki">EU North (Helsinki)</SelectItem>
+					</SelectContent>
+				</Select>
+			}
+			reference={
+				<VscodeSingleSelect style={{ width: "180px" }}>
+					<VscodeOption value="us-pittsburgh" selected>
+						US East (Pittsburgh)
+					</VscodeOption>
+					<VscodeOption value="eu-helsinki">EU North (Helsinki)</VscodeOption>
+				</VscodeSingleSelect>
 			}
 		/>
 		<Row

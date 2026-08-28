@@ -2,6 +2,7 @@ packages:
   - packages/*
 
 catalog:
+  "@radix-ui/react-select": ^2.3.7
   "@rolldown/plugin-babel": ^0.2.3
   "@storybook/addon-a11y": ^10.5.10
   "@storybook/addon-docs": ^10.5.10
