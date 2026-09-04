@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 
 import { PIXEL_ALL_THEMES } from "#storybook";
@@ -11,21 +11,37 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const FieldStates = (): React.JSX.Element => {
 	const [region, setRegion] = useState("us-pittsburgh");
+	const regionId = useId();
+	const coresId = useId();
 	return (
 		<div style={{ display: "grid", gap: "16px", width: "260px" }}>
 			<Field
 				label="Region"
-				htmlFor="region"
+				htmlFor={regionId}
 				description="Deploy the workspace close to you."
+				descriptionId={`${regionId}-description`}
 			>
-				<Input id="region" value={region} onChange={setRegion} />
+				<Input
+					id={regionId}
+					value={region}
+					onChange={setRegion}
+					aria-describedby={`${regionId}-description`}
+				/>
 			</Field>
 			<Field
 				label="CPU cores"
-				htmlFor="cores"
+				htmlFor={coresId}
 				error="Value must be between 1 and 16."
+				errorId={`${coresId}-error`}
 			>
-				<Input id="cores" type="number" value="32" onChange={() => undefined} />
+				<Input
+					id={coresId}
+					type="number"
+					value="32"
+					onChange={() => undefined}
+					aria-describedby={`${coresId}-error`}
+					aria-invalid="true"
+				/>
 			</Field>
 		</div>
 	);
@@ -44,5 +60,12 @@ export const States: Story = {
 		const canvas = within(canvasElement);
 		await userEvent.click(canvas.getByText("Region"));
 		await expect(canvas.getByLabelText("Region")).toHaveFocus();
+		await expect(canvas.getByLabelText("Region")).toHaveAccessibleDescription(
+			"Deploy the workspace close to you.",
+		);
+		await expect(
+			canvas.getByLabelText("CPU cores"),
+		).toHaveAccessibleDescription("Value must be between 1 and 16.");
+		await expect(canvas.getByLabelText("CPU cores")).toBeInvalid();
 	},
 };

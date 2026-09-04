@@ -26,6 +26,64 @@ describe("Field", () => {
 		expect(screen.getByText("Pick one.")).toHaveClass("ui-field__description");
 	});
 
+	it("associates description and error text with a nested native control", () => {
+		render(
+			<Field
+				label="Cores"
+				htmlFor="cores"
+				description="Choose between 1 and 16."
+				descriptionId="cores-description"
+				error="Out of range."
+				errorId="cores-error"
+			>
+				<div>
+					<input
+						id="cores"
+						aria-describedby="cores-description cores-error"
+						aria-invalid="true"
+					/>
+				</div>
+			</Field>,
+		);
+		const control = screen.getByRole("textbox", { name: "Cores" });
+		expect(control).toHaveAccessibleDescription(
+			"Choose between 1 and 16. Out of range.",
+		);
+		expect(control).toBeInvalid();
+	});
+
+	it("allows the consumer to remove an error without losing the description", () => {
+		const renderField = (invalid: boolean): React.JSX.Element => (
+			<Field
+				label="Region"
+				htmlFor="region"
+				description="Pick one."
+				descriptionId="region-description"
+				error={invalid ? "Unavailable." : undefined}
+				errorId="region-error"
+			>
+				<Input
+					id="region"
+					value=""
+					onChange={vi.fn()}
+					aria-describedby={
+						invalid ? "region-description region-error" : "region-description"
+					}
+					aria-invalid={invalid}
+				/>
+			</Field>
+		);
+		const { rerender } = render(renderField(true));
+		const control = screen.getByRole("textbox", { name: "Region" });
+		expect(control).toHaveAccessibleDescription("Pick one. Unavailable.");
+		expect(control).toBeInvalid();
+
+		rerender(renderField(false));
+		expect(control).toHaveAccessibleDescription("Pick one.");
+		expect(control).toBeValid();
+		expect(screen.queryByText("Unavailable.")).not.toBeInTheDocument();
+	});
+
 	it("renders error text", () => {
 		render(
 			<Field label="Cores" error="Out of range.">

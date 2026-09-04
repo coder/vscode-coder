@@ -12,7 +12,11 @@ export function Label({ className, ...props }: LabelProps): React.JSX.Element {
 
 export interface FieldProps extends ComponentProps<"div"> {
 	description?: ReactNode;
+	/** ID for the description; associate it with the control via aria-describedby. */
+	descriptionId?: string;
 	error?: ReactNode;
+	/** ID for the error; the consumer owns aria-describedby and aria-invalid. */
+	errorId?: string;
 	htmlFor?: string;
 	label?: ReactNode;
 }
@@ -23,7 +27,9 @@ export function Field({
 	label,
 	htmlFor,
 	description,
+	descriptionId,
 	error,
+	errorId,
 	className,
 	children,
 	...props
@@ -33,9 +39,15 @@ export function Field({
 			{label !== undefined && <Label htmlFor={htmlFor}>{label}</Label>}
 			{children}
 			{description !== undefined && (
-				<div className="ui-field__description">{description}</div>
+				<div id={descriptionId} className="ui-field__description">
+					{description}
+				</div>
 			)}
-			{error !== undefined && <div className="ui-field__error">{error}</div>}
+			{error !== undefined && (
+				<div id={errorId} className="ui-field__error">
+					{error}
+				</div>
+			)}
 		</div>
 	);
 }

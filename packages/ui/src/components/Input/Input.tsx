@@ -47,7 +47,7 @@ export function Input({
 		>
 			<input
 				{...props}
-				type={revealed ? "text" : type}
+				type={type === "password" && revealed ? "text" : type}
 				value={value}
 				onChange={handleChange}
 				disabled={disabled}

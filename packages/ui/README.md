@@ -80,14 +80,58 @@ getting bespoke widgets — a switch renders as `Checkbox`, a radio group or
 slider-bounded number as `Select` or a number `Input`, a multi-select as
 stacked `Checkbox`es inside a `Field`.
 
-Controls are controlled-only and follow the `SearchInput` precedent:
-`value` plus `onChange(next)`, native-element props passed through. `Select`
-wraps `@radix-ui/react-select` and keeps Radix's compound parts as flat
-named exports (`SelectTrigger`, `SelectItem`, …) with Radix naming
-(`onValueChange`), like the menus. A password `Input` shows a reveal toggle
-styled like the find widget's in-field option buttons. `Field` lays out a
-semibold `Label`, the control, and muted description or error text, like a
-settings-editor entry.
+`Input` and `Textarea` are controlled with `value` and `onChange(next)`;
+`Checkbox` uses `checked` and `onChange(next)`. Native-element props and
+refs pass through to the control; `className` and `style` target the root.
+`Select` wraps `@radix-ui/react-select` and preserves its controlled
+(`value` / `onValueChange`) and uncontrolled (`defaultValue`) modes, with
+flat compound exports (`SelectTrigger`, `SelectItem`, …), like the menus.
+A password `Input` shows a reveal toggle styled like the find widget's
+in-field option buttons.
+
+### Field composition
+
+`Field` lays out a semibold `Label`, children, description, and error text.
+It does not clone children or require a form context: native elements,
+these controls, and third-party controls work the same way. Connect
+`htmlFor` to the control's `id`, and pass `descriptionId` / `errorId` to
+associate the rendered text using `aria-describedby`. The consumer owns
+validation, `aria-invalid`, and when to announce errors.
+
+Use React's `useId` in reusable forms to avoid duplicate IDs:
+
+```tsx
+const id = useId();
+const descriptionId = `${id}-description`;
+const errorId = `${id}-error`;
+const invalid = Boolean(error);
+
+<Field
+	label="Region"
+	htmlFor={id}
+	description="Deploy the workspace close to you."
+	descriptionId={descriptionId}
+	error={error}
+	errorId={errorId}
+>
+	<Input
+		id={id}
+		value={region}
+		onChange={setRegion}
+		aria-describedby={invalid ? `${descriptionId} ${errorId}` : descriptionId}
+		aria-invalid={invalid}
+	/>
+</Field>;
+```
+
+Apply the same attributes to `SelectTrigger` for a dropdown. For a group
+of checkboxes, use a native `fieldset` with a `legend` for the group name
+rather than pointing a single label at several controls.
+
+This follows the explicit label/helper-text relationships documented by
+MUI and shadcn's separation of field layout from form state. Radix remains
+responsible for Select state and keyboard behavior; no additional form
+library is required.
 
 ## Known gaps
 

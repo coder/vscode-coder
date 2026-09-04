@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { Input } from "@repo/ui";
 
+import type { SubmitEvent } from "react";
+
 describe("Input", () => {
 	it("reports changes without owning the value", () => {
 		const onChange = vi.fn();
@@ -52,6 +54,44 @@ describe("Input", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "Hide value" }));
 		expect(input).toHaveAttribute("type", "password");
+	});
+
+	it("honors a changed input type after revealing a password", () => {
+		const onChange = vi.fn();
+		const { rerender } = render(
+			<Input
+				value="8"
+				onChange={onChange}
+				type="password"
+				aria-label="Value"
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: "Show value" }));
+
+		rerender(
+			<Input value="8" onChange={onChange} type="number" aria-label="Value" />,
+		);
+		expect(screen.getByRole("spinbutton", { name: "Value" })).toHaveValue(8);
+		expect(screen.queryByRole("button")).not.toBeInTheDocument();
+	});
+
+	it("does not submit a form when revealing a password", () => {
+		const onSubmit = vi.fn((event: SubmitEvent<HTMLFormElement>) =>
+			event.preventDefault(),
+		);
+		render(
+			<form onSubmit={onSubmit}>
+				<Input
+					value="secret"
+					onChange={vi.fn()}
+					type="password"
+					aria-label="Token"
+				/>
+			</form>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: "Show value" }));
+		expect(onSubmit).not.toHaveBeenCalled();
+		expect(screen.getByLabelText("Token")).toHaveValue("secret");
 	});
 
 	it("disables the reveal toggle with the input", () => {
