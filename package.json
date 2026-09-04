@@ -215,6 +215,12 @@
 					"minimum": 0,
 					"default": 250
 				},
+				"coder.connectionLogBuffer.size": {
+					"markdownDescription": "Number of connection debug log lines to keep in memory below the current log level. On a connection failure they are written out so a support bundle captures the detail leading up to it, without debug logging enabled beforehand. Set to `0` to disable. The buffer is lost on a hard kill or out-of-memory event.",
+					"type": "number",
+					"minimum": 0,
+					"default": 1000
+				},
 				"coder.httpClientLogLevel": {
 					"markdownDescription": "Controls the verbosity of HTTP client logging. This affects what details are logged for each HTTP request and response.",
 					"type": "string",
