@@ -67,6 +67,9 @@ export {
 	type KeybindingPlatform,
 } from "./keybinding";
 export {
+	type HoverDelegate,
+	HoverDelegateScope,
+	type HoverTarget,
 	Tooltip,
 	type TooltipProps,
 	TooltipProvider,
