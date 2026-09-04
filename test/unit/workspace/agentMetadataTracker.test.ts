@@ -1,12 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	onTestFinished,
+	vi,
+} from "vitest";
 
 import { AgentMetadataTracker } from "@/workspace/agentMetadataTracker";
 
 import { agentMetadata } from "@repo/mocks";
 
-import { MockWorkspacesClient } from "../../mocks/testHelpers";
-
-import type { CoderApi } from "@/api/coderApi";
+import { MockEventStream, MockWorkspacesClient } from "../../mocks/testHelpers";
 
 import type { AgentMetadataMap, AgentMetadataState } from "@repo/shared";
 
@@ -20,10 +26,8 @@ const REPORTED = { metadata: [agentMetadata()], error: null, loading: false };
 
 function setup() {
 	const client = new MockWorkspacesClient();
-	const tracker = new AgentMetadataTracker(
-		client as unknown as CoderApi,
-		LINGER_MS,
-	);
+	const tracker = new AgentMetadataTracker(client, LINGER_MS);
+	onTestFinished(() => tracker.dispose());
 	const reports: AgentMetadataMap[] = [];
 	tracker.onDidChange((metadata) => reports.push(metadata));
 	return {
@@ -221,6 +225,111 @@ describe("AgentMetadataTracker", () => {
 			await opening;
 
 			expect(client.metadataStreams.get("agent-1")?.close).toHaveBeenCalled();
+			expect(tracker.metadata).toEqual({});
+		});
+	});
+	describe("races and session cleanup", () => {
+		it("joins overlapping opens for the same agent", async () => {
+			const { tracker, opened } = setup();
+			const pending = Promise.withResolvers<MockAgentStream>();
+			opened.mockReturnValueOnce(pending.promise);
+			const first = tracker.setWatched(["agent-1"]);
+			const second = tracker.setWatched(["agent-1"]);
+			expect(opened).toHaveBeenCalledOnce();
+			pending.resolve(new MockEventStream());
+			await Promise.all([first, second]);
+		});
+
+		it.each(["resolve", "reject"] as const)(
+			"ignores an expired entry's open when it %ss",
+			async (outcome) => {
+				const { tracker, opened, stream } = setup();
+				const pending = Promise.withResolvers<MockAgentStream>();
+				opened.mockReturnValueOnce(pending.promise);
+				const stale = tracker.setWatched(["agent-1"]);
+				await tracker.setWatched([]);
+				vi.advanceTimersByTime(LINGER_MS);
+				await tracker.setWatched(["agent-1"]);
+				const current = stream("agent-1")!;
+				current.pushMessage({ data: [agentMetadata()] });
+				const old = new MockEventStream<{
+					data: Array<ReturnType<typeof agentMetadata>>;
+				}>();
+				if (outcome === "resolve") pending.resolve(old);
+				else pending.reject(new Error("stale error"));
+				await stale;
+				if (outcome === "resolve") expect(old.close).toHaveBeenCalledOnce();
+				expect(current.close).not.toHaveBeenCalled();
+				expect(tracker.metadata).toEqual({ "agent-1": REPORTED });
+			},
+		);
+
+		it("ignores a replaced socket's reports and synchronous close errors", async () => {
+			const { tracker, stream } = setup();
+			await tracker.setWatched(["agent-1"]);
+			const old = stream("agent-1")!;
+			old.emit("close", { code: 1006, reason: "gone", wasClean: false });
+			old.close.mockImplementation(() => old.pushError(new Error("closing")));
+			await tracker.setWatched(["agent-1"]);
+			stream("agent-1")!.pushMessage({ data: [agentMetadata()] });
+			old.pushError(new Error("stale"));
+			expect(tracker.metadata).toEqual({ "agent-1": REPORTED });
+		});
+
+		it("replays data received before the tracker subscribes", async () => {
+			const { tracker, opened } = setup();
+			const socket = new MockEventStream<{
+				data: Array<ReturnType<typeof agentMetadata>>;
+			}>();
+			const add = socket.addEventListener.bind(socket);
+			vi.spyOn(socket, "addEventListener").mockImplementation(
+				(event, listener) => {
+					add(event, listener);
+					if (event === "message")
+						socket.pushMessage({ data: [agentMetadata()] });
+				},
+			);
+			opened.mockResolvedValueOnce(socket);
+			await tracker.setWatched(["agent-1"]);
+			expect(tracker.metadata).toEqual({ "agent-1": REPORTED });
+		});
+
+		it("clears active and lingering sockets immediately and can watch again", async () => {
+			const { tracker, stream, reports, opened } = setup();
+			await tracker.setWatched(["agent-1", "agent-2"]);
+			const first = stream("agent-1")!;
+			const second = stream("agent-2")!;
+			await tracker.setWatched(["agent-1"]);
+			tracker.clear();
+			expect(first.close).toHaveBeenCalledOnce();
+			expect(second.close).toHaveBeenCalledOnce();
+			expect(reports.at(-1)).toEqual({});
+			await tracker.setWatched(["agent-1"]);
+			expect(opened).toHaveBeenCalledTimes(3);
+			expect(tracker.metadata).toEqual({ "agent-1": PENDING });
+		});
+
+		it("drops an opening socket after clearing even if the same agent is watched again", async () => {
+			const { tracker, opened } = setup();
+			const pending = Promise.withResolvers<MockAgentStream>();
+			opened.mockReturnValueOnce(pending.promise);
+			const stale = tracker.setWatched(["agent-1"]);
+			tracker.clear();
+			await tracker.setWatched(["agent-1"]);
+			const socket = new MockEventStream<{
+				data: Array<ReturnType<typeof agentMetadata>>;
+			}>();
+			pending.resolve(socket);
+			await stale;
+			expect(socket.close).toHaveBeenCalledOnce();
+			expect(tracker.metadata).toEqual({ "agent-1": PENDING });
+		});
+
+		it("does not open or retain agents after disposal", async () => {
+			const { tracker, opened } = setup();
+			tracker.dispose();
+			await tracker.setWatched(["agent-1"]);
+			expect(opened).not.toHaveBeenCalled();
 			expect(tracker.metadata).toEqual({});
 		});
 	});

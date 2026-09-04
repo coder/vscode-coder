@@ -9,7 +9,12 @@ import {
 	setActiveColorTheme,
 } from "../../../mocks/testHelpers";
 
-import { createPanel, DEPLOYMENT_URL, disposeHarnesses } from "./harness";
+import {
+	cancelledToken,
+	createPanel,
+	DEPLOYMENT_URL,
+	disposeHarnesses,
+} from "./harness";
 
 /** A workspace of "alice" with a single "main" agent. */
 const aliceWorkspace = () =>
@@ -19,6 +24,14 @@ const aliceWorkspace = () =>
 		owner_name: "alice",
 		agents: [agent({ id: "agent-1", name: "main" })],
 	});
+
+/** The whole state, as the panel replays it. */
+const wholeState = (workspaces: unknown[]) => ({
+	capabilities: { authenticated: true, filters: ["mine", "shared"] },
+	workspaces: { filter: "mine", workspaces, loading: false },
+	metadata: {},
+	error: null,
+});
 
 describe("WorkspacesPanelProvider", () => {
 	beforeEach(() => {
@@ -46,16 +59,7 @@ describe("WorkspacesPanelProvider", () => {
 		await h.send(WorkspacesApi.ready);
 
 		expect(h.pushedUpdates()).toEqual([
-			{
-				capabilities: { authenticated: true, filters: ["mine", "shared"] },
-				workspaces: {
-					filter: "mine",
-					workspaces: [expect.objectContaining({ id: "workspace-1" })],
-					loading: false,
-				},
-				metadata: {},
-				error: null,
-			},
+			wholeState([expect.objectContaining({ id: "workspace-1" })]),
 		]);
 	});
 
@@ -72,7 +76,7 @@ describe("WorkspacesPanelProvider", () => {
 		expect(updates.at(-1)?.workspaces?.workspaces).toHaveLength(1);
 	});
 
-	it("pushes fresh workspaces on reveal without resending the rest", async () => {
+	it("replays the cached state on reveal, then the fresh list", async () => {
 		const h = createPanel();
 		await h.show();
 		h.setVisible(false);
@@ -82,7 +86,9 @@ describe("WorkspacesPanelProvider", () => {
 		h.setVisible(true);
 		await h.store.settled;
 
+		// The rebuilt webview renders what the store had before the fetch lands.
 		expect(h.pushedUpdates()).toEqual([
+			wholeState([]),
 			{
 				workspaces: {
 					filter: "mine",
@@ -93,9 +99,25 @@ describe("WorkspacesPanelProvider", () => {
 		]);
 	});
 
-	it("pushes nothing when the color theme changes", async () => {
+	it("replays the whole state when the color theme changes", async () => {
+		const h = createPanel();
+		h.client.respondOnce([aliceWorkspace()]);
+		await h.show();
+		h.clearPushes();
+
+		setActiveColorTheme(vscode.ColorThemeKind.Light);
+
+		expect(h.pushedUpdates()).toEqual([
+			wholeState([expect.objectContaining({ id: "workspace-1" })]),
+		]);
+		// A repaint needs no fresh data.
+		expect(h.client.getWorkspaces).toHaveBeenCalledTimes(1);
+	});
+
+	it("pushes nothing while hidden, including on a theme change", async () => {
 		const h = createPanel();
 		await h.show();
+		h.setVisible(false);
 		h.clearPushes();
 
 		setActiveColorTheme(vscode.ColorThemeKind.Light);
@@ -113,6 +135,82 @@ describe("WorkspacesPanelProvider", () => {
 		await h.store.settled;
 
 		expect(h.pushedUpdates()).toEqual([]);
+	});
+
+	describe("lifecycle", () => {
+		it.each([
+			{ name: "the provider is disposed", dispose: "provider" },
+			{ name: "the view is destroyed", dispose: "view" },
+		] as const)("stops the store listing when $name", async ({ dispose }) => {
+			const h = createPanel();
+			await h.show();
+			expect(h.client.getWorkspaces).toHaveBeenCalledTimes(1);
+
+			if (dispose === "provider") {
+				h.provider.dispose();
+			} else {
+				h.disposeView();
+			}
+
+			// Only a store that was left hidden lists again when revealed.
+			await h.store.setVisible(true);
+			expect(h.client.getWorkspaces).toHaveBeenCalledTimes(2);
+		});
+
+		it("pushes to the view that replaced the previous one", async () => {
+			const h = createPanel();
+			await h.show();
+			const next = h.resolveAnotherView();
+			h.clearPushes();
+
+			await next.send(WorkspacesApi.ready);
+
+			expect(next.pushedUpdates()).toEqual([wholeState([])]);
+			expect(h.pushedUpdates()).toEqual([]);
+		});
+
+		it("ignores messages from the view it replaced", async () => {
+			const h = createPanel();
+			await h.show();
+			const next = h.resolveAnotherView();
+			h.clearPushes();
+			next.clearPushes();
+
+			await h.send(WorkspacesApi.ready);
+
+			expect(h.pushedUpdates()).toEqual([]);
+			expect(next.pushedUpdates()).toEqual([]);
+		});
+
+		it("keeps the newest view when the one it replaced is destroyed", async () => {
+			const h = createPanel();
+			await h.show();
+			const next = h.resolveAnotherView();
+			next.setVisible(true);
+			await h.store.settled;
+
+			h.disposeView();
+			next.clearPushes();
+			await next.send(WorkspacesApi.ready);
+
+			expect(next.pushedUpdates()).toEqual([wholeState([])]);
+		});
+
+		it("resolves nothing once the request is cancelled", async () => {
+			const h = createPanel();
+			await h.show();
+
+			const cancelled = h.resolveAnotherView(cancelledToken());
+			h.clearPushes();
+
+			expect(cancelled.view.webview.html).toBe("");
+			await cancelled.send(WorkspacesApi.ready);
+			expect(cancelled.pushedUpdates()).toEqual([]);
+
+			// The view that did resolve keeps working.
+			await h.send(WorkspacesApi.ready);
+			expect(h.pushedUpdates()).toEqual([wholeState([])]);
+		});
 	});
 
 	it("ignores an unrecognized message", async () => {

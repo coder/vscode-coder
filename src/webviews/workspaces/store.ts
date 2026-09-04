@@ -17,9 +17,16 @@ import type {
 	WorkspacesUpdate,
 } from "@repo/shared";
 
+import type { AgentMetadataClient } from "../../api/agentMetadataHelper";
 import type { CoderApi } from "../../api/coderApi";
 import type { SessionState } from "../../deployment/sessionStore";
 import type { Logger } from "../../logging/logger";
+
+interface WorkspacesClient extends AgentMetadataClient {
+	getWorkspaces(
+		request: Parameters<CoderApi["getWorkspaces"]>[0],
+	): Promise<{ workspaces: readonly Workspace[] }>;
+}
 
 export interface PollOptions {
 	/** Delay between polls of a filter that keeps polling. */
@@ -54,6 +61,7 @@ export class WorkspaceStore implements vscode.Disposable {
 	private filter: WorkspaceFilter = DEFAULT_WORKSPACE_FILTER;
 	private workspaces: readonly Workspace[] = [];
 	private loading = false;
+	private loaded = false;
 	private error: string | null = null;
 	/** Agents the webview is showing, listed or not. */
 	private requestedAgents: readonly string[] = [];
@@ -67,7 +75,7 @@ export class WorkspaceStore implements vscode.Disposable {
 	private disposed = false;
 
 	constructor(
-		private readonly client: CoderApi,
+		private readonly client: WorkspacesClient,
 		private readonly logger: Logger,
 		private readonly sessionState: SessionState,
 		poll: Partial<PollOptions> = {},
@@ -107,7 +115,7 @@ export class WorkspaceStore implements vscode.Disposable {
 		return this.workspaces.find((workspace) => workspace.id === workspaceId);
 	}
 
-	/** Start or stop listing. Fetches immediately when becoming visible. */
+	/** Retain cached data while hidden; reuse an in-flight list on reveal. */
 	public setVisible(visible: boolean): Promise<void> {
 		if (this.disposed || this.visible === visible) {
 			return this.fetch;
@@ -116,10 +124,11 @@ export class WorkspaceStore implements vscode.Disposable {
 		if (!visible) {
 			// Nothing renders while hidden: a short hide reuses the sockets.
 			this.cancelPoll();
-			void this.agents.setWatched([]);
+			void this.watchListedAgents();
 			return this.fetch;
 		}
-		return this.startLoad();
+		void this.watchListedAgents();
+		return this.fetching ? this.fetch : this.startLoad();
 	}
 
 	/** Switch the list, ignoring filters that are not offered. */
@@ -151,6 +160,7 @@ export class WorkspaceStore implements vscode.Disposable {
 			return this.fetch;
 		}
 		this.unsupportedFilters.clear();
+		this.update({});
 		// Asked for, so it is worth showing, unlike a poll.
 		return this.startLoad(true);
 	}
@@ -166,26 +176,29 @@ export class WorkspaceStore implements vscode.Disposable {
 	}
 
 	private startLoad(awaited = false): Promise<void> {
+		if (!this.visible && this.fetching) {
+			return this.fetch;
+		}
 		this.fetch = this.load(awaited).catch((error: unknown) => {
 			this.logger.error("Unexpected failure while listing workspaces", error);
 		});
 		return this.fetch;
 	}
 
-	/** Fetch the active filter and push the result. Never rejects. */
+	/** Fetch the active filter; metadata opens independently of listing. */
 	private async load(awaited = false): Promise<void> {
 		if (this.disposed || !this.visible) {
 			return;
 		}
-		const token = this.startFetch();
-		this.update({ loading: awaited || !this.delivered });
-
 		const session = this.sessionState.current;
 		if (session.kind !== "signedIn") {
-			this.update({ workspaces: [], loading: false });
+			this.update({ workspaces: [], loading: false, error: null });
 			return;
 		}
 
+		const source = this.startFetch();
+		const { token } = source;
+		this.update({ loading: awaited || !this.loaded });
 		const { getQuery, poll } = WORKSPACE_FILTERS[this.filter];
 		try {
 			const { workspaces } = await this.client.getWorkspaces({
@@ -194,11 +207,11 @@ export class WorkspaceStore implements vscode.Disposable {
 			if (token.isCancellationRequested) {
 				return;
 			}
-			// Push before opening sockets so the list is not held back by them.
+			this.loaded = true;
+			this.retries = 0;
 			this.update({ workspaces, loading: false, error: null });
-			await this.watchListedAgents();
 			if (poll && !token.isCancellationRequested) {
-				this.scheduleLoad(false);
+				this.scheduleLoad();
 			}
 		} catch (error) {
 			if (token.isCancellationRequested) {
@@ -208,13 +221,20 @@ export class WorkspaceStore implements vscode.Disposable {
 				await this.stopOfferingFilter(this.filter);
 				return;
 			}
+			this.loaded = true;
 			this.logger.warn("Failed to fetch workspaces:", error);
 			this.update({
 				workspaces: [],
 				loading: false,
 				error: errToStr(error, "Failed to fetch workspaces"),
 			});
-			this.scheduleLoad(true);
+			this.retries++;
+			this.scheduleLoad();
+		} finally {
+			if (this.fetching === source) {
+				this.fetching = undefined;
+				source.dispose();
+			}
 		}
 	}
 
@@ -238,25 +258,34 @@ export class WorkspaceStore implements vscode.Disposable {
 				Object.fromEntries(changed.map((field) => [field, state[field]])),
 			);
 		}
-	}
-
-	/** Whether the webview already has a settled list for the active filter. */
-	private get delivered(): boolean {
-		const listed = this.pushed?.workspaces;
-		return listed?.filter === this.filter && !listed.loading;
+		if (listed.workspaces !== undefined) {
+			// Publish the list before opening its metadata sockets.
+			void this.watchListedAgents();
+		}
 	}
 
 	/** Drop the list of the previous filter or session. A fetch follows. */
-	private clearList(): void {
-		this.update({ workspaces: [], loading: this.visible, error: null });
+	private clearList(clearMetadata = false): void {
+		this.cancelFetch();
+		this.cancelPoll();
+		this.retries = 0;
+		this.loaded = false;
+		this.workspaces = [];
+		this.error = null;
+		this.loading =
+			this.visible && this.sessionState.current.kind === "signedIn";
+		if (clearMetadata) {
+			this.agents.clear();
+		}
+		this.update({ workspaces: [] });
 	}
 
 	/** Supersede the fetch in flight, so its result is dropped. */
-	private startFetch(): vscode.CancellationToken {
+	private startFetch(): vscode.CancellationTokenSource {
 		this.cancelFetch();
 		this.cancelPoll();
 		this.fetching = new vscode.CancellationTokenSource();
-		return this.fetching.token;
+		return this.fetching;
 	}
 
 	private cancelFetch(): void {
@@ -266,9 +295,11 @@ export class WorkspaceStore implements vscode.Disposable {
 	}
 
 	/** Queue the next load, backing off while fetches keep failing. */
-	private scheduleLoad(failed: boolean): void {
+	private scheduleLoad(): void {
 		this.cancelPoll();
-		this.retries = failed ? this.retries + 1 : 0;
+		if (this.disposed || !this.visible) {
+			return;
+		}
 		this.nextPoll = setTimeout(
 			() => void this.startLoad(),
 			Math.min(
@@ -286,7 +317,9 @@ export class WorkspaceStore implements vscode.Disposable {
 	/** Watch the agents the webview asked for that are still listed. */
 	private watchListedAgents(): Promise<void> {
 		const listed = new Set(
-			extractAllAgents(this.workspaces).map((agent) => agent.id),
+			this.visible
+				? extractAllAgents(this.workspaces).map((agent) => agent.id)
+				: [],
 		);
 		return this.agents
 			.setWatched(this.requestedAgents.filter((agentId) => listed.has(agentId)))
@@ -319,7 +352,7 @@ export class WorkspaceStore implements vscode.Disposable {
 		if (!this.state.capabilities.filters.includes(this.filter)) {
 			this.filter = DEFAULT_WORKSPACE_FILTER;
 		}
-		this.clearList();
+		this.clearList(true);
 		void this.startLoad();
 	}
 }

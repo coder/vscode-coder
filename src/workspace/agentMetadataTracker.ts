@@ -4,6 +4,7 @@ import {
 	createAgentMetadataWatcher,
 	formatMetadataError,
 	type AgentMetadataWatcher,
+	type AgentMetadataClient,
 } from "../api/agentMetadataHelper";
 
 import type {
@@ -11,8 +12,6 @@ import type {
 	AgentMetadataState,
 	WorkspaceAgent,
 } from "@repo/shared";
-
-import type { CoderApi } from "../api/coderApi";
 
 type AgentId = WorkspaceAgent["id"];
 
@@ -26,17 +25,11 @@ const PENDING: AgentMetadataState = {
 interface WatchedAgent {
 	/** Absent while the socket is opening, or after it failed to open. */
 	watcher?: AgentMetadataWatcher;
+	subscription?: vscode.Disposable;
+	opening?: Promise<void>;
 	state: AgentMetadataState;
 	/** Pending close, set for exactly as long as nothing is watching. */
 	closing?: NodeJS.Timeout;
-}
-
-/** A socket that never opened, or died since, needs opening again. */
-function needsSocket(watched: WatchedAgent | undefined): boolean {
-	if (!watched) {
-		return false;
-	}
-	return !watched.watcher || watched.watcher.closed === true;
 }
 
 /**
@@ -53,7 +46,7 @@ export class AgentMetadataTracker implements vscode.Disposable {
 	private disposed = false;
 
 	constructor(
-		private readonly client: CoderApi,
+		private readonly client: AgentMetadataClient,
 		/** How long a released socket stays open, in case it is wanted again. */
 		private readonly lingerMs = 15_000,
 	) {}
@@ -73,6 +66,9 @@ export class AgentMetadataTracker implements vscode.Disposable {
 	 * blocks the rest nor stops the next call from retrying it.
 	 */
 	public async setWatched(agentIds: Iterable<AgentId>): Promise<void> {
+		if (this.disposed) {
+			return;
+		}
 		const wanted = new Set(agentIds);
 		let changed = false;
 
@@ -91,17 +87,38 @@ export class AgentMetadataTracker implements vscode.Disposable {
 			this.fire();
 		}
 
-		const opening = [...wanted].filter((agentId) =>
-			needsSocket(this.watched.get(agentId)),
-		);
-		await Promise.all(opening.map((agentId) => this.open(agentId)));
+		const opening: Array<Promise<void>> = [];
+		for (const agentId of wanted) {
+			const watched = this.watched.get(agentId);
+			if (!watched || watched.closing) {
+				continue;
+			}
+			if (!watched.opening && (!watched.watcher || watched.watcher.closed)) {
+				watched.opening = this.open(agentId, watched).finally(() => {
+					watched.opening = undefined;
+				});
+			}
+			if (watched.opening) {
+				opening.push(watched.opening);
+			}
+		}
+		await Promise.all(opening);
+	}
+
+	/** Close all session-owned sockets immediately, without lingering. */
+	public clear(): void {
+		const reported = Object.keys(this.metadata).length > 0;
+		for (const agentId of this.watched.keys()) {
+			this.close(agentId);
+		}
+		if (reported) {
+			this.fire();
+		}
 	}
 
 	public dispose(): void {
-		for (const agentId of [...this.watched.keys()]) {
-			this.close(agentId);
-		}
 		this.disposed = true;
+		this.clear();
 		this.changeEmitter.dispose();
 	}
 
@@ -124,32 +141,39 @@ export class AgentMetadataTracker implements vscode.Disposable {
 		return true;
 	}
 
-	private async open(agentId: AgentId): Promise<void> {
+	private async open(agentId: AgentId, watched: WatchedAgent): Promise<void> {
+		const isCurrent = () =>
+			!this.disposed && this.watched.get(agentId) === watched;
 		try {
 			const watcher = await createAgentMetadataWatcher(agentId, this.client);
-			const watched = this.watched.get(agentId);
-			// Disposal, a newer set, or a parallel open may have raced this socket.
-			if (this.disposed || !watched || !needsSocket(watched)) {
+			if (!isCurrent()) {
 				watcher.dispose();
 				return;
 			}
+			watched.subscription?.dispose();
 			watched.watcher?.dispose();
 			watched.watcher = watcher;
-			watcher.onChange(() => this.report(agentId, watcher));
+			watched.subscription = watcher.onChange(() => {
+				if (isCurrent() && watched.watcher === watcher) {
+					this.report(watched, watcher);
+				}
+			});
+			// A report may arrive before the tracker subscribes.
+			if (watcher.metadata !== undefined || watcher.error !== undefined) {
+				this.report(watched, watcher);
+			}
 		} catch (error) {
-			this.report(agentId, { error });
+			if (isCurrent()) {
+				this.report(watched, { error });
+			}
 		}
 	}
 
 	/** Record what an agent reported, and push it if it is still watched. */
 	private report(
-		agentId: AgentId,
+		watched: WatchedAgent,
 		watcher: Partial<AgentMetadataWatcher>,
 	): void {
-		const watched = this.watched.get(agentId);
-		if (this.disposed || !watched) {
-			return;
-		}
 		watched.state = {
 			metadata: watcher.metadata ?? [],
 			error:
@@ -166,9 +190,10 @@ export class AgentMetadataTracker implements vscode.Disposable {
 		if (!watched) {
 			return;
 		}
-		clearTimeout(watched.closing);
-		watched.watcher?.dispose();
 		this.watched.delete(agentId);
+		clearTimeout(watched.closing);
+		watched.subscription?.dispose();
+		watched.watcher?.dispose();
 	}
 
 	private fire(): void {

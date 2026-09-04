@@ -6,7 +6,14 @@ import {
 	AgentMetadataEventSchemaArray,
 	errToStr,
 } from "./api-helper";
-import { type CoderApi } from "./coderApi";
+
+import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
+
+export interface AgentMetadataClient {
+	watchAgentMetadata(
+		agentId: string,
+	): Promise<UnidirectionalStream<{ data: unknown }>>;
+}
 
 export interface AgentMetadataWatcher {
 	onChange: vscode.EventEmitter<null>["event"];
@@ -23,7 +30,7 @@ export interface AgentMetadataWatcher {
  */
 export async function createAgentMetadataWatcher(
 	agentId: WorkspaceAgent["id"],
-	client: CoderApi,
+	client: AgentMetadataClient,
 ): Promise<AgentMetadataWatcher> {
 	const socket = await client.watchAgentMetadata(agentId);
 

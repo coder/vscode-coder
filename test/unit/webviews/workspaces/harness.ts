@@ -18,8 +18,6 @@ import type {
 	WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
 
-import type { CoderApi } from "@/api/coderApi";
-
 import type { CommandDef, WorkspacesUpdate } from "@repo/shared";
 
 export const DEPLOYMENT_URL = "https://coder.example.com";
@@ -50,8 +48,7 @@ export function disposeHarnesses(): void {
 function createStoreWith(client: MockClient, options?: Partial<PollOptions>) {
 	const session = new TestSessionStore();
 	const store = new WorkspaceStore(
-		// Cast needed: the mock implements only the CoderApi methods used here
-		client as unknown as CoderApi,
+		client,
 		createMockLogger(),
 		session,
 		options,
@@ -83,22 +80,27 @@ export function createStore(options?: Partial<PollOptions>) {
 	return createStoreWith(new MockClient(), options);
 }
 
-export function createPanel() {
-	const client = new MockClient();
-	const base = createStoreWith(client);
-	const openWorkspace = vi.fn(
-		(_workspace: Workspace, _agent: WorkspaceAgent | undefined) =>
-			Promise.resolve(true),
-	);
-	const provider = new WorkspacesPanelProvider({
-		extensionUri: vscode.Uri.file("/test/extension"),
-		client: client as unknown as CoderApi,
-		logger: createMockLogger(),
-		store: base.store,
-		openWorkspace,
-	});
-	disposables.push(provider);
+/** A token for a resolution that is not cancelled. */
+function freshToken(): vscode.CancellationToken {
+	const source = new vscode.CancellationTokenSource();
+	disposables.push(source);
+	return source.token;
+}
 
+/** A token for a resolution VS Code gave up on before it ran. */
+export function cancelledToken(): vscode.CancellationToken {
+	const source = new vscode.CancellationTokenSource();
+	disposables.push(source);
+	source.cancel();
+	return source.token;
+}
+
+/** Resolve one webview view and expose the ways a test can drive it. */
+function resolveView(
+	provider: WorkspacesPanelProvider,
+	store: WorkspaceStore,
+	token: vscode.CancellationToken,
+) {
 	const { view, hooks } = createMockWebviewView(
 		WorkspacesPanelProvider.viewType,
 	);
@@ -106,18 +108,17 @@ export function createPanel() {
 	provider.resolveWebviewView(
 		view,
 		{} as vscode.WebviewViewResolveContext,
-		new vscode.CancellationTokenSource().token,
+		token,
 	);
 
 	return {
-		...base,
-		provider,
 		view,
-		openWorkspace,
 		setVisible: hooks.setVisible,
+		/** Destroy the view, as VS Code does when its container closes. */
+		disposeView: hooks.fireDispose,
 		show: async () => {
 			hooks.setVisible(true);
-			await base.store.settled;
+			await store.settled;
 		},
 		/** Send a command from the webview and wait for its handler. */
 		send: async <P>(
@@ -126,7 +127,7 @@ export function createPanel() {
 		) => {
 			hooks.sendFromWebview({ method: def.method, params: args[0] });
 			await flushPromises();
-			await base.store.settled;
+			await store.settled;
 		},
 		/** Send anything the webview could post, valid or not. */
 		sendRaw: async (message: unknown) => {
@@ -141,5 +142,32 @@ export function createPanel() {
 				)
 				.map((message) => (message as { data: WorkspacesUpdate }).data),
 		clearPushes: () => hooks.clearPostedMessages(),
+	};
+}
+
+export function createPanel() {
+	const client = new MockClient();
+	const base = createStoreWith(client);
+	const openWorkspace = vi.fn(
+		(_workspace: Workspace, _agent: WorkspaceAgent | undefined) =>
+			Promise.resolve(true),
+	);
+	const provider = new WorkspacesPanelProvider({
+		extensionUri: vscode.Uri.file("/test/extension"),
+		client,
+		logger: createMockLogger(),
+		store: base.store,
+		openWorkspace,
+	});
+	disposables.push(provider);
+
+	return {
+		...base,
+		provider,
+		openWorkspace,
+		...resolveView(provider, base.store, freshToken()),
+		/** Resolve another view, as VS Code does when the panel is reopened. */
+		resolveAnotherView: (token: vscode.CancellationToken = freshToken()) =>
+			resolveView(provider, base.store, token),
 	};
 }

@@ -18,6 +18,7 @@ import {
 	isIpcCommand,
 	isIpcRequest,
 	notifyWebview,
+	onWhileVisible,
 } from "../dispatch";
 import { getWebviewHtml } from "../html";
 
@@ -45,7 +46,7 @@ const DASHBOARD_PAGE_PATHS = {
 
 export interface WorkspacesPanelOptions {
 	readonly extensionUri: vscode.Uri;
-	readonly client: CoderApi;
+	readonly client: Pick<CoderApi, "getHost">;
 	readonly logger: Logger;
 	readonly store: WorkspaceStore;
 	/** Connect to the workspace, or to one of its agents. */
@@ -65,18 +66,12 @@ export class WorkspacesPanelProvider
 {
 	public static readonly viewType = "coder.workspacesPanel";
 
-	declare private readonly extensionUri: vscode.Uri;
-	declare private readonly client: CoderApi;
-	declare private readonly logger: Logger;
-	declare private readonly store: WorkspaceStore;
-	declare private readonly openWorkspace: WorkspacesPanelOptions["openWorkspace"];
-
 	private readonly requestHandlers = buildRequestHandlers(WorkspacesApi, {});
 	private readonly commandHandlers = buildCommandHandlers(WorkspacesApi, {
-		ready: () => this.push(this.store.state),
-		refresh: () => this.store.refresh(),
-		setFilter: (p) => this.store.setFilter(p.filter),
-		watchAgents: (p) => this.store.setWatchedAgents(p.agentIds),
+		ready: () => this.push(this.options.store.state),
+		refresh: () => this.options.store.refresh(),
+		setFilter: (p) => this.options.store.setFilter(p.filter),
+		watchAgents: (p) => this.options.store.setWatchedAgents(p.agentIds),
 		openWorkspace: (p) => this.handleOpenWorkspace(p),
 		viewInDashboard: (p) => this.handleViewInDashboard(p),
 	});
@@ -84,9 +79,7 @@ export class WorkspacesPanelProvider
 	private view: vscode.WebviewView | undefined;
 	private disposables: vscode.Disposable[] = [];
 
-	constructor(options: WorkspacesPanelOptions) {
-		Object.assign(this, options);
-	}
+	constructor(private readonly options: WorkspacesPanelOptions) {}
 
 	resolveWebviewView(
 		webviewView: vscode.WebviewView,
@@ -96,73 +89,86 @@ export class WorkspacesPanelProvider
 		if (token.isCancellationRequested) {
 			return;
 		}
+		const { extensionUri, store } = this.options;
+
+		// Drop the view being replaced first, so its disposal cannot reach this one.
+		this.detachView();
 		this.view = webviewView;
 
 		webviewView.webview.options = {
 			enableScripts: true,
 			localResourceRoots: [
-				vscode.Uri.joinPath(
-					this.extensionUri,
-					"dist",
-					"webviews",
-					"workspaces",
-				),
+				vscode.Uri.joinPath(extensionUri, "dist", "webviews", "workspaces"),
 			],
 		};
 
-		this.disposeView();
-
 		this.disposables.push(
-			this.store.onDidChange((update) => this.push(update)),
-			// Only listing follows visibility; the view keeps its context.
-			webviewView.onDidChangeVisibility(() =>
-				this.store.setVisible(webviewView.visible),
+			store.onDidChange((update) => this.push(update)),
+			// Listing and metadata both follow visibility; the view keeps its context.
+			webviewView.onDidChangeVisibility(() => this.handleVisibility()),
+			// CSS variables carry a theme change into the DOM on their own, but
+			// anything rendered from a theme value at paint time keeps the old one.
+			// Replaying the whole state lets the webview render it again. Nothing
+			// is fetched: the store already has everything this needs.
+			onWhileVisible(
+				webviewView,
+				vscode.window.onDidChangeActiveColorTheme,
+				() => this.push(store.state),
 			),
 			webviewView.webview.onDidReceiveMessage((message: unknown) => {
 				this.handleMessage(message).catch((err: unknown) => {
-					this.logger.error("Unhandled error in message handler", err);
+					this.options.logger.error("Unhandled error in message handler", err);
 				});
 			}),
+			webviewView.onDidDispose(() => this.detachView()),
 		);
 
 		webviewView.webview.html = getWebviewHtml(
 			webviewView.webview,
-			this.extensionUri,
+			extensionUri,
 			"workspaces",
 			"Coder Workspaces",
 		);
 
-		webviewView.onDidDispose(() => this.disposeView());
-
-		void this.store.setVisible(webviewView.visible);
+		void store.setVisible(webviewView.visible);
 	}
 
 	dispose(): void {
-		this.disposeView();
+		this.detachView();
+	}
+
+	/**
+	 * Replay what the store has before it fetches, so a webview rebuilt while
+	 * hidden renders the last known state right away.
+	 */
+	private handleVisibility(): void {
+		const visible = this.view?.visible ?? false;
+		if (visible) {
+			this.push(this.options.store.state);
+		}
+		void this.options.store.setVisible(visible);
 	}
 
 	private async handleMessage(message: unknown): Promise<void> {
+		const { logger } = this.options;
 		const showErrorToUser = (method: string) => USER_ACTION_METHODS.has(method);
 		if (isIpcRequest(message)) {
 			await dispatchRequest(message, this.requestHandlers, this.view?.webview, {
-				logger: this.logger,
+				logger,
 				showErrorToUser,
 			});
 		} else if (isIpcCommand(message)) {
 			await dispatchCommand(message, this.commandHandlers, {
-				logger: this.logger,
+				logger,
 				showErrorToUser,
 			});
 		} else {
-			this.logger.warn("Unexpected webview message", message);
+			logger.warn("Unexpected webview message", message);
 		}
 	}
 
 	private push(update: WorkspacesUpdate): void {
-		const webview = this.view?.webview;
-		if (webview) {
-			notifyWebview(webview, WorkspacesApi.stateUpdated, update);
-		}
+		notifyWebview(this.view?.webview, WorkspacesApi.stateUpdated, update);
 	}
 
 	private async handleOpenWorkspace({
@@ -178,7 +184,7 @@ export class WorkspacesPanelProvider
 		if (agentId && !agent) {
 			throw new Error("Agent is no longer available");
 		}
-		await this.openWorkspace(workspace, agent);
+		await this.options.openWorkspace(workspace, agent);
 	}
 
 	private async handleViewInDashboard({
@@ -186,7 +192,7 @@ export class WorkspacesPanelProvider
 		page,
 	}: ViewInDashboardParams): Promise<void> {
 		const workspace = this.requireWorkspace(workspaceId);
-		const connectionUrl = this.client.getHost();
+		const connectionUrl = this.options.client.getHost();
 		if (!connectionUrl) {
 			return;
 		}
@@ -197,17 +203,22 @@ export class WorkspacesPanelProvider
 	}
 
 	private requireWorkspace(workspaceId: string): Workspace {
-		const workspace = this.store.findWorkspace(workspaceId);
+		const workspace = this.options.store.findWorkspace(workspaceId);
 		if (!workspace) {
 			throw new Error("Workspace is no longer available");
 		}
 		return workspace;
 	}
 
-	private disposeView(): void {
-		for (const d of this.disposables) {
-			d.dispose();
+	/** Let go of the current view: nothing is rendered until one resolves. */
+	private detachView(): void {
+		for (const disposable of this.disposables) {
+			disposable.dispose();
 		}
 		this.disposables = [];
+		if (this.view) {
+			this.view = undefined;
+			void this.options.store.setVisible(false);
+		}
 	}
 }

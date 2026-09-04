@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { agent, agentMetadata, workspace } from "@repo/mocks";
 
+import { MockEventStream } from "../../../mocks/testHelpers";
+
 import { createStore, DEPLOYMENT, disposeHarnesses, OWNER } from "./harness";
 
 import type { FilteredWorkspaces } from "@repo/shared";
@@ -436,6 +438,219 @@ describe("WorkspaceStore", () => {
 
 			expect(h.client.metadataStreams.size).toBe(50);
 			expect(Object.keys(h.last("metadata") ?? {})).toHaveLength(50);
+		});
+	});
+	describe("lifecycle races", () => {
+		it("caches a hidden response without reviving sockets or polling", async () => {
+			vi.useFakeTimers();
+			const h = createStore();
+			h.client.respondOnce([withAgent()]);
+			await h.show();
+			await h.store.setWatchedAgents(["agent-1"]);
+			const socket = h.client.metadataStreams.get("agent-1")!;
+			const pending = h.client.pending();
+			const fetching = h.store.refresh();
+			void h.store.setVisible(false);
+			pending.resolve([withAgent(), workspace({ id: "cached" })]);
+			await fetching;
+			expect(ids(h.store.state.workspaces)).toEqual(["workspace-1", "cached"]);
+			expect(h.store.state.metadata).toEqual({});
+			await h.store.setWatchedAgents(["agent-1"]);
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(socket.close).toHaveBeenCalledOnce();
+			expect(h.client.getWorkspaces).toHaveBeenCalledTimes(2);
+
+			const next = h.client.pending();
+			const revealing = h.show();
+			expect(ids(h.store.state.workspaces)).toContain("cached");
+			expect(h.store.state.workspaces.loading).toBe(false);
+			next.resolve([withAgent()]);
+			await revealing;
+		});
+
+		it("reuses a pending list across rapid hide and reveal", async () => {
+			const h = createStore();
+			const pending = h.client.pending();
+			const first = h.show();
+			void h.store.setVisible(false);
+			const second = h.show();
+			expect(h.client.getWorkspaces).toHaveBeenCalledOnce();
+			pending.resolve([withAgent()]);
+			await Promise.all([first, second]);
+			expect(ids(h.store.state.workspaces)).toEqual(["workspace-1"]);
+		});
+
+		it("keeps the pending fetch observable after a hidden refresh", async () => {
+			const h = createStore();
+			const pending = h.client.pending();
+			const fetching = h.show();
+			void h.store.setVisible(false);
+			const refreshing = h.store.refresh();
+			const revealing = h.show();
+			expect(refreshing).toBe(fetching);
+			expect(revealing).toBe(fetching);
+			expect(h.client.getWorkspaces).toHaveBeenCalledOnce();
+			pending.resolve([withAgent()]);
+			await revealing;
+			expect(ids(h.store.state.workspaces)).toEqual(["workspace-1"]);
+		});
+
+		it("restores lingering metadata before a reveal fetch completes", async () => {
+			const h = createStore();
+			h.client.respondOnce([withAgent()]);
+			await h.show();
+			await h.store.setWatchedAgents(["agent-1"]);
+			h.client.metadataStreams
+				.get("agent-1")!
+				.pushMessage({ data: [agentMetadata()] });
+			await h.store.setVisible(false);
+			const pending = h.client.pending();
+			const revealing = h.show();
+			expect(h.store.state.metadata["agent-1"].metadata).toEqual([
+				agentMetadata(),
+			]);
+			pending.resolve([withAgent()]);
+			await revealing;
+		});
+
+		it.each(["resolve", "reject"] as const)(
+			"ignores an old session's hidden request when it %ss",
+			async (outcome) => {
+				const h = createStore();
+				const pending =
+					Promise.withResolvers<
+						Awaited<ReturnType<typeof h.client.getWorkspaces>>
+					>();
+				h.client.getWorkspaces.mockReturnValueOnce(pending.promise);
+				const fetching = h.show();
+				void h.store.setVisible(false);
+				h.session.signOut();
+				if (outcome === "resolve")
+					pending.resolve({ workspaces: [withAgent()], count: 1 });
+				else pending.reject(new Error("old failure"));
+				await fetching;
+				expect(h.store.state).toMatchObject({
+					capabilities: { authenticated: false },
+					workspaces: { workspaces: [], loading: false },
+					metadata: {},
+					error: null,
+				});
+			},
+		);
+
+		it("invalidates a hidden request when its filter changes", async () => {
+			const h = createStore();
+			const pending = h.client.pending();
+			const fetching = h.show();
+			void h.store.setVisible(false);
+			await h.store.setFilter("shared");
+			pending.resolve([withAgent()]);
+			await fetching;
+			expect(h.store.state.workspaces).toEqual({
+				filter: "shared",
+				workspaces: [],
+				loading: false,
+			});
+			const next = h.client.pending();
+			const revealing = h.show();
+			expect(h.store.state.workspaces.loading).toBe(true);
+			next.resolve([]);
+			await revealing;
+		});
+
+		it.each([true, false])(
+			"closes session sockets immediately when visible is %s",
+			async (visible) => {
+				const h = createStore();
+				h.client.respondOnce([withAgent()]);
+				await h.show();
+				await h.store.setWatchedAgents(["agent-1"]);
+				const socket = h.client.metadataStreams.get("agent-1")!;
+				socket.pushMessage({ data: [agentMetadata()] });
+				await h.store.setVisible(visible);
+				h.session.signOut();
+				expect(socket.close).toHaveBeenCalledOnce();
+				expect(h.store.state.metadata).toEqual({});
+				socket.pushMessage({ data: [agentMetadata()] });
+				expect(h.store.state.metadata).toEqual({});
+			},
+		);
+
+		it("drops sockets opening across a deployment switch", async () => {
+			const h = createStore();
+			h.client.respondOnce([withAgent()]);
+			await h.show();
+			const pending =
+				Promise.withResolvers<
+					Awaited<ReturnType<typeof h.client.watchAgentMetadata>>
+				>();
+			vi.spyOn(h.client, "watchAgentMetadata").mockReturnValueOnce(
+				pending.promise,
+			);
+			const watching = h.store.setWatchedAgents(["agent-1"]);
+			h.session.signIn(
+				{ url: "https://other.example.com", safeHostname: "other.example.com" },
+				OWNER,
+			);
+			const socket = new MockEventStream<{
+				data: Array<ReturnType<typeof agentMetadata>>;
+			}>();
+			pending.resolve(socket);
+			await watching;
+			await h.store.settled;
+			expect(socket.close).toHaveBeenCalledOnce();
+			expect(h.store.state.metadata).toEqual({});
+		});
+
+		it("releases metadata when a list fails", async () => {
+			const h = createStore();
+			h.client.respondOnce([withAgent()]);
+			await h.show();
+			await h.store.setWatchedAgents(["agent-1"]);
+			h.client.getWorkspaces.mockRejectedValueOnce(new Error("offline"));
+			await h.store.refresh();
+			expect(h.store.state.metadata).toEqual({});
+		});
+
+		it("keeps polling while metadata is still opening", async () => {
+			vi.useFakeTimers();
+			const h = createStore();
+			h.client.getWorkspaces.mockResolvedValue({
+				workspaces: [withAgent()],
+				count: 1,
+			});
+			await h.show();
+			const pending =
+				Promise.withResolvers<
+					Awaited<ReturnType<typeof h.client.watchAgentMetadata>>
+				>();
+			const opened = vi
+				.spyOn(h.client, "watchAgentMetadata")
+				.mockReturnValueOnce(pending.promise);
+			const watching = h.store.setWatchedAgents(["agent-1"]);
+			await vi.advanceTimersByTimeAsync(15_000);
+			expect(h.client.getWorkspaces).toHaveBeenCalledTimes(4);
+			expect(opened).toHaveBeenCalledOnce();
+			pending.resolve(
+				new MockEventStream<{
+					data: Array<ReturnType<typeof agentMetadata>>;
+				}>(),
+			);
+			await watching;
+		});
+
+		it("resets backoff after a successful non-polling fetch", async () => {
+			vi.useFakeTimers();
+			const h = createStore({ intervalMs: 100, maxIntervalMs: 1000 });
+			await h.show();
+			h.client.getWorkspaces.mockRejectedValueOnce(new Error("offline"));
+			await h.store.setFilter("shared");
+			await vi.advanceTimersByTimeAsync(200);
+			h.client.getWorkspaces.mockRejectedValueOnce(new Error("offline again"));
+			await h.store.refresh();
+			const calls = h.client.getWorkspaces.mock.calls.length;
+			await vi.advanceTimersByTimeAsync(200);
+			expect(h.client.getWorkspaces).toHaveBeenCalledTimes(calls + 1);
 		});
 	});
 });
