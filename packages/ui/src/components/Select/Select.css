@@ -20,6 +20,12 @@
 	color: var(--ui-input-placeholder-foreground);
 }
 
+.ui-select__trigger > :not(.ui-icon) {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
 .ui-select__trigger > .ui-icon {
 	flex: none;
 }
@@ -34,6 +40,15 @@
 	background: var(--ui-dropdown-list-background);
 }
 
+/* Radix hides viewport scrollbars for its optional scroll buttons. */
+.ui-select__list [data-radix-select-viewport] {
+	scrollbar-width: auto;
+}
+
+.ui-select__list [data-radix-select-viewport]::-webkit-scrollbar {
+	display: block;
+}
+
 .ui-select__item {
 	display: flex;
 	flex-direction: column;
@@ -44,7 +59,7 @@
 	border-radius: var(--ui-radius-medium);
 	cursor: default;
 	user-select: none;
-	outline: 1px solid transparent;
+	outline: none;
 	outline-offset: -1px;
 }
 
@@ -52,7 +67,7 @@
 	forced-color-adjust: none;
 	color: var(--ui-list-focus-foreground);
 	background: var(--ui-list-focus-background);
-	outline-color: var(--ui-list-focus-outline);
+	outline: 1px solid var(--ui-list-focus-outline);
 }
 
 .ui-select__item[data-disabled] {
@@ -72,6 +87,7 @@
 	.ui-select__item[data-highlighted] {
 		color: HighlightText;
 		background: Highlight;
+		outline-color: HighlightText;
 	}
 
 	.ui-select__item[data-disabled] {

@@ -84,3 +84,50 @@ export const Selection: Story = {
 		await expect(trigger).toHaveTextContent("EU North (Helsinki)");
 	},
 };
+
+export const LongList: Story = {
+	render: () => (
+		<div style={{ width: "180px" }}>
+			<Select defaultValue="0">
+				<SelectTrigger aria-label="Workspace pool">
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent style={{ maxHeight: "150px" }}>
+					{Array.from({ length: 20 }, (_, index) => (
+						<SelectItem
+							key={index}
+							value={String(index)}
+							disabled={index === 1}
+						>
+							{index === 0
+								? "US East (Pittsburgh) — dedicated high-memory workspace pool"
+								: `Pool ${index}`}
+						</SelectItem>
+					))}
+				</SelectContent>
+			</Select>
+		</div>
+	),
+	play: async ({ canvasElement }) => {
+		const trigger = within(canvasElement).getByRole("combobox", {
+			name: "Workspace pool",
+		});
+		await expect(trigger.scrollWidth).toBeLessThanOrEqual(trigger.clientWidth);
+		await userEvent.click(trigger);
+		await expect(
+			await screen.findByRole("option", { name: "Pool 1" }),
+		).toHaveAttribute("aria-disabled", "true");
+		await userEvent.keyboard("{ArrowDown}");
+		await expect(screen.getByRole("option", { name: "Pool 2" })).toHaveFocus();
+		await userEvent.keyboard("{End}");
+		const last = screen.getByRole("option", { name: "Pool 19" });
+		await expect(last).toHaveFocus();
+		const list = screen.getByRole("listbox");
+		await expect(last.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+			list.getBoundingClientRect().bottom,
+		);
+		await userEvent.keyboard("{Enter}");
+		await expect(trigger).toHaveTextContent("Pool 19");
+		await expect(trigger).toHaveFocus();
+	},
+};

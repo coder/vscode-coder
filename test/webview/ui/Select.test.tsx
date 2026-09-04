@@ -65,9 +65,38 @@ describe("Select", () => {
 		fireEvent.keyDown(screen.getByRole("combobox", { name: "Region" }), {
 			key: "Enter",
 		});
+		expect(
+			screen.getByRole("option", { name: "US East" }),
+		).toHaveAccessibleDescription("Lowest latency");
+		expect(
+			screen.getByRole("option", { name: "EU North" }),
+		).not.toHaveAttribute("aria-describedby");
 		expect(screen.getByText("Lowest latency")).toHaveClass(
 			"ui-select__item-description",
 		);
+	});
+
+	it("preserves consumer descriptions alongside the option description", () => {
+		render(
+			<Select defaultValue="one" defaultOpen>
+				<SelectTrigger aria-label="Region">
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					<span id="hint">Available now.</span>
+					<SelectItem
+						value="one"
+						description="Lowest latency"
+						aria-describedby="hint"
+					>
+						US East
+					</SelectItem>
+				</SelectContent>
+			</Select>,
+		);
+		expect(
+			screen.getByRole("option", { name: "US East" }),
+		).toHaveAccessibleDescription("Available now. Lowest latency");
 	});
 
 	it("does not open when disabled", () => {

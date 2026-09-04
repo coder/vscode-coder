@@ -1,4 +1,5 @@
 import * as SelectPrimitive from "@radix-ui/react-select";
+import { useId, type ComponentPropsWithRef, type ReactNode } from "react";
 
 import { cx } from "#cx";
 
@@ -7,8 +8,6 @@ import { Icon } from "../Icon/Icon";
 import "../overlay.css";
 
 import "./Select.css";
-
-import type { ComponentPropsWithRef, ReactNode } from "react";
 
 /** Root state container. */
 export const Select = SelectPrimitive.Root;
@@ -69,16 +68,25 @@ export function SelectItem({
 	className,
 	children,
 	description,
+	"aria-describedby": describedBy,
 	...props
 }: SelectItemProps): React.JSX.Element {
+	const descriptionId = useId();
 	return (
 		<SelectPrimitive.Item
 			{...props}
 			className={cx("ui-select__item", className)}
+			aria-describedby={
+				[describedBy, description !== undefined && descriptionId]
+					.filter(Boolean)
+					.join(" ") || undefined
+			}
 		>
 			<SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
 			{description !== undefined && (
-				<span className="ui-select__item-description">{description}</span>
+				<span id={descriptionId} className="ui-select__item-description">
+					{description}
+				</span>
 			)}
 		</SelectPrimitive.Item>
 	);
