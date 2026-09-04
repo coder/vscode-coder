@@ -18,8 +18,6 @@ The Coder Remote extension connects your editor to
   (formerly Windsurf), and other VS Code forks.
 - **Workspace sidebar** - browse, search, and create workspaces. View agent
   metadata and app statuses at a glance.
-- **Coder Tasks** - create, monitor, and manage AI agent tasks directly from
-  the sidebar with real-time log streaming.
 - **Multi-deployment support** - connect to multiple Coder deployments and
   switch between them without losing credentials.
 - **Dev container support** - open dev containers running inside workspaces.
