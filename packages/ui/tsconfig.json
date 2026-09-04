@@ -3,5 +3,5 @@
 	"compilerOptions": {
 		"resolveJsonModule": true
 	},
-	"include": ["src", "storybook.preview.ts"]
+	"include": ["src", "storybook", "storybook.preview.ts"]
 }
