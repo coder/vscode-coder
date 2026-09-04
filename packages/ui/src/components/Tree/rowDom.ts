@@ -30,9 +30,37 @@ export function nestedInteractiveTarget(
 		: null;
 }
 
+/** Whether a click landed on the twistie rather than the row body. */
+export function hitTwistie(
+	row: { readonly expanded: boolean | undefined },
+	target: EventTarget | null,
+): boolean {
+	return (
+		row.expanded !== undefined &&
+		target instanceof Element &&
+		target.closest(".ui-tree-item__chevron") !== null
+	);
+}
+
 /** The row element the event hit, if any. */
 export function closestRow(target: EventTarget | null): HTMLElement | null {
 	return target instanceof Element
 		? target.closest<HTMLElement>("[data-tree-id]")
 		: null;
+}
+
+export function scrollableAncestor(
+	element: HTMLElement,
+): HTMLElement | undefined {
+	for (
+		let parent = element.parentElement;
+		parent !== null;
+		parent = parent.parentElement
+	) {
+		const { overflowY } = getComputedStyle(parent);
+		if (overflowY === "auto" || overflowY === "scroll") {
+			return parent;
+		}
+	}
+	return undefined;
 }
