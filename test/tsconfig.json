@@ -16,7 +16,8 @@
 			"@repo/ui": ["../packages/ui/src/index.ts"],
 			"@repo/ui/*": ["../packages/ui/src/*"],
 			"@repo/netcheck/*": ["../packages/netcheck/src/*"],
-			"@repo/speedtest/*": ["../packages/speedtest/src/*"]
+			"@repo/speedtest/*": ["../packages/speedtest/src/*"],
+			"@repo/workspaces/*": ["../packages/workspaces/src/*"]
 		}
 	},
 	"include": [".", "../src", "../vitest.config.mts"]

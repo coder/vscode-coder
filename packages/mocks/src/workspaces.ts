@@ -5,6 +5,7 @@
 import type {
 	Workspace,
 	WorkspaceAgent,
+	WorkspaceAgentMetadata,
 	WorkspaceBuild,
 	WorkspaceResource,
 } from "coder/site/src/api/typesGenerated";
@@ -51,13 +52,21 @@ const defaultBuild: WorkspaceBuild = {
 	template_version_preset_id: null,
 };
 
-/** Create a Workspace with sensible defaults for a running task workspace. */
+/**
+ * Create a Workspace with sensible defaults for a running task workspace.
+ * `agents` puts them on a single resource, the common shape in tests.
+ */
 export function workspace(
 	overrides: Omit<Partial<Workspace>, "latest_build"> & {
 		latest_build?: Partial<WorkspaceBuild>;
+		agents?: WorkspaceAgent[];
 	} = {},
 ): Workspace {
-	const { latest_build: buildOverrides, ...rest } = overrides;
+	const { latest_build: buildOverrides, agents, ...rest } = overrides;
+	const build = { ...defaultBuild, ...buildOverrides };
+	if (agents) {
+		build.resources = [resource({ agents })];
+	}
 	return {
 		id: "workspace-1",
 		created_at: "2024-01-01T00:00:00Z",
@@ -75,7 +84,7 @@ export function workspace(
 		template_active_version_id: "version-1",
 		template_require_active_version: false,
 		template_use_classic_parameter_flow: false,
-		latest_build: { ...defaultBuild, ...buildOverrides },
+		latest_build: build,
 		latest_app_status: null,
 		outdated: false,
 		name: "test-workspace",
@@ -123,6 +132,32 @@ export function agent(overrides: Partial<WorkspaceAgent> = {}): WorkspaceAgent {
 		scripts: [],
 		startup_script_behavior: "non-blocking",
 		...overrides,
+	};
+}
+
+/** Create a WorkspaceAgentMetadata report with sensible defaults. */
+export function agentMetadata(
+	overrides: {
+		result?: Partial<WorkspaceAgentMetadata["result"]>;
+		description?: Partial<WorkspaceAgentMetadata["description"]>;
+	} = {},
+): WorkspaceAgentMetadata {
+	return {
+		result: {
+			collected_at: "2024-01-01T00:00:00Z",
+			age: 0,
+			value: "42",
+			error: "",
+			...overrides.result,
+		},
+		description: {
+			display_name: "CPU",
+			key: "cpu",
+			script: "cpu.sh",
+			interval: 5,
+			timeout: 1,
+			...overrides.description,
+		},
 	};
 }
 

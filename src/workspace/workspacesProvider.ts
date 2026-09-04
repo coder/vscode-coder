@@ -21,6 +21,8 @@ import {
 import { type CoderApi } from "../api/coderApi";
 import { type Logger } from "../logging/logger";
 
+import { WORKSPACE_FILTERS, type WorkspaceFilterConfig } from "./filters";
+
 import type { SessionData, SessionState } from "../deployment/sessionStore";
 
 export enum WorkspaceQuery {
@@ -28,35 +30,6 @@ export enum WorkspaceQuery {
 	All = "all",
 	Shared = "shared",
 }
-
-type SignedInSession = Extract<SessionData, { kind: "signedIn" }>;
-
-/** Per-view rendering behavior and search query, keyed by workspace view. */
-interface WorkspaceQueryConfig {
-	readonly showOwner: boolean;
-	readonly showMetadata: boolean;
-	readonly getQuery: (session: SignedInSession) => string;
-}
-
-const WORKSPACE_QUERY_CONFIG = {
-	[WorkspaceQuery.Mine]: {
-		showOwner: false,
-		showMetadata: true,
-		getQuery: () => "owner:me",
-	},
-	[WorkspaceQuery.All]: {
-		showOwner: true,
-		showMetadata: false,
-		getQuery: () => "",
-	},
-	[WorkspaceQuery.Shared]: {
-		showOwner: true,
-		showMetadata: false,
-		// Only workspaces shared with the user; excludes workspaces the user
-		// owns and shared with others. Requires Coder 2.27.0+.
-		getQuery: (session) => `shared_with_user:${session.user.id}`,
-	},
-} as const satisfies Record<WorkspaceQuery, WorkspaceQueryConfig>;
 
 export interface WorkspaceProviderOptions {
 	readonly refreshIntervalMs?: number;
@@ -85,7 +58,7 @@ export class WorkspaceProvider
 		AgentMetadataWatcher
 	>();
 	private readonly sessionChangeDisposable: vscode.Disposable;
-	private readonly config: WorkspaceQueryConfig;
+	private readonly config: WorkspaceFilterConfig;
 	private timeout: NodeJS.Timeout | undefined;
 	private fetching = false;
 	private refetchPending = false;
@@ -99,7 +72,7 @@ export class WorkspaceProvider
 		private readonly sessionState: SessionState,
 		private readonly options: WorkspaceProviderOptions = {},
 	) {
-		this.config = WORKSPACE_QUERY_CONFIG[getWorkspacesQuery];
+		this.config = WORKSPACE_FILTERS[getWorkspacesQuery];
 		this.sessionChangeDisposable = this.sessionState.onDidChange(() => {
 			this.clear();
 			void this.fetchAndRefresh();

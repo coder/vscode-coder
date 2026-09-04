@@ -6,13 +6,22 @@ import {
 	AgentMetadataEventSchemaArray,
 	errToStr,
 } from "./api-helper";
-import { type CoderApi } from "./coderApi";
+
+import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
+
+export interface AgentMetadataClient {
+	watchAgentMetadata(
+		agentId: string,
+	): Promise<UnidirectionalStream<{ data: unknown }>>;
+}
 
 export interface AgentMetadataWatcher {
 	onChange: vscode.EventEmitter<null>["event"];
 	dispose: () => void;
 	metadata?: AgentMetadataEvent[];
 	error?: unknown;
+	/** True once the socket closed on its own, so it reports nothing more. */
+	closed?: boolean;
 }
 
 /**
@@ -21,7 +30,7 @@ export interface AgentMetadataWatcher {
  */
 export async function createAgentMetadataWatcher(
 	agentId: WorkspaceAgent["id"],
-	client: CoderApi,
+	client: AgentMetadataClient,
 ): Promise<AgentMetadataWatcher> {
 	const socket = await client.watchAgentMetadata(agentId);
 
@@ -70,6 +79,7 @@ export async function createAgentMetadataWatcher(
 	socket.addEventListener("error", handleError);
 
 	socket.addEventListener("close", (event) => {
+		watcher.closed = true;
 		if (event.code !== 1000) {
 			handleError(
 				new Error(
