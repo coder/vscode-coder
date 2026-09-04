@@ -71,6 +71,68 @@ from the trigger corner and fade out on close, with Radix holding unmount
 until the exit animation ends. High contrast, `forced-colors`, and
 `prefers-reduced-motion` are handled.
 
+## Form controls
+
+`Input`, `Textarea`, `Checkbox`, `Select`, and `Field`/`Label` cover forms
+the way VS Code's own settings editor does: text field, number field,
+checkbox, and dropdown. Richer shapes map onto that vocabulary instead of
+getting bespoke widgets — a switch renders as `Checkbox`, a radio group or
+slider-bounded number as `Select` or a number `Input`, a multi-select as
+stacked `Checkbox`es inside a `Field`.
+
+`Input` and `Textarea` are controlled with `value` and `onChange(next)`;
+`Checkbox` uses `checked` and `onChange(next)`. Native-element props and
+refs pass through to the control; `className` and `style` target the root.
+`Select` wraps `@radix-ui/react-select` and preserves its controlled
+(`value` / `onValueChange`) and uncontrolled (`defaultValue`) modes, with
+flat compound exports (`SelectTrigger`, `SelectItem`, …), like the menus.
+A password `Input` shows a reveal toggle styled like the find widget's
+in-field option buttons.
+
+### Field composition
+
+`Field` lays out a semibold `Label`, children, description, and error text.
+It does not clone children or require a form context: native elements,
+these controls, and third-party controls work the same way. Connect
+`htmlFor` to the control's `id`, and pass `descriptionId` / `errorId` to
+associate the rendered text using `aria-describedby`. The consumer owns
+validation, `aria-invalid`, and when to announce errors.
+
+Use React's `useId` in reusable forms to avoid duplicate IDs:
+
+```tsx
+const id = useId();
+const descriptionId = `${id}-description`;
+const errorId = `${id}-error`;
+const invalid = Boolean(error);
+
+<Field
+	label="Region"
+	htmlFor={id}
+	description="Deploy the workspace close to you."
+	descriptionId={descriptionId}
+	error={error}
+	errorId={errorId}
+>
+	<Input
+		id={id}
+		value={region}
+		onChange={setRegion}
+		aria-describedby={invalid ? `${descriptionId} ${errorId}` : descriptionId}
+		aria-invalid={invalid}
+	/>
+</Field>;
+```
+
+Apply the same attributes to `SelectTrigger` for a dropdown. For a group
+of checkboxes, use a native `fieldset` with a `legend` for the group name
+rather than pointing a single label at several controls.
+
+This follows the explicit label/helper-text relationships documented by
+MUI and shadcn's separation of field layout from form state. Radix remains
+responsible for Select state and keyboard behavior; no additional form
+library is required.
+
 ## Known gaps
 
 - Overlay shadows are darker than native in dark themes: menus in VS Code
@@ -79,7 +141,8 @@ until the exit animation ends. High contrast, `forced-colors`, and
 - Keybinding hints show the contributed defaults the consumer passes, not
   user remaps: VS Code exposes no API for extensions to resolve a command's
   effective keybinding.
-- List/selection-row tokens are deferred to the Tree suite (#1037).
+- List/selection-row tokens are deferred to the Tree suite (#1037); the
+  `--ui-list-focus-*` rungs cover only the select dropdown's row highlight.
 
 ## Codicons
 
@@ -91,7 +154,7 @@ without a generated source file or a runtime list in the public API.
 
 ESLint rejects `@repo/*` imports and relative cross-package imports in
 `packages/ui` TypeScript and TSX source. `react` remains a peer dependency;
-the only runtime dependencies are the Radix overlay primitives and
+the only runtime dependencies are the Radix primitives and
 `@vscode/codicons`. Public consumers import from the package root or its
 declared CSS exports.
 

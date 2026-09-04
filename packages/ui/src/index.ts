@@ -1,4 +1,5 @@
 export { Button, type ButtonProps } from "./components/Button/Button";
+export { Checkbox, type CheckboxProps } from "./components/Checkbox/Checkbox";
 export {
 	EmptyState,
 	type EmptyStateProps,
@@ -7,11 +8,18 @@ export {
 	ErrorState,
 	type ErrorStateProps,
 } from "./components/ErrorState/ErrorState";
+export {
+	Field,
+	type FieldProps,
+	Label,
+	type LabelProps,
+} from "./components/Field/Field";
 export { Icon, type IconProps } from "./components/Icon/Icon";
 export {
 	IconButton,
 	type IconButtonProps,
 } from "./components/IconButton/IconButton";
+export { Input, type InputProps } from "./components/Input/Input";
 export {
 	LoadingState,
 	type LoadingStateProps,
@@ -24,12 +32,21 @@ export {
 	SearchInput,
 	type SearchInputProps,
 } from "./components/SearchInput/SearchInput";
+export {
+	Select,
+	SelectContent,
+	SelectItem,
+	type SelectItemProps,
+	SelectTrigger,
+	SelectValue,
+} from "./components/Select/Select";
 export { Spinner, type SpinnerProps } from "./components/Spinner/Spinner";
 export {
 	StatusPill,
 	type StatusPillProps,
 	type StatusPillTone,
 } from "./components/StatusPill/StatusPill";
+export { Textarea, type TextareaProps } from "./components/Textarea/Textarea";
 export type { CodiconName } from "./codicons";
 export {
 	ContextMenu,
