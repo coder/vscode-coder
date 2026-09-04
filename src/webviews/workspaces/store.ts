@@ -121,13 +121,12 @@ export class WorkspaceStore implements vscode.Disposable {
 			return this.fetch;
 		}
 		this.visible = visible;
+		void this.watchListedAgents();
 		if (!visible) {
 			// Nothing renders while hidden: a short hide reuses the sockets.
 			this.cancelPoll();
-			void this.watchListedAgents();
 			return this.fetch;
 		}
-		void this.watchListedAgents();
 		return this.fetching ? this.fetch : this.startLoad();
 	}
 
@@ -167,8 +166,7 @@ export class WorkspaceStore implements vscode.Disposable {
 
 	public dispose(): void {
 		this.disposed = true;
-		this.cancelFetch();
-		this.cancelPoll();
+		this.cancelLoad();
 		for (const disposable of this.disposables) {
 			disposable.dispose();
 		}
@@ -196,7 +194,9 @@ export class WorkspaceStore implements vscode.Disposable {
 			return;
 		}
 
-		const source = this.startFetch();
+		this.cancelLoad();
+		const source = new vscode.CancellationTokenSource();
+		this.fetching = source;
 		const { token } = source;
 		this.update({ loading: awaited || !this.loaded });
 		const { getQuery, poll } = WORKSPACE_FILTERS[this.filter];
@@ -217,8 +217,17 @@ export class WorkspaceStore implements vscode.Disposable {
 			if (token.isCancellationRequested) {
 				return;
 			}
-			if (this.isRejectedQuery(error)) {
-				await this.stopOfferingFilter(this.filter);
+			// The default filter's query is as old as the API; never drop it.
+			if (
+				this.filter !== DEFAULT_WORKSPACE_FILTER &&
+				isAxiosError(error) &&
+				error.response?.status === 400
+			) {
+				// Never leave a filter selected that cannot load.
+				this.unsupportedFilters.add(this.filter);
+				this.filter = DEFAULT_WORKSPACE_FILTER;
+				this.clearList();
+				await this.load();
 				return;
 			}
 			this.loaded = true;
@@ -266,8 +275,7 @@ export class WorkspaceStore implements vscode.Disposable {
 
 	/** Drop the list of the previous filter or session. A fetch follows. */
 	private clearList(clearMetadata = false): void {
-		this.cancelFetch();
-		this.cancelPoll();
+		this.cancelLoad();
 		this.retries = 0;
 		this.loaded = false;
 		this.workspaces = [];
@@ -280,15 +288,9 @@ export class WorkspaceStore implements vscode.Disposable {
 		this.update({ workspaces: [] });
 	}
 
-	/** Supersede the fetch in flight, so its result is dropped. */
-	private startFetch(): vscode.CancellationTokenSource {
-		this.cancelFetch();
+	/** Drop any pending poll and invalidate the fetch in flight. */
+	private cancelLoad(): void {
 		this.cancelPoll();
-		this.fetching = new vscode.CancellationTokenSource();
-		return this.fetching;
-	}
-
-	private cancelFetch(): void {
 		this.fetching?.cancel();
 		this.fetching?.dispose();
 		this.fetching = undefined;
@@ -327,23 +329,6 @@ export class WorkspaceStore implements vscode.Disposable {
 				// Metadata is supplementary: never report it as a failure to list.
 				this.logger.warn("Failed to watch agent metadata:", error);
 			});
-	}
-
-	/** The default filter is never dropped: its query is as old as the API. */
-	private isRejectedQuery(error: unknown): boolean {
-		return (
-			this.filter !== DEFAULT_WORKSPACE_FILTER &&
-			isAxiosError(error) &&
-			error.response?.status === 400
-		);
-	}
-
-	/** Never leave a filter selected that cannot load. */
-	private stopOfferingFilter(filter: WorkspaceFilter): Promise<void> {
-		this.unsupportedFilters.add(filter);
-		this.filter = DEFAULT_WORKSPACE_FILTER;
-		this.clearList();
-		return this.load();
 	}
 
 	private handleSessionChange(): void {

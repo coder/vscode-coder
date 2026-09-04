@@ -14,6 +14,7 @@ import {
 	createPanel,
 	DEPLOYMENT_URL,
 	disposeHarnesses,
+	shownPanel,
 } from "./harness";
 
 /** A workspace of "alice" with a single "main" agent. */
@@ -24,6 +25,9 @@ const aliceWorkspace = () =>
 		owner_name: "alice",
 		agents: [agent({ id: "agent-1", name: "main" })],
 	});
+
+/** A visible panel listing alice's workspace. */
+const shownWithAlice = () => shownPanel([[aliceWorkspace()]]);
 
 /** The whole state, as the panel replays it. */
 const wholeState = (workspaces: unknown[]) => ({
@@ -51,9 +55,7 @@ describe("WorkspacesPanelProvider", () => {
 	});
 
 	it("replays the whole state when the webview signals ready", async () => {
-		const h = createPanel();
-		h.client.respondOnce([aliceWorkspace()]);
-		await h.show();
+		const h = await shownWithAlice();
 		h.clearPushes();
 
 		await h.send(WorkspacesApi.ready);
@@ -64,8 +66,7 @@ describe("WorkspacesPanelProvider", () => {
 	});
 
 	it("pushes one update carrying only the fields that changed", async () => {
-		const h = createPanel();
-		await h.show();
+		const h = await shownPanel();
 		h.clearPushes();
 		h.client.respondOnce([aliceWorkspace()]);
 
@@ -77,8 +78,7 @@ describe("WorkspacesPanelProvider", () => {
 	});
 
 	it("replays the cached state on reveal, then the fresh list", async () => {
-		const h = createPanel();
-		await h.show();
+		const h = await shownPanel();
 		h.setVisible(false);
 		h.clearPushes();
 		h.client.respondOnce([aliceWorkspace()]);
@@ -100,9 +100,7 @@ describe("WorkspacesPanelProvider", () => {
 	});
 
 	it("replays the whole state when the color theme changes", async () => {
-		const h = createPanel();
-		h.client.respondOnce([aliceWorkspace()]);
-		await h.show();
+		const h = await shownWithAlice();
 		h.clearPushes();
 
 		setActiveColorTheme(vscode.ColorThemeKind.Light);
@@ -115,8 +113,7 @@ describe("WorkspacesPanelProvider", () => {
 	});
 
 	it("pushes nothing while hidden, including on a theme change", async () => {
-		const h = createPanel();
-		await h.show();
+		const h = await shownPanel();
 		h.setVisible(false);
 		h.clearPushes();
 
@@ -126,8 +123,7 @@ describe("WorkspacesPanelProvider", () => {
 	});
 
 	it("pushes nothing once disposed", async () => {
-		const h = createPanel();
-		await h.show();
+		const h = await shownPanel();
 		h.provider.dispose();
 		h.clearPushes();
 
@@ -142,8 +138,7 @@ describe("WorkspacesPanelProvider", () => {
 			{ name: "the provider is disposed", dispose: "provider" },
 			{ name: "the view is destroyed", dispose: "view" },
 		] as const)("stops the store listing when $name", async ({ dispose }) => {
-			const h = createPanel();
-			await h.show();
+			const h = await shownPanel();
 			expect(h.client.getWorkspaces).toHaveBeenCalledTimes(1);
 
 			if (dispose === "provider") {
@@ -158,8 +153,7 @@ describe("WorkspacesPanelProvider", () => {
 		});
 
 		it("pushes to the view that replaced the previous one", async () => {
-			const h = createPanel();
-			await h.show();
+			const h = await shownPanel();
 			const next = h.resolveAnotherView();
 			h.clearPushes();
 
@@ -170,8 +164,7 @@ describe("WorkspacesPanelProvider", () => {
 		});
 
 		it("ignores messages from the view it replaced", async () => {
-			const h = createPanel();
-			await h.show();
+			const h = await shownPanel();
 			const next = h.resolveAnotherView();
 			h.clearPushes();
 			next.clearPushes();
@@ -183,8 +176,7 @@ describe("WorkspacesPanelProvider", () => {
 		});
 
 		it("keeps the newest view when the one it replaced is destroyed", async () => {
-			const h = createPanel();
-			await h.show();
+			const h = await shownPanel();
 			const next = h.resolveAnotherView();
 			next.setVisible(true);
 			await h.store.settled;
@@ -197,8 +189,7 @@ describe("WorkspacesPanelProvider", () => {
 		});
 
 		it("resolves nothing once the request is cancelled", async () => {
-			const h = createPanel();
-			await h.show();
+			const h = await shownPanel();
 
 			const cancelled = h.resolveAnotherView(cancelledToken());
 			h.clearPushes();
@@ -214,8 +205,7 @@ describe("WorkspacesPanelProvider", () => {
 	});
 
 	it("ignores an unrecognized message", async () => {
-		const h = createPanel();
-		await h.show();
+		const h = await shownPanel();
 		h.clearPushes();
 
 		await h.sendRaw({ method: "nope" });
@@ -226,8 +216,7 @@ describe("WorkspacesPanelProvider", () => {
 
 	describe("commands", () => {
 		it("switches the filter", async () => {
-			const h = createPanel();
-			await h.show();
+			const h = await shownPanel();
 
 			await h.send(WorkspacesApi.setFilter, { filter: "shared" });
 
@@ -235,9 +224,7 @@ describe("WorkspacesPanelProvider", () => {
 		});
 
 		it("watches the agents the webview is showing", async () => {
-			const h = createPanel();
-			h.client.respondOnce([aliceWorkspace()]);
-			await h.show();
+			const h = await shownWithAlice();
 
 			await h.send(WorkspacesApi.watchAgents, { agentIds: ["agent-1"] });
 
@@ -254,9 +241,7 @@ describe("WorkspacesPanelProvider", () => {
 				agent: "main",
 			},
 		])("opens $name", async ({ params, agent: agentName }) => {
-			const h = createPanel();
-			h.client.respondOnce([aliceWorkspace()]);
-			await h.show();
+			const h = await shownWithAlice();
 
 			await h.send(WorkspacesApi.openWorkspace, params);
 
@@ -291,9 +276,7 @@ describe("WorkspacesPanelProvider", () => {
 				reported: "no SSH binary",
 			},
 		])("reports $name", async ({ params, refuse, reported }) => {
-			const h = createPanel();
-			h.client.respondOnce([aliceWorkspace()]);
-			await h.show();
+			const h = await shownWithAlice();
 			if (refuse) {
 				h.openWorkspace.mockRejectedValueOnce(new Error(reported));
 			}
@@ -311,9 +294,7 @@ describe("WorkspacesPanelProvider", () => {
 		] as const)(
 			"opens the $page page in the browser",
 			async ({ page, url }) => {
-				const h = createPanel();
-				h.client.respondOnce([aliceWorkspace()]);
-				await h.show();
+				const h = await shownWithAlice();
 
 				await h.send(WorkspacesApi.viewInDashboard, {
 					workspaceId: "workspace-1",
@@ -327,9 +308,7 @@ describe("WorkspacesPanelProvider", () => {
 		);
 
 		it("opens nothing while signed out of every deployment", async () => {
-			const h = createPanel();
-			h.client.respondOnce([aliceWorkspace()]);
-			await h.show();
+			const h = await shownWithAlice();
 			h.client.getHost.mockReturnValue(undefined);
 
 			await h.send(WorkspacesApi.viewInDashboard, {
@@ -342,8 +321,7 @@ describe("WorkspacesPanelProvider", () => {
 		});
 
 		it("reports a workspace that is no longer listed", async () => {
-			const h = createPanel();
-			await h.show();
+			const h = await shownPanel();
 
 			await h.send(WorkspacesApi.viewInDashboard, {
 				workspaceId: "gone",

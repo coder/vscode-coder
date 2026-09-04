@@ -80,20 +80,39 @@ export function createStore(options?: Partial<PollOptions>) {
 	return createStoreWith(new MockClient(), options);
 }
 
-/** A token for a resolution that is not cancelled. */
-function freshToken(): vscode.CancellationToken {
+/** Queue the responses the first lists resolve with, then reveal. */
+async function reveal<
+	H extends { client: MockClient; show: () => Promise<void> },
+>(harness: H, responses: readonly Workspace[][]): Promise<H> {
+	for (const listed of responses) {
+		harness.client.respondOnce(listed);
+	}
+	await harness.show();
+	return harness;
+}
+
+/** A visible store, answering its first lists with `responses`, in order. */
+export function shownStore(
+	responses: readonly Workspace[][] = [],
+	options?: Partial<PollOptions>,
+) {
+	return reveal(createStore(options), responses);
+}
+
+function token(cancelled = false): vscode.CancellationToken {
 	const source = new vscode.CancellationTokenSource();
 	disposables.push(source);
+	if (cancelled) {
+		source.cancel();
+	}
 	return source.token;
 }
 
+/** A token for a resolution that is not cancelled. */
+const freshToken = () => token();
+
 /** A token for a resolution VS Code gave up on before it ran. */
-export function cancelledToken(): vscode.CancellationToken {
-	const source = new vscode.CancellationTokenSource();
-	disposables.push(source);
-	source.cancel();
-	return source.token;
-}
+export const cancelledToken = () => token(true);
 
 /** Resolve one webview view and expose the ways a test can drive it. */
 function resolveView(
@@ -170,4 +189,9 @@ export function createPanel() {
 		resolveAnotherView: (token: vscode.CancellationToken = freshToken()) =>
 			resolveView(provider, base.store, token),
 	};
+}
+
+/** A visible panel, answering its first lists with `responses`, in order. */
+export function shownPanel(responses: readonly Workspace[][] = []) {
+	return reveal(createPanel(), responses);
 }

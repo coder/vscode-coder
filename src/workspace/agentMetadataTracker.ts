@@ -73,9 +73,8 @@ export class AgentMetadataTracker implements vscode.Disposable {
 		let changed = false;
 
 		for (const [agentId, watched] of this.watched) {
-			changed = wanted.has(agentId)
-				? this.keep(watched) || changed
-				: this.release(agentId, watched) || changed;
+			changed =
+				this.setReleased(agentId, watched, !wanted.has(agentId)) || changed;
 		}
 		for (const agentId of wanted) {
 			if (!this.watched.has(agentId)) {
@@ -122,22 +121,19 @@ export class AgentMetadataTracker implements vscode.Disposable {
 		this.changeEmitter.dispose();
 	}
 
-	/** Take an agent back before its socket closes. */
-	private keep(watched: WatchedAgent): boolean {
-		if (!watched.closing) {
+	/** Retain released sockets briefly; cancel their close when watched again. */
+	private setReleased(
+		agentId: AgentId,
+		watched: WatchedAgent,
+		released: boolean,
+	): boolean {
+		if (released === Boolean(watched.closing)) {
 			return false;
 		}
 		clearTimeout(watched.closing);
-		watched.closing = undefined;
-		return true;
-	}
-
-	/** Let an agent go, closing its socket unless it is wanted again in time. */
-	private release(agentId: AgentId, watched: WatchedAgent): boolean {
-		if (watched.closing) {
-			return false;
-		}
-		watched.closing = setTimeout(() => this.close(agentId), this.lingerMs);
+		watched.closing = released
+			? setTimeout(() => this.close(agentId), this.lingerMs)
+			: undefined;
 		return true;
 	}
 

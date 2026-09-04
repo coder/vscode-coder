@@ -68,7 +68,7 @@ export class WorkspacesPanelProvider
 
 	private readonly requestHandlers = buildRequestHandlers(WorkspacesApi, {});
 	private readonly commandHandlers = buildCommandHandlers(WorkspacesApi, {
-		ready: () => this.push(this.options.store.state),
+		ready: () => this.push(),
 		refresh: () => this.options.store.refresh(),
 		setFilter: (p) => this.options.store.setFilter(p.filter),
 		watchAgents: (p) => this.options.store.setWatchedAgents(p.agentIds),
@@ -113,7 +113,7 @@ export class WorkspacesPanelProvider
 			onWhileVisible(
 				webviewView,
 				vscode.window.onDidChangeActiveColorTheme,
-				() => this.push(store.state),
+				() => this.push(),
 			),
 			webviewView.webview.onDidReceiveMessage((message: unknown) => {
 				this.handleMessage(message).catch((err: unknown) => {
@@ -144,30 +144,32 @@ export class WorkspacesPanelProvider
 	private handleVisibility(): void {
 		const visible = this.view?.visible ?? false;
 		if (visible) {
-			this.push(this.options.store.state);
+			this.push();
 		}
 		void this.options.store.setVisible(visible);
 	}
 
 	private async handleMessage(message: unknown): Promise<void> {
 		const { logger } = this.options;
-		const showErrorToUser = (method: string) => USER_ACTION_METHODS.has(method);
+		const options = {
+			logger,
+			showErrorToUser: (method: string) => USER_ACTION_METHODS.has(method),
+		};
 		if (isIpcRequest(message)) {
-			await dispatchRequest(message, this.requestHandlers, this.view?.webview, {
-				logger,
-				showErrorToUser,
-			});
+			await dispatchRequest(
+				message,
+				this.requestHandlers,
+				this.view?.webview,
+				options,
+			);
 		} else if (isIpcCommand(message)) {
-			await dispatchCommand(message, this.commandHandlers, {
-				logger,
-				showErrorToUser,
-			});
+			await dispatchCommand(message, this.commandHandlers, options);
 		} else {
 			logger.warn("Unexpected webview message", message);
 		}
 	}
 
-	private push(update: WorkspacesUpdate): void {
+	private push(update: WorkspacesUpdate = this.options.store.state): void {
 		notifyWebview(this.view?.webview, WorkspacesApi.stateUpdated, update);
 	}
 

@@ -4,11 +4,22 @@ import { agent, agentMetadata, workspace } from "@repo/mocks";
 
 import { MockEventStream } from "../../../mocks/testHelpers";
 
-import { createStore, DEPLOYMENT, disposeHarnesses, OWNER } from "./harness";
+import {
+	createStore,
+	DEPLOYMENT,
+	disposeHarnesses,
+	OWNER,
+	shownStore,
+} from "./harness";
 
 import type { FilteredWorkspaces } from "@repo/shared";
 
 type Store = ReturnType<typeof createStore>;
+
+/** A metadata socket, as the client hands one to the store. */
+type MetadataSocket = MockEventStream<{
+	data: Array<ReturnType<typeof agentMetadata>>;
+}>;
 
 function queryRejected(): Error {
 	return Object.assign(new Error("invalid query"), {
@@ -24,6 +35,25 @@ function ids(listed: FilteredWorkspaces | undefined): string[] {
 const withAgent = () =>
 	workspace({ id: "workspace-1", agents: [agent({ id: "agent-1" })] });
 
+/** A polling store that lists "first", then "second" on its next poll. */
+const firstThenSecond = () =>
+	shownStore([[workspace({ id: "first" })], [workspace({ id: "second" })]], {
+		intervalMs: 5_000,
+	});
+
+/** A visible store listing one workspace whose only agent is watched. */
+async function watchingAgent(): Promise<Store> {
+	const h = await shownStore([[withAgent()]]);
+	await h.store.setWatchedAgents(["agent-1"]);
+	return h;
+}
+
+/** Deliver a metadata report on the socket the store opened for "agent-1". */
+const pushMetadata = (h: Store) =>
+	h.client.metadataStreams
+		.get("agent-1")!
+		.pushMessage({ data: [agentMetadata()] });
+
 describe("WorkspaceStore", () => {
 	afterEach(() => {
 		disposeHarnesses();
@@ -31,10 +61,7 @@ describe("WorkspaceStore", () => {
 	});
 
 	it("lists the workspaces of the signed-in user", async () => {
-		const h = createStore();
-		h.client.respondOnce([workspace({ id: "workspace-1" })]);
-
-		await h.show();
+		const h = await shownStore([[workspace({ id: "workspace-1" })]]);
 
 		expect(h.client.getWorkspaces).toHaveBeenCalledWith({ q: "owner:me" });
 		expect(h.last("workspaces")).toEqual({
@@ -75,10 +102,7 @@ describe("WorkspaceStore", () => {
 	describe("polling", () => {
 		it("picks up changes on the interval", async () => {
 			vi.useFakeTimers();
-			const h = createStore({ intervalMs: 5_000 });
-			h.client.respondOnce([workspace({ id: "first" })]);
-			h.client.respondOnce([workspace({ id: "second" })]);
-			await h.show();
+			const h = await firstThenSecond();
 
 			await vi.advanceTimersByTimeAsync(5_000);
 
@@ -91,10 +115,8 @@ describe("WorkspaceStore", () => {
 
 		it("says nothing about a poll that changed nothing", async () => {
 			vi.useFakeTimers();
-			const h = createStore({ intervalMs: 5_000 });
-			h.client.respondOnce([workspace({ id: "workspace-1" })]);
-			h.client.respondOnce([workspace({ id: "workspace-1" })]);
-			await h.show();
+			const listed = () => [workspace({ id: "workspace-1" })];
+			const h = await shownStore([listed(), listed()], { intervalMs: 5_000 });
 			const pushed = h.updates.length;
 
 			await vi.advanceTimersByTimeAsync(5_000);
@@ -108,10 +130,7 @@ describe("WorkspaceStore", () => {
 			{ name: "disposed", stop: (h) => h.store.dispose() },
 		])("stops while $name", async ({ stop }) => {
 			vi.useFakeTimers();
-			const h = createStore({ intervalMs: 5_000 });
-			h.client.respondOnce([workspace({ id: "first" })]);
-			h.client.respondOnce([workspace({ id: "second" })]);
-			await h.show();
+			const h = await firstThenSecond();
 
 			stop(h);
 			await vi.advanceTimersByTimeAsync(60_000);
@@ -121,8 +140,7 @@ describe("WorkspaceStore", () => {
 
 		it("only polls filters that are cheap to list", async () => {
 			vi.useFakeTimers();
-			const h = createStore({ intervalMs: 5_000 });
-			await h.show();
+			const h = await shownStore([], { intervalMs: 5_000 });
 			await h.store.setFilter("shared");
 			const listed = h.client.getWorkspaces.mock.calls.length;
 
@@ -152,10 +170,7 @@ describe("WorkspaceStore", () => {
 
 	describe("loading", () => {
 		it("reports the list as loading until it arrives", async () => {
-			const h = createStore();
-			h.client.respondOnce([workspace({ id: "workspace-1" })]);
-
-			await h.show();
+			const h = await shownStore([[workspace({ id: "workspace-1" })]]);
 
 			expect(h.pushes("workspaces")).toEqual([
 				{ filter: "mine", workspaces: [], loading: true },
@@ -167,8 +182,7 @@ describe("WorkspaceStore", () => {
 			{ name: "a filter switch", act: (h) => h.store.setFilter("shared") },
 			{ name: "a deliberate refresh", act: (h) => h.store.refresh() },
 		])("reports loading again for $name", async ({ act }) => {
-			const h = createStore();
-			await h.show();
+			const h = await shownStore();
 
 			await act(h);
 
@@ -184,8 +198,7 @@ describe("WorkspaceStore", () => {
 			{ name: "fails", fail: () => new Error("network down") },
 			{ name: "is rejected", fail: queryRejected },
 		])("stops loading when the fetch $name", async ({ fail }) => {
-			const h = createStore();
-			await h.show();
+			const h = await shownStore();
 			h.client.getWorkspaces.mockRejectedValueOnce(fail());
 
 			await h.store.setFilter("shared");
@@ -196,8 +209,7 @@ describe("WorkspaceStore", () => {
 
 	describe("filters", () => {
 		it("lists the filter the webview selected", async () => {
-			const h = createStore();
-			await h.show();
+			const h = await shownStore();
 
 			await h.store.setFilter("shared");
 
@@ -208,8 +220,7 @@ describe("WorkspaceStore", () => {
 		});
 
 		it("offers the filters of whoever signed in", async () => {
-			const h = createStore();
-			await h.show();
+			const h = await shownStore();
 			expect(h.store.state.capabilities.filters).toEqual(["mine", "shared"]);
 
 			h.session.signIn(DEPLOYMENT, OWNER);
@@ -219,8 +230,7 @@ describe("WorkspaceStore", () => {
 		});
 
 		it("ignores a filter it does not offer", async () => {
-			const h = createStore();
-			await h.show();
+			const h = await shownStore();
 
 			await h.store.setFilter("all");
 
@@ -244,9 +254,7 @@ describe("WorkspaceStore", () => {
 
 	describe("session changes", () => {
 		it("clears the workspaces and lists them again", async () => {
-			const h = createStore();
-			h.client.respondOnce([workspace({ id: "workspace-1" })]);
-			await h.show();
+			const h = await shownStore([[workspace({ id: "workspace-1" })]]);
 
 			h.session.signInAs("someone-else");
 			await h.store.settled;
@@ -259,9 +267,7 @@ describe("WorkspaceStore", () => {
 
 	describe("failed fetches", () => {
 		it("reports a failure, then clears it once a fetch succeeds", async () => {
-			const h = createStore();
-			h.client.respondOnce([workspace({ id: "workspace-1" })]);
-			await h.show();
+			const h = await shownStore([[workspace({ id: "workspace-1" })]]);
 			h.client.getWorkspaces.mockRejectedValueOnce(new Error("network down"));
 
 			await h.store.refresh();
@@ -274,8 +280,7 @@ describe("WorkspaceStore", () => {
 		});
 
 		it("stops offering a filter the deployment rejects", async () => {
-			const h = createStore();
-			await h.show();
+			const h = await shownStore();
 			h.client.getWorkspaces.mockRejectedValueOnce(queryRejected());
 			h.client.respondOnce([workspace({ id: "workspace-1" })]);
 
@@ -301,8 +306,7 @@ describe("WorkspaceStore", () => {
 		});
 
 		it("offers a rejected filter again on refresh", async () => {
-			const h = createStore();
-			await h.show();
+			const h = await shownStore();
 			h.client.getWorkspaces.mockRejectedValueOnce(queryRejected());
 			await h.store.setFilter("shared");
 
@@ -314,18 +318,14 @@ describe("WorkspaceStore", () => {
 
 	describe("agent metadata", () => {
 		it("watches nothing until the webview asks, then pushes reports", async () => {
-			const h = createStore();
-			h.client.respondOnce([withAgent()]);
-			await h.show();
+			const h = await shownStore([[withAgent()]]);
 			expect(h.client.metadataStreams.size).toBe(0);
 
 			// The agent that is not listed is not watched.
 			await h.store.setWatchedAgents(["agent-1", "not-listed"]);
 			expect([...h.client.metadataStreams.keys()]).toEqual(["agent-1"]);
 
-			h.client.metadataStreams
-				.get("agent-1")
-				?.pushMessage({ data: [agentMetadata()] });
+			pushMetadata(h);
 
 			expect(h.last("metadata")).toEqual({
 				"agent-1": { metadata: [agentMetadata()], error: null, loading: false },
@@ -333,10 +333,7 @@ describe("WorkspaceStore", () => {
 		});
 
 		it("stops reporting what the webview stopped showing", async () => {
-			const h = createStore();
-			h.client.respondOnce([withAgent()]);
-			await h.show();
-			await h.store.setWatchedAgents(["agent-1"]);
+			const h = await watchingAgent();
 
 			await h.store.setWatchedAgents([]);
 
@@ -344,13 +341,8 @@ describe("WorkspaceStore", () => {
 		});
 
 		it("lets go of the sockets while hidden and takes them back on reveal", async () => {
-			const h = createStore();
-			h.client.respondOnce([withAgent()]);
-			await h.show();
-			await h.store.setWatchedAgents(["agent-1"]);
-			h.client.metadataStreams
-				.get("agent-1")
-				?.pushMessage({ data: [agentMetadata()] });
+			const h = await watchingAgent();
+			pushMetadata(h);
 			const opened = vi.spyOn(h.client, "watchAgentMetadata");
 
 			await h.store.setVisible(false);
@@ -424,15 +416,13 @@ describe("WorkspaceStore", () => {
 		});
 
 		it("watches a large fleet of agents", async () => {
-			const h = createStore();
 			const workspaces = Array.from({ length: 50 }, (_, i) =>
 				workspace({
 					id: `workspace-${i}`,
 					agents: [agent({ id: `agent-${i}` })],
 				}),
 			);
-			h.client.respondOnce(workspaces);
-			await h.show();
+			const h = await shownStore([workspaces]);
 
 			await h.store.setWatchedAgents(workspaces.map((_, i) => `agent-${i}`));
 
@@ -443,10 +433,7 @@ describe("WorkspaceStore", () => {
 	describe("lifecycle races", () => {
 		it("caches a hidden response without reviving sockets or polling", async () => {
 			vi.useFakeTimers();
-			const h = createStore();
-			h.client.respondOnce([withAgent()]);
-			await h.show();
-			await h.store.setWatchedAgents(["agent-1"]);
+			const h = await watchingAgent();
 			const socket = h.client.metadataStreams.get("agent-1")!;
 			const pending = h.client.pending();
 			const fetching = h.store.refresh();
@@ -496,13 +483,8 @@ describe("WorkspaceStore", () => {
 		});
 
 		it("restores lingering metadata before a reveal fetch completes", async () => {
-			const h = createStore();
-			h.client.respondOnce([withAgent()]);
-			await h.show();
-			await h.store.setWatchedAgents(["agent-1"]);
-			h.client.metadataStreams
-				.get("agent-1")!
-				.pushMessage({ data: [agentMetadata()] });
+			const h = await watchingAgent();
+			pushMetadata(h);
 			await h.store.setVisible(false);
 			const pending = h.client.pending();
 			const revealing = h.show();
@@ -561,10 +543,7 @@ describe("WorkspaceStore", () => {
 		it.each([true, false])(
 			"closes session sockets immediately when visible is %s",
 			async (visible) => {
-				const h = createStore();
-				h.client.respondOnce([withAgent()]);
-				await h.show();
-				await h.store.setWatchedAgents(["agent-1"]);
+				const h = await watchingAgent();
 				const socket = h.client.metadataStreams.get("agent-1")!;
 				socket.pushMessage({ data: [agentMetadata()] });
 				await h.store.setVisible(visible);
@@ -577,13 +556,8 @@ describe("WorkspaceStore", () => {
 		);
 
 		it("drops sockets opening across a deployment switch", async () => {
-			const h = createStore();
-			h.client.respondOnce([withAgent()]);
-			await h.show();
-			const pending =
-				Promise.withResolvers<
-					Awaited<ReturnType<typeof h.client.watchAgentMetadata>>
-				>();
+			const h = await shownStore([[withAgent()]]);
+			const pending = Promise.withResolvers<MetadataSocket>();
 			vi.spyOn(h.client, "watchAgentMetadata").mockReturnValueOnce(
 				pending.promise,
 			);
@@ -592,9 +566,7 @@ describe("WorkspaceStore", () => {
 				{ url: "https://other.example.com", safeHostname: "other.example.com" },
 				OWNER,
 			);
-			const socket = new MockEventStream<{
-				data: Array<ReturnType<typeof agentMetadata>>;
-			}>();
+			const socket: MetadataSocket = new MockEventStream();
 			pending.resolve(socket);
 			await watching;
 			await h.store.settled;
@@ -603,10 +575,7 @@ describe("WorkspaceStore", () => {
 		});
 
 		it("releases metadata when a list fails", async () => {
-			const h = createStore();
-			h.client.respondOnce([withAgent()]);
-			await h.show();
-			await h.store.setWatchedAgents(["agent-1"]);
+			const h = await watchingAgent();
 			h.client.getWorkspaces.mockRejectedValueOnce(new Error("offline"));
 			await h.store.refresh();
 			expect(h.store.state.metadata).toEqual({});
@@ -620,10 +589,7 @@ describe("WorkspaceStore", () => {
 				count: 1,
 			});
 			await h.show();
-			const pending =
-				Promise.withResolvers<
-					Awaited<ReturnType<typeof h.client.watchAgentMetadata>>
-				>();
+			const pending = Promise.withResolvers<MetadataSocket>();
 			const opened = vi
 				.spyOn(h.client, "watchAgentMetadata")
 				.mockReturnValueOnce(pending.promise);
@@ -631,11 +597,7 @@ describe("WorkspaceStore", () => {
 			await vi.advanceTimersByTimeAsync(15_000);
 			expect(h.client.getWorkspaces).toHaveBeenCalledTimes(4);
 			expect(opened).toHaveBeenCalledOnce();
-			pending.resolve(
-				new MockEventStream<{
-					data: Array<ReturnType<typeof agentMetadata>>;
-				}>(),
-			);
+			pending.resolve(new MockEventStream());
 			await watching;
 		});
 

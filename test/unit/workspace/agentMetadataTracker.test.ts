@@ -39,6 +39,13 @@ function setup() {
 	};
 }
 
+/** A tracker already watching `agents`. */
+async function watching(...agents: string[]) {
+	const harness = setup();
+	await harness.tracker.setWatched(agents);
+	return harness;
+}
+
 describe("AgentMetadataTracker", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
@@ -107,8 +114,7 @@ describe("AgentMetadataTracker", () => {
 			},
 		},
 	])("reports $name an agent sends", async ({ send, reported }) => {
-		const { tracker, stream } = setup();
-		await tracker.setWatched(["agent-1"]);
+		const { tracker, stream } = await watching("agent-1");
 
 		send(stream("agent-1")!);
 
@@ -117,8 +123,7 @@ describe("AgentMetadataTracker", () => {
 
 	describe("letting go", () => {
 		it("keeps the socket for a while, in case the agent comes back", async () => {
-			const { tracker, reports, stream } = setup();
-			await tracker.setWatched(["agent-1"]);
+			const { tracker, reports, stream } = await watching("agent-1");
 			const socket = stream("agent-1");
 
 			await tracker.setWatched([]);
@@ -136,8 +141,7 @@ describe("AgentMetadataTracker", () => {
 		});
 
 		it("reuses a lingering socket, with what it already reported", async () => {
-			const { opened, tracker, stream } = setup();
-			await tracker.setWatched(["agent-1"]);
+			const { opened, tracker, stream } = await watching("agent-1");
 			stream("agent-1")?.pushMessage({ data: [agentMetadata()] });
 
 			// Collapsing and expanding a row repeatedly must not reconnect.
@@ -152,8 +156,7 @@ describe("AgentMetadataTracker", () => {
 		});
 
 		it("keeps the agents that never stopped being watched", async () => {
-			const { tracker, reports } = setup();
-			await tracker.setWatched(["agent-1", "agent-2"]);
+			const { tracker, reports } = await watching("agent-1", "agent-2");
 
 			await tracker.setWatched(["agent-1"]);
 			vi.advanceTimersByTime(LINGER_MS);
@@ -185,8 +188,7 @@ describe("AgentMetadataTracker", () => {
 		});
 
 		it("reopens a socket that died on its own", async () => {
-			const { opened, tracker, stream } = setup();
-			await tracker.setWatched(["agent-1"]);
+			const { opened, tracker, stream } = await watching("agent-1");
 			stream("agent-1")?.emit("close", {
 				code: 1006,
 				reason: "gone",
@@ -252,9 +254,7 @@ describe("AgentMetadataTracker", () => {
 				await tracker.setWatched(["agent-1"]);
 				const current = stream("agent-1")!;
 				current.pushMessage({ data: [agentMetadata()] });
-				const old = new MockEventStream<{
-					data: Array<ReturnType<typeof agentMetadata>>;
-				}>();
+				const old: MockAgentStream = new MockEventStream();
 				if (outcome === "resolve") pending.resolve(old);
 				else pending.reject(new Error("stale error"));
 				await stale;
@@ -265,8 +265,7 @@ describe("AgentMetadataTracker", () => {
 		);
 
 		it("ignores a replaced socket's reports and synchronous close errors", async () => {
-			const { tracker, stream } = setup();
-			await tracker.setWatched(["agent-1"]);
+			const { tracker, stream } = await watching("agent-1");
 			const old = stream("agent-1")!;
 			old.emit("close", { code: 1006, reason: "gone", wasClean: false });
 			old.close.mockImplementation(() => old.pushError(new Error("closing")));
@@ -278,9 +277,7 @@ describe("AgentMetadataTracker", () => {
 
 		it("replays data received before the tracker subscribes", async () => {
 			const { tracker, opened } = setup();
-			const socket = new MockEventStream<{
-				data: Array<ReturnType<typeof agentMetadata>>;
-			}>();
+			const socket: MockAgentStream = new MockEventStream();
 			const add = socket.addEventListener.bind(socket);
 			vi.spyOn(socket, "addEventListener").mockImplementation(
 				(event, listener) => {
@@ -316,9 +313,7 @@ describe("AgentMetadataTracker", () => {
 			const stale = tracker.setWatched(["agent-1"]);
 			tracker.clear();
 			await tracker.setWatched(["agent-1"]);
-			const socket = new MockEventStream<{
-				data: Array<ReturnType<typeof agentMetadata>>;
-			}>();
+			const socket: MockAgentStream = new MockEventStream();
 			pending.resolve(socket);
 			await stale;
 			expect(socket.close).toHaveBeenCalledOnce();
