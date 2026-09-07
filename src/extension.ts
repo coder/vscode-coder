@@ -27,11 +27,9 @@ import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
 import { initVscodeProposed } from "./vscodeProposed";
 import { TasksPanelProvider } from "./webviews/tasks/tasksPanelProvider";
-import { WorkspacesPanelProvider } from "./webviews/workspaces/workspacesPanelProvider";
-import {
-	WorkspaceProvider,
-	WorkspaceQuery,
-} from "./workspace/workspacesProvider";
+import { WorkspacesPanelProvider } from "./webviews/workspaces/panelProvider";
+import { WorkspaceStore } from "./webviews/workspaces/workspaceStore";
+import { WorkspaceProvider } from "./workspace/workspacesProvider";
 
 const MY_WORKSPACES_TREE_ID = "myWorkspaces";
 const SHARED_WORKSPACES_TREE_ID = "sharedWorkspaces";
@@ -174,16 +172,15 @@ async function doActivate(
 	ctx.subscriptions.push(announcementManager);
 
 	const myWorkspacesProvider = new WorkspaceProvider(
-		WorkspaceQuery.Mine,
+		"mine",
 		client,
 		output,
 		deploymentManager.session,
-		{ refreshIntervalMs: 5_000 },
 	);
 	ctx.subscriptions.push(myWorkspacesProvider);
 
 	const allWorkspacesProvider = new WorkspaceProvider(
-		WorkspaceQuery.All,
+		"all",
 		client,
 		output,
 		deploymentManager.session,
@@ -191,7 +188,7 @@ async function doActivate(
 	ctx.subscriptions.push(allWorkspacesProvider);
 
 	const sharedWorkspacesProvider = new WorkspaceProvider(
-		WorkspaceQuery.Shared,
+		"shared",
 		client,
 		output,
 		deploymentManager.session,
@@ -302,20 +299,25 @@ async function doActivate(
 	contextManager.set("coder.workspacesPanelEnabled", workspacesPanelEnabled);
 
 	if (workspacesPanelEnabled) {
+		const workspaceStore = new WorkspaceStore(
+			client,
+			output,
+			deploymentManager.session,
+		);
 		const workspacesPanelProvider = new WorkspacesPanelProvider(
 			ctx.extensionUri,
+			workspaceStore,
+			commands,
 			output,
 		);
 
 		ctx.subscriptions.push(
+			workspaceStore,
 			workspacesPanelProvider,
 			vscode.window.registerWebviewViewProvider(
 				WorkspacesPanelProvider.viewType,
 				workspacesPanelProvider,
 				{ webviewOptions: { retainContextWhenHidden: true } },
-			),
-			secretsManager.onDidChangeCurrentDeployment(() =>
-				workspacesPanelProvider.refresh(),
 			),
 		);
 	}

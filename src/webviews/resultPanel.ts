@@ -1,12 +1,6 @@
 import * as vscode from "vscode";
 
-import {
-	dispatchCommand,
-	dispatchRequest,
-	isIpcCommand,
-	isIpcRequest,
-	onWhileVisible,
-} from "./dispatch";
+import { dispatchWebviewMessage, onWhileVisible } from "./dispatch";
 import { getWebviewHtml } from "./html";
 import { openJsonBeside } from "./openJson";
 
@@ -90,16 +84,12 @@ export function showResultPanel(options: ResultPanelOptions): void {
 		onWhileVisible(panel, panel.onDidChangeViewState, sendData),
 		onWhileVisible(panel, vscode.window.onDidChangeActiveColorTheme, sendData),
 		panel.webview.onDidReceiveMessage((message: unknown) => {
-			if (isIpcRequest(message)) {
-				void dispatchRequest(message, requests, panel.webview, { logger });
-			} else if (isIpcCommand(message)) {
-				void dispatchCommand(message, commands, { logger });
-			} else {
-				logger.warn(
-					`Ignoring unrecognized ${webviewName} webview message`,
-					message,
-				);
-			}
+			void dispatchWebviewMessage(
+				message,
+				{ requests, commands },
+				panel.webview,
+				{ logger },
+			);
 		}),
 	];
 	panel.onDidDispose(() => {
