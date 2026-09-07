@@ -201,6 +201,34 @@ from the trigger corner and fade out on close, with Radix holding unmount
 until the exit animation ends. High contrast, `forced-colors`, and
 `prefers-reduced-motion` are handled.
 
+## Form controls
+
+`Input`, `Textarea`, `Checkbox`, `Select`, and `Field`/`Label` cover forms
+the way VS Code's own settings editor does: text field, number field,
+checkbox, and dropdown. Richer shapes map onto that vocabulary instead of
+getting bespoke widgets — a switch renders as `Checkbox`, a radio group or
+slider-bounded number as `Select` or a number `Input`, a multi-select as
+stacked `Checkbox`es inside a `Field`.
+
+`Input` and `Textarea` are controlled with `value` and `onChange(next)`;
+`Checkbox` uses `checked` and `onChange(next)`. Native-element props and
+refs pass through to the control; `className` and `style` target the root.
+`Select` wraps `@radix-ui/react-select` and preserves its controlled
+(`value` / `onValueChange`) and uncontrolled (`defaultValue`) modes, with
+flat compound exports (`SelectTrigger`, `SelectItem`, …), like the menus.
+A password `Input` shows a reveal toggle styled like the find widget's
+in-field option buttons.
+
+`Field` lays out a semibold `Label`, children, description, and error text.
+It does not clone children or require a form context, so native elements
+and third-party controls work the same way: connect `htmlFor` to the
+control's `id`, and pass `descriptionId` / `errorId` to give the rendered
+text IDs the control can point `aria-describedby` at. The consumer owns
+`aria-describedby`, `aria-invalid`, validation, and when to announce
+errors; `Field.stories.tsx` shows the `useId` wiring. For a group of
+checkboxes, use a native `fieldset` with a `legend` for the group name
+rather than pointing a single label at several controls.
+
 ## Known gaps
 
 - Overlay shadows are darker than native in dark themes: menus in VS Code
@@ -220,7 +248,7 @@ without a generated source file or a runtime list in the public API.
 
 ESLint rejects `@repo/*` imports and relative cross-package imports in
 `packages/ui` TypeScript and TSX source. `react` remains a peer dependency;
-the only runtime dependencies are the Radix overlay primitives and
+the only runtime dependencies are the Radix primitives and
 `@vscode/codicons`. Public consumers import from the package root or its
 declared CSS exports.
 

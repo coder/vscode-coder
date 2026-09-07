@@ -1,0 +1,54 @@
+/* Shared text-control paint and inner-input layout; component files own
+   padding and native-element behavior. Single-line controls are the ones
+   that also carry .ui-control, so they keep the native 26px box while the
+   textarea stays a block element. */
+.ui-text-control {
+	width: 100%;
+	color: var(--ui-input-foreground);
+	background: var(--ui-input-background);
+	border: 1px solid var(--ui-input-border);
+	border-radius: var(--ui-radius-small);
+}
+
+.ui-control.ui-text-control {
+	justify-content: flex-start;
+	height: 26px;
+}
+
+.ui-text-control:focus-within {
+	border-color: var(--ui-focus-border);
+}
+
+/* Restores text selection the .ui-control wrapper turns off */
+.ui-text-control__control {
+	min-width: 0;
+	flex: 1;
+	color: inherit;
+	background: transparent;
+	border: 0;
+	outline: 0;
+	font: inherit;
+	user-select: text;
+}
+
+.ui-text-control::placeholder,
+.ui-text-control__control::placeholder {
+	color: var(--ui-input-placeholder-foreground);
+	opacity: 1;
+}
+
+/* Trailing in-field buttons: the password reveal and the search clear */
+.ui-text-control__action {
+	flex: none;
+	margin-inline-end: 1px;
+}
+
+.ui-text-control--disabled,
+.ui-text-control:disabled {
+	opacity: var(--ui-disabled-opacity);
+}
+
+.ui-text-control:disabled,
+.ui-text-control__control:disabled {
+	cursor: not-allowed;
+}

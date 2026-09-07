@@ -6,6 +6,7 @@ import { setForwardedRef } from "#ref";
 import "../control.css";
 import { Icon } from "../Icon/Icon";
 import { IconButton } from "../IconButton/IconButton";
+import "../text-control.css";
 
 import "./SearchInput.css";
 
@@ -43,8 +44,9 @@ export function SearchInput({
 		<div
 			className={cx(
 				"ui-control",
+				"ui-text-control",
 				"ui-search-input",
-				disabled && "ui-search-input--disabled",
+				disabled && "ui-text-control--disabled",
 				className,
 			)}
 			style={style}
@@ -62,13 +64,13 @@ export function SearchInput({
 				onChange={handleChange}
 				disabled={disabled}
 				aria-label={label}
-				className="ui-search-input__control"
+				className="ui-text-control__control ui-search-input__control"
 			/>
 			{value.length > 0 && !disabled ? (
 				<IconButton
 					icon="close"
 					label={clearLabel}
-					className="ui-search-input__clear"
+					className="ui-text-control__action"
 					onClick={handleClear}
 				/>
 			) : null}
