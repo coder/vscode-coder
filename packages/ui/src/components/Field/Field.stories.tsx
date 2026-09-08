@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { userEvent, within } from "storybook/test";
+import { within } from "storybook/test";
 
 import { PIXEL_ALL_THEMES } from "#storybook";
 
@@ -55,9 +55,10 @@ const meta: Meta<typeof FieldStates> = {
 export default meta;
 type Story = StoryObj<typeof FieldStates>;
 
-// Focus the first control so the snapshot shows the focus border.
-export const States: Story = {
-	play: async ({ canvasElement }) => {
-		await userEvent.click(within(canvasElement).getByText("Region"));
+export const States: Story = {};
+
+export const Focused: Story = {
+	play: ({ canvasElement }) => {
+		within(canvasElement).getByRole("textbox", { name: "Region" }).focus();
 	},
 };

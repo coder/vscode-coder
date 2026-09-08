@@ -61,6 +61,12 @@ type Story = StoryObj<typeof RegionSelect>;
 
 export const States: Story = {};
 
+export const Focused: Story = {
+	play: ({ canvasElement }) => {
+		within(canvasElement).getByRole("combobox", { name: "Region" }).focus();
+	},
+};
+
 export const Open: Story = {
 	play: async ({ canvasElement }) => {
 		const canvas = within(canvasElement);

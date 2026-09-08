@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { within } from "storybook/test";
 
 import { PIXEL_ALL_THEMES } from "#storybook";
 
@@ -51,3 +52,9 @@ export default meta;
 type Story = StoryObj<typeof InputStates>;
 
 export const States: Story = {};
+
+export const Focused: Story = {
+	play: ({ canvasElement }) => {
+		within(canvasElement).getByRole("textbox", { name: "Region" }).focus();
+	},
+};

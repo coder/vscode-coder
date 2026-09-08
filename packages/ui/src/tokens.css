@@ -108,7 +108,7 @@
 		var(--ui-dropdown-background)
 	);
 	/* Native select dropdowns highlight rows with the quick input list colors
-	   (selectBoxStyles); the outline only resolves in high contrast. */
+	   (selectBoxStyles) and outline them with --ui-list-selection-outline. */
 	--ui-list-focus-background: var(
 		--vscode-quickInputList-focusBackground,
 		var(--vscode-list-activeSelectionBackground, transparent)
@@ -117,7 +117,6 @@
 		--vscode-quickInputList-focusForeground,
 		var(--vscode-list-activeSelectionForeground, var(--ui-dropdown-foreground))
 	);
-	--ui-list-focus-outline: var(--vscode-contrastActiveBorder, transparent);
 	--ui-button-background: var(--vscode-button-background, var(--ui-background));
 	--ui-button-foreground: var(--vscode-button-foreground, var(--ui-foreground));
 	--ui-button-border: var(
