@@ -189,10 +189,22 @@ const MenuParity = (): React.JSX.Element => (
 		}}
 	>
 		<DropdownMenu defaultOpen>
-			<DropdownMenuTrigger asChild>
-				<span />
+			<DropdownMenuTrigger asChild aria-label="Menu">
+				{/* A zero-height button still anchors the popper, so the menu opens
+					    at the top of its grid column, level with the reference. */}
+				<button
+					type="button"
+					style={{
+						display: "block",
+						width: "100%",
+						height: 0,
+						padding: 0,
+						border: 0,
+						opacity: 0,
+					}}
+				/>
 			</DropdownMenuTrigger>
-			<DropdownMenuContent>
+			<DropdownMenuContent sideOffset={0}>
 				<DropdownMenuItem>Start workspace</DropdownMenuItem>
 				<DropdownMenuItem>Open logs</DropdownMenuItem>
 				<DropdownMenuSeparator />

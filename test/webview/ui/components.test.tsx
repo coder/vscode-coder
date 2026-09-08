@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { createRef, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -11,6 +12,7 @@ import {
 	SearchInput,
 	Spinner,
 	StatusPill,
+	TooltipProvider,
 } from "@repo/ui";
 
 import { qs } from "../helpers";
@@ -46,6 +48,24 @@ describe("IconButton", () => {
 		render(<IconButton icon="refresh" label="Refresh" onClick={onClick} />);
 		fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
 		expect(onClick).toHaveBeenCalledOnce();
+	});
+	it("hovers with the label unless opted out", async () => {
+		const hoverText = async (
+			tooltip?: string | null,
+		): Promise<string | undefined> => {
+			const view = render(
+				<TooltipProvider delayDuration={0}>
+					<IconButton icon="refresh" label="Refresh" tooltip={tooltip} />
+				</TooltipProvider>,
+			);
+			await userEvent.hover(screen.getByRole("button"));
+			const text = screen.queryByRole("tooltip")?.textContent ?? undefined;
+			view.unmount();
+			return text;
+		};
+		expect(await hoverText()).toBe("Refresh");
+		expect(await hoverText("Reload the list")).toBe("Reload the list");
+		expect(await hoverText(null)).toBeUndefined();
 	});
 });
 

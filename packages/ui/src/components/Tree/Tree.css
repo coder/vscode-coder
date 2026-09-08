@@ -7,6 +7,7 @@
 .ui-tree {
 	--ui-tree-indent-size: 8px;
 	--ui-tree-row-height: 22px;
+	position: relative;
 	width: 100%;
 	min-width: 0;
 	outline: 0;
@@ -32,7 +33,8 @@
 .ui-tree-sticky {
 	position: sticky;
 	top: 0;
-	z-index: 100;
+	/* Native pins the sticky container below the hover widget's stacking */
+	z-index: 13;
 	height: 0;
 	outline: 0;
 }
@@ -210,4 +212,11 @@
 	.ui-tree-item__indent-slot--active {
 		border-color: CanvasText;
 	}
+}
+
+/* The shared hover anchors here instead of to each row's label. */
+.ui-tree-hover-anchor {
+	position: absolute;
+	pointer-events: none;
+	opacity: 0;
 }

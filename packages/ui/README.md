@@ -140,6 +140,7 @@ flowchart LR
   Transition --> Adapter[useTreeAdapter.ts]
   Adapter --> Rows[Tree.tsx and TreeRow.tsx]
   Adapter --> Sticky[StickyScroll.tsx]
+  Rows --> Hover[TreeHover.tsx]
 ```
 
 The model, policy, and transitions stay pure. The adapter owns React and DOM
@@ -153,6 +154,15 @@ hover, selected ancestor paths stay active, and the focused path is active only
 while the tree has focus. The package default uses inset Modern UI rows;
 `data-ui-style="stable"` restores edge-to-edge square rows and stable focus
 styling.
+
+Labels hover with the node's text value, so truncated rows stay readable.
+Set `tooltip` for richer content or `null` to opt out. One bubble serves the
+whole tree, as in the native list: an invisible anchor moves to whatever the
+pointer reaches, taking its x from the cursor and its y from the target's box,
+the way a native hover placed at the mouse does. Each new target waits out the
+show delay, except within a row's action bar, where crossing between buttons is
+instant, the exception native grants a dense cluster of targets. Ctrl+K Ctrl+I opens the focused
+row's hover with no delay at all, and moving the focus closes it.
 
 ## Overlays
 
@@ -171,7 +181,18 @@ tooltips.
 `TooltipProvider` ancestor. Mount one provider per app so that a pointer
 moving between nearby triggers skips the show delay, like native hovers.
 The delay defaults to 500ms, matching VS Code's `workbench.hover.delay`,
-and tooltips stop growing at half the window height.
+and tooltips stop growing at half the window height. Components that own
+their hovers fall back to a private provider when the app has none, so
+`Tree` rows and `IconButton` work unwrapped. A private provider keeps its own
+skip-delay, though, so an app with several of them makes every hover wait out
+the full delay; mount one provider and they share it. `IconButton` hints with
+its label like a native action bar item; pass `tooltip` to say something else,
+or `null` for a button that stays quiet.
+
+`HoverDelegateScope` hands every `Tooltip` inside it to one shared bubble
+instead of a bubble each, the way a VS Code list serves its rows and their
+action bars from a single hover widget. `Tree` uses it, which is also what
+lets one place decide when a hover is instant rather than delayed.
 
 Overlay content is portalled to `body`, inherits webview typography from
 there, and shares the `.ui-overlay` base for stacking, border, shadow,

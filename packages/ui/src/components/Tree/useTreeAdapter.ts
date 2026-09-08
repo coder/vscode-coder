@@ -1,4 +1,10 @@
-import { type KeyboardEvent, type MouseEvent, useMemo, useState } from "react";
+import {
+	type KeyboardEvent,
+	type MouseEvent,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 
 import {
 	closestRow,
@@ -9,6 +15,7 @@ import {
 import {
 	createTreeModel,
 	ROW_HEIGHT_PX,
+	rowTooltip,
 	type TreeNode,
 	type TreeRowModel,
 } from "./treeModel";
@@ -30,8 +37,16 @@ import {
 	type TreeInteractionState,
 } from "./treeTransition";
 
+import type { TreeHoverControl } from "./TreeHover";
+
 const NO_IDS: readonly string[] = [];
 const NO_GUIDES = "";
+const MODIFIER_KEYS: ReadonlySet<string> = new Set([
+	"Alt",
+	"Control",
+	"Meta",
+	"Shift",
+]);
 
 /** Single selection, or multi-selection, never a mix of the two APIs. */
 export type SelectionProps =
@@ -58,6 +73,7 @@ interface AdapterOptions {
 	readonly multiSelectModifier: TreeMultiSelectModifier;
 	readonly onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;
 	readonly treeRef: React.RefObject<HTMLDivElement | null>;
+	readonly hoverControl?: TreeHoverControl;
 }
 
 function rowElement(tree: HTMLElement | null, id: string): HTMLElement | null {
@@ -90,6 +106,7 @@ export function useTreeAdapter(options: AdapterOptions & SelectionProps) {
 	);
 	const { visibleRows, rowsById } = model;
 	const selected = controlledIds(options);
+	const chordRef = useRef(false);
 	const [state, setState] = useState<TreeInteractionState>(() =>
 		initialTreeInteractionState(selected),
 	);
@@ -218,6 +235,30 @@ export function useTreeAdapter(options: AdapterOptions & SelectionProps) {
 		}
 		onPointer(row, event, hitTwistie(row, event.target), "row");
 	};
+	/** VS Code binds `list.showHover` to the Ctrl+K Ctrl+I chord. */
+	const showHoverChord = (
+		event: KeyboardEvent<HTMLDivElement>,
+	): "pending" | "show" | undefined => {
+		const held = (event.ctrlKey || event.metaKey) && !event.altKey;
+		const key = held ? event.key.toLowerCase() : "";
+		const armed = chordRef.current;
+		chordRef.current = !armed && key === "k";
+		if (chordRef.current) {
+			return "pending";
+		}
+		return armed && key === "i" ? "show" : undefined;
+	};
+	const showHover = (row: TreeRowModel | undefined): void => {
+		const element = row
+			? rowElement(treeRef.current, row.node.id)?.querySelector<HTMLElement>(
+					".ui-tree-item__content",
+				)
+			: undefined;
+		options.hoverControl?.current?.(
+			row && element ? { content: rowTooltip(row), element } : undefined,
+			true,
+		);
+	};
 	const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
 		options.onKeyDown?.(event);
 		if (event.defaultPrevented) {
@@ -230,6 +271,18 @@ export function useTreeAdapter(options: AdapterOptions & SelectionProps) {
 			visibleRows[0];
 		if (!row) {
 			return;
+		}
+		// A hover the keyboard opened stays only until the next real key.
+		if (!MODIFIER_KEYS.has(event.key)) {
+			const chord = showHoverChord(event);
+			if (chord) {
+				if (chord === "show") {
+					showHover(row);
+				}
+				event.preventDefault();
+				return;
+			}
+			showHover(undefined);
 		}
 		const interactive = nestedInteractiveTarget(
 			event.target,
@@ -273,7 +326,10 @@ export function useTreeAdapter(options: AdapterOptions & SelectionProps) {
 		isSelectionGesture: (event: MouseEvent) =>
 			isSelectionGesture(event, behavior),
 		onFocusIn,
-		onBlurOut: () => setState((current) => treeFocusChanged(current, false)),
+		onBlurOut: () => {
+			showHover(undefined);
+			setState((current) => treeFocusChanged(current, false));
+		},
 		onClick,
 		onPointer,
 		onKeyDown,

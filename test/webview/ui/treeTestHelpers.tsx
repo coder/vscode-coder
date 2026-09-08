@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
+import { onTestFinished, vi } from "vitest";
 
 import { Tree, type TreeNode, type TreeProps } from "@repo/ui";
 
@@ -25,6 +26,14 @@ export const BASIC_NODES: readonly TreeNode[] = [
 	},
 	{ id: "last", label: "Last" },
 ];
+
+/** jsdom has no layout; supply visible boxes for this test only. */
+export function stubElementBoxes(): void {
+	const spy = vi
+		.spyOn(Element.prototype, "getBoundingClientRect")
+		.mockImplementation(() => DOMRect.fromRect({ width: 200, height: 22 }));
+	onTestFinished(() => spy.mockRestore());
+}
 
 export const tree = (): HTMLElement => screen.getByRole("tree");
 
