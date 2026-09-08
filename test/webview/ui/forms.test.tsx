@@ -20,104 +20,123 @@ import { qs } from "../helpers";
 
 const ROOT_STYLING = { className: "custom-root", style: { width: "200px" } };
 
-type RenderTextControl = (
-	value: string,
-	onChange: (value: string) => void,
-) => React.JSX.Element;
+interface TextControlCase {
+	name: string;
+	role: string;
+	control: (
+		value: string,
+		onChange: (value: string) => void,
+	) => React.JSX.Element;
+}
 
 describe("text controls", () => {
-	it.each<[string, string, RenderTextControl]>([
-		[
-			"Input",
-			"textbox",
-			(value, onChange) => (
+	it.each<TextControlCase>([
+		{
+			name: "Input",
+			role: "textbox",
+			control: (value, onChange) => (
 				<Input value={value} onChange={onChange} aria-label="Region" />
 			),
-		],
-		[
-			"Textarea",
-			"textbox",
-			(value, onChange) => (
+		},
+		{
+			name: "Textarea",
+			role: "textbox",
+			control: (value, onChange) => (
 				<Textarea value={value} onChange={onChange} aria-label="Region" />
 			),
-		],
-		[
-			"SearchInput",
-			"searchbox",
-			(value, onChange) => <SearchInput value={value} onChange={onChange} />,
-		],
-	])(
-		"%s reports changes without owning the value",
-		(_, role, renderControl) => {
-			const onChange = vi.fn();
-			const { rerender } = render(renderControl("", onChange));
-			fireEvent.change(screen.getByRole(role), { target: { value: "next" } });
-			expect(onChange).toHaveBeenCalledWith("next");
-			expect(screen.getByRole(role)).toHaveValue("");
-
-			rerender(renderControl("next", onChange));
-			expect(screen.getByRole(role)).toHaveValue("next");
 		},
-	);
+		{
+			name: "SearchInput",
+			role: "searchbox",
+			control: (value, onChange) => (
+				<SearchInput value={value} onChange={onChange} />
+			),
+		},
+	])("$name reports changes without owning the value", ({ role, control }) => {
+		const onChange = vi.fn();
+		const { rerender } = render(control("", onChange));
+		fireEvent.change(screen.getByRole(role), { target: { value: "next" } });
+		expect(onChange).toHaveBeenCalledWith("next");
+		expect(screen.getByRole(role)).toHaveValue("");
+
+		rerender(control("next", onChange));
+		expect(screen.getByRole(role)).toHaveValue("next");
+	});
 });
 
+interface RootStylingCase {
+	name: string;
+	root: string;
+	ui: React.JSX.Element;
+}
+
 describe("root styling", () => {
-	it.each<[string, string, React.JSX.Element]>([
-		[
-			"Input",
-			".ui-input",
-			<Input
-				value=""
-				onChange={vi.fn()}
-				aria-label="Region"
-				{...ROOT_STYLING}
-			/>,
-		],
-		[
-			"Textarea",
-			".ui-textarea",
-			<Textarea
-				value=""
-				onChange={vi.fn()}
-				aria-label="Region"
-				{...ROOT_STYLING}
-			/>,
-		],
-		[
-			"SearchInput",
-			".ui-search-input",
-			<SearchInput value="" onChange={vi.fn()} {...ROOT_STYLING} />,
-		],
-		[
-			"Checkbox",
-			".ui-checkbox",
-			<Checkbox checked={false} onChange={vi.fn()} {...ROOT_STYLING}>
-				Styled
-			</Checkbox>,
-		],
-		[
-			"Field",
-			".ui-field",
-			<Field {...ROOT_STYLING}>
-				<input />
-			</Field>,
-		],
-		[
-			"SelectTrigger",
-			".ui-select__trigger",
-			<Select>
-				<SelectTrigger aria-label="Region" {...ROOT_STYLING}>
-					<SelectValue />
-				</SelectTrigger>
-				<SelectContent>
-					<SelectItem value="one">One</SelectItem>
-				</SelectContent>
-			</Select>,
-		],
-	])("%s forwards className and style", (_, selector, ui) => {
+	it.each<RootStylingCase>([
+		{
+			name: "Input",
+			root: ".ui-input",
+			ui: (
+				<Input
+					value=""
+					onChange={vi.fn()}
+					aria-label="Region"
+					{...ROOT_STYLING}
+				/>
+			),
+		},
+		{
+			name: "Textarea",
+			root: ".ui-textarea",
+			ui: (
+				<Textarea
+					value=""
+					onChange={vi.fn()}
+					aria-label="Region"
+					{...ROOT_STYLING}
+				/>
+			),
+		},
+		{
+			name: "SearchInput",
+			root: ".ui-search-input",
+			ui: <SearchInput value="" onChange={vi.fn()} {...ROOT_STYLING} />,
+		},
+		{
+			name: "Checkbox",
+			root: ".ui-checkbox",
+			ui: (
+				<Checkbox checked={false} onChange={vi.fn()} {...ROOT_STYLING}>
+					Styled
+				</Checkbox>
+			),
+		},
+		{
+			name: "Field",
+			root: ".ui-field",
+			ui: (
+				<Field {...ROOT_STYLING}>
+					<input />
+				</Field>
+			),
+		},
+		{
+			name: "SelectTrigger",
+			root: ".ui-select__trigger",
+			ui: (
+				<Select>
+					<SelectTrigger aria-label="Region" {...ROOT_STYLING}>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="one">One</SelectItem>
+					</SelectContent>
+				</Select>
+			),
+		},
+	])("$name forwards className and style", ({ root, ui }) => {
 		const { container } = render(ui);
-		expect(qs(container, selector)).toHaveClass(ROOT_STYLING.className);
-		expect(qs(container, selector)).toHaveStyle(ROOT_STYLING.style);
+		expect(qs(container, root)).toHaveClass(ROOT_STYLING.className);
+		expect(qs(container, root)).toHaveStyle(ROOT_STYLING.style);
 	});
 });
 
