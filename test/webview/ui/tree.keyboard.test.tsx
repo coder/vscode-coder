@@ -20,6 +20,7 @@ import {
 	row,
 	rowNames,
 	selectedRows,
+	stubElementBoxes,
 	tree,
 } from "./treeTestHelpers";
 
@@ -180,6 +181,7 @@ describe("Tree keyboard navigation", () => {
 	});
 
 	it("opens the focused row's hover on the show-hover chord", async () => {
+		stubElementBoxes();
 		render(
 			<TooltipProvider delayDuration={0}>
 				<Tree

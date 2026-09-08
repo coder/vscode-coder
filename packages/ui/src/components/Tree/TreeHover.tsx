@@ -70,13 +70,21 @@ export function TreeHover({
 	// measuring the row so taller content cannot push the bubble off it.
 	const show = (target: HoverTarget, atPointer = true): void => {
 		const tree = treeRef.current;
-		if (!tree) return;
+		const targetRect = target.element.getBoundingClientRect();
+		if (
+			!tree?.contains(target.element) ||
+			targetRect.width <= 0 ||
+			targetRect.height <= 0
+		) {
+			hide();
+			return;
+		}
 		const cluster = target.element.closest(DENSE_CLUSTER);
 		const box = cluster
 			? target.element
 			: (target.element.closest(ROW) ?? target.element);
 		const bounds = tree.getBoundingClientRect();
-		const rect = box.getBoundingClientRect();
+		const rect = cluster ? targetRect : box.getBoundingClientRect();
 		const cursorX = cluster || !atPointer ? undefined : pointerXRef.current;
 		openRef.current = true;
 		clusterRef.current = cluster;
@@ -95,6 +103,10 @@ export function TreeHover({
 	const setTarget: HoverDelegate = (target, immediate = false) => {
 		clearTimeout(timerRef.current);
 		if (!target?.content) {
+			if (immediate) {
+				hide();
+				return;
+			}
 			timerRef.current = setTimeout(hide, GRACE_MS);
 			return;
 		}
@@ -121,6 +133,14 @@ export function TreeHover({
 		tree.addEventListener("pointermove", track, { passive: true });
 		return () => tree.removeEventListener("pointermove", track);
 	}, [treeRef]);
+
+	useEffect(() => {
+		const tree = treeRef.current;
+		if (!tree) return;
+		// Capture also dismisses hovers when an action stops propagation.
+		tree.addEventListener("pointerdown", hide, true);
+		return () => tree.removeEventListener("pointerdown", hide, true);
+	}, [treeRef, hide]);
 
 	return (
 		<HoverDelegateScope delegate={setTarget}>

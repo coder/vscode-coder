@@ -14,6 +14,7 @@ import {
 	row,
 	rowNames,
 	selectedRows,
+	stubElementBoxes,
 	tree,
 } from "./treeTestHelpers";
 
@@ -49,6 +50,7 @@ describe("Tree rows", () => {
 	});
 
 	it("moves one hover between labels, defaulting to the text value", async () => {
+		stubElementBoxes();
 		render(
 			<TooltipProvider delayDuration={0}>
 				<Tree
@@ -79,6 +81,7 @@ describe("Tree rows", () => {
 	});
 
 	it("waits for a new target but crosses an action bar at once", async () => {
+		stubElementBoxes();
 		render(
 			<TooltipProvider delayDuration={60}>
 				<Tree

@@ -78,20 +78,24 @@ export default meta;
 type Story = StoryObj<typeof TreeStates>;
 
 const exerciseTree: NonNullable<Story["play"]> = async ({ canvasElement }) => {
+	// One pointer for the whole play, so the unhover at the end really lands.
+	const user = userEvent.setup();
 	const canvas = within(canvasElement);
 	const selected = canvas.getByRole("treeitem", { name: "components" });
 	const treeItem = canvas.getByRole("treeitem", { name: "Tree.tsx" });
 	await expect(selected).toHaveAttribute("aria-selected", "true");
-	await userEvent.click(
+	await user.click(
 		canvas.getByRole("button", { name: "Close Tree.tsx", hidden: true }),
 	);
 	await expect(selected).toHaveAttribute("aria-selected", "true");
 	await expect(treeItem).toHaveAttribute("aria-selected", "false");
-	await userEvent.click(treeItem);
+	await user.click(treeItem);
 	await expect(treeItem).toHaveAttribute("aria-selected", "true");
 	const readme = canvas.getByRole("treeitem", { name: "README.md" });
-	await userEvent.click(readme);
+	await user.click(readme);
 	await expect(readme).toHaveAttribute("aria-selected", "true");
+	// Clicking leaves the pointer on the row; these stories snapshot hoverless.
+	await user.unhover(readme);
 };
 
 export const States: Story = { play: exerciseTree };

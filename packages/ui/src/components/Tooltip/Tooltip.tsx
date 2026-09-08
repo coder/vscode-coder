@@ -59,7 +59,7 @@ export interface HoverTarget {
 	readonly element: HTMLElement;
 }
 
-/** `immediate` skips the show delay. */
+/** `immediate` skips the show delay or dismisses without a leave grace period. */
 export type HoverDelegate = (
 	target: HoverTarget | undefined,
 	immediate?: boolean,
