@@ -9,7 +9,6 @@ import "../overlay.css";
 
 import "./Select.css";
 
-/** Root state container. */
 export const Select = SelectPrimitive.Root;
 
 /** Renders the selected item's text, or `placeholder` when empty. */
@@ -75,11 +74,9 @@ export function SelectItem({
 	return (
 		<SelectPrimitive.Item
 			{...props}
-			className={cx("ui-select__item", className)}
+			className={cx("ui-overlay__item", "ui-select__item", className)}
 			aria-describedby={
-				[describedBy, description !== undefined && descriptionId]
-					.filter(Boolean)
-					.join(" ") || undefined
+				cx(describedBy, description !== undefined && descriptionId) || undefined
 			}
 		>
 			<SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>

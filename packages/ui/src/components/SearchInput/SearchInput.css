@@ -2,10 +2,6 @@
 	padding-inline-start: 2px;
 }
 
-.ui-search-input > .ui-icon {
-	flex: none;
-}
-
 .ui-search-input__control {
 	padding: 0 4px;
 }

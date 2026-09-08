@@ -9,7 +9,6 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const InputStates = (): React.JSX.Element => {
 	const [value, setValue] = useState("us-pittsburgh");
-	const [secret, setSecret] = useState("hunter2");
 	return (
 		<div style={{ display: "grid", gap: "8px", width: "260px" }}>
 			<Input value={value} onChange={setValue} aria-label="Region" />
@@ -26,12 +25,6 @@ const InputStates = (): React.JSX.Element => {
 				min={1}
 				max={16}
 				aria-label="CPU cores"
-			/>
-			<Input
-				value={secret}
-				onChange={setSecret}
-				type="password"
-				aria-label="API token"
 			/>
 			<Input
 				value="read-only"

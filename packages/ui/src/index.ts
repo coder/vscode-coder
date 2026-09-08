@@ -25,6 +25,10 @@ export {
 	type LoadingStateProps,
 } from "./components/LoadingState/LoadingState";
 export {
+	PasswordInput,
+	type PasswordInputProps,
+} from "./components/PasswordInput/PasswordInput";
+export {
 	ProgressBar,
 	type ProgressBarProps,
 } from "./components/ProgressBar/ProgressBar";

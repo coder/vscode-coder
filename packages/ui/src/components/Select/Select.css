@@ -23,18 +23,16 @@
 }
 
 .ui-select__trigger > :not(.ui-icon) {
-	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
-}
-
-.ui-select__trigger > .ui-icon {
-	flex: none;
 }
 
 .ui-select__list {
 	--ui-overlay-border: var(--ui-dropdown-border);
 	--ui-overlay-available-height: var(--radix-select-content-available-height);
+	--ui-overlay-highlight-background: var(--ui-dropdown-list-focus-background);
+	--ui-overlay-highlight-foreground: var(--ui-dropdown-list-focus-foreground);
+	--ui-overlay-highlight-outline: var(--ui-list-selection-outline);
 
 	min-width: var(--radix-select-trigger-width);
 	padding: 2px;
@@ -58,22 +56,6 @@
 	min-height: 22px;
 	padding: 2px 6px;
 	line-height: 1.4;
-	border-radius: var(--ui-radius-medium);
-	cursor: default;
-	user-select: none;
-	outline: none;
-	outline-offset: -1px;
-}
-
-.ui-select__item[data-highlighted] {
-	forced-color-adjust: none;
-	color: var(--ui-list-focus-foreground);
-	background: var(--ui-list-focus-background);
-	outline: 1px solid var(--ui-list-selection-outline);
-}
-
-.ui-select__item[data-disabled] {
-	color: var(--ui-disabled-foreground);
 }
 
 .ui-select__item-description {
@@ -83,16 +65,4 @@
 
 .ui-select__item[data-highlighted] .ui-select__item-description {
 	color: inherit;
-}
-
-@media (forced-colors: active) {
-	.ui-select__item[data-highlighted] {
-		color: HighlightText;
-		background: Highlight;
-		outline-color: HighlightText;
-	}
-
-	.ui-select__item[data-disabled] {
-		color: GrayText;
-	}
 }

@@ -90,7 +90,7 @@ export const LongList: Story = {
 							disabled={index === 1}
 						>
 							{index === 0
-								? "US East (Pittsburgh) — dedicated high-memory workspace pool"
+								? "US East (Pittsburgh), dedicated high-memory workspace pool"
 								: `Pool ${index}`}
 						</SelectItem>
 					))}

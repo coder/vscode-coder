@@ -46,7 +46,6 @@ export function SearchInput({
 				"ui-control",
 				"ui-text-control",
 				"ui-search-input",
-				disabled && "ui-text-control--disabled",
 				className,
 			)}
 			style={style}
