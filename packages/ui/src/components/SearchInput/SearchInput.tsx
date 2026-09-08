@@ -1,6 +1,7 @@
 import { type ChangeEvent, type ComponentProps, useRef } from "react";
 
 import { cx } from "#cx";
+import { setForwardedRef } from "#ref";
 
 import "../control.css";
 import { Icon } from "../Icon/Icon";
@@ -54,12 +55,7 @@ export function SearchInput({
 				// Track the node for clear-and-refocus, honoring the consumer ref
 				ref={(node) => {
 					inputRef.current = node;
-					if (typeof ref === "function") {
-						return ref(node);
-					}
-					if (ref) {
-						ref.current = node;
-					}
+					setForwardedRef(ref, node);
 				}}
 				type="search"
 				value={value}

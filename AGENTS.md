@@ -94,6 +94,15 @@ Non-negotiables:
 - Extension panels must call **both** `buildCommandHandlers` and
   `buildRequestHandlers` (empty `{}` is fine). This gives a compile error
   when anyone adds an action to the API without a matching handler.
+- Every webview and Storybook build runs the React Compiler, so components
+  and hooks must follow the rules of React: no reading or writing a ref
+  during render, no mutating props, state, or anything already rendered,
+  and hooks called unconditionally. A component that breaks them is skipped
+  silently and loses its memoization. Parameter defaults that read another
+  prop (`focused = adapter?.focusedId === row.node.id`) are the usual
+  culprit; put those defaults in the body. `useMemo` and `useCallback` are
+  rarely needed, and when kept they must list every dependency, or
+  `react-hooks/preserve-manual-memoization` fails the lint.
 
 ## Code Style
 

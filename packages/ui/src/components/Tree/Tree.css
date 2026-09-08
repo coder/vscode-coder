@@ -1,0 +1,177 @@
+/*
+ * Row state reads from the ARIA the rows already declare. The `:not()` on hover
+ * mirrors native's `.monaco-list-row:hover:not(.selected):not(.focused)`: a
+ * selected or focused row keeps its own paint.
+ */
+
+.ui-tree {
+	--ui-tree-indent-size: 8px;
+	--ui-tree-row-height: 22px;
+	width: 100%;
+	min-width: 0;
+	outline: 0;
+}
+
+.ui-tree-item {
+	outline: 0;
+}
+
+.ui-tree-item__row {
+	position: relative;
+	display: flex;
+	align-items: center;
+	height: var(--ui-tree-row-height);
+	padding-inline-end: var(--ui-spacing-120);
+	background: transparent;
+	cursor: pointer;
+	user-select: none;
+}
+
+.ui-tree-item:not([aria-selected="true"], .ui-tree-item--focused)
+	> .ui-tree-item__row:hover {
+	color: var(--ui-list-hover-foreground);
+	background: var(--ui-list-hover-background);
+	outline: 1px dashed var(--ui-list-hover-outline);
+	outline-offset: -1px;
+}
+
+.ui-tree-item[aria-selected="true"] > .ui-tree-item__row {
+	color: var(--ui-list-inactive-selection-foreground);
+	background: var(--ui-list-inactive-selection-background);
+	outline: 1px dotted var(--ui-list-selection-outline);
+	outline-offset: -1px;
+}
+
+.ui-tree--focused .ui-tree-item[aria-selected="true"] > .ui-tree-item__row {
+	color: var(--ui-list-active-selection-foreground);
+	background: var(--ui-list-active-selection-background);
+}
+
+/* The native list's inactive focus outline: kept while the tree is blurred. */
+.ui-tree:not(.ui-tree--focused) .ui-tree-item--focused > .ui-tree-item__row {
+	outline: 1px dotted var(--ui-list-inactive-focus-outline);
+	outline-offset: -1px;
+}
+
+.ui-tree--focused .ui-tree-item--focused > .ui-tree-item__row {
+	outline: 1px solid var(--ui-list-focus-outline);
+	outline-offset: -1px;
+}
+
+.ui-tree--focused
+	.ui-tree-item--focused[aria-selected="true"]
+	> .ui-tree-item__row {
+	outline-color: var(--ui-list-focus-and-selection-outline);
+}
+
+.ui-tree-item__indent {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: calc(2 * var(--ui-tree-indent-size));
+	display: flex;
+	pointer-events: none;
+}
+
+/* One guide per ancestor, like the native tree's .indent-guide. */
+.ui-tree-item__indent-slot {
+	box-sizing: border-box;
+	width: var(--ui-tree-indent-size);
+	flex: none;
+	border-inline-start: 1px solid transparent;
+}
+
+/* Never overlapping selectors, so neither can override the other. */
+.ui-tree-item__indent-slot--active {
+	border-inline-start-color: var(--ui-tree-indent-guide-active);
+}
+
+.ui-tree:hover
+	.ui-tree-item__indent-slot:not(.ui-tree-item__indent-slot--active) {
+	border-inline-start-color: var(--ui-tree-indent-guide-inactive);
+}
+
+.ui-tree-item__chevron {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: var(--ui-tree-row-height);
+	padding-inline-start: calc(var(--ui-tree-level) * var(--ui-tree-indent-size));
+	padding-inline-end: 6px;
+	flex: none;
+	transform: translateX(3px);
+}
+
+.ui-tree-item__chevron:dir(rtl) {
+	transform: translateX(-3px);
+}
+
+.ui-tree-item__chevron > .ui-icon {
+	width: 10px;
+	font-size: 10px;
+}
+
+/* Keep 3px so leaf icons clear the innermost guide and line up with twisties. */
+.ui-tree--explorer
+	.ui-tree-item:not([aria-expanded])
+	> .ui-tree-item__row
+	> .ui-tree-item__chevron {
+	width: 3px;
+	padding-inline-end: 0;
+	visibility: hidden;
+}
+
+.ui-tree-item__content {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	flex: 1;
+	line-height: var(--ui-tree-row-height);
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.ui-tree-item__content > .ui-icon {
+	margin-inline-end: var(--ui-spacing-60);
+	flex: none;
+}
+
+.ui-tree-item__action {
+	display: none;
+	align-items: center;
+	align-self: stretch;
+	flex: none;
+	gap: 2px;
+}
+
+.ui-tree-item:is([aria-selected="true"], .ui-tree-item--focused)
+	> .ui-tree-item__row
+	.ui-tree-item__action,
+.ui-tree-item__row:is(:hover, :focus-within) .ui-tree-item__action {
+	display: inline-flex;
+}
+
+/* Modern UI insets the rows; data-ui-style="stable" keeps them edge to edge. */
+:where(:root:not([data-ui-style="stable"])) .ui-tree-item__row {
+	margin-inline: var(--ui-spacing-40);
+	border-radius: var(--ui-radius-small);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.ui-tree-item__indent-slot {
+		transition: border-color 100ms linear;
+	}
+}
+
+@media (forced-colors: active) {
+	.ui-tree-item:not([aria-selected="true"]) > .ui-tree-item__row:hover,
+	.ui-tree-item[aria-selected="true"] > .ui-tree-item__row {
+		color: HighlightText;
+		background: Highlight;
+	}
+
+	.ui-tree:hover .ui-tree-item__indent-slot,
+	.ui-tree-item__indent-slot--active {
+		border-color: CanvasText;
+	}
+}

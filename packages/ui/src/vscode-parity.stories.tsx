@@ -183,7 +183,7 @@ const MenuParity = (): React.JSX.Element => (
 		style={{
 			display: "grid",
 			gridTemplateColumns: "220px 220px",
-			gap: "16px",
+			gap: "8px 16px",
 			alignItems: "start",
 			fontSize: "13px",
 		}}

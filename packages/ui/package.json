@@ -19,6 +19,7 @@
 	"imports": {
 		"#cx": "./src/cx.ts",
 		"#codicons": "./src/codicons.ts",
+		"#ref": "./src/ref.ts",
 		"#storybook": "./src/storybook.ts"
 	},
 	"scripts": {
