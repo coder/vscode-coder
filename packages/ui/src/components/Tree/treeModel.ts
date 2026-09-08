@@ -2,6 +2,9 @@ import type { ReactNode } from "react";
 
 import type { CodiconName } from "#codicons";
 
+/** VS Code's tree row height; Tree.css --ui-tree-row-height must match. */
+export const ROW_HEIGHT_PX = 22;
+
 /** A string label doubles as the text value; a rich label must supply one. */
 type TreeNodeLabel =
 	| { readonly label: string; readonly textValue?: string }

@@ -14,6 +14,8 @@ interface TreeRowProps {
 	readonly selected?: boolean;
 	/** One character per ancestor, `1` where the indent guide is active. */
 	readonly guideFlags?: string;
+	/** Positions a pinned copy inside the sticky widget. */
+	readonly style?: CSSProperties;
 }
 
 /** Pure presentation: props compare by value, so `memo` skips untouched rows. */
@@ -23,6 +25,7 @@ export const TreeRow = memo(function TreeRow({
 	focused = false,
 	selected = false,
 	guideFlags = "",
+	style,
 }: TreeRowProps): React.JSX.Element {
 	const { node, expanded } = row;
 	const level = row.pathIds.length + 1;
@@ -43,7 +46,7 @@ export const TreeRow = memo(function TreeRow({
 				focused && "ui-tree-item--focused",
 				node.className,
 			)}
-			style={{ "--ui-tree-level": level } as CSSProperties}
+			style={{ ...style, "--ui-tree-level": level } as CSSProperties}
 		>
 			<div className="ui-tree-item__row">
 				<span className="ui-tree-item__indent" aria-hidden="true">

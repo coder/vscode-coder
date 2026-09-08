@@ -201,6 +201,15 @@
 		--vscode-tree-indentGuidesStroke,
 		color-mix(in srgb, currentColor 40%, transparent)
 	);
+	/* Pinned rows paint over what scrolls beneath them. */
+	--ui-tree-sticky-background: var(
+		--vscode-sideBarStickyScroll-background,
+		var(--ui-background)
+	);
+	--ui-tree-sticky-shadow: var(
+		--vscode-sideBarStickyScroll-shadow,
+		transparent
+	);
 
 	/* Menus */
 	--ui-menu-background: var(--vscode-menu-background);

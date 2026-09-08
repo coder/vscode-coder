@@ -27,6 +27,42 @@
 	user-select: none;
 }
 
+/* A zero-height sticky anchor: the browser pins it, the scroll listener only
+   decides which rows it shows. */
+.ui-tree-sticky {
+	position: sticky;
+	top: 0;
+	z-index: 100;
+	height: 0;
+	outline: 0;
+}
+
+.ui-tree-sticky__rows {
+	position: absolute;
+	inset-inline: 0;
+	overflow: hidden;
+}
+
+.ui-tree-sticky__shadow {
+	position: absolute;
+	inset-inline: 0;
+	height: 3px;
+	box-shadow: var(--ui-tree-sticky-shadow) 0 6px 6px -6px inset;
+	pointer-events: none;
+}
+
+.ui-tree-sticky__rows > .ui-tree-item {
+	position: absolute;
+	inset-inline: 0;
+	background: var(--ui-tree-sticky-background);
+}
+
+/* Pinned copies show indentation, never guide rails, like the native widget;
+   without this the tree-wide hover rule lights them up. */
+.ui-tree-sticky .ui-tree-item__indent {
+	display: none;
+}
+
 .ui-tree-item:not([aria-selected="true"], .ui-tree-item--focused)
 	> .ui-tree-item__row:hover {
 	color: var(--ui-list-hover-foreground);
