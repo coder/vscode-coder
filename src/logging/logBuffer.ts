@@ -34,7 +34,7 @@ export interface ConnectionLogBuffer {
 	flush(reason: string): void;
 }
 
-interface BufferedEntry {
+interface LogEntry {
 	readonly atMs: number;
 	readonly level: Level;
 	readonly message: string;
@@ -58,7 +58,7 @@ function normalizeCapacity(capacity: number): number {
  * still writes, so the flush lands regardless of the configured level.
  */
 export class BufferingLogger implements Logger, ConnectionLogBuffer {
-	private entries: BufferedEntry[] = [];
+	private entries: LogEntry[] = [];
 	private capacity: number;
 	private currentLevel: number;
 	private lastFlushMs = Number.NEGATIVE_INFINITY;
