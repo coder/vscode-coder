@@ -8,7 +8,7 @@ import { WebSocketCloseCode, HttpStatusCode } from "@/websocket/codes";
 import {
 	ConnectionState,
 	ReconnectingWebSocket,
-	isConnectionFailure,
+	isTerminalConnectionFailure,
 	type SocketFactory,
 } from "@/websocket/reconnectingWebSocket";
 
@@ -802,8 +802,8 @@ describe("ReconnectingWebSocket", () => {
 			"unrecoverable_close",
 			"unrecoverable_http",
 			"certificate_error",
-		] as const)("treats %s as a connection failure", (reason) => {
-			expect(isConnectionFailure(reason)).toBe(true);
+		] as const)("treats %s as a terminal connection failure", (reason) => {
+			expect(isTerminalConnectionFailure(reason)).toBe(true);
 		});
 
 		it.each([
@@ -816,9 +816,12 @@ describe("ReconnectingWebSocket", () => {
 			"connection_error",
 			"normal_close",
 			"unexpected_close",
-		] as const)("does not treat %s as a connection failure", (reason) => {
-			expect(isConnectionFailure(reason)).toBe(false);
-		});
+		] as const)(
+			"does not treat %s as a terminal connection failure",
+			(reason) => {
+				expect(isTerminalConnectionFailure(reason)).toBe(false);
+			},
+		);
 
 		it("fires onConnectionFailure on an unrecoverable close code", async () => {
 			const onConnectionFailure = vi.fn();

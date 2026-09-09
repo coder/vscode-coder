@@ -29,19 +29,16 @@ function toCloseEventError(event: CloseEvent): Error {
 }
 
 /**
- * Terminal-failure reasons: the socket has given up and surfaced an error,
- * rather than dropping transiently and auto-reconnecting. These are the moments
- * worth flushing the connection log buffer.
+ * Connection failures that stop automatic retries.
  */
-const CONNECTION_FAILURE_REASONS: ReadonlySet<ConnectionStateReason> = new Set([
-	"unrecoverable_close",
-	"unrecoverable_http",
-	"certificate_error",
-]);
+const TERMINAL_CONNECTION_FAILURE_REASONS: ReadonlySet<ConnectionStateReason> =
+	new Set(["unrecoverable_close", "unrecoverable_http", "certificate_error"]);
 
 /** Whether a state-transition reason represents a genuine connection failure. */
-export function isConnectionFailure(reason: ConnectionStateReason): boolean {
-	return CONNECTION_FAILURE_REASONS.has(reason);
+export function isTerminalConnectionFailure(
+	reason: ConnectionStateReason,
+): boolean {
+	return TERMINAL_CONNECTION_FAILURE_REASONS.has(reason);
 }
 
 /**
@@ -315,7 +312,7 @@ export class ReconnectingWebSocket<
 			error: options.error,
 		});
 		this.clearCurrentSocket(options.code, options.closeReason);
-		if (isConnectionFailure(reason)) {
+		if (isTerminalConnectionFailure(reason)) {
 			this.#onConnectionFailure?.(reason);
 		}
 	}
