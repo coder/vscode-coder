@@ -15,7 +15,7 @@ const SEVERITY = {
 
 type Level = keyof typeof SEVERITY;
 
-const LEVEL_LABEL: Record<Level, string> = {
+const LEVEL_LABEL: Readonly<Record<Level, string>> = {
 	trace: "TRACE",
 	debug: "DEBUG",
 	info: "INFO",
