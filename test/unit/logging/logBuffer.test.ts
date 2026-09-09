@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { BufferingLogger, type LogLevelSource } from "@/logging/logBuffer";
+import { BufferingLogger } from "@/logging/logBuffer";
 
 import type { Logger } from "@/logging/logger";
 
@@ -36,22 +36,15 @@ function recordingLogger(): { logger: Logger; calls: Call[] } {
 	};
 }
 
-function fakeLevelSource(initial: number): LogLevelSource & {
+function fakeLevelSource(initial: number): {
+	getLogLevel: () => number;
 	set(level: number): void;
 } {
 	let level = initial;
-	const listeners = new Set<(level: number) => void>();
 	return {
 		getLogLevel: () => level,
-		onDidChangeLogLevel: (listener) => {
-			listeners.add(listener);
-			return { dispose: () => listeners.delete(listener) };
-		},
 		set(next: number) {
 			level = next;
-			for (const listener of listeners) {
-				listener(next);
-			}
 		},
 	};
 }
@@ -59,7 +52,11 @@ function fakeLevelSource(initial: number): LogLevelSource & {
 describe("BufferingLogger", () => {
 	it("forwards every call to the inner logger", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeLevelSource(INFO), 10);
+		const buffer = new BufferingLogger(
+			logger,
+			fakeLevelSource(INFO).getLogLevel,
+			10,
+		);
 
 		buffer.trace("t");
 		buffer.debug("d");
@@ -81,7 +78,11 @@ describe("BufferingLogger", () => {
 		try {
 			vi.setSystemTime(new Date("2024-01-01T00:00:00.000Z"));
 			const { logger, calls } = recordingLogger();
-			const buffer = new BufferingLogger(logger, fakeLevelSource(INFO), 10);
+			const buffer = new BufferingLogger(
+				logger,
+				fakeLevelSource(INFO).getLogLevel,
+				10,
+			);
 
 			buffer.debug("hidden debug");
 			buffer.info("visible info");
@@ -105,7 +106,11 @@ describe("BufferingLogger", () => {
 
 	it("does not buffer entries at or above the current level", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeLevelSource(INFO), 10);
+		const buffer = new BufferingLogger(
+			logger,
+			fakeLevelSource(INFO).getLogLevel,
+			10,
+		);
 
 		buffer.info("i");
 		buffer.warn("w");
@@ -119,7 +124,11 @@ describe("BufferingLogger", () => {
 
 	it("evicts the oldest entry when capacity is exceeded", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeLevelSource(INFO), 2);
+		const buffer = new BufferingLogger(
+			logger,
+			fakeLevelSource(INFO).getLogLevel,
+			2,
+		);
 
 		buffer.debug("one");
 		buffer.debug("two");
@@ -136,7 +145,11 @@ describe("BufferingLogger", () => {
 
 	it("clears the buffer after a flush", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeLevelSource(INFO), 10);
+		const buffer = new BufferingLogger(
+			logger,
+			fakeLevelSource(INFO).getLogLevel,
+			10,
+		);
 
 		buffer.debug("d");
 		buffer.flush("first");
@@ -149,7 +162,11 @@ describe("BufferingLogger", () => {
 
 	it("flushes newly accumulated entries on each consecutive failure", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeLevelSource(INFO), 10);
+		const buffer = new BufferingLogger(
+			logger,
+			fakeLevelSource(INFO).getLogLevel,
+			10,
+		);
 
 		buffer.debug("before first failure");
 		calls.length = 0;
@@ -173,7 +190,11 @@ describe("BufferingLogger", () => {
 
 	it("is a no-op when the buffer is empty", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeLevelSource(INFO), 10);
+		const buffer = new BufferingLogger(
+			logger,
+			fakeLevelSource(INFO).getLogLevel,
+			10,
+		);
 
 		buffer.flush("r");
 
@@ -183,7 +204,7 @@ describe("BufferingLogger", () => {
 	it("re-evaluates what is below level when the level changes", () => {
 		const { logger, calls } = recordingLogger();
 		const level = fakeLevelSource(ERROR);
-		const buffer = new BufferingLogger(logger, level, 10);
+		const buffer = new BufferingLogger(logger, level.getLogLevel, 10);
 
 		buffer.info("info at error level"); // below ERROR -> buffered
 		level.set(INFO);
@@ -199,7 +220,11 @@ describe("BufferingLogger", () => {
 
 	it("buffers nothing when capacity is zero", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeLevelSource(INFO), 0);
+		const buffer = new BufferingLogger(
+			logger,
+			fakeLevelSource(INFO).getLogLevel,
+			0,
+		);
 
 		buffer.debug("d");
 		calls.length = 0;
@@ -210,7 +235,11 @@ describe("BufferingLogger", () => {
 
 	it("keeps the most recent entries when shrunk via setCapacity", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeLevelSource(INFO), 10);
+		const buffer = new BufferingLogger(
+			logger,
+			fakeLevelSource(INFO).getLogLevel,
+			10,
+		);
 
 		buffer.debug("one");
 		buffer.debug("two");
@@ -234,7 +263,11 @@ describe("BufferingLogger", () => {
 		"replays at $expected so the flush is written at level $level",
 		({ level, expected }) => {
 			const { logger, calls } = recordingLogger();
-			const buffer = new BufferingLogger(logger, fakeLevelSource(level), 10);
+			const buffer = new BufferingLogger(
+				logger,
+				fakeLevelSource(level).getLogLevel,
+				10,
+			);
 
 			// Always below the current level so it is buffered.
 			buffer.trace("below");
@@ -248,7 +281,11 @@ describe("BufferingLogger", () => {
 
 	it("preserves extra args on replay", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeLevelSource(INFO), 10);
+		const buffer = new BufferingLogger(
+			logger,
+			fakeLevelSource(INFO).getLogLevel,
+			10,
+		);
 		const detail = { code: 1006 };
 
 		buffer.debug("dropped", detail);
@@ -259,19 +296,13 @@ describe("BufferingLogger", () => {
 		expect(line?.args).toEqual([detail]);
 	});
 
-	it("stops buffering after dispose unsubscribes from level changes", () => {
-		const { logger } = recordingLogger();
-		const level = fakeLevelSource(INFO);
-		const buffer = new BufferingLogger(logger, level, 10);
-
-		buffer.dispose();
-		// Changing the level must not throw or affect the disposed buffer.
-		expect(() => level.set(ERROR)).not.toThrow();
-	});
-
 	it("does not buffer at the Off level", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeLevelSource(OFF), 10);
+		const buffer = new BufferingLogger(
+			logger,
+			fakeLevelSource(OFF).getLogLevel,
+			10,
+		);
 
 		buffer.trace("t");
 		buffer.debug("d");
@@ -283,7 +314,11 @@ describe("BufferingLogger", () => {
 
 	it("buffers trace but not debug at the Debug level", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeLevelSource(DEBUG), 10);
+		const buffer = new BufferingLogger(
+			logger,
+			fakeLevelSource(DEBUG).getLogLevel,
+			10,
+		);
 
 		buffer.trace("trace line");
 		buffer.debug("debug line");

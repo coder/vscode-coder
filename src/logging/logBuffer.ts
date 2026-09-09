@@ -23,12 +23,6 @@ const LEVEL_LABEL: Readonly<Record<Level, string>> = {
 	error: "ERROR",
 };
 
-/** Reads the sink's effective log level (numeric, matching `vscode.LogLevel`). */
-export interface LogLevelSource {
-	getLogLevel(): number;
-	onDidChangeLogLevel(listener: (level: number) => void): { dispose(): void };
-}
-
 /** The failure-time surface used by connection-failure call sites. */
 export interface ConnectionLogBuffer {
 	flush(reason: string): void;
@@ -52,19 +46,13 @@ function normalizeCapacity(capacity: number): number {
 export class BufferingLogger implements Logger, ConnectionLogBuffer {
 	private entries: LogEntry[] = [];
 	private capacity: number;
-	private currentLevel: number;
-	private readonly levelSubscription: { dispose(): void };
 
 	public constructor(
 		private readonly inner: Logger,
-		private readonly levelSource: LogLevelSource,
+		private readonly getLogLevel: () => number,
 		capacity: number,
 	) {
 		this.capacity = normalizeCapacity(capacity);
-		this.currentLevel = levelSource.getLogLevel();
-		this.levelSubscription = levelSource.onDidChangeLogLevel((level) => {
-			this.currentLevel = level;
-		});
 	}
 
 	public trace(message: string, ...args: unknown[]): void {
@@ -129,17 +117,13 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 		emit(`[buffered] end of buffered logs (${reason})`);
 	}
 
-	public dispose(): void {
-		this.levelSubscription.dispose();
-	}
-
 	/**
 	 * The least-verbose sink method that is still written at the current level,
 	 * so a flush is captured whatever the user's log level (except Off, where the
 	 * sink writes nothing).
 	 */
 	private replayEmitter(): (message: string, ...args: unknown[]) => void {
-		const level = this.levelSource.getLogLevel();
+		const level = this.getLogLevel();
 		if (level >= SEVERITY.error) {
 			return (message, ...args) => this.inner.error(message, ...args);
 		}
@@ -150,7 +134,7 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 	}
 
 	private record(level: Level, message: string, args: unknown[]): void {
-		if (this.capacity === 0 || SEVERITY[level] >= this.currentLevel) {
+		if (this.capacity === 0 || SEVERITY[level] >= this.getLogLevel()) {
 			return;
 		}
 		this.entries.push({ atMs: Date.now(), level, message, args });
