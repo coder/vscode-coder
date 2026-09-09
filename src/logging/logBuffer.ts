@@ -35,8 +35,17 @@ interface LogEntry {
 	readonly args: unknown[];
 }
 
+/**
+ * Largest configurable capacity, as an entry count. Bounds worst-case memory
+ * so a typo or an unreasonable setting cannot grow the buffer without limit.
+ */
+export const MAX_CONNECTION_LOG_BUFFER_SIZE = 10_000;
+
 function normalizeCapacity(capacity: number): number {
-	return Number.isFinite(capacity) && capacity > 0 ? Math.floor(capacity) : 0;
+	if (!Number.isFinite(capacity) || capacity <= 0) {
+		return 0;
+	}
+	return Math.min(Math.floor(capacity), MAX_CONNECTION_LOG_BUFFER_SIZE);
 }
 
 /**

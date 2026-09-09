@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { BufferingLogger } from "@/logging/logBuffer";
+import {
+	BufferingLogger,
+	MAX_CONNECTION_LOG_BUFFER_SIZE,
+} from "@/logging/logBuffer";
 
 import type { Logger } from "@/logging/logger";
 
@@ -216,6 +219,33 @@ describe("BufferingLogger", () => {
 		const lines = calls.map((c) => c.message);
 		expect(lines.some((l) => l.includes("info at error level"))).toBe(true);
 		expect(lines.some((l) => l.includes("info at info level"))).toBe(false);
+	});
+
+	it("clamps capacity to the maximum, evicting beyond it", () => {
+		const { logger, calls } = recordingLogger();
+		const buffer = new BufferingLogger(
+			logger,
+			fakeLevelSource(INFO).getLogLevel,
+			MAX_CONNECTION_LOG_BUFFER_SIZE + 5,
+		);
+
+		for (let i = 0; i < MAX_CONNECTION_LOG_BUFFER_SIZE + 5; i++) {
+			buffer.debug(`entry ${i}`);
+		}
+
+		calls.length = 0;
+		buffer.flush("r");
+
+		// header + capped entries + footer; the oldest 5 were evicted.
+		const buffered = calls.filter((c) => c.message.includes("entry "));
+		expect(buffered).toHaveLength(MAX_CONNECTION_LOG_BUFFER_SIZE);
+		const lines = buffered.map((c) => c.message);
+		expect(lines.some((l) => l.endsWith("entry 0"))).toBe(false);
+		expect(
+			lines.some((l) =>
+				l.endsWith(`entry ${MAX_CONNECTION_LOG_BUFFER_SIZE + 4}`),
+			),
+		).toBe(true);
 	});
 
 	it("buffers nothing when capacity is zero", () => {

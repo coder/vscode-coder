@@ -216,9 +216,10 @@
 					"default": 250
 				},
 				"coder.connectionLogBuffer.size": {
-					"markdownDescription": "Number of connection debug log lines to keep in memory below the current log level. On a connection failure they are written out so a support bundle captures the detail leading up to it, without debug logging enabled beforehand. Set to `0` to disable. The buffer is lost on a hard kill or out-of-memory event.",
+					"markdownDescription": "Maximum number of connection debug log entries to keep in memory below the current log level. Each entry may span multiple lines and structured arguments. On a connection failure they are written out so a support bundle captures the detail leading up to it, without debug logging enabled beforehand. Set to `0` to disable. Values above `10000` are clamped to `10000`. The buffer is lost on a hard kill or out-of-memory event.",
 					"type": "number",
 					"minimum": 0,
+					"maximum": 10000,
 					"default": 1000
 				},
 				"coder.httpClientLogLevel": {
