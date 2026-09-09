@@ -27,6 +27,9 @@ import { sessionId } from "./sessionId";
 
 import type { Logger } from "../logging/logger";
 
+const CONNECTION_LOG_BUFFER_SIZE_KEY = "coder.connectionLogBuffer.size";
+const DEFAULT_CONNECTION_LOG_BUFFER_SIZE = 1000;
+
 /**
  * Service container for dependency injection.
  * Centralizes the creation and management of all core services.
@@ -228,9 +231,6 @@ export class ServiceContainer implements vscode.Disposable {
 		}
 	}
 }
-
-const CONNECTION_LOG_BUFFER_SIZE_KEY = "coder.connectionLogBuffer.size";
-const DEFAULT_CONNECTION_LOG_BUFFER_SIZE = 1000;
 
 function readConnectionLogBufferSize(): number {
 	return vscode.workspace
