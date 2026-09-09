@@ -36,8 +36,7 @@ const DEFAULT_CONNECTION_LOG_BUFFER_SIZE = 1000;
  */
 export class ServiceContainer implements vscode.Disposable {
 	private readonly outputChannel: vscode.LogOutputChannel;
-	private readonly logger: Logger;
-	private readonly connectionLogBuffer: BufferingLogger;
+	private readonly logger: BufferingLogger;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly pathResolver: PathResolver;
 	private readonly mementoManager: MementoManager;
@@ -57,7 +56,7 @@ export class ServiceContainer implements vscode.Disposable {
 		this.outputChannel = vscode.window.createOutputChannel("Coder", {
 			log: true,
 		});
-		this.connectionLogBuffer = new BufferingLogger(
+		this.logger = new BufferingLogger(
 			prefixLogger(this.outputChannel, `[session ${shortId(sessionId)}]`),
 			{
 				getLogLevel: () => this.outputChannel.logLevel,
@@ -66,12 +65,11 @@ export class ServiceContainer implements vscode.Disposable {
 			},
 			readConnectionLogBufferSize(),
 		);
-		this.logger = this.connectionLogBuffer;
 		this.disposables.push(
-			this.connectionLogBuffer,
+			this.logger,
 			vscode.workspace.onDidChangeConfiguration((event) => {
 				if (event.affectsConfiguration(CONNECTION_LOG_BUFFER_SIZE_KEY)) {
-					this.connectionLogBuffer.setCapacity(readConnectionLogBufferSize());
+					this.logger.setCapacity(readConnectionLogBufferSize());
 				}
 			}),
 		);
@@ -173,7 +171,7 @@ export class ServiceContainer implements vscode.Disposable {
 
 	/** The below-level connection log buffer; flush it on a connection failure. */
 	getConnectionLogBuffer(): ConnectionLogBuffer {
-		return this.connectionLogBuffer;
+		return this.logger;
 	}
 
 	getCliManager(): CliManager {
