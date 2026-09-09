@@ -151,14 +151,10 @@ teardown:
 
 - a reconnecting WebSocket terminal failure (`unrecoverable_close`,
   `unrecoverable_http`, `certificate_error`);
-- a `WorkspaceMonitor` socket error;
 - an agent reported as `disconnected` during connection.
 
-A short suppression window coalesces the burst of signals a single outage often
-triggers into one flush.
-
-The buffer size is set by `coder.connectionLogBuffer.size` (number of lines;
-`0` disables it). It lives in memory, so a hard kill or out-of-memory event
+The buffer size is set by `coder.connectionLogBuffer.size` (maximum number of
+entries, capped at 10,000; `0` disables it). It lives in memory, so a hard kill or out-of-memory event
 loses it. Extension SSH debug logs that pass through the shared logger are
 buffered; the CLI `ProxyCommand` writes its own file logs under
 `coder.proxyLogDirectory`, which support bundles already collect from disk, so
