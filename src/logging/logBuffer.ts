@@ -53,14 +53,12 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 	private entries: LogEntry[] = [];
 	private capacity: number;
 	private currentLevel: number;
-	private lastFlushMs = Number.NEGATIVE_INFINITY;
 	private readonly levelSubscription: { dispose(): void };
 
 	public constructor(
 		private readonly inner: Logger,
 		private readonly levelSource: LogLevelSource,
 		capacity: number,
-		private readonly flushSuppressionMs = 5_000,
 		private readonly now: () => number = Date.now,
 	) {
 		this.capacity = normalizeCapacity(capacity);
@@ -108,19 +106,14 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 	}
 
 	/**
-	 * Replay buffered entries into the sink and clear them. No-op when empty or
-	 * when called again within the suppression window (one outage often trips
-	 * several failure signals at once).
+	 * Replay buffered entries into the sink and clear them. No-op when empty.
+	 * Clearing the buffer means a later flush only replays entries accumulated
+	 * since this one, so consecutive failures never duplicate lines.
 	 */
 	public flush(reason: string): void {
-		const now = this.now();
-		if (now - this.lastFlushMs < this.flushSuppressionMs) {
-			return;
-		}
 		if (this.entries.length === 0) {
 			return;
 		}
-		this.lastFlushMs = now;
 		const entries = this.entries;
 		this.entries = [];
 

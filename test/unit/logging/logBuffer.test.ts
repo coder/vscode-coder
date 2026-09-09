@@ -91,7 +91,6 @@ describe("BufferingLogger", () => {
 			logger,
 			fakeLevelSource(INFO),
 			10,
-			5_000,
 			time.now,
 		);
 
@@ -142,23 +141,39 @@ describe("BufferingLogger", () => {
 
 	it("clears the buffer after a flush", () => {
 		const { logger, calls } = recordingLogger();
-		const time = clock();
-		const buffer = new BufferingLogger(
-			logger,
-			fakeLevelSource(INFO),
-			10,
-			5_000,
-			time.now,
-		);
+		const buffer = new BufferingLogger(logger, fakeLevelSource(INFO), 10);
 
 		buffer.debug("d");
 		buffer.flush("first");
-		time.advance(10_000); // past the suppression window
 
 		calls.length = 0;
 		buffer.flush("second");
 
 		expect(calls).toHaveLength(0);
+	});
+
+	it("flushes newly accumulated entries on each consecutive failure", () => {
+		const { logger, calls } = recordingLogger();
+		const buffer = new BufferingLogger(logger, fakeLevelSource(INFO), 10);
+
+		buffer.debug("before first failure");
+		calls.length = 0;
+		buffer.flush("first");
+		const firstLines = calls.map((c) => c.message);
+		expect(firstLines.some((l) => l.includes("before first failure"))).toBe(
+			true,
+		);
+
+		buffer.debug("before second failure");
+		calls.length = 0;
+		buffer.flush("second");
+		const secondLines = calls.map((c) => c.message);
+		expect(secondLines.some((l) => l.includes("before second failure"))).toBe(
+			true,
+		);
+		expect(secondLines.some((l) => l.includes("before first failure"))).toBe(
+			false,
+		);
 	});
 
 	it("is a no-op when the buffer is empty", () => {
@@ -166,28 +181,6 @@ describe("BufferingLogger", () => {
 		const buffer = new BufferingLogger(logger, fakeLevelSource(INFO), 10);
 
 		buffer.flush("r");
-
-		expect(calls).toHaveLength(0);
-	});
-
-	it("suppresses a second flush within the suppression window", () => {
-		const { logger, calls } = recordingLogger();
-		const time = clock();
-		const buffer = new BufferingLogger(
-			logger,
-			fakeLevelSource(INFO),
-			10,
-			5_000,
-			time.now,
-		);
-
-		buffer.debug("a");
-		buffer.flush("first");
-
-		time.advance(1_000); // within the window
-		buffer.debug("b");
-		calls.length = 0;
-		buffer.flush("second");
 
 		expect(calls).toHaveLength(0);
 	});
