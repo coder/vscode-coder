@@ -37,7 +37,7 @@ const DEFAULT_CONNECTION_LOG_BUFFER_SIZE = 1000;
 export class ServiceContainer implements vscode.Disposable {
 	private readonly outputChannel: vscode.LogOutputChannel;
 	private readonly logger: BufferingLogger;
-	private readonly disposables: vscode.Disposable[] = [];
+	private readonly connectionLogBufferConfigSubscription: vscode.Disposable;
 	private readonly pathResolver: PathResolver;
 	private readonly mementoManager: MementoManager;
 	private readonly secretsManager: SecretsManager;
@@ -61,13 +61,12 @@ export class ServiceContainer implements vscode.Disposable {
 			() => this.outputChannel.logLevel,
 			readConnectionLogBufferSize(),
 		);
-		this.disposables.push(
+		this.connectionLogBufferConfigSubscription =
 			vscode.workspace.onDidChangeConfiguration((event) => {
 				if (event.affectsConfiguration(CONNECTION_LOG_BUFFER_SIZE_KEY)) {
 					this.logger.setCapacity(readConnectionLogBufferSize());
 				}
-			}),
-		);
+			});
 		this.pathResolver = new PathResolver(
 			context.globalStorageUri.fsPath,
 			context.logUri.fsPath,
@@ -214,9 +213,7 @@ export class ServiceContainer implements vscode.Disposable {
 		this.commandManager.dispose();
 		this.contextManager.dispose();
 		this.loginCoordinator.dispose();
-		for (const disposable of this.disposables) {
-			disposable.dispose();
-		}
+		this.connectionLogBufferConfigSubscription.dispose();
 		try {
 			await this.telemetryService.dispose();
 		} finally {
