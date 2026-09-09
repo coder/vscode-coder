@@ -115,18 +115,6 @@ describe("WorkspaceMonitor", () => {
 		});
 	});
 
-	describe("connection failure", () => {
-		it("flushes the connection log buffer when the socket errors", async () => {
-			const { stream, connectionLogBuffer } = await setup();
-
-			stream.pushError(new Error("socket boom"));
-
-			expect(connectionLogBuffer.flush).toHaveBeenCalledWith(
-				"workspace_monitor_error",
-			);
-		});
-	});
-
 	describe("state logging", () => {
 		it("logs the initial workspace state as observed with flat scalars", async () => {
 			const { logger } = await setup(

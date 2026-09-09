@@ -26,7 +26,6 @@ import {
 import type { CoderApi } from "../api/coderApi";
 import type { ServiceContainer } from "../core/container";
 import type { ContextManager } from "../core/contextManager";
-import type { ConnectionLogBuffer } from "../logging/logBuffer";
 import type { Logger } from "../logging/logger";
 import type { TelemetryReporter } from "../telemetry/reporter";
 import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
@@ -64,7 +63,6 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	private readonly agentObserver = new WorkspaceAgentObserver();
 	private readonly logger: Logger;
 	private readonly contextManager: ContextManager;
-	private readonly connectionLogBuffer: ConnectionLogBuffer;
 
 	private latestWorkspace: Workspace;
 
@@ -75,7 +73,6 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	) {
 		this.logger = container.getLogger();
 		this.contextManager = container.getContextManager();
-		this.connectionLogBuffer = container.getConnectionLogBuffer();
 		this.name = createWorkspaceIdentifier(workspace);
 		this.telemetry = container.getTelemetryService();
 		this.latestWorkspace = workspace;
@@ -315,7 +312,6 @@ export class WorkspaceMonitor implements vscode.Disposable {
 			"Got empty error while monitoring workspace",
 		);
 		this.logger.error(message);
-		this.connectionLogBuffer.flush("workspace_monitor_error");
 	}
 
 	private updateContext(workspace: Workspace) {
