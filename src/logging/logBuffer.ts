@@ -46,16 +46,8 @@ function normalizeCapacity(capacity: number): number {
 }
 
 /**
- * Wraps a {@link Logger} and keeps a bounded, in-memory ring of entries whose
- * level is **below the sink's current level** — the ones the sink would
- * otherwise drop. On a connection failure, {@link flush} replays those entries
- * into the sink so they persist to disk (and any support bundle), giving Support
- * the debug detail leading up to the failure without the user having enabled
- * debug logging beforehand.
- *
- * Only below-level entries are buffered, so nothing that the sink already writes
- * is ever duplicated. Replay is emitted at the least-verbose level the sink
- * still writes, so the flush lands regardless of the configured level.
+ * Buffers entries below the current log level and replays them on failure at a
+ * level the output channel persists.
  */
 export class BufferingLogger implements Logger, ConnectionLogBuffer {
 	private entries: LogEntry[] = [];
