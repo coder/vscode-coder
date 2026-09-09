@@ -37,6 +37,7 @@ import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
 } from "@/telemetry/reporter";
+import { WebSocketCloseCode } from "@/websocket/codes";
 import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
 
 import {
@@ -114,8 +115,15 @@ describe("CoderApi", () => {
 		url = CODER_URL,
 		token = AXIOS_TOKEN,
 		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
+		onConnectionFailure?: (reason: string) => void,
 	) => {
-		return CoderApi.create(url, token, mockLogger, telemetry);
+		return CoderApi.create(
+			url,
+			token,
+			mockLogger,
+			telemetry,
+			onConnectionFailure,
+		);
 	};
 
 	beforeEach(() => {
@@ -571,6 +579,47 @@ describe("CoderApi", () => {
 				undefined,
 				expect.any(Object),
 			);
+		});
+	});
+
+	describe("connection failure callback", () => {
+		it("invokes onConnectionFailure on a terminal socket failure", async () => {
+			const onConnectionFailure = vi.fn();
+			const failingApi = createApi(
+				CODER_URL,
+				AXIOS_TOKEN,
+				NOOP_TELEMETRY_REPORTER,
+				onConnectionFailure,
+			);
+
+			let closeHandler: ((event: unknown) => void) | undefined;
+			const mockWs = createMockWebSocket(
+				`wss://${CODER_URL.replace("https://", "")}/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
+				{
+					on: vi.fn((event: string, handler: (e: unknown) => void) => {
+						if (event === "open") {
+							setImmediate(() => handler(undefined));
+						}
+						if (event === "close") {
+							closeHandler = handler;
+						}
+						return mockWs as Ws;
+					}),
+				},
+			);
+			setupWebSocketMock(mockWs);
+
+			const connection = await failingApi.watchAgentMetadata(AGENT_ID);
+
+			// An unrecoverable close code is a terminal failure, not a retry.
+			closeHandler?.({
+				code: WebSocketCloseCode.PROTOCOL_ERROR,
+				reason: "Unrecoverable",
+				wasClean: false,
+			});
+
+			expect(onConnectionFailure).toHaveBeenCalledWith("unrecoverable_close");
+			connection.close();
 		});
 	});
 
