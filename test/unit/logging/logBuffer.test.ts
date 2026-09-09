@@ -56,14 +56,6 @@ function fakeLevelSource(initial: number): LogLevelSource & {
 	};
 }
 
-function clock(start = 1_000): {
-	now: () => number;
-	advance(ms: number): void;
-} {
-	let t = start;
-	return { now: () => t, advance: (ms) => (t += ms) };
-}
-
 describe("BufferingLogger", () => {
 	it("forwards every call to the inner logger", () => {
 		const { logger, calls } = recordingLogger();
@@ -85,27 +77,30 @@ describe("BufferingLogger", () => {
 	});
 
 	it("buffers only entries below the current level and replays them on flush", () => {
-		const { logger, calls } = recordingLogger();
-		const time = clock();
-		const buffer = new BufferingLogger(
-			logger,
-			fakeLevelSource(INFO),
-			10,
-			time.now,
-		);
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(new Date("2024-01-01T00:00:00.000Z"));
+			const { logger, calls } = recordingLogger();
+			const buffer = new BufferingLogger(logger, fakeLevelSource(INFO), 10);
 
-		buffer.debug("hidden debug");
-		buffer.info("visible info");
+			buffer.debug("hidden debug");
+			buffer.info("visible info");
 
-		calls.length = 0; // ignore the pass-through calls
-		buffer.flush("test_reason");
+			// Flush later; the replay must carry the original record time.
+			vi.setSystemTime(new Date("2024-01-01T00:05:00.000Z"));
+			calls.length = 0; // ignore the pass-through calls
+			buffer.flush("test_reason");
 
-		const replayed = calls.filter((c) => c.message.includes("[buffered]"));
-		// header + one debug line + footer; the info line was at level and not buffered.
-		expect(replayed).toHaveLength(3);
-		expect(replayed[0].message).toContain("connection failure (test_reason)");
-		expect(replayed[1].message).toContain("DEBUG hidden debug");
-		expect(replayed[2].message).toContain("end of buffered logs");
+			const replayed = calls.filter((c) => c.message.includes("[buffered]"));
+			// header + one debug line + footer; the info line was at level and not buffered.
+			expect(replayed).toHaveLength(3);
+			expect(replayed[0].message).toContain("connection failure (test_reason)");
+			expect(replayed[1].message).toContain("DEBUG hidden debug");
+			expect(replayed[1].message).toContain("2024-01-01T00:00:00.000Z");
+			expect(replayed[2].message).toContain("end of buffered logs");
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("does not buffer entries at or above the current level", () => {

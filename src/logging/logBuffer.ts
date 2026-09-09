@@ -59,7 +59,6 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 		private readonly inner: Logger,
 		private readonly levelSource: LogLevelSource,
 		capacity: number,
-		private readonly now: () => number = Date.now,
 	) {
 		this.capacity = normalizeCapacity(capacity);
 		this.currentLevel = levelSource.getLogLevel();
@@ -154,7 +153,7 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 		if (this.capacity === 0 || SEVERITY[level] >= this.currentLevel) {
 			return;
 		}
-		this.entries.push({ atMs: this.now(), level, message, args });
+		this.entries.push({ atMs: Date.now(), level, message, args });
 		if (this.entries.length > this.capacity) {
 			this.entries.shift();
 		}
