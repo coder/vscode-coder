@@ -115,6 +115,17 @@ describe("WorkspaceMonitor", () => {
 		});
 	});
 
+	describe("connection failure", () => {
+		it("does not flush the log buffer on a malformed message", async () => {
+			const { stream, connectionLogBuffer } = await setup();
+
+			// A parse/processing error is not a socket failure, so nothing flushes.
+			stream.pushError(new Error("malformed message"));
+
+			expect(connectionLogBuffer.flush).not.toHaveBeenCalled();
+		});
+	});
+
 	describe("state logging", () => {
 		it("logs the initial workspace state as observed with flat scalars", async () => {
 			const { logger } = await setup(
