@@ -69,6 +69,7 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 import type { ClientOptions } from "ws";
 
+import type { ConnectionStateReason } from "../instrumentation/websocket";
 import type { Logger } from "../logging/logger";
 import type {
 	CloseEvent,
@@ -125,6 +126,9 @@ export class CoderApi extends Api implements vscode.Disposable {
 		private readonly telemetry: TelemetryReporter,
 		private readonly httpRequestsTelemetry: HttpRequestsTelemetry,
 		private readonly authConfigTracker: AuthConfigTracker,
+		private readonly onConnectionFailure?: (
+			reason: ConnectionStateReason,
+		) => void,
 	) {
 		super();
 		wrapWithValidation(this);
@@ -145,6 +149,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		token: string | undefined,
 		output: Logger,
 		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
+		onConnectionFailure?: (reason: ConnectionStateReason) => void,
 	): CoderApi {
 		const httpRequestsTelemetry = new HttpRequestsTelemetry(telemetry);
 		const authConfigTracker = new AuthConfigTracker();
@@ -153,6 +158,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 			telemetry,
 			httpRequestsTelemetry,
 			authConfigTracker,
+			onConnectionFailure,
 		);
 		client.getAxiosInstance().defaults.timeout = DEFAULT_REQUEST_TIMEOUT_MS;
 		client.getAxiosInstance().defaults.headers.common[BAGGAGE_HEADER] =
@@ -548,6 +554,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 				}
 				return refreshCertificates(refreshCommand, this.output);
 			},
+			onConnectionFailure: this.onConnectionFailure,
 			telemetry: this.telemetry,
 		};
 

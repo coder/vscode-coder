@@ -46,6 +46,7 @@ import type { PathResolver } from "@/core/pathResolver";
 import type { SecretsManager } from "@/core/secretsManager";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
 import type { Deployment } from "@/deployment/types";
+import type { ConnectionLogBuffer } from "@/logging/logBuffer";
 import type { Logger } from "@/logging/logger";
 import type { LoginCoordinator } from "@/login/loginCoordinator";
 import type { NetworkInfo } from "@/remote/sshProcess";
@@ -629,10 +630,14 @@ export function createMockServiceContainer(
 		pathResolver?: PathResolver;
 		contextManager?: ContextManagerLike;
 		loginCoordinator?: LoginCoordinatorLike;
+		connectionLogBuffer?: ConnectionLogBuffer;
 	} = {},
 ): ServiceContainer {
 	const telemetry = overrides.telemetry ?? createTestTelemetryService();
 	const logger = overrides.logger ?? createMockLogger();
+	const connectionLogBuffer = overrides.connectionLogBuffer ?? {
+		flush: () => {},
+	};
 	const require = <T>(name: string, value: T | undefined): T => {
 		if (value === undefined) {
 			throw new Error(`createMockServiceContainer: '${name}' was not provided`);
@@ -642,6 +647,7 @@ export function createMockServiceContainer(
 	return {
 		getTelemetryService: () => telemetry,
 		getLogger: () => logger,
+		getConnectionLogBuffer: () => connectionLogBuffer,
 		getSecretsManager: () =>
 			require("secretsManager", overrides.secretsManager),
 		getMementoManager: () =>

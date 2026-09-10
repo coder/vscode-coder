@@ -55,6 +55,7 @@ describe("WorkspaceMonitor", () => {
 		const statusBar = new MockStatusBarItem();
 		const contextManager = new MockContextManager();
 		const logger = createMockLogger();
+		const connectionLogBuffer = { flush: vi.fn() };
 		const client = {
 			watchWorkspace: vi.fn().mockResolvedValue(stream),
 			getTemplate: vi.fn().mockResolvedValue({
@@ -71,6 +72,7 @@ describe("WorkspaceMonitor", () => {
 				telemetry,
 				logger,
 				contextManager,
+				connectionLogBuffer,
 			}),
 		);
 		return {
@@ -81,6 +83,7 @@ describe("WorkspaceMonitor", () => {
 			statusBar,
 			contextManager,
 			logger,
+			connectionLogBuffer,
 		};
 	}
 
@@ -109,6 +112,17 @@ describe("WorkspaceMonitor", () => {
 				from: "running",
 				to: "stopping",
 			});
+		});
+	});
+
+	describe("connection failure", () => {
+		it("does not flush the log buffer on a malformed message", async () => {
+			const { stream, connectionLogBuffer } = await setup();
+
+			// A parse/processing error is not a socket failure, so nothing flushes.
+			stream.pushError(new Error("malformed message"));
+
+			expect(connectionLogBuffer.flush).not.toHaveBeenCalled();
 		});
 	});
 
