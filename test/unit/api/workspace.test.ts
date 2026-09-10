@@ -94,7 +94,11 @@ function createUpdateCtx(
 	};
 	const ctx = {
 		restClient: restClient as unknown as Api,
-		auth: { mode: "url" as const, url: "https://test.coder.com" },
+		auth: {
+			store: "shared" as const,
+			url: "https://test.coder.com",
+			useKeyring: undefined,
+		},
 		binPath: "/usr/bin/coder",
 		workspace,
 		write: vi.fn<(data: string) => void>(),

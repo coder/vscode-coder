@@ -23,6 +23,7 @@ import {
 import * as pgp from "../pgp";
 import { withCancellableProgress, withOptionalProgress } from "../progress";
 import { isKeyringEnabled } from "../settings/cli";
+import { showStoreCredentialsError } from "../util/credentials";
 import { tempFilePath } from "../util/fs";
 import { toSafeHost } from "../util/uri";
 import { vscodeProposed } from "../vscodeProposed";
@@ -41,6 +42,7 @@ import type { Span } from "../telemetry/span";
 
 import type { CliCredentialManager } from "./cliCredentialManager";
 import type { PathResolver } from "./pathResolver";
+import type { SessionAuth } from "./secretsManager";
 
 type ResolvedBinary =
 	| { binPath: string; stat: Stats; source: "file_path" | "directory" }
@@ -1041,7 +1043,7 @@ export class CliManager {
 				await this.cliCredentialManager.storeToken(url, token, configs);
 			} catch (error) {
 				trace.error(error);
-				this.handleStoreError(error);
+				this.handleStoreError(error, configs);
 			}
 			return;
 		}
@@ -1064,19 +1066,24 @@ export class CliManager {
 			return;
 		}
 		trace.error(result.error);
-		this.handleStoreError(result.error);
+		this.handleStoreError(result.error, configs);
 	}
 
 	/**
-	 * Remove credentials for a deployment. Clears both file-based credentials
-	 * and keyring entries (via `coder logout`). Never throws; returns whether
-	 * every store was cleared.
+	 * Remove credentials for a deployment. A store shared with the CLI is only
+	 * logged out of a token this extension created, so pass the stored
+	 * `session`. Never throws; returns whether every store was cleared.
 	 */
-	public async clearCredentials(url: string): Promise<boolean> {
+	public async clearCredentials(
+		url: string,
+		session: SessionAuth | undefined,
+	): Promise<boolean> {
 		const configs = vscode.workspace.getConfiguration();
 		const result = await withOptionalProgress(
 			({ signal }) =>
-				this.cliCredentialManager.deleteToken(url, configs, { signal }),
+				this.cliCredentialManager.deleteToken(url, configs, session, {
+					signal,
+				}),
 			{
 				enabled: isKeyringEnabled(configs),
 				location: vscode.ProgressLocation.Notification,
@@ -1095,21 +1102,11 @@ export class CliManager {
 		return false;
 	}
 
-	private handleStoreError(error: unknown): void {
-		this.output.error("Failed to store credentials:", error);
-		vscode.window
-			.showErrorMessage(
-				`Failed to store credentials: ${errToStr(error)}.`,
-				"Open Settings",
-			)
-			.then((action) => {
-				if (action === "Open Settings") {
-					vscode.commands.executeCommand(
-						"workbench.action.openSettings",
-						"coder.useKeyring",
-					);
-				}
-			});
+	private handleStoreError(
+		error: unknown,
+		configs: Pick<vscode.WorkspaceConfiguration, "get">,
+	): never {
+		showStoreCredentialsError(error, configs, this.output);
 		throw error;
 	}
 }
