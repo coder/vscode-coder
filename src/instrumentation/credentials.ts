@@ -11,11 +11,9 @@ export type CredentialErrorCategory = "binary" | "cli";
 type CredentialEvent = "auth.credential.store" | "auth.credential.clear";
 
 /**
- * Wraps credential store/clear in a span carrying `keyring_enabled`, the
- * `category` of storage involved, and an `error.type` on failure. The
- * traced operation sets `category` on the span and reports failures by
- * throwing a categorized error (store) or recording on the span (clear, which
- * is best-effort). Aborts are recorded and re-thrown so callers still unwind.
+ * Wraps credential store/clear in a span with `keyring_enabled`, the `store`
+ * once the CLI is resolved, and `error.type` on failure. Aborts are recorded
+ * and re-thrown.
  */
 export class CredentialTelemetry {
 	public constructor(private readonly telemetry: TelemetryReporter) {}
@@ -39,7 +37,6 @@ export class CredentialTelemetry {
 		configs: Pick<WorkspaceConfiguration, "get">,
 		fn: (span: Span) => Promise<T>,
 	): Promise<T> {
-		const keyringEnabled = isKeyringEnabled(configs);
 		let aborted: Error | undefined;
 		let result: T | undefined;
 		await this.telemetry.trace(
@@ -57,10 +54,7 @@ export class CredentialTelemetry {
 					throw error;
 				}
 			},
-			{
-				keyring_enabled: keyringEnabled,
-				category: keyringEnabled ? "keyring" : "file",
-			},
+			{ keyring_enabled: isKeyringEnabled(configs) },
 		);
 		if (aborted) {
 			throw aborted;

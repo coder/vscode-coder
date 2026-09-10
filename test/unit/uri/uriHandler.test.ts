@@ -74,6 +74,7 @@ function createMockLoginCoordinator(secretsManager: SecretsManager) {
 				await secretsManager.setSessionAuth(options.safeHostname, {
 					url: options.url,
 					token,
+					tokenSource: "extension",
 				});
 				return {
 					success: true,
@@ -159,6 +160,7 @@ function createTestContext() {
 			secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "known-token",
+				tokenSource: "extension",
 				...auth,
 			}),
 
@@ -531,6 +533,7 @@ describe("uriHandler", () => {
 			expect(await t.secretsManager.getSessionAuth(TEST_HOSTNAME)).toEqual({
 				url: TEST_URL,
 				token: "tok",
+				tokenSource: "extension",
 			});
 		});
 

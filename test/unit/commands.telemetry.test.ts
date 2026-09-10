@@ -15,7 +15,7 @@ import type { CliManager } from "@/core/cliManager";
 import type { ServiceContainer } from "@/core/container";
 import type { MementoManager } from "@/core/mementoManager";
 import type { PathResolver } from "@/core/pathResolver";
-import type { SecretsManager } from "@/core/secretsManager";
+import type { SecretsManager, SessionAuth } from "@/core/secretsManager";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
 import type { Deployment } from "@/deployment/types";
 import type { LoginCoordinator, LoginResult } from "@/login/loginCoordinator";
@@ -48,6 +48,12 @@ interface SetupOptions {
 	readonly clearCredentialsResult?: boolean;
 }
 
+const TEST_SESSION: SessionAuth = {
+	url: TEST_URL,
+	token: "test-token",
+	tokenSource: "extension",
+};
+
 function setup(options: SetupOptions = {}) {
 	vi.clearAllMocks();
 	const interaction = new MockUserInteraction();
@@ -65,6 +71,7 @@ function setup(options: SetupOptions = {}) {
 			method: "stored_token",
 			user: createMockUser(),
 			token: "test-token",
+			tokenSource: "extension",
 		} satisfies LoginResultForTest);
 	const loginCoordinator: Pick<LoginCoordinator, "ensureLoggedIn"> = {
 		ensureLoggedIn: vi.fn(() => Promise.resolve(loginResult)),
@@ -91,9 +98,10 @@ function setup(options: SetupOptions = {}) {
 
 	const secretsManager: Pick<
 		SecretsManager,
-		"getCurrentDeployment" | "clearAllAuthData"
+		"getCurrentDeployment" | "getSessionAuth" | "clearAllAuthData"
 	> = {
 		getCurrentDeployment: vi.fn(() => Promise.resolve(null)),
+		getSessionAuth: vi.fn(() => Promise.resolve(TEST_SESSION)),
 		clearAllAuthData: vi.fn(() => {
 			if (options.clearAllAuthDataError) {
 				return Promise.reject(options.clearAllAuthDataError);
@@ -166,6 +174,7 @@ describe("Commands", () => {
 					method: "provided_token",
 					user: createMockUser(),
 					token: "test-token",
+					tokenSource: "extension",
 				},
 			});
 
@@ -258,7 +267,10 @@ describe("Commands", () => {
 			expect(mocks.deploymentManager.clearDeployment).toHaveBeenCalledWith(
 				"logout",
 			);
-			expect(mocks.cliManager.clearCredentials).toHaveBeenCalledWith(TEST_URL);
+			expect(mocks.cliManager.clearCredentials).toHaveBeenCalledWith(
+				TEST_URL,
+				TEST_SESSION,
+			);
 			expect(mocks.secretsManager.clearAllAuthData).toHaveBeenCalledWith(
 				TEST_HOSTNAME,
 			);

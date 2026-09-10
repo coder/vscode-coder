@@ -436,6 +436,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 							tokenResponse.access_token,
 						),
 						oauth: buildOAuthTokenData(tokenResponse),
+						tokenSource: "extension",
 					});
 
 					return tokenResponse;

@@ -309,16 +309,22 @@ describe("CliManager", () => {
 
 	describe("Clear Credentials", () => {
 		const CLEAR_URL = "https://dev.coder.com";
+		const SESSION = {
+			url: CLEAR_URL,
+			token: "test-token",
+			tokenSource: "extension",
+		} as const;
 
 		it("should skip progress notification when keyring is disabled", async () => {
 			const { manager, mockCredManager } = setupCliManager();
 
-			await manager.clearCredentials(CLEAR_URL);
+			await manager.clearCredentials(CLEAR_URL, SESSION);
 
 			expect(vscode.window.withProgress).not.toHaveBeenCalled();
 			expect(mockCredManager.deleteToken).toHaveBeenCalledWith(
 				CLEAR_URL,
 				expect.anything(),
+				SESSION,
 				{ signal: expect.any(AbortSignal) },
 			);
 		});
@@ -327,7 +333,7 @@ describe("CliManager", () => {
 			const { manager } = setupCliManager();
 			vi.mocked(isKeyringEnabled).mockReturnValue(true);
 
-			await manager.clearCredentials(CLEAR_URL);
+			await manager.clearCredentials(CLEAR_URL, SESSION);
 
 			expect(vscode.window.withProgress).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -340,23 +346,35 @@ describe("CliManager", () => {
 		});
 
 		it.each([
-			{ scenario: "succeeds", error: undefined, cleared: true },
+			{
+				scenario: "succeeds",
+				error: undefined,
+				expected: true,
+			},
 			{
 				scenario: "fails",
 				error: new Error("unexpected failure"),
-				cleared: false,
+				expected: false,
 			},
-			{ scenario: "is cancelled", error: makeAbortError(), cleared: false },
+			{
+				scenario: "is cancelled",
+				error: makeAbortError(),
+				expected: false,
+			},
 		])(
 			"should report cleanup state when deleteToken $scenario",
-			async ({ error, cleared }) => {
+			async ({ error, expected }) => {
 				const { manager, mockCredManager } = setupCliManager();
 				if (error) {
 					vi.mocked(mockCredManager.deleteToken).mockRejectedValueOnce(error);
+				} else {
+					vi.mocked(mockCredManager.deleteToken).mockResolvedValueOnce(
+						expected,
+					);
 				}
-				await expect(manager.clearCredentials(CLEAR_URL)).resolves.toBe(
-					cleared,
-				);
+				await expect(
+					manager.clearCredentials(CLEAR_URL, SESSION),
+				).resolves.toEqual(expected);
 			},
 		);
 	});

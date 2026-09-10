@@ -1,4 +1,5 @@
-import { isKeyringSupported } from "../core/cliCredentialManager";
+import os from "node:os";
+
 import { escapeCommandArg, escapeShellArg, expandPath } from "../util";
 
 import { getHeaderArgs } from "./headers";
@@ -7,9 +8,15 @@ import type { WorkspaceConfiguration } from "vscode";
 
 import type { FeatureSet } from "../featureSet";
 
+/** The CLI's own store, shared with the terminal CLI, or a file in the extension's private directory. */
 export type CliAuth =
-	| { mode: "global-config"; configDir: string; allowOverride: boolean }
-	| { mode: "url"; url: string };
+	| { store: "shared"; url: string; useKeyring: boolean | undefined }
+	| {
+			store: "private";
+			url: string;
+			configDir: string;
+			useKeyring: false | undefined;
+	  };
 
 /**
  * Returns the user's `coder.globalFlags` with `expandPath` applied. For
@@ -51,28 +58,22 @@ function buildGlobalFlags(
 	escAuth: (s: string) => string,
 	escHeader: (s: string) => string,
 ): string[] {
-	const userFlags = getExpandedUserGlobalFlags(configs);
-	const headers = getHeaderArgs(configs, escHeader);
-
 	// Escape after stripping so expansion whitespace stays in one shell token.
-	const cleanUserFlags = (stripGlobalConfig: boolean) =>
-		stripManagedFlags(userFlags, stripGlobalConfig).map(escAuth);
-
-	// Keyring mode: --url auth; drop user --global-config (would force file storage).
-	if (auth.mode === "url") {
-		return [...cleanUserFlags(true), "--url", escAuth(auth.url), ...headers];
+	const flags = stripManagedFlags(
+		getExpandedUserGlobalFlags(configs),
+		auth.store === "private",
+	).map(escAuth);
+	if (auth.store === "private") {
+		flags.push("--global-config", escAuth(auth.configDir));
 	}
-
-	// File mode: keep the user's --global-config on 2.31+, else emit our own.
-	const honorOverride =
-		auth.allowOverride &&
-		userFlags.some((flag) => isFlag(flag, "--global-config"));
-	const authFlags = honorOverride
-		? []
-		: ["--global-config", escAuth(auth.configDir)];
-	return [...cleanUserFlags(!honorOverride), ...authFlags, ...headers];
+	flags.push("--url", escAuth(auth.url));
+	if (auth.useKeyring !== undefined) {
+		flags.push(`--use-keyring=${auth.useKeyring}`);
+	}
+	return [...flags, ...getHeaderArgs(configs, escHeader)];
 }
 
+/** Drops `--use-keyring`, and `--global-config` when the extension supplies its own. */
 function stripManagedFlags(
 	flags: string[],
 	stripGlobalConfig: boolean,
@@ -100,36 +101,47 @@ function isFlag(item: string, name: string): boolean {
 	);
 }
 
-/**
- * Returns true when the user has keyring enabled and the platform supports it.
- */
+/** True on platforms with an OS keyring the CLI supports (macOS, Windows). */
+export function isKeyringSupported(): boolean {
+	const platform = os.platform();
+	return platform === "darwin" || platform === "win32";
+}
+
+/** True when `coder.useKeyring` is on and the platform supports it. */
 export function isKeyringEnabled(
 	configs: Pick<WorkspaceConfiguration, "get">,
 ): boolean {
-	return (
-		isKeyringSupported() && configs.get<boolean>("coder.useKeyring", false)
-	);
+	return isKeyringSupported() && configs.get<boolean>("coder.useKeyring", true);
 }
 
-/**
- * Resolves how the CLI should authenticate: via the keyring (`--url`) or via
- * the global config directory (`--global-config`).
- */
+/** Shares the CLI's store when the keyring is on or the user set a config directory. */
 export function resolveCliAuth(
 	configs: Pick<WorkspaceConfiguration, "get">,
 	featureSet: FeatureSet,
-	deploymentUrl: string,
+	url: string,
 	configDir: string,
 ): CliAuth {
-	if (isKeyringEnabled(configs) && featureSet.keyringAuth) {
-		return { mode: "url", url: deploymentUrl };
+	// Below 2.29 the CLI lacks --use-keyring.
+	const useKeyring = featureSet.keyringAuth
+		? isKeyringEnabled(configs)
+		: undefined;
+	// A user directory is honored on 2.31+, where the CLI can report its token.
+	const userDir = hasUserConfigDir(configs) && featureSet.tokenRead;
+	if (useKeyring || userDir) {
+		return { store: "shared", url, useKeyring };
 	}
-	// Honored only on 2.31.0+, where CLI-mediated read/write share the directory.
-	return {
-		mode: "global-config",
-		configDir,
-		allowOverride: featureSet.tokenRead,
-	};
+	return { store: "private", url, configDir, useKeyring };
+}
+
+function hasUserConfigDir(
+	configs: Pick<WorkspaceConfiguration, "get">,
+): boolean {
+	return (
+		Boolean(process.env.CODER_CONFIG_DIR) ||
+		getExpandedUserGlobalFlags(configs).some((flag) =>
+			isFlag(flag, "--global-config"),
+		)
+	);
 }
 
 /**

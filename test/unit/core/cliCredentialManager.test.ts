@@ -2,16 +2,14 @@ import { fs as memfs, vol } from "memfs";
 import { execFile } from "node:child_process";
 import * as os from "node:os";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	CliCredentialManager,
-	isKeyringSupported,
 	type BinaryResolver,
 } from "@/core/cliCredentialManager";
 import * as cliExec from "@/core/cliExec";
 import { PathResolver } from "@/core/pathResolver";
-import { isKeyringEnabled } from "@/settings/cli";
 
 import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {
@@ -21,646 +19,460 @@ import {
 
 import type * as nodeFs from "node:fs";
 
-vi.mock("node:child_process", () => ({
-	execFile: vi.fn(),
-}));
+import type { SessionAuth } from "@/core/secretsManager";
+
+vi.mock("node:child_process", () => ({ execFile: vi.fn() }));
 
 vi.mock("node:os");
-
-vi.mock("@/settings/cli", async () => {
-	const actual =
-		await vi.importActual<typeof import("@/settings/cli")>("@/settings/cli");
-	return { ...actual, isKeyringEnabled: vi.fn().mockReturnValue(false) };
-});
 
 vi.mock("@/core/cliExec", async () => {
 	const actual =
 		await vi.importActual<typeof import("@/core/cliExec")>("@/core/cliExec");
-	return {
-		...actual,
-		version: vi.fn().mockResolvedValue("2.29.0"),
-	};
+	return { ...actual, version: vi.fn() };
 });
 
 vi.mock("fs/promises", async () => {
 	const memfs: { fs: typeof nodeFs } = await vi.importActual("memfs");
-	return {
-		...memfs.fs.promises,
-		default: memfs.fs.promises,
-	};
+	return { ...memfs.fs.promises, default: memfs.fs.promises };
 });
 
 const TEST_BIN = "/usr/bin/coder";
 const TEST_URL = "https://dev.coder.com";
+const PATH_RESOLVER = new PathResolver("/mock/base", "/mock/log");
+// Built with path.join so it matches getGlobalConfigDir on Windows too.
+const CRED_DIR = path.join("/mock/base", "dev.coder.com");
+const USER_DIR = "/custom/coderv2";
 
-// promisify(execFile) always calls execFile(bin, args, opts, callback).
-// We extract the options from the third positional argument.
-interface ExecFileOptions {
+const PRIVATE_FLAGS = [
+	"--global-config",
+	CRED_DIR,
+	"--url",
+	TEST_URL,
+	"--use-keyring=false",
+];
+const KEYRING_FLAGS = ["--url", TEST_URL, "--use-keyring=true"];
+const USER_DIR_FLAGS = [
+	`--global-config=${USER_DIR}`,
+	"--url",
+	TEST_URL,
+	"--use-keyring=false",
+];
+
+const EXTENSION_SESSION: SessionAuth = {
+	url: TEST_URL,
+	token: "my-token",
+	tokenSource: "extension",
+};
+const CLI_SESSION: SessionAuth = { ...EXTENSION_SESSION, tokenSource: "cli" };
+
+type ExecResult = string | Error;
+type ExecCallback = (err: Error | null, result?: { stdout: string }) => void;
+interface ExecOptions {
 	env?: NodeJS.ProcessEnv;
 	timeout?: number;
 	signal?: AbortSignal;
 }
 
-type ExecFileCallback = (
-	err: Error | null,
-	result?: { stdout: string },
-) => void;
-
-function stubExecFile(result: { stdout?: string } | { error: string }) {
+/** Answers each subcommand with stdout or a failure; "abort" waits for the signal. */
+function stubExecFile(
+	results:
+		| { login?: ExecResult; token?: ExecResult; logout?: ExecResult }
+		| "abort" = {},
+) {
 	vi.mocked(execFile).mockImplementation(((
 		_bin: string,
-		_args: string[],
-		_opts: ExecFileOptions,
-		cb: ExecFileCallback,
+		args: string[],
+		opts: ExecOptions,
+		cb: ExecCallback,
 	) => {
-		if ("error" in result) {
-			cb(new Error(result.error));
+		if (results === "abort") {
+			const err = new Error("The operation was aborted");
+			err.name = "AbortError";
+			if (opts.signal?.aborted) {
+				cb(err);
+			} else {
+				opts.signal?.addEventListener("abort", () => cb(err));
+			}
+			return;
+		}
+		const result = args.includes("token")
+			? results.token
+			: args.includes("logout")
+				? results.logout
+				: results.login;
+		if (result instanceof Error) {
+			cb(result);
 		} else {
-			cb(null, { stdout: result.stdout ?? "" });
+			cb(null, { stdout: result ?? "" });
 		}
 	}) as unknown as typeof execFile);
 }
 
-function stubExecFileAbortable() {
-	vi.mocked(execFile).mockImplementation(((
-		_bin: string,
-		_args: string[],
-		opts: ExecFileOptions,
-		cb: ExecFileCallback,
-	) => {
-		const err = new Error("The operation was aborted");
-		err.name = "AbortError";
-		if (opts.signal?.aborted) {
-			cb(err);
-		} else {
-			opts.signal?.addEventListener("abort", () => cb(err));
-		}
-	}) as unknown as typeof execFile);
-}
+const execCalls = () =>
+	vi.mocked(execFile).mock.calls.map((call) => call[1] as string[]);
+const execOptions = () => vi.mocked(execFile).mock.calls[0][2] as ExecOptions;
 
-function lastExecArgs() {
-	const [bin, args, opts] = vi.mocked(execFile).mock.calls[0] as [
-		string,
-		readonly string[],
-		ExecFileOptions,
-		...unknown[],
-	];
-	return {
-		bin,
-		args,
-		env: opts.env ?? process.env,
-		timeout: opts.timeout,
-		signal: opts.signal,
-	};
-}
-
-function successResolver(): BinaryResolver {
-	return vi.fn().mockResolvedValue(TEST_BIN);
-}
-
-function failingResolver(): BinaryResolver {
-	return vi.fn().mockRejectedValue(new Error("no binary"));
-}
-
-// Honor the defaultValue arg so getExpandedUserGlobalFlags sees [] when unset.
-const configs = {
-	get: vi.fn((_key: string, defaultValue?: unknown) => defaultValue),
-};
-
-const configWithHeaders = {
-	get: vi.fn((key: string, defaultValue?: unknown) =>
-		key === "coder.headerCommand" ? "my-header-cmd" : defaultValue,
-	),
-};
-
-// A configs that sets a user --global-config override via coder.globalFlags.
-function configWithGlobalConfig(dir: string) {
+/** A configs fake that honors defaultValue for everything but `values`. */
+function configWith(values: Record<string, unknown>) {
 	return {
 		get: vi.fn((key: string, defaultValue?: unknown) =>
-			key === "coder.globalFlags" ? [`--global-config=${dir}`] : defaultValue,
+			key in values ? values[key] : defaultValue,
 		),
 	};
 }
-
-const TEST_PATH_RESOLVER = new PathResolver("/mock/base", "/mock/log");
-// Built with path.join so it matches getGlobalConfigDir on Windows too.
-const CRED_DIR = path.join("/mock/base", "dev.coder.com");
-const CUSTOM_CRED_DIR = "/custom/coderv2";
-
-function credentialPaths(dir = CRED_DIR) {
-	return {
-		url: `${dir}/url`,
-		session: `${dir}/session`,
-	};
-}
-
-function writeCredentialFiles(
-	url: string,
-	token: string,
-	dir = CRED_DIR,
-): void {
-	const paths = credentialPaths(dir);
-	vol.mkdirSync(dir, { recursive: true });
-	memfs.writeFileSync(paths.url, url);
-	memfs.writeFileSync(paths.session, token);
-}
-
-function credentialFilesExist(dir = CRED_DIR): boolean {
-	const paths = credentialPaths(dir);
-	return memfs.existsSync(paths.url) || memfs.existsSync(paths.session);
-}
-
-function setup(resolver?: BinaryResolver) {
-	const r = resolver ?? successResolver();
-	const sink = new TestSink();
-	return {
-		resolver: r,
-		sink,
-		manager: new CliCredentialManager(
-			createMockLogger(),
-			r,
-			TEST_PATH_RESOLVER,
-			createTestTelemetryService(sink),
-		),
-	};
-}
-
-describe("isKeyringSupported", () => {
-	it.each([
-		{ platform: "darwin", expected: true },
-		{ platform: "win32", expected: true },
-		{ platform: "linux", expected: false },
-		{ platform: "freebsd", expected: false },
-	])("returns $expected for $platform", ({ platform, expected }) => {
-		vi.mocked(os.platform).mockReturnValue(platform as NodeJS.Platform);
-		expect(isKeyringSupported()).toBe(expected);
-	});
+const configs = configWith({});
+const userDirConfigs = configWith({
+	"coder.globalFlags": [`--global-config=${USER_DIR}`],
 });
+
+function writeCredentialFiles(): void {
+	vol.mkdirSync(CRED_DIR, { recursive: true });
+	memfs.writeFileSync(`${CRED_DIR}/url`, TEST_URL);
+	memfs.writeFileSync(`${CRED_DIR}/session`, "old-token");
+}
+
+const credentialFilesExist = () =>
+	memfs.existsSync(`${CRED_DIR}/url`) ||
+	memfs.existsSync(`${CRED_DIR}/session`);
+
+const missingBinary = (): BinaryResolver =>
+	vi.fn().mockRejectedValue(new Error("no binary"));
+
+function setup(resolver: BinaryResolver = vi.fn().mockResolvedValue(TEST_BIN)) {
+	const sink = new TestSink();
+	const manager = new CliCredentialManager(
+		createMockLogger(),
+		resolver,
+		PATH_RESOLVER,
+		createTestTelemetryService(sink),
+	);
+	return { sink, manager };
+}
 
 describe("CliCredentialManager", () => {
 	beforeEach(() => {
 		new MockConfigurationProvider();
 		vi.clearAllMocks();
 		vol.reset();
-		vi.mocked(isKeyringEnabled).mockReturnValue(false);
+		vi.stubEnv("CODER_CONFIG_DIR", undefined);
+		// Linux: keyring unsupported, so the extension directory is used.
+		vi.mocked(os.platform).mockReturnValue("linux");
 		vi.mocked(cliExec.version).mockResolvedValue("2.31.0");
 	});
 
-	describe("storeToken", () => {
-		it("writes via coder login (file mode) when keyring is disabled", async () => {
-			stubExecFile({ stdout: "" });
-			const { manager, resolver, sink } = setup();
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
 
-			await expect(
-				manager.storeToken(TEST_URL, "my-token", configs),
-			).resolves.toBeUndefined();
+	// Store selection is covered by cliConfig.test.ts; this checks the wiring.
+	interface Case {
+		scenario: string;
+		platform: NodeJS.Platform;
+		configs: typeof configs;
+		expected: string[];
+		store: string;
+	}
 
-			expect(resolver).toHaveBeenCalledWith(TEST_URL);
-			const exec = lastExecArgs();
-			expect(exec.args).toEqual([
-				"--global-config",
-				CRED_DIR,
-				"login",
-				"--use-token-as-session",
-				TEST_URL,
-			]);
-			expect(exec.env.CODER_SESSION_TOKEN).toBe("my-token");
-			expect(exec.args).not.toContain("my-token");
-			expect(sink.expectOne("auth.credential.store")).toMatchObject({
-				properties: {
-					category: "file",
-					keyring_enabled: "false",
-					result: "success",
-				},
-			});
-		});
-
-		it("resolves binary and invokes coder login when keyring enabled", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFile({ stdout: "" });
-			const { manager, resolver, sink } = setup();
-
-			await expect(
-				manager.storeToken(TEST_URL, "my-secret-token", configs),
-			).resolves.toBeUndefined();
-
-			expect(resolver).toHaveBeenCalledWith(TEST_URL);
-			const exec = lastExecArgs();
-			expect(exec.bin).toBe(TEST_BIN);
-			expect(exec.args).toEqual(["login", "--use-token-as-session", TEST_URL]);
-			// Token must only appear in env, never in args
-			expect(exec.env.CODER_SESSION_TOKEN).toBe("my-secret-token");
-			expect(exec.args).not.toContain("my-secret-token");
-			expect(sink.expectOne("auth.credential.store")).toMatchObject({
-				properties: {
-					category: "keyring",
-					keyring_enabled: "true",
-					result: "success",
-				},
-			});
-		});
-
-		it("writes via coder login under a user --global-config override", async () => {
-			stubExecFile({ stdout: "" });
-			const { manager } = setup();
-
-			await manager.storeToken(
-				TEST_URL,
-				"my-token",
-				configWithGlobalConfig(CUSTOM_CRED_DIR),
-			);
-
-			expect(lastExecArgs().args).toEqual([
-				`--global-config=${CUSTOM_CRED_DIR}`,
-				"login",
-				"--use-token-as-session",
-				TEST_URL,
-			]);
-		});
-
-		it("throws and writes no files when the binary cannot be resolved", async () => {
-			const { manager } = setup(failingResolver());
-
-			await expect(
-				manager.storeToken(TEST_URL, "my-token", configs),
-			).rejects.toThrow("no binary");
-			expect(execFile).not.toHaveBeenCalled();
-			expect(credentialFilesExist()).toBe(false);
-		});
-
-		it("writes via coder login (file) when keyring is enabled but unsupported", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			vi.mocked(cliExec.version).mockResolvedValueOnce("2.28.0");
-			stubExecFile({ stdout: "" });
-			const { manager } = setup();
+	it.each<Case>([
+		{
+			scenario: "extension directory when keyring is unsupported",
+			platform: "linux",
+			configs,
+			expected: PRIVATE_FLAGS,
+			store: "private",
+		},
+		{
+			scenario: "CLI default store when keyring is enabled",
+			platform: "darwin",
+			configs,
+			expected: KEYRING_FLAGS,
+			store: "shared",
+		},
+		{
+			scenario: "user --global-config directory",
+			platform: "linux",
+			configs: userDirConfigs,
+			expected: USER_DIR_FLAGS,
+			store: "shared",
+		},
+	])(
+		"targets the $scenario",
+		async ({ platform, configs, expected, store }) => {
+			vi.mocked(os.platform).mockReturnValue(platform);
+			stubExecFile();
+			const { manager, sink } = setup();
 
 			await manager.storeToken(TEST_URL, "token", configs);
 
-			expect(lastExecArgs().args).toEqual([
-				"--global-config",
-				CRED_DIR,
-				"login",
-				"--use-token-as-session",
-				TEST_URL,
+			expect(execCalls()).toEqual([
+				[...expected, "login", "--use-token-as-session", TEST_URL],
 			]);
+			expect(sink.expectOne("auth.credential.store")).toMatchObject({
+				properties: { store, result: "success" },
+			});
+		},
+	);
+
+	describe("storeToken", () => {
+		it("passes the token through the environment only", async () => {
+			stubExecFile();
+			const { manager } = setup();
+
+			await manager.storeToken(TEST_URL, "my-secret-token", configs);
+
+			expect(execOptions().env?.CODER_SESSION_TOKEN).toBe("my-secret-token");
+			expect(execCalls()[0]).not.toContain("my-secret-token");
 		});
 
-		it("throws when CLI exec fails", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFile({ error: "login failed" });
+		it("throws a CredentialCliError when the CLI fails", async () => {
+			stubExecFile({ login: new Error("login failed") });
 			const { manager, sink } = setup();
 
 			await expect(
 				manager.storeToken(TEST_URL, "token", configs),
 			).rejects.toThrow("Credential CLI operation failed");
 			expect(sink.expectOne("auth.credential.store")).toMatchObject({
-				properties: {
-					"error.type": "cli",
-					result: "error",
-				},
+				properties: { "error.type": "cli", result: "error" },
 			});
-		});
-
-		it("throws when binary resolver fails and keyring enabled", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			const { manager } = setup(failingResolver());
-
-			await expect(
-				manager.storeToken(TEST_URL, "token", configs),
-			).rejects.toThrow("no binary");
-			expect(execFile).not.toHaveBeenCalled();
-		});
-
-		it("forwards header command args", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFile({ stdout: "" });
-			const { manager } = setup();
-
-			await manager.storeToken(TEST_URL, "token", configWithHeaders);
-
-			expect(lastExecArgs().args).toContain("--header-command");
-		});
-
-		it("passes timeout to execFile", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFile({ stdout: "" });
-			const { manager } = setup();
-
-			await manager.storeToken(TEST_URL, "token", configs);
-
-			expect(lastExecArgs().timeout).toBe(60_000);
-		});
-
-		it("passes signal through to execFile", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFile({ stdout: "" });
-			const { manager } = setup();
-			const ac = new AbortController();
-
-			await manager.storeToken(TEST_URL, "token", configs, {
-				signal: ac.signal,
-			});
-
-			expect(lastExecArgs().signal).toBe(ac.signal);
-		});
-
-		it("rejects with AbortError when signal is pre-aborted", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFileAbortable();
-			const { manager, sink } = setup();
-
-			await expect(
-				manager.storeToken(TEST_URL, "token", configs, {
-					signal: AbortSignal.abort(),
-				}),
-			).rejects.toThrow("The operation was aborted");
-			const event = sink.expectOne("auth.credential.store");
-			expect(event).toMatchObject({
-				properties: { result: "aborted" },
-			});
-			expect(event.properties["error.type"]).toBeUndefined();
 		});
 	});
 
 	describe("readToken", () => {
-		it("returns trimmed token from CLI stdout", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFile({ stdout: "  my-token\n" });
-			const { manager, resolver } = setup();
+		it("returns the trimmed token from the CLI store", async () => {
+			vi.mocked(os.platform).mockReturnValue("darwin");
+			stubExecFile({ token: "  my-token\n" });
+			const { manager } = setup();
 
-			const token = await manager.readToken(TEST_URL, configs);
-
-			expect(resolver).toHaveBeenCalledWith(TEST_URL);
-			expect(token).toEqual({ token: "my-token", source: "keyring" });
-			expect(lastExecArgs().args).toEqual([
-				"login",
-				"token",
-				"--url",
-				TEST_URL,
-			]);
+			expect(await manager.readToken(TEST_URL, configs)).toBe("my-token");
+			expect(execCalls()).toEqual([[...KEYRING_FLAGS, "login", "token"]]);
 		});
 
-		it("returns undefined on whitespace-only stdout", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFile({ stdout: "  \n" });
+		it.each([
+			{ scenario: "whitespace-only stdout", token: "  \n" },
+			{ scenario: "a CLI error", token: new Error("no token found") },
+		])("returns undefined on $scenario", async ({ token }) => {
+			stubExecFile({ token });
 			const { manager } = setup();
+
 			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
 		});
 
-		it("returns undefined on CLI error", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFile({ error: "no token found" });
-			const { manager } = setup();
-			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
-		});
-
-		it("returns undefined when binary resolver fails", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			const { manager } = setup(failingResolver());
-
-			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
-			expect(execFile).not.toHaveBeenCalled();
-		});
-
-		it("reads via coder login token (file mode) when keyring is disabled", async () => {
-			stubExecFile({ stdout: "file-token\n" });
-			const { manager, resolver } = setup();
-
-			expect(await manager.readToken(TEST_URL, configs)).toEqual({
-				token: "file-token",
-				source: "files",
-			});
-			expect(resolver).toHaveBeenCalledWith(TEST_URL);
-			expect(lastExecArgs().args).toEqual([
-				"--global-config",
-				CRED_DIR,
-				"login",
-				"token",
-				"--url",
-				TEST_URL,
-			]);
-		});
-
-		it("reads via coder login token under a user --global-config override", async () => {
-			stubExecFile({ stdout: "custom-file-token" });
-			const { manager } = setup();
-
-			expect(
-				await manager.readToken(
-					TEST_URL,
-					configWithGlobalConfig(CUSTOM_CRED_DIR),
-				),
-			).toEqual({ token: "custom-file-token", source: "files" });
-			expect(lastExecArgs().args).toEqual([
-				`--global-config=${CUSTOM_CRED_DIR}`,
-				"login",
-				"token",
-				"--url",
-				TEST_URL,
-			]);
-		});
-
-		it("returns undefined for file mode on deployments older than 2.31", async () => {
+		it("returns undefined below CLI 2.31 without running the CLI", async () => {
 			vi.mocked(cliExec.version).mockResolvedValue("2.30.0");
-			const { manager, resolver } = setup();
-
-			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
-			expect(resolver).toHaveBeenCalledWith(TEST_URL);
-			expect(execFile).not.toHaveBeenCalled();
-		});
-
-		it("does not read when keyring token read is unsupported", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			vi.mocked(cliExec.version).mockResolvedValueOnce("2.30.0");
-			const { manager, resolver } = setup();
-
-			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
-			expect(resolver).toHaveBeenCalledWith(TEST_URL);
-			expect(execFile).not.toHaveBeenCalled();
-		});
-
-		it("returns undefined when keyring is enabled but unsupported by the CLI", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			vi.mocked(cliExec.version).mockResolvedValueOnce("2.28.0");
-			const { manager, resolver } = setup();
-
-			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
-			expect(resolver).toHaveBeenCalledWith(TEST_URL);
-			expect(execFile).not.toHaveBeenCalled();
-		});
-
-		it("returns undefined when CLI version too old for token read", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			// 2.30 supports keyringAuth but not tokenRead (requires 2.31+)
-			vi.mocked(cliExec.version).mockResolvedValueOnce("2.30.0");
-			stubExecFile({ stdout: "my-token" });
 			const { manager } = setup();
 
 			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
 			expect(execFile).not.toHaveBeenCalled();
-		});
-
-		it("passes timeout to execFile", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFile({ stdout: "token" });
-			const { manager } = setup();
-
-			await manager.readToken(TEST_URL, configs);
-
-			expect(lastExecArgs().timeout).toBe(60_000);
-		});
-
-		it("passes signal through to execFile", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFile({ stdout: "token" });
-			const { manager } = setup();
-			const ac = new AbortController();
-
-			await manager.readToken(TEST_URL, configs, { signal: ac.signal });
-
-			expect(lastExecArgs().signal).toBe(ac.signal);
-		});
-
-		it("throws AbortError when signal is aborted", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFileAbortable();
-			const { manager } = setup();
-
-			await expect(
-				manager.readToken(TEST_URL, configs, {
-					signal: AbortSignal.abort(),
-				}),
-			).rejects.toThrow("The operation was aborted");
 		});
 	});
 
 	describe("deleteToken", () => {
-		it("deletes files and invokes coder logout when keyring enabled", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFile({ stdout: "" });
-			writeCredentialFiles(TEST_URL, "old-token");
-			const { manager, resolver, sink } = setup();
+		it.each([
+			{ scenario: "a CLI token", session: CLI_SESSION },
+			{ scenario: "no session", session: undefined },
+		])(
+			"logs out of the extension directory even for $scenario",
+			async ({ session }) => {
+				stubExecFile();
+				writeCredentialFiles();
+				const { manager, sink } = setup();
 
-			const result = await manager.deleteToken(TEST_URL, configs);
+				const result = await manager.deleteToken(TEST_URL, configs, session);
 
-			expect(result).toBe(true);
-			expect(resolver).toHaveBeenCalledWith(TEST_URL);
-			const exec = lastExecArgs();
-			expect(exec.bin).toBe(TEST_BIN);
-			expect(exec.args).toEqual(["logout", "--url", TEST_URL, "--yes"]);
-			expect(credentialFilesExist()).toBe(false);
-			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
-				properties: {
-					category: "keyring",
-					keyring_enabled: "true",
-					result: "success",
-				},
-			});
-		});
+				expect(result).toBe(true);
+				expect(execCalls()).toEqual([[...PRIVATE_FLAGS, "logout", "--yes"]]);
+				expect(credentialFilesExist()).toBe(false);
+				expect(sink.expectOne("auth.credential.clear")).toMatchObject({
+					properties: { store: "private", result: "success" },
+				});
+			},
+		);
 
-		it("deletes files and invokes coder logout (file) when keyring is disabled", async () => {
-			stubExecFile({ stdout: "" });
-			writeCredentialFiles(TEST_URL, "old-token");
-			const { manager } = setup();
-
-			await manager.deleteToken(TEST_URL, configs);
-
-			expect(lastExecArgs().args).toEqual([
-				"--global-config",
-				CRED_DIR,
-				"logout",
-				"--url",
-				TEST_URL,
-				"--yes",
-			]);
-			expect(credentialFilesExist()).toBe(false);
-		});
-
-		it("never throws on CLI error", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFile({ error: "logout failed" });
-			const { manager, sink } = setup();
-
-			await expect(manager.deleteToken(TEST_URL, configs)).resolves.toBe(false);
-			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
-				properties: {
-					"error.type": "cli",
-					result: "error",
-				},
-			});
-		});
-
-		it("never throws when binary resolver fails", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			const { manager, sink } = setup(failingResolver());
-
-			await expect(manager.deleteToken(TEST_URL, configs)).resolves.toBe(false);
-			expect(execFile).not.toHaveBeenCalled();
-			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
-				properties: {
-					category: "keyring",
-					"error.type": "binary",
-					result: "error",
-				},
-			});
-		});
-
-		it("forwards header command args", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFile({ stdout: "" });
-			const { manager } = setup();
-
-			await manager.deleteToken(TEST_URL, configWithHeaders);
-
-			expect(lastExecArgs().args).toContain("--header-command");
-		});
-
-		it("logs out via coder logout (file) when keyring is enabled but unsupported", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			vi.mocked(cliExec.version).mockResolvedValueOnce("2.28.0");
-			stubExecFile({ stdout: "" });
-			writeCredentialFiles(TEST_URL, "old-token");
-			const { manager } = setup();
-
-			await manager.deleteToken(TEST_URL, configs);
-
-			expect(lastExecArgs().args).toEqual([
-				"--global-config",
-				CRED_DIR,
-				"logout",
-				"--url",
-				TEST_URL,
-				"--yes",
-			]);
-			expect(credentialFilesExist()).toBe(false);
-		});
-
-		it("passes signal through to execFile", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFile({ stdout: "" });
-			const { manager } = setup();
-			const ac = new AbortController();
-
-			await manager.deleteToken(TEST_URL, configs, { signal: ac.signal });
-
-			expect(lastExecArgs().signal).toBe(ac.signal);
-		});
-
-		it("throws AbortError when signal is aborted", async () => {
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-			stubExecFileAbortable();
+		it("reports a failed logout without throwing", async () => {
+			stubExecFile({ logout: new Error("logout failed") });
 			const { manager, sink } = setup();
 
 			await expect(
-				manager.deleteToken(TEST_URL, configs, {
-					signal: AbortSignal.abort(),
-				}),
-			).rejects.toThrow("The operation was aborted");
-			const event = sink.expectOne("auth.credential.clear");
-			expect(event).toMatchObject({
-				properties: { result: "aborted" },
+				manager.deleteToken(TEST_URL, configs, EXTENSION_SESSION),
+			).resolves.toBe(false);
+			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
+				properties: { "error.type": "cli", result: "error" },
 			});
-			expect(event.properties["error.type"]).toBeUndefined();
 		});
+
+		describe("in a store shared with the CLI", () => {
+			beforeEach(() => {
+				vi.mocked(os.platform).mockReturnValue("darwin");
+			});
+
+			it("logs out when the CLI holds the extension's token", async () => {
+				stubExecFile({ token: "my-token\n" });
+				writeCredentialFiles();
+				const { manager, sink } = setup();
+
+				const result = await manager.deleteToken(
+					TEST_URL,
+					configs,
+					EXTENSION_SESSION,
+				);
+
+				expect(result).toBe(true);
+				expect(execCalls()).toEqual([
+					[...KEYRING_FLAGS, "login", "token"],
+					[...KEYRING_FLAGS, "logout", "--yes"],
+				]);
+				expect(credentialFilesExist()).toBe(false);
+				expect(sink.expectOne("auth.credential.clear")).toMatchObject({
+					properties: { store: "shared", result: "success" },
+				});
+			});
+
+			interface Case {
+				scenario: string;
+				session?: SessionAuth;
+				token?: ExecResult;
+			}
+
+			it.each<Case>([
+				{
+					scenario: "the CLI holds another token",
+					session: EXTENSION_SESSION,
+					token: "someone-elses-token",
+				},
+				{
+					scenario: "the CLI token cannot be read",
+					session: EXTENSION_SESSION,
+					token: new Error("keychain locked"),
+				},
+				{ scenario: "the token came from the CLI", session: CLI_SESSION },
+				{ scenario: "there is no session", session: undefined },
+			])("keeps the CLI session when $scenario", async ({ session, token }) => {
+				stubExecFile({ token });
+				writeCredentialFiles();
+				const { manager } = setup();
+
+				const result = await manager.deleteToken(TEST_URL, configs, session);
+
+				expect(result).toBe(true);
+				expect(execCalls().some((args) => args.includes("logout"))).toBe(false);
+				expect(credentialFilesExist()).toBe(false);
+			});
+
+			it("logs out without verifying below CLI 2.31", async () => {
+				vi.mocked(cliExec.version).mockResolvedValue("2.30.0");
+				stubExecFile();
+				const { manager } = setup();
+
+				const result = await manager.deleteToken(
+					TEST_URL,
+					configs,
+					EXTENSION_SESSION,
+				);
+
+				expect(result).toBe(true);
+				expect(execCalls()).toEqual([[...KEYRING_FLAGS, "logout", "--yes"]]);
+			});
+
+			it("treats a user --global-config directory as shared", async () => {
+				vi.mocked(os.platform).mockReturnValue("linux");
+				stubExecFile({ token: "my-token" });
+				const { manager } = setup();
+
+				const result = await manager.deleteToken(
+					TEST_URL,
+					userDirConfigs,
+					EXTENSION_SESSION,
+				);
+
+				expect(result).toBe(true);
+				expect(execCalls()).toEqual([
+					[...USER_DIR_FLAGS, "login", "token"],
+					[...USER_DIR_FLAGS, "logout", "--yes"],
+				]);
+			});
+		});
+	});
+
+	describe("every CLI call", () => {
+		type Run = (
+			manager: CliCredentialManager,
+			options: { signal: AbortSignal },
+		) => Promise<unknown>;
+		const operations: Array<{
+			name: string;
+			run: Run;
+			event?: string;
+			onMissingBinary: (result: Promise<unknown>) => Promise<unknown>;
+		}> = [
+			{
+				name: "storeToken",
+				run: (m, o) => m.storeToken(TEST_URL, "token", configs, o),
+				event: "auth.credential.store",
+				onMissingBinary: (r) => expect(r).rejects.toThrow("no binary"),
+			},
+			{
+				name: "readToken",
+				run: (m, o) => m.readToken(TEST_URL, configs, o),
+				onMissingBinary: (r) => expect(r).resolves.toBeUndefined(),
+			},
+			{
+				name: "deleteToken",
+				run: (m, o) => m.deleteToken(TEST_URL, configs, EXTENSION_SESSION, o),
+				event: "auth.credential.clear",
+				onMissingBinary: (r) => expect(r).resolves.toBe(false),
+			},
+		];
+
+		it.each(operations)(
+			"$name passes the timeout and signal",
+			async ({ run }) => {
+				stubExecFile({ token: "token" });
+				const { manager } = setup();
+				const ac = new AbortController();
+
+				await run(manager, { signal: ac.signal });
+
+				expect(execOptions()).toMatchObject({
+					timeout: 60_000,
+					signal: ac.signal,
+				});
+			},
+		);
+
+		it.each(operations)(
+			"$name rethrows AbortError and records the abort",
+			async ({ run, event }) => {
+				stubExecFile("abort");
+				const { manager, sink } = setup();
+
+				await expect(
+					run(manager, { signal: AbortSignal.abort() }),
+				).rejects.toThrow("The operation was aborted");
+				if (event) {
+					const span = sink.expectOne(event);
+					expect(span.properties).toMatchObject({ result: "aborted" });
+					expect(span.properties["error.type"]).toBeUndefined();
+				}
+			},
+		);
+
+		it.each(operations)(
+			"$name handles a missing binary without running the CLI",
+			async ({ run, event, onMissingBinary }) => {
+				const { manager, sink } = setup(missingBinary());
+
+				await onMissingBinary(
+					run(manager, { signal: new AbortController().signal }),
+				);
+
+				expect(execFile).not.toHaveBeenCalled();
+				if (event) {
+					expect(sink.expectOne(event).properties).toMatchObject({
+						result: "error",
+						"error.type": "binary",
+					});
+				}
+			},
+		);
 	});
 });

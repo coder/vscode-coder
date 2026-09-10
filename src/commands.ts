@@ -708,12 +708,25 @@ export class Commands {
 		await this.deploymentManager.clearDeployment("logout");
 
 		if (deployment) {
-			const cleared = await this.cliManager.clearCredentials(deployment.url);
+			const session = await this.secretsManager.getSessionAuth(
+				deployment.safeHostname,
+			);
+			const cleared = await this.cliManager.clearCredentials(
+				deployment.url,
+				session,
+			);
 			await this.secretsManager.clearAllAuthData(deployment.safeHostname);
 			if (!cleared) {
-				vscode.window.showWarningMessage(
-					'You\'ve been logged out of Coder, but some credentials could not be removed. Log out again to retry, or run "coder logout" in a terminal.',
-				);
+				vscode.window
+					.showWarningMessage(
+						'You\'ve been logged out of Coder, but some credentials could not be removed. Log out again to retry, or run "coder logout" in a terminal.',
+						"Show Output",
+					)
+					.then((action) => {
+						if (action === "Show Output") {
+							this.logger.show();
+						}
+					});
 				return { success: false, reason: "cleanup_incomplete" };
 			}
 		}
@@ -790,7 +803,7 @@ export class Commands {
 				const selectedHostname = selected.hostnames[0];
 				const auth = await this.secretsManager.getSessionAuth(selectedHostname);
 				if (auth?.url) {
-					await this.cliManager.clearCredentials(auth.url);
+					await this.cliManager.clearCredentials(auth.url, auth);
 				}
 				await this.secretsManager.clearAllAuthData(selectedHostname);
 				this.logger.info("Removed credentials for", selectedHostname);
@@ -812,7 +825,7 @@ export class Commands {
 						selected.hostnames.map(async (h) => {
 							const auth = await this.secretsManager.getSessionAuth(h);
 							if (auth?.url) {
-								await this.cliManager.clearCredentials(auth.url);
+								await this.cliManager.clearCredentials(auth.url, auth);
 							}
 							await this.secretsManager.clearAllAuthData(h);
 						}),

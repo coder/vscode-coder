@@ -75,6 +75,7 @@ async function migrateSessionAuthFromFiles(
 			await secretsManager.setSessionAuth(safeHostname, {
 				url: url.value.trim(),
 				token: token.value.trim(),
+				tokenSource: "extension",
 			});
 		} catch (error) {
 			logger.warn("Failed to migrate session auth from files:", error);
