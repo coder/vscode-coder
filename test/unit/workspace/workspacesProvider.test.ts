@@ -3,7 +3,6 @@ import * as vscode from "vscode";
 
 import {
 	WorkspaceProvider,
-	WorkspaceQuery,
 	type AgentTreeItem,
 	type WorkspaceTreeItem,
 } from "@/workspace/workspacesProvider";
@@ -30,13 +29,15 @@ import type {
 import type { AgentMetadataEvent } from "@/api/api-helper";
 import type { CoderApi } from "@/api/coderApi";
 
+import type { WorkspaceFilter } from "@repo/shared";
+
 function setup() {
 	const logger = createMockLogger();
 	const client = new MockWorkspacesClient();
 	const session = new TestSessionStore();
 	const makeProvider = (
-		query: WorkspaceQuery,
-		options?: { refreshIntervalMs?: number; onQueryRejected?: () => void },
+		query: WorkspaceFilter,
+		options?: { onQueryRejected?: () => void },
 	): WorkspaceProvider =>
 		new WorkspaceProvider(
 			query,
@@ -128,7 +129,7 @@ describe("WorkspaceProvider", () => {
 	it("does not fetch while signed out", async () => {
 		const { client, session, makeProvider } = setup();
 		session.signOut();
-		const provider = makeProvider(WorkspaceQuery.Mine);
+		const provider = makeProvider("mine");
 
 		await show(provider);
 
@@ -136,10 +137,10 @@ describe("WorkspaceProvider", () => {
 		expect(await provider.getChildren()).toEqual([]);
 	});
 
-	it.each([
-		[WorkspaceQuery.Mine, "owner:me"],
-		[WorkspaceQuery.Shared, `shared_with_user:${TEST_CURRENT_USER_ID}`],
-		[WorkspaceQuery.All, ""],
+	it.each<[WorkspaceFilter, string]>([
+		["mine", "owner:me"],
+		["shared", `shared_with_user:${TEST_CURRENT_USER_ID}`],
+		["all", ""],
 	])("fetches %s with the expected query", async (query, expectedQuery) => {
 		const { client, makeProvider } = setup();
 		const provider = makeProvider(query);
@@ -149,19 +150,23 @@ describe("WorkspaceProvider", () => {
 		expect(client.getWorkspaces).toHaveBeenCalledWith({ q: expectedQuery });
 	});
 
-	it.each([
+	it.each<{
+		query: WorkspaceFilter;
+		label: string;
+		collapsibleState: vscode.TreeItemCollapsibleState;
+	}>([
 		{
-			query: WorkspaceQuery.Mine,
+			query: "mine",
 			label: "dev",
 			collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
 		},
 		{
-			query: WorkspaceQuery.Shared,
+			query: "shared",
 			label: "alice / dev",
 			collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
 		},
 		{
-			query: WorkspaceQuery.All,
+			query: "all",
 			label: "alice / dev",
 			collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
 		},
@@ -198,7 +203,7 @@ describe("WorkspaceProvider", () => {
 				response: { status: 400 },
 			}),
 		);
-		const provider = makeProvider(WorkspaceQuery.Shared, { onQueryRejected });
+		const provider = makeProvider("shared", { onQueryRejected });
 
 		await show(provider);
 
@@ -210,7 +215,7 @@ describe("WorkspaceProvider", () => {
 		const { client, makeProvider } = setup();
 		const onQueryRejected = vi.fn();
 		client.getWorkspaces.mockRejectedValueOnce(new Error("network down"));
-		const provider = makeProvider(WorkspaceQuery.Shared, { onQueryRejected });
+		const provider = makeProvider("shared", { onQueryRejected });
 
 		await show(provider);
 
@@ -220,7 +225,7 @@ describe("WorkspaceProvider", () => {
 	it("clears rendered workspaces when the session signs out", async () => {
 		const { client, session, makeProvider } = setup();
 		client.respondOnce([workspace({ name: "dev" })]);
-		const provider = makeProvider(WorkspaceQuery.Mine);
+		const provider = makeProvider("mine");
 
 		await show(provider);
 		expect(await labels(provider)).toEqual(["dev"]);
@@ -234,7 +239,7 @@ describe("WorkspaceProvider", () => {
 	it("does not render a pending response after sign-out", async () => {
 		const { client, session, makeProvider } = setup();
 		const pending = client.pending();
-		const provider = makeProvider(WorkspaceQuery.Shared);
+		const provider = makeProvider("shared");
 
 		provider.setVisibility(true);
 		await flush();
@@ -251,7 +256,7 @@ describe("WorkspaceProvider", () => {
 		client.respondOnce([
 			workspace({ owner_id: "alice-id", owner_name: "alice", name: "fresh" }),
 		]);
-		const provider = makeProvider(WorkspaceQuery.Shared);
+		const provider = makeProvider("shared");
 
 		provider.setVisibility(true);
 		await flush();
@@ -267,7 +272,7 @@ describe("WorkspaceProvider", () => {
 
 	it("does not fetch while hidden", async () => {
 		const { client, makeProvider } = setup();
-		const provider = makeProvider(WorkspaceQuery.Mine);
+		const provider = makeProvider("mine");
 
 		await provider.fetchAndRefresh();
 
@@ -277,7 +282,7 @@ describe("WorkspaceProvider", () => {
 	it("renders a response that completes after the tree is hidden", async () => {
 		const { client, makeProvider } = setup();
 		const pending = client.pending();
-		const provider = makeProvider(WorkspaceQuery.Mine);
+		const provider = makeProvider("mine");
 
 		provider.setVisibility(true);
 		await flush();
@@ -292,7 +297,7 @@ describe("WorkspaceProvider", () => {
 		const { client, session, makeProvider } = setup();
 		const pending = client.pending();
 		client.respondOnce([workspace({ name: "fresh" })]);
-		const provider = makeProvider(WorkspaceQuery.Mine);
+		const provider = makeProvider("mine");
 
 		provider.setVisibility(true);
 		await flush();
@@ -311,7 +316,7 @@ describe("WorkspaceProvider", () => {
 		const { client, makeProvider } = setup();
 		client.respondOnce([workspace({ name: "dev" })]);
 		client.getWorkspaces.mockRejectedValueOnce(new Error("network down"));
-		const provider = makeProvider(WorkspaceQuery.Mine);
+		const provider = makeProvider("mine");
 
 		await show(provider);
 		expect(await labels(provider)).toEqual(["dev"]);
@@ -327,9 +332,7 @@ describe("WorkspaceProvider", () => {
 			const { client, makeProvider } = setup();
 			client.respondOnce([workspace({ name: "first" })]);
 			client.respondOnce([workspace({ name: "second" })]);
-			const provider = makeProvider(WorkspaceQuery.Mine, {
-				refreshIntervalMs: 5_000,
-			});
+			const provider = makeProvider("mine");
 
 			provider.setVisibility(true);
 			await flushPromises();
@@ -352,7 +355,7 @@ describe("WorkspaceProvider", () => {
 				agent({ id: "agent-2", name: "sidecar", status: "disconnected" }),
 			]),
 		]);
-		const provider = makeProvider(WorkspaceQuery.Mine);
+		const provider = makeProvider("mine");
 
 		await show(provider);
 		const [workspaceItem] =
@@ -386,7 +389,7 @@ describe("WorkspaceProvider", () => {
 				}),
 			]),
 		]);
-		const provider = makeProvider(WorkspaceQuery.Mine);
+		const provider = makeProvider("mine");
 
 		await show(provider);
 		const [workspaceItem] =
@@ -414,7 +417,7 @@ describe("WorkspaceProvider", () => {
 				agent({ id: "agent-1", name: "main" }),
 			]),
 		]);
-		const provider = makeProvider(WorkspaceQuery.Mine);
+		const provider = makeProvider("mine");
 
 		await show(provider);
 		const [workspaceItem] =
@@ -440,7 +443,7 @@ describe("WorkspaceProvider", () => {
 		client.respondOnce([
 			workspaceWithAgents({ name: "dev" }, [agent({ id: "agent-1" })]),
 		]);
-		const provider = makeProvider(WorkspaceQuery.Mine);
+		const provider = makeProvider("mine");
 
 		await show(provider);
 		expect(await labels(provider)).toEqual(["dev"]);
@@ -454,7 +457,7 @@ describe("WorkspaceProvider", () => {
 		const { client, session, makeProvider } = setup();
 		session.signOut();
 		client.respondOnce([workspace({ name: "dev" })]);
-		const provider = makeProvider(WorkspaceQuery.Mine);
+		const provider = makeProvider("mine");
 
 		await show(provider);
 		expect(client.getWorkspaces).not.toHaveBeenCalled();
@@ -468,7 +471,7 @@ describe("WorkspaceProvider", () => {
 	it("stops reacting to session changes after dispose", async () => {
 		const { client, session, makeProvider } = setup();
 		client.respondOnce([workspace({ name: "dev" })]);
-		const provider = makeProvider(WorkspaceQuery.Mine);
+		const provider = makeProvider("mine");
 
 		await show(provider);
 		expect(await labels(provider)).toEqual(["dev"]);
@@ -485,7 +488,7 @@ describe("WorkspaceProvider", () => {
 		const { client, session, makeProvider } = setup();
 		const pending = client.pending();
 		client.getWorkspaces.mockRejectedValueOnce(new Error("network down"));
-		const provider = makeProvider(WorkspaceQuery.Mine);
+		const provider = makeProvider("mine");
 
 		provider.setVisibility(true);
 		await flush();
@@ -508,7 +511,7 @@ describe("WorkspaceProvider", () => {
 		const first = client.pending();
 		const second = client.pending();
 		client.respondOnce([workspace({ name: "fresh" })]);
-		const provider = makeProvider(WorkspaceQuery.Mine);
+		const provider = makeProvider("mine");
 
 		provider.setVisibility(true);
 		await flush();
@@ -541,7 +544,7 @@ describe("WorkspaceProvider", () => {
 		const watch =
 			Promise.withResolvers<MockEventStream<{ data: AgentMetadataEvent[] }>>();
 		client.watchAgentMetadata = vi.fn((_agentId: string) => watch.promise);
-		const provider = makeProvider(WorkspaceQuery.Mine);
+		const provider = makeProvider("mine");
 
 		provider.setVisibility(true);
 		await flush();

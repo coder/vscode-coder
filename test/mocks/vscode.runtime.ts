@@ -174,6 +174,28 @@ export class EventEmitter<T> {
 	}
 }
 
+/** Mock CancellationTokenSource that matches the vscode API. */
+export class CancellationTokenSource {
+	private readonly emitter = new EventEmitter<void>();
+
+	readonly token = {
+		isCancellationRequested: false,
+		onCancellationRequested: this.emitter.event,
+	};
+
+	cancel(): void {
+		if (this.token.isCancellationRequested) {
+			return;
+		}
+		this.token.isCancellationRequested = true;
+		this.emitter.fire();
+	}
+
+	dispose(): void {
+		this.emitter.dispose();
+	}
+}
+
 const onDidChangeConfiguration = new EventEmitter<unknown>();
 const onDidChangeWorkspaceFolders = new EventEmitter<unknown>();
 const onDidChangeActiveColorTheme = new EventEmitter<unknown>();
@@ -279,6 +301,7 @@ const vscode = {
 	InputBoxValidationSeverity,
 	Uri,
 	EventEmitter,
+	CancellationTokenSource,
 	MarkdownString,
 	ThemeColor,
 	TreeItem,

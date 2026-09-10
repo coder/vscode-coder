@@ -51,6 +51,10 @@ export default defineConfig({
 							"packages/tasks/src",
 						),
 						"@repo/ui": path.resolve(import.meta.dirname, "packages/ui/src"),
+						"@repo/workspaces": path.resolve(
+							import.meta.dirname,
+							"packages/workspaces/src",
+						),
 						"@repo/netcheck": path.resolve(
 							import.meta.dirname,
 							"packages/netcheck/src",

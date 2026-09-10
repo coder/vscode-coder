@@ -75,6 +75,8 @@ import type {
 	WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
 
+import type { DashboardPage } from "@repo/shared";
+
 import type { CoderApi } from "./api/coderApi";
 import type { CliManager } from "./core/cliManager";
 import type { ServiceContainer } from "./core/container";
@@ -900,8 +902,7 @@ export class Commands {
 	 */
 	public async navigateToWorkspace(item?: OpenableTreeItem) {
 		if (item) {
-			const workspaceId = createWorkspaceIdentifier(item.workspace);
-			await openInBrowser(this.requireExtensionBaseUrl(), `/@${workspaceId}`);
+			await this.openWorkspaceInDashboard(item.workspace, "workspace");
 		} else if (this.workspace && this.remoteWorkspaceClient) {
 			await openInBrowser(
 				this.requireRemoteBaseUrl(),
@@ -922,11 +923,7 @@ export class Commands {
 	 */
 	public async navigateToWorkspaceSettings(item?: OpenableTreeItem) {
 		if (item) {
-			const workspaceId = createWorkspaceIdentifier(item.workspace);
-			await openInBrowser(
-				this.requireExtensionBaseUrl(),
-				`/@${workspaceId}/settings`,
-			);
+			await this.openWorkspaceInDashboard(item.workspace, "settings");
 		} else if (this.workspace && this.remoteWorkspaceClient) {
 			await openInBrowser(
 				this.requireRemoteBaseUrl(),
@@ -938,6 +935,21 @@ export class Commands {
 	}
 
 	/**
+	 * Open a page of a workspace in the Coder dashboard. The workspace must
+	 * belong to the currently logged-in deployment.
+	 */
+	public async openWorkspaceInDashboard(
+		workspace: Workspace,
+		page: DashboardPage,
+	): Promise<void> {
+		const workspaceId = createWorkspaceIdentifier(workspace);
+		await openInBrowser(
+			this.requireExtensionBaseUrl(),
+			`/@${workspaceId}${page === "settings" ? "/settings" : ""}`,
+		);
+	}
+
+	/**
 	 * Open a workspace or agent that is showing in the sidebar.
 	 *
 	 * This builds the host name and passes it to the VS Code Remote SSH
@@ -946,23 +958,12 @@ export class Commands {
 	 * Throw if not logged into a deployment.
 	 */
 	public async openFromSidebar(item: OpenableTreeItem): Promise<void> {
-		if (item) {
-			const baseUrl = this.requireExtensionBaseUrl();
-			if (item instanceof AgentTreeItem) {
-				await this.workspaceOpenTelemetry.traceOpen(
-					"sidebar_agent",
-					{ workspace: item.workspace, agent: item.agent },
-					(telemetry) => this.runOpenAgentItem(baseUrl, item, telemetry),
-				);
-			} else if (item instanceof WorkspaceTreeItem) {
-				await this.workspaceOpenTelemetry.traceOpen(
-					"sidebar_workspace",
-					{ workspace: item.workspace },
-					(telemetry) => this.runOpenWorkspaceItem(baseUrl, item, telemetry),
-				);
-			} else {
-				throw new TypeError("Unable to open unknown sidebar item");
-			}
+		if (item instanceof AgentTreeItem) {
+			await this.openWorkspaceFromSidebar(item.workspace, item.agent);
+		} else if (item instanceof WorkspaceTreeItem) {
+			await this.openWorkspaceFromSidebar(item.workspace);
+		} else if (item) {
+			throw new TypeError("Unable to open unknown sidebar item");
 		} else {
 			// If there is no tree item, then the user manually ran this command.
 			// Default to the regular open instead.
@@ -970,40 +971,58 @@ export class Commands {
 		}
 	}
 
+	/**
+	 * Open a workspace, or one of its agents, that the sidebar lists.
+	 *
+	 * Throws if not logged into a deployment.
+	 */
+	public async openWorkspaceFromSidebar(
+		workspace: Workspace,
+		agent?: WorkspaceAgent,
+	): Promise<void> {
+		const baseUrl = this.requireExtensionBaseUrl();
+		if (agent) {
+			await this.workspaceOpenTelemetry.traceOpen(
+				"sidebar_agent",
+				{ workspace, agent },
+				(telemetry) =>
+					this.runOpenAgentItem(baseUrl, workspace, agent, telemetry),
+			);
+		} else {
+			await this.workspaceOpenTelemetry.traceOpen(
+				"sidebar_workspace",
+				{ workspace },
+				(telemetry) => this.runOpenWorkspaceItem(baseUrl, workspace, telemetry),
+			);
+		}
+	}
+
 	private async runOpenAgentItem(
 		baseUrl: string,
-		item: AgentTreeItem,
+		workspace: Workspace,
+		agent: WorkspaceAgent,
 		telemetry: WorkspaceOpenTrace,
 	): Promise<boolean> {
-		const result = await this.openWorkspace(
-			baseUrl,
-			item.workspace,
-			item.agent,
-			{
-				openRecent: true,
-			},
-		);
-		return recordOpenResult(
-			telemetry,
-			{ workspace: item.workspace, agent: item.agent },
-			result,
-		);
+		const result = await this.openWorkspace(baseUrl, workspace, agent, {
+			openRecent: true,
+		});
+		return recordOpenResult(telemetry, { workspace, agent }, result);
 	}
 
 	private async runOpenWorkspaceItem(
 		baseUrl: string,
-		item: WorkspaceTreeItem,
+		workspace: Workspace,
 		telemetry: WorkspaceOpenTrace,
 	): Promise<boolean> {
-		const agents = await this.extractAgentsWithFallback(item.workspace);
+		const agents = await this.extractAgentsWithFallback(workspace);
 		const agent = await maybeAskAgent(agents);
 		if (!agent) {
-			telemetry.abort("agent_picker", { workspace: item.workspace });
+			telemetry.abort("agent_picker", { workspace });
 			return false;
 		}
-		const selection = { workspace: item.workspace, agent };
+		const selection = { workspace, agent };
 		telemetry.select(selection);
-		const result = await this.openWorkspace(baseUrl, item.workspace, agent, {
+		const result = await this.openWorkspace(baseUrl, workspace, agent, {
 			openRecent: true,
 		});
 		return recordOpenResult(telemetry, selection, result);

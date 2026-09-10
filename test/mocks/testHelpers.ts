@@ -10,7 +10,11 @@ import { onTestFinished, vi } from "vitest";
 import * as vscode from "vscode";
 
 import { Commands } from "@/commands";
-import { SessionStore, type SessionData } from "@/deployment/sessionStore";
+import {
+	SessionStore,
+	type SessionData,
+	type SignedInSession,
+} from "@/deployment/sessionStore";
 
 import {
 	resource as createResource,
@@ -720,6 +724,24 @@ export function setActiveColorTheme(kind: vscode.ColorThemeKind): void {
 	vscodeWindow.__setActiveColorThemeKind(kind);
 }
 
+/** A Webview that records what the extension posts to it. */
+function createMockWebview(options: vscode.WebviewOptions) {
+	const messageEmitter = new vscode.EventEmitter<unknown>();
+	const postedMessages: unknown[] = [];
+	const webview: vscode.Webview = {
+		options,
+		html: "",
+		cspSource: "mock-csp",
+		onDidReceiveMessage: messageEmitter.event,
+		postMessage: (msg: unknown) => {
+			postedMessages.push(msg);
+			return Promise.resolve(true);
+		},
+		asWebviewUri: (uri: vscode.Uri) => uri,
+	};
+	return { webview, messageEmitter, postedMessages };
+}
+
 /** Hooks to drive lifecycle and inspect messages on a mocked WebviewPanel. */
 export interface WebviewPanelTestHooks {
 	setVisible(visible: boolean): void;
@@ -746,24 +768,13 @@ export function createMockWebviewPanel(
 	const viewStateEmitter =
 		new vscode.EventEmitter<vscode.WebviewPanelOnDidChangeViewStateEvent>();
 	const disposeEmitter = new vscode.EventEmitter<void>();
-	const messageEmitter = new vscode.EventEmitter<unknown>();
+	const { webview, messageEmitter, postedMessages } = createMockWebview(
+		options ?? { enableScripts: true, localResourceRoots: [] },
+	);
 
 	const viewColumn =
 		typeof showOptions === "object" ? showOptions.viewColumn : showOptions;
-	const postedMessages: unknown[] = [];
 	let visible = true;
-
-	const webview: vscode.Webview = {
-		options: options ?? { enableScripts: true, localResourceRoots: [] },
-		html: "",
-		cspSource: "mock-csp",
-		onDidReceiveMessage: messageEmitter.event,
-		postMessage: (msg) => {
-			postedMessages.push(msg);
-			return Promise.resolve(true);
-		},
-		asWebviewUri: (uri) => uri,
-	};
 
 	const panel: vscode.WebviewPanel = {
 		viewType,
@@ -801,6 +812,65 @@ export function createMockWebviewPanel(
 	};
 
 	return { panel, hooks };
+}
+
+/** Hooks to drive lifecycle and inspect messages on a mocked WebviewView. */
+export interface WebviewViewTestHooks {
+	/** Flip `view.visible` and fire `onDidChangeVisibility`. */
+	setVisible(visible: boolean): void;
+	fireDispose(): void;
+	/** Deliver a message as if the webview sent it. */
+	sendFromWebview(msg: unknown): void;
+	/** Every message the extension posted to the webview, oldest first. */
+	readonly postedMessages: readonly unknown[];
+	clearPostedMessages(): void;
+}
+
+/**
+ * Build a WebviewView for tests with real event emitters. Starts hidden
+ * unless `visible` says otherwise; drive it through the returned hooks.
+ */
+export function createMockWebviewView(
+	viewType: string,
+	options: { visible?: boolean } = {},
+): { view: vscode.WebviewView; hooks: WebviewViewTestHooks } {
+	const visibilityEmitter = new vscode.EventEmitter<void>();
+	const disposeEmitter = new vscode.EventEmitter<void>();
+	const { webview, messageEmitter, postedMessages } = createMockWebview({
+		enableScripts: false,
+		localResourceRoots: [],
+	});
+	let visible = options.visible ?? false;
+
+	const view: vscode.WebviewView = {
+		viewType,
+		webview,
+		get visible() {
+			return visible;
+		},
+		show: vi.fn(),
+		onDidChangeVisibility: visibilityEmitter.event,
+		onDidDispose: disposeEmitter.event,
+	};
+
+	const hooks: WebviewViewTestHooks = {
+		setVisible(next) {
+			visible = next;
+			visibilityEmitter.fire();
+		},
+		fireDispose() {
+			disposeEmitter.fire();
+		},
+		sendFromWebview(msg) {
+			messageEmitter.fire(msg);
+		},
+		postedMessages,
+		clearPostedMessages() {
+			postedMessages.length = 0;
+		},
+	};
+
+	return { view, hooks };
 }
 
 export function createMockStream(
@@ -1046,6 +1116,20 @@ export function createMockUser(overrides: Partial<User> = {}): User {
 		has_ai_seat: false,
 		...overrides,
 	};
+}
+
+/** A user holding `names` as their deployment-wide roles. */
+export function userWithRoles(...names: string[]): User {
+	return createMockUser({
+		roles: names.map((name) => ({ name, display_name: name })),
+	});
+}
+
+/** A session signed in to TEST_DEPLOYMENT as `user`. */
+export function signedInSession(
+	user: User = createMockUser(),
+): SignedInSession {
+	return { kind: "signedIn", deployment: TEST_DEPLOYMENT, user };
 }
 
 /**
@@ -1414,6 +1498,12 @@ export class MockTerminalOutputChannel {
 /** Default user id of TestSessionStore's initial signed-in session. */
 export const TEST_CURRENT_USER_ID = "current-user";
 
+/** The deployment tests sign in to. */
+export const TEST_DEPLOYMENT: Deployment = {
+	url: "https://coder.example.com",
+	safeHostname: "coder.example.com",
+};
+
 /**
  * Real SessionStore that starts signed in as TEST_CURRENT_USER_ID, with
  * id-only sign-in/out helpers for tests that switch users.
@@ -1425,10 +1515,7 @@ export class TestSessionStore extends SessionStore {
 	}
 
 	signInAs(userId = TEST_CURRENT_USER_ID): void {
-		this.signIn(
-			{ url: "https://coder.example.com", safeHostname: "coder.example.com" },
-			createMockUser({ id: userId }),
-		);
+		this.signIn(TEST_DEPLOYMENT, createMockUser({ id: userId }));
 	}
 
 	override signOut(deployment: Deployment | null = null): SessionData {
@@ -1441,6 +1528,11 @@ interface WorkspacesResponse {
 	count: number;
 }
 
+/** A metadata socket, as MockWorkspacesClient hands one out. */
+export type MockMetadataStream = MockEventStream<{
+	data: AgentMetadataEvent[];
+}>;
+
 /**
  * Stands in for CoderApi at the boundaries WorkspaceProvider touches: the
  * workspaces query and the per-agent metadata socket. Program responses with
@@ -1448,20 +1540,28 @@ interface WorkspacesResponse {
  * tests drive the production watcher rather than a stub.
  */
 export class MockWorkspacesClient {
-	readonly metadataStreams = new Map<
-		string,
-		MockEventStream<{ data: AgentMetadataEvent[] }>
-	>();
+	readonly metadataStreams = new Map<string, MockMetadataStream>();
 
 	readonly getWorkspaces = vi.fn(
 		(_req: { q: string }): Promise<WorkspacesResponse> =>
 			Promise.resolve({ workspaces: [], count: 0 }),
 	);
 
+	readonly getHost = vi.fn((): string | undefined => TEST_DEPLOYMENT.url);
+
 	watchAgentMetadata(agentId: string) {
-		const stream = new MockEventStream<{ data: AgentMetadataEvent[] }>();
+		const stream: MockMetadataStream = new MockEventStream();
 		this.metadataStreams.set(agentId, stream);
 		return Promise.resolve(stream);
+	}
+
+	/** The socket opened for `agentId`, failing the test when there is none. */
+	metadataStream(agentId: string): MockMetadataStream {
+		const stream = this.metadataStreams.get(agentId);
+		if (!stream) {
+			throw new Error(`No metadata socket for ${agentId}`);
+		}
+		return stream;
 	}
 
 	/** Resolve the next getWorkspaces call with these workspaces. */
@@ -1472,13 +1572,18 @@ export class MockWorkspacesClient {
 		});
 	}
 
-	/** Make the next getWorkspaces call hang until the returned resolve() runs. */
-	pending(): { resolve: (workspaces: readonly Workspace[]) => void } {
-		const { promise, resolve } = Promise.withResolvers<WorkspacesResponse>();
+	/** Make the next getWorkspaces call hang until the test settles it. */
+	pending(): {
+		resolve: (workspaces: readonly Workspace[]) => void;
+		reject: (error: unknown) => void;
+	} {
+		const { promise, resolve, reject } =
+			Promise.withResolvers<WorkspacesResponse>();
 		this.getWorkspaces.mockReturnValueOnce(promise);
 		return {
 			resolve: (workspaces) =>
 				resolve({ workspaces, count: workspaces.length }),
+			reject,
 		};
 	}
 }
