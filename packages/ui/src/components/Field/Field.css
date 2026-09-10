@@ -1,0 +1,18 @@
+.ui-label {
+	display: block;
+	font-weight: var(--ui-font-weight-semibold);
+}
+
+.ui-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.ui-field__description {
+	color: var(--ui-description-foreground);
+}
+
+.ui-field__error {
+	color: var(--ui-error-foreground);
+}

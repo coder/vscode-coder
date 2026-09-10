@@ -1,0 +1,9 @@
+.ui-input__control {
+	padding: 0 6px;
+}
+
+/* Native VS Code number fields are plain inputs without spinners */
+.ui-input__control::-webkit-inner-spin-button,
+.ui-input__control::-webkit-outer-spin-button {
+	display: none;
+}

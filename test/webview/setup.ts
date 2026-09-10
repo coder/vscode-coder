@@ -25,6 +25,11 @@ globalThis.ResizeObserver = class {
 	disconnect() {}
 };
 
+// jsdom lacks the pointer-capture and scrolling APIs Radix Select uses.
+HTMLElement.prototype.hasPointerCapture = vi.fn();
+HTMLElement.prototype.releasePointerCapture = vi.fn();
+HTMLElement.prototype.scrollIntoView = vi.fn();
+
 // jsdom has no Canvas 2D; return a Proxy that accepts any prop read or method
 // call. measureText and createLinearGradient must return real shapes because
 // the caller reads fields off them.

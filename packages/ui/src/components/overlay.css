@@ -11,8 +11,40 @@
 	z-index: var(--ui-z-index-overlay);
 }
 
+/* Highlightable rows; surfaces map their colors onto the
+   --ui-overlay-highlight-* names and keep their own geometry. */
+.ui-overlay__item {
+	border-radius: var(--ui-radius-medium);
+	cursor: default;
+	user-select: none;
+	outline: 1px solid transparent;
+	outline-offset: -1px;
+}
+
+/* An open submenu keeps its parent row highlighted, like native; the
+   selection border only resolves in high contrast. */
+.ui-overlay__item:is([data-highlighted], [data-state="open"]) {
+	forced-color-adjust: none;
+	color: var(--ui-overlay-highlight-foreground);
+	background: var(--ui-overlay-highlight-background);
+	outline-color: var(--ui-overlay-highlight-outline, transparent);
+}
+
+.ui-overlay__item[data-disabled] {
+	color: var(--ui-disabled-foreground);
+}
+
 @media (forced-colors: active) {
 	.ui-overlay {
 		border-color: CanvasText;
+	}
+
+	.ui-overlay__item:is([data-highlighted], [data-state="open"]) {
+		color: HighlightText;
+		background: Highlight;
+	}
+
+	.ui-overlay__item[data-disabled] {
+		color: GrayText;
 	}
 }
