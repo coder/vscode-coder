@@ -125,7 +125,7 @@ export function resolveCliAuth(
 	const useKeyring = featureSet.keyringAuth
 		? isKeyringEnabled(configs)
 		: undefined;
-	// A user directory is honored on 2.31+, where the CLI can report its token.
+	// A user directory is honored on 2.32+, where the CLI reports its token.
 	const userDir = hasUserConfigDir(configs) && featureSet.tokenRead;
 	if (useKeyring || userDir) {
 		return { store: "shared", url, useKeyring };

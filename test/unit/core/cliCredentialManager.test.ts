@@ -157,7 +157,7 @@ describe("CliCredentialManager", () => {
 		vi.stubEnv("CODER_CONFIG_DIR", undefined);
 		// Linux: keyring unsupported, so the extension directory is used.
 		vi.mocked(os.platform).mockReturnValue("linux");
-		vi.mocked(cliExec.version).mockResolvedValue("2.31.0");
+		vi.mocked(cliExec.version).mockResolvedValue("2.32.0");
 	});
 
 	afterEach(() => {
@@ -257,8 +257,19 @@ describe("CliCredentialManager", () => {
 			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
 		});
 
-		it("returns undefined below CLI 2.31 without running the CLI", async () => {
-			vi.mocked(cliExec.version).mockResolvedValue("2.30.0");
+		it("refuses the keyring for a non-HTTPS URL without running the CLI", async () => {
+			vi.mocked(os.platform).mockReturnValue("darwin");
+			stubExecFile({ token: "my-token" });
+			const { manager } = setup();
+
+			expect(
+				await manager.readToken("http://dev.coder.com", configs),
+			).toBeUndefined();
+			expect(execFile).not.toHaveBeenCalled();
+		});
+
+		it("returns undefined below CLI 2.32 without running the CLI", async () => {
+			vi.mocked(cliExec.version).mockResolvedValue("2.31.0");
 			const { manager } = setup();
 
 			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
@@ -358,8 +369,8 @@ describe("CliCredentialManager", () => {
 				expect(credentialFilesExist()).toBe(false);
 			});
 
-			it("logs out without verifying below CLI 2.31", async () => {
-				vi.mocked(cliExec.version).mockResolvedValue("2.30.0");
+			it("logs out without verifying below CLI 2.32", async () => {
+				vi.mocked(cliExec.version).mockResolvedValue("2.31.0");
 				stubExecFile();
 				const { manager } = setup();
 

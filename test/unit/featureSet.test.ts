@@ -52,8 +52,8 @@ describe("check version support", () => {
 	it("token read", () => {
 		expectFlag(
 			"tokenRead",
-			["v2.30.0", "v2.29.0", "v2.28.0", "v1.0.0"],
-			["v2.31.0", "v2.31.1", "v2.32.0", "v3.0.0"],
+			["v2.31.1", "v2.31.0", "v2.30.0", "v1.0.0"],
+			["v2.32.0", "v2.32.1", "v2.33.0", "v3.0.0"],
 		);
 	});
 	it("support bundle", () => {

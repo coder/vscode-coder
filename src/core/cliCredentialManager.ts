@@ -80,7 +80,7 @@ export class CliCredentialManager {
 		});
 	}
 
-	/** Reads the CLI's token via `coder login token` (CLI 2.31+). Undefined on any failure. */
+	/** Reads the CLI's token via `coder login token` (CLI 2.32+). Undefined on any failure. */
 	public async readToken(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
@@ -94,6 +94,11 @@ export class CliCredentialManager {
 			return undefined;
 		}
 		if (!cli.featureSet.tokenRead) {
+			return undefined;
+		}
+		// Keyring entries drop the scheme, so an http lookup returns the https token.
+		if (cli.auth.useKeyring && !url.startsWith("https:")) {
+			this.logger.warn("Refusing to read keyring credentials for", url);
 			return undefined;
 		}
 		return this.readCliToken(cli, options?.signal);
@@ -185,7 +190,7 @@ export class CliCredentialManager {
 		if (session?.tokenSource !== "extension") {
 			return false;
 		}
-		// Below 2.31 the CLI cannot report its token; trust the provenance.
+		// Below 2.32 the token is not read back; trust the provenance.
 		if (!cli.featureSet.tokenRead) {
 			return true;
 		}
