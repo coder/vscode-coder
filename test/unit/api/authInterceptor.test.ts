@@ -122,6 +122,7 @@ function createTestContext() {
 		await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 			url: TEST_URL,
 			token: "access-token",
+			tokenSource: "extension",
 			oauth: {
 				refresh_token: "refresh-token",
 				expiry_timestamp: Date.now() + ONE_HOUR_MS,
@@ -144,6 +145,7 @@ function createTestContext() {
 		await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 			url: TEST_URL,
 			token: "session-token",
+			tokenSource: "extension",
 		});
 	};
 
@@ -152,6 +154,7 @@ function createTestContext() {
 		await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 			url: TEST_URL,
 			token: "",
+			tokenSource: "extension",
 		});
 	};
 
@@ -297,6 +300,7 @@ describe("AuthInterceptor", () => {
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "new-token-after-login",
+				tokenSource: "extension",
 			});
 
 			const retryResponse = { data: "success", status: 200 };

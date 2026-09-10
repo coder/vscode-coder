@@ -195,7 +195,7 @@
 					"ignoreSync": true
 				},
 				"coder.globalFlags": {
-					"markdownDescription": "Global flags to pass to every Coder CLI invocation. Enter each flag as a separate array item, in order. Do **not** include the `coder` command itself. See the [CLI reference](https://coder.com/docs/reference/cli) for available global flags.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`. For `--flag=value` items the expansion applies to the value half, so `--cfg=~/coder` works.\n\nSet `--global-config` here to point the CLI at a shared config directory (e.g. `--global-config=~/.config/coderv2` to share login/auth with the Coder CLI); requires a deployment on 2.31.0+ and is ignored when `#coder.useKeyring#` is active. The `--use-keyring` flag is ignored; use `#coder.useKeyring#` instead.\n\nFor `--header-command`, precedence is: `#coder.headerCommand#` setting, then `CODER_HEADER_COMMAND` environment variable, then the value specified here.",
+					"markdownDescription": "Global flags to pass to every Coder CLI invocation. Enter each flag as a separate array item, in order. Do **not** include the `coder` command itself. See the [CLI reference](https://coder.com/docs/reference/cli) for available global flags.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`. For `--flag=value` items the expansion applies to the value half, so `--cfg=~/coder` works.\n\nTo share a config directory with the `coder` CLI, add `--global-config` here (for example `--global-config=~/.config/coderv2`) or set `CODER_CONFIG_DIR`. Requires Coder CLI 2.32.0 or later. A `--use-keyring` item is ignored; use `#coder.useKeyring#` instead.\n\nFor `--header-command`, precedence is: `#coder.headerCommand#` setting, then `CODER_HEADER_COMMAND` environment variable, then the value specified here.",
 					"type": "array",
 					"items": {
 						"type": "string"
@@ -204,9 +204,9 @@
 					"ignoreSync": true
 				},
 				"coder.useKeyring": {
-					"markdownDescription": "Store session tokens in the OS keyring (macOS Keychain, Windows Credential Manager) instead of plaintext files. Requires CLI >= 2.29.0 (>= 2.31.0 to sync login from CLI to VS Code). This will attempt to sync between the CLI and VS Code since they share the same keyring entry. It will log you out of the CLI if you log out of the IDE, and vice versa. Has no effect on Linux.",
+					"markdownDescription": "Store session tokens in the OS keyring (macOS Keychain, Windows Credential Manager) instead of a file. Requires Coder CLI 2.29.0 or later; 2.32.0 or later to sign in with the CLI's existing session. Has no effect on Linux.\n\nThe keyring entry is shared with the `coder` CLI: signing in here also signs in the CLI, and signing out signs out the CLI only when it still holds the token this extension created.",
 					"type": "boolean",
-					"default": false,
+					"default": true,
 					"scope": "application"
 				},
 				"coder.networkThreshold.latencyMs": {

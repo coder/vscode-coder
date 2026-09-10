@@ -325,6 +325,7 @@ describe("DeploymentManager", () => {
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "stored-token",
+				tokenSource: "extension",
 			});
 
 			const result = await manager.verifyAndApplySession({
@@ -417,6 +418,7 @@ describe("DeploymentManager", () => {
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "synced-token",
+				tokenSource: "extension",
 			});
 
 			// Simulate cross-window change
@@ -447,6 +449,7 @@ describe("DeploymentManager", () => {
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "",
+				tokenSource: "extension",
 			});
 
 			await secretsManager.setCurrentDeployment({
@@ -487,6 +490,7 @@ describe("DeploymentManager", () => {
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "refreshed-token",
+				tokenSource: "extension",
 			});
 			await flush();
 
@@ -514,6 +518,7 @@ describe("DeploymentManager", () => {
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "refreshed-token",
+				tokenSource: "extension",
 			});
 			await flush();
 			await manager.clearDeployment("logout");
@@ -543,6 +548,7 @@ describe("DeploymentManager", () => {
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "rotated-token",
+				tokenSource: "extension",
 			});
 			await flush();
 
@@ -571,6 +577,7 @@ describe("DeploymentManager", () => {
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "rotated-token",
+				tokenSource: "extension",
 			});
 			await flush();
 
@@ -598,6 +605,7 @@ describe("DeploymentManager", () => {
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "rotated-token",
+				tokenSource: "extension",
 			});
 			await flush();
 
@@ -718,6 +726,7 @@ describe("DeploymentManager", () => {
 				await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 					url: TEST_URL,
 					token: "",
+					tokenSource: "extension",
 				});
 				await manager.setDeployment({
 					url: TEST_URL,
@@ -811,6 +820,7 @@ describe("DeploymentManager", () => {
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "recovered-token",
+				tokenSource: "extension",
 			});
 
 			await flush();

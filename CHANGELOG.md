@@ -5,6 +5,34 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Changed
+
+- Store session tokens in the OS keyring by default on macOS and Windows. The
+  entry is shared with the `coder` CLI, so signing in here also signs in the
+  CLI. Requires Coder CLI 2.29.0 or later; older CLIs and Linux keep using a
+  file. To opt out, set `coder.useKeyring` to `false`.
+- Pass `coder.useKeyring` to the CLI as `--use-keyring`, so the setting wins
+  over the `CODER_USE_KEYRING` environment variable.
+- Honor `CODER_CONFIG_DIR` like `--global-config` in `coder.globalFlags`.
+- Read the `coder` CLI's session only on Coder CLI 2.32.0 or later, up from
+  2.31.0, where the CLI checks the stored URL against the one you connect to.
+- Ask before signing in with the `coder` CLI's session when it belongs to a
+  different user than your previous session.
+- Show an error with **Open Settings** when the CLI cannot store the token at
+  login, and a **Show Output** button when logout cannot remove every
+  credential.
+
+### Security
+
+- Sign out the `coder` CLI only when it still holds the token this extension
+  created. A session that came from the CLI is removed from the extension
+  without signing the CLI out.
+- Read the CLI's keyring entry only for `https` deployments. The entry is keyed
+  by host, so an `http` address for the same host would receive the `https`
+  session's token.
+
 ## [v1.16.2](https://github.com/coder/vscode-coder/releases/tag/v1.16.2) 2026-08-25
 
 ### Fixed

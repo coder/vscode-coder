@@ -18,180 +18,126 @@ import { quoteCommand } from "../utils/platform";
 
 vi.mock("node:os");
 
-const globalConfigAuth: CliAuth = {
-	mode: "global-config",
-	configDir: "/config/dir",
-	allowOverride: true,
+const URL = "https://dev.coder.com";
+const EXT_DIR = "/config/dir";
+const USER_DIR = "/custom/coderv2";
+
+const privateAuth: CliAuth = {
+	store: "private",
+	url: URL,
+	configDir: EXT_DIR,
+	useKeyring: undefined,
 };
+const sharedAuth: CliAuth = {
+	store: "shared",
+	url: URL,
+	useKeyring: undefined,
+};
+
+const PRIVATE_FLAGS = ["--global-config", EXT_DIR, "--url", URL];
+const SHARED_FLAGS = ["--url", URL];
 
 describe("cliConfig", () => {
 	describe("getGlobalShellFlags", () => {
-		const urlAuth: CliAuth = { mode: "url", url: "https://dev.coder.com" };
-
 		interface AuthFlagsCase {
 			scenario: string;
 			auth: CliAuth;
-			expectedAuthFlags: string[];
+			expected: string[];
 		}
 
 		it.each<AuthFlagsCase>([
+			{ scenario: "private store", auth: privateAuth, expected: PRIVATE_FLAGS },
+			{ scenario: "shared store", auth: sharedAuth, expected: SHARED_FLAGS },
 			{
-				scenario: "global-config mode",
-				auth: globalConfigAuth,
-				expectedAuthFlags: ["--global-config", "/config/dir"],
+				scenario: "private store with keyring off",
+				auth: { ...privateAuth, useKeyring: false },
+				expected: [...PRIVATE_FLAGS, "--use-keyring=false"],
 			},
 			{
-				scenario: "url mode",
-				auth: urlAuth,
-				expectedAuthFlags: ["--url", "https://dev.coder.com"],
+				scenario: "shared store with keyring on",
+				auth: { ...sharedAuth, useKeyring: true },
+				expected: [...SHARED_FLAGS, "--use-keyring=true"],
 			},
-		])(
-			"should return auth flags for $scenario",
-			({ auth, expectedAuthFlags }) => {
-				const config = new MockConfigurationProvider();
-				expect(getGlobalShellFlags(config, auth)).toStrictEqual(
-					expectedAuthFlags,
-				);
-			},
-		);
-
-		it("should return global flags from config with auth flags appended", () => {
+		])("emits auth flags for a $scenario", ({ auth, expected }) => {
 			const config = new MockConfigurationProvider();
-			config.set("coder.globalFlags", [
-				"--verbose",
-				"--disable-direct-connections",
-			]);
+			expect(getGlobalShellFlags(config, auth)).toStrictEqual(expected);
+		});
 
-			expect(getGlobalShellFlags(config, globalConfigAuth)).toStrictEqual([
+		it("appends auth flags after user global flags", () => {
+			const config = new MockConfigurationProvider();
+			config.set("coder.globalFlags", ["--verbose", "--global-configs"]);
+
+			expect(getGlobalShellFlags(config, privateAuth)).toStrictEqual([
 				"--verbose",
-				"--disable-direct-connections",
-				"--global-config",
-				"/config/dir",
+				"--global-configs", // similar prefixes are not managed flags
+				...PRIVATE_FLAGS,
 			]);
 		});
 
-		it.each(["--use-keyring", "--use-keyring=false", "--use-keyring=true"])(
-			"should filter %s from global flags",
-			(managedFlag) => {
-				const config = new MockConfigurationProvider();
-				config.set("coder.globalFlags", [
-					"--verbose",
-					managedFlag,
-					"--disable-direct-connections",
-				]);
+		it("strips a user --use-keyring flag", () => {
+			const config = new MockConfigurationProvider();
+			config.set("coder.globalFlags", ["--verbose", "--use-keyring=false"]);
 
-				expect(getGlobalShellFlags(config, globalConfigAuth)).toStrictEqual([
-					"--verbose",
-					"--disable-direct-connections",
-					"--global-config",
-					"/config/dir",
-				]);
-			},
-		);
+			expect(getGlobalShellFlags(config, privateAuth)).toStrictEqual([
+				"--verbose",
+				...PRIVATE_FLAGS,
+			]);
+		});
 
-		interface GlobalConfigCase {
-			scenario: string;
-			flags: string[];
-			expected: string[];
-		}
-		it.each<GlobalConfigCase>([
-			{
-				scenario: "equals form",
-				flags: ["-v", "--global-config=/custom/coderv2"],
-				expected: ["-v", "--global-config=/custom/coderv2"],
-			},
+		const userGlobalConfigCases = [
+			{ scenario: "equals form", flags: ["-v", `--global-config=${USER_DIR}`] },
 			{
 				scenario: "separate items",
-				flags: ["-v", "--global-config", "/custom/coderv2"],
-				expected: ["-v", "--global-config", "/custom/coderv2"],
+				flags: ["-v", "--global-config", USER_DIR],
 			},
-		])(
-			"passes user --global-config through in file mode and drops our default ($scenario)",
-			({ flags, expected }) => {
+		];
+
+		it.each(userGlobalConfigCases)(
+			"passes user --global-config through in a shared store ($scenario)",
+			({ flags }) => {
 				const config = new MockConfigurationProvider();
 				config.set("coder.globalFlags", flags);
 
-				expect(getGlobalShellFlags(config, globalConfigAuth)).toStrictEqual(
-					expected,
-				);
+				expect(getGlobalShellFlags(config, sharedAuth)).toStrictEqual([
+					...flags,
+					...SHARED_FLAGS,
+				]);
 			},
 		);
 
 		it.each([
-			{ scenario: "space-separated in one item", flag: "--global-config /x" },
-			{ scenario: "equals form", flag: "--global-config=/x" },
+			...userGlobalConfigCases,
+			{
+				scenario: "space-separated in one item",
+				flags: ["-v", `--global-config ${USER_DIR}`],
+			},
 		])(
-			"strips user --global-config in keyring (url) mode ($scenario)",
-			({ flag }) => {
-				const urlAuth: CliAuth = { mode: "url", url: "https://dev.coder.com" };
+			"strips user --global-config in a private store ($scenario)",
+			({ flags }) => {
 				const config = new MockConfigurationProvider();
-				config.set("coder.globalFlags", ["-v", flag]);
+				config.set("coder.globalFlags", flags);
 
-				expect(getGlobalShellFlags(config, urlAuth)).toStrictEqual([
+				expect(getGlobalShellFlags(config, privateAuth)).toStrictEqual([
 					"-v",
-					"--url",
-					"https://dev.coder.com",
+					...PRIVATE_FLAGS,
 				]);
 			},
 		);
 
-		it("strips user --global-config (separate items) in keyring (url) mode", () => {
-			const urlAuth: CliAuth = { mode: "url", url: "https://dev.coder.com" };
+		it("keeps user header-command items and appends the setting", () => {
+			const headerCommand = "echo test";
 			const config = new MockConfigurationProvider();
-			config.set("coder.globalFlags", ["-v", "--global-config", "/x"]);
+			config.set("coder.headerCommand", headerCommand);
+			config.set("coder.globalFlags", ["-v", "--header-command custom"]);
 
-			expect(getGlobalShellFlags(config, urlAuth)).toStrictEqual([
+			expect(getGlobalShellFlags(config, sharedAuth)).toStrictEqual([
 				"-v",
-				"--url",
-				"https://dev.coder.com",
+				'"--header-command custom"', // ignored by CLI
+				...SHARED_FLAGS,
+				"--header-command",
+				quoteCommand(headerCommand),
 			]);
 		});
-
-		it("should not filter flags with similar prefixes", () => {
-			const config = new MockConfigurationProvider();
-			config.set("coder.globalFlags", ["--global-configs", "--use-keyrings"]);
-
-			expect(getGlobalShellFlags(config, globalConfigAuth)).toStrictEqual([
-				"--global-configs",
-				"--use-keyrings",
-				"--global-config",
-				"/config/dir",
-			]);
-		});
-
-		it.each<AuthFlagsCase>([
-			{
-				scenario: "global-config mode",
-				auth: globalConfigAuth,
-				expectedAuthFlags: ["--global-config", "/config/dir"],
-			},
-			{
-				scenario: "url mode",
-				auth: urlAuth,
-				expectedAuthFlags: ["--url", "https://dev.coder.com"],
-			},
-		])(
-			"should not filter header-command flags ($scenario)",
-			({ auth, expectedAuthFlags }) => {
-				const headerCommand = "echo test";
-				const config = new MockConfigurationProvider();
-				config.set("coder.headerCommand", headerCommand);
-				config.set("coder.globalFlags", [
-					"-v",
-					"--header-command custom",
-					"--no-feature-warning",
-				]);
-
-				expect(getGlobalShellFlags(config, auth)).toStrictEqual([
-					"-v",
-					'"--header-command custom"', // ignored by CLI
-					"--no-feature-warning",
-					...expectedAuthFlags,
-					"--header-command",
-					quoteCommand(headerCommand),
-				]);
-			},
-		);
 
 		it("quotes flags whose expanded value contains whitespace", () => {
 			vi.mocked(os.homedir).mockReturnValue("C:\\Users\\John Doe");
@@ -199,47 +145,24 @@ describe("cliConfig", () => {
 			config.set("coder.globalFlags", ["--cfg=${userHome}/coder"]);
 
 			// Without per-entry escaping the space splits the shell command.
-			expect(getGlobalShellFlags(config, globalConfigAuth)).toStrictEqual([
+			expect(getGlobalShellFlags(config, privateAuth)).toStrictEqual([
 				'"--cfg=C:\\Users\\John Doe/coder"',
-				"--global-config",
-				"/config/dir",
+				...PRIVATE_FLAGS,
 			]);
 		});
 	});
 
 	describe("getGlobalFlags", () => {
-		const urlAuth: CliAuth = { mode: "url", url: "https://dev.coder.com" };
-
-		it("should not escape auth flags", () => {
-			const config = new MockConfigurationProvider();
-			expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
-				"--global-config",
-				"/config/dir",
-			]);
-			expect(getGlobalFlags(config, urlAuth)).toStrictEqual([
-				"--url",
-				"https://dev.coder.com",
-			]);
-		});
-
-		it("passes header-command value through verbatim (no shell)", () => {
-			const config = new MockConfigurationProvider();
-			config.set("coder.headerCommand", "echo test");
-			expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
-				"--global-config",
-				"/config/dir",
-				"--header-command",
-				"echo test",
-			]);
-		});
-
-		it("should include user global flags", () => {
+		it("passes user flags, auth flags, and header-command verbatim", () => {
 			const config = new MockConfigurationProvider();
 			config.set("coder.globalFlags", ["--verbose"]);
-			expect(getGlobalFlags(config, globalConfigAuth)).toStrictEqual([
+			config.set("coder.headerCommand", "echo test");
+
+			expect(getGlobalFlags(config, privateAuth)).toStrictEqual([
 				"--verbose",
-				"--global-config",
-				"/config/dir",
+				...PRIVATE_FLAGS,
+				"--header-command",
+				"echo test",
 			]);
 		});
 	});
@@ -334,20 +257,16 @@ describe("cliConfig", () => {
 	});
 
 	describe("isKeyringEnabled", () => {
-		interface KeyringEnabledCase {
+		interface Case {
 			platform: NodeJS.Platform;
-			useKeyring: boolean;
+			useKeyring?: boolean;
 			expected: boolean;
 		}
-		it("returns false on darwin when setting is unset (default)", () => {
-			vi.mocked(os.platform).mockReturnValue("darwin");
-			const config = new MockConfigurationProvider();
-			expect(isKeyringEnabled(config)).toBe(false);
-		});
 
-		it.each<KeyringEnabledCase>([
-			{ platform: "darwin", useKeyring: true, expected: true },
-			{ platform: "win32", useKeyring: true, expected: true },
+		it.each<Case>([
+			{ platform: "darwin", expected: true },
+			{ platform: "win32", expected: true },
+			{ platform: "linux", expected: false },
 			{ platform: "linux", useKeyring: true, expected: false },
 			{ platform: "darwin", useKeyring: false, expected: false },
 		])(
@@ -355,126 +274,120 @@ describe("cliConfig", () => {
 			({ platform, useKeyring, expected }) => {
 				vi.mocked(os.platform).mockReturnValue(platform);
 				const config = new MockConfigurationProvider();
-				config.set("coder.useKeyring", useKeyring);
+				if (useKeyring !== undefined) {
+					config.set("coder.useKeyring", useKeyring);
+				}
 				expect(isKeyringEnabled(config)).toBe(expected);
 			},
 		);
 	});
 
 	describe("resolveCliAuth", () => {
-		it("returns url mode when keyring should be used", () => {
-			vi.mocked(os.platform).mockReturnValue("darwin");
-			const config = new MockConfigurationProvider();
-			config.set("coder.useKeyring", true);
-			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
-			const auth = resolveCliAuth(
-				config,
-				featureSet,
-				"https://dev.coder.com",
-				"/config/dir",
-			);
-			expect(auth).toEqual({
-				mode: "url",
-				url: "https://dev.coder.com",
-			});
+		function resolve(config: MockConfigurationProvider, version: string) {
+			const featureSet = featureSetForVersion(semver.parse(version));
+			return resolveCliAuth(config, featureSet, URL, EXT_DIR);
+		}
+
+		beforeEach(() => {
+			vi.stubEnv("CODER_CONFIG_DIR", undefined);
 		});
 
-		it("returns global-config mode when keyring should not be used", () => {
-			vi.mocked(os.platform).mockReturnValue("linux");
-			const config = new MockConfigurationProvider();
-			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
-			const auth = resolveCliAuth(
-				config,
-				featureSet,
-				"https://dev.coder.com",
-				"/config/dir",
-			);
-			expect(auth).toEqual({
-				mode: "global-config",
-				configDir: "/config/dir",
-				// 2.29 < 2.31, so a user --global-config is not honored.
-				allowOverride: false,
-			});
+		afterEach(() => {
+			vi.unstubAllEnvs();
 		});
 
-		it("uses caller-provided config directory in global-config mode", () => {
-			vi.mocked(os.platform).mockReturnValue("linux");
+		interface Case {
+			scenario: string;
+			platform: NodeJS.Platform;
+			override: "none" | "flag" | "env";
+			version: string;
+			expected: string[];
+		}
+
+		it.each<Case>([
+			{
+				scenario: "shares the CLI store when keyring is enabled on 2.29+",
+				platform: "darwin",
+				override: "none",
+				version: "2.29.0",
+				expected: ["--verbose", ...SHARED_FLAGS, "--use-keyring=true"],
+			},
+			{
+				scenario: "uses the extension directory when keyring is unsupported",
+				platform: "linux",
+				override: "none",
+				version: "2.29.0",
+				expected: ["--verbose", ...PRIVATE_FLAGS, "--use-keyring=false"],
+			},
+			{
+				scenario:
+					"omits --use-keyring below 2.29, where the CLI lacks the flag",
+				platform: "darwin",
+				override: "none",
+				version: "2.28.0",
+				expected: ["--verbose", ...PRIVATE_FLAGS],
+			},
+			{
+				scenario: "honors a globalFlags --global-config on 2.32+",
+				platform: "darwin",
+				override: "flag",
+				version: "2.32.0",
+				expected: [
+					"--verbose",
+					`--global-config=${USER_DIR}`,
+					...SHARED_FLAGS,
+					"--use-keyring=true",
+				],
+			},
+			{
+				scenario: "honors CODER_CONFIG_DIR on 2.32+ by emitting no directory",
+				platform: "darwin",
+				override: "env",
+				version: "2.32.0",
+				expected: ["--verbose", ...SHARED_FLAGS, "--use-keyring=true"],
+			},
+			{
+				scenario: "honors a globalFlags --global-config with keyring disabled",
+				platform: "linux",
+				override: "flag",
+				version: "2.32.0",
+				expected: [
+					"--verbose",
+					`--global-config=${USER_DIR}`,
+					...SHARED_FLAGS,
+					"--use-keyring=false",
+				],
+			},
+			{
+				scenario:
+					"keeps the extension directory over a user directory below 2.32",
+				platform: "linux",
+				override: "flag",
+				version: "2.31.0",
+				expected: ["--verbose", ...PRIVATE_FLAGS, "--use-keyring=false"],
+			},
+			{
+				scenario:
+					"keeps the extension directory over CODER_CONFIG_DIR below 2.32",
+				platform: "linux",
+				override: "env",
+				version: "2.31.0",
+				expected: ["--verbose", ...PRIVATE_FLAGS, "--use-keyring=false"],
+			},
+		])("$scenario", ({ platform, override, version, expected }) => {
+			vi.mocked(os.platform).mockReturnValue(platform);
 			const config = new MockConfigurationProvider();
-			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
-			const auth = resolveCliAuth(
-				config,
-				featureSet,
-				"https://dev.coder.com",
-				"/custom/coderv2",
+			const userFlags = ["--verbose"];
+			if (override === "flag") {
+				userFlags.push(`--global-config=${USER_DIR}`);
+			} else if (override === "env") {
+				vi.stubEnv("CODER_CONFIG_DIR", USER_DIR);
+			}
+			config.set("coder.globalFlags", userFlags);
+
+			expect(getGlobalFlags(config, resolve(config, version))).toStrictEqual(
+				expected,
 			);
-
-			expect(getGlobalFlags(config, auth)).toStrictEqual([
-				"--global-config",
-				"/custom/coderv2",
-			]);
-		});
-
-		it("keeps keyring precedence over caller-provided config directory", () => {
-			vi.mocked(os.platform).mockReturnValue("darwin");
-			const config = new MockConfigurationProvider();
-			config.set("coder.useKeyring", true);
-			const featureSet = featureSetForVersion(semver.parse("2.29.0"));
-			const auth = resolveCliAuth(
-				config,
-				featureSet,
-				"https://dev.coder.com",
-				"/custom/coderv2",
-			);
-
-			expect(getGlobalFlags(config, auth)).toStrictEqual([
-				"--url",
-				"https://dev.coder.com",
-			]);
-		});
-
-		it("lets globalFlags --global-config override the caller-provided directory on 2.31+", () => {
-			vi.mocked(os.platform).mockReturnValue("linux");
-			const config = new MockConfigurationProvider();
-			config.set("coder.globalFlags", [
-				"--verbose",
-				"--global-config=/custom/coderv2",
-			]);
-			const featureSet = featureSetForVersion(semver.parse("2.31.0"));
-			const auth = resolveCliAuth(
-				config,
-				featureSet,
-				"https://dev.coder.com",
-				"/default/coderv2",
-			);
-
-			// User's directory passes through; our default is dropped.
-			expect(getGlobalFlags(config, auth)).toStrictEqual([
-				"--verbose",
-				"--global-config=/custom/coderv2",
-			]);
-		});
-
-		it("ignores globalFlags --global-config on deployments older than 2.31", () => {
-			vi.mocked(os.platform).mockReturnValue("linux");
-			const config = new MockConfigurationProvider();
-			config.set("coder.globalFlags", [
-				"--verbose",
-				"--global-config=/custom/coderv2",
-			]);
-			const featureSet = featureSetForVersion(semver.parse("2.30.0"));
-			const auth = resolveCliAuth(
-				config,
-				featureSet,
-				"https://dev.coder.com",
-				"/default/coderv2",
-			);
-
-			// User override stripped; our default is used so it matches where we wrote.
-			expect(getGlobalFlags(config, auth)).toStrictEqual([
-				"--verbose",
-				"--global-config",
-				"/default/coderv2",
-			]);
 		});
 	});
 });
