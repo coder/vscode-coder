@@ -328,10 +328,10 @@ describe("cliConfig", () => {
 				expected: ["--verbose", ...PRIVATE_FLAGS],
 			},
 			{
-				scenario: "honors a globalFlags --global-config on 2.31+",
+				scenario: "honors a globalFlags --global-config on 2.32+",
 				platform: "darwin",
 				override: "flag",
-				version: "2.31.0",
+				version: "2.32.0",
 				expected: [
 					"--verbose",
 					`--global-config=${USER_DIR}`,
@@ -340,17 +340,17 @@ describe("cliConfig", () => {
 				],
 			},
 			{
-				scenario: "honors CODER_CONFIG_DIR on 2.31+ by emitting no directory",
+				scenario: "honors CODER_CONFIG_DIR on 2.32+ by emitting no directory",
 				platform: "darwin",
 				override: "env",
-				version: "2.31.0",
+				version: "2.32.0",
 				expected: ["--verbose", ...SHARED_FLAGS, "--use-keyring=true"],
 			},
 			{
 				scenario: "honors a globalFlags --global-config with keyring disabled",
 				platform: "linux",
 				override: "flag",
-				version: "2.31.0",
+				version: "2.32.0",
 				expected: [
 					"--verbose",
 					`--global-config=${USER_DIR}`,
@@ -360,18 +360,18 @@ describe("cliConfig", () => {
 			},
 			{
 				scenario:
-					"keeps the extension directory over a user directory below 2.31",
+					"keeps the extension directory over a user directory below 2.32",
 				platform: "linux",
 				override: "flag",
-				version: "2.30.0",
+				version: "2.31.0",
 				expected: ["--verbose", ...PRIVATE_FLAGS, "--use-keyring=false"],
 			},
 			{
 				scenario:
-					"keeps the extension directory over CODER_CONFIG_DIR below 2.31",
+					"keeps the extension directory over CODER_CONFIG_DIR below 2.32",
 				platform: "linux",
 				override: "env",
-				version: "2.30.0",
+				version: "2.31.0",
 				expected: ["--verbose", ...PRIVATE_FLAGS, "--use-keyring=false"],
 			},
 		])("$scenario", ({ platform, override, version, expected }) => {
