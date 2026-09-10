@@ -138,13 +138,13 @@ The extension logs to the "Coder" output channel, a `LogOutputChannel` that gate
 messages by the level chosen in its gear menu. To help Support diagnose
 connection failures without asking users to reproduce with debug logging enabled,
 a `BufferingLogger` ([`src/logging/logBuffer.ts`](src/logging/logBuffer.ts))
-wraps the channel and keeps a bounded, in-memory ring of the log lines that sit
+wraps the channel and keeps a bounded, in-memory ring of the entries that sit
 **below** the current level — the ones the channel would otherwise drop.
 
-On a genuine connection failure the buffer is flushed: the captured lines are
+On a genuine connection failure the buffer is flushed: the captured entries are
 re-emitted into the output channel (each marked `[buffered]` with its original
 timestamp and level) so they land on disk and in a support bundle. Only
-below-level lines are buffered, so nothing already written is duplicated.
+below-level entries are buffered, so nothing already written is duplicated.
 
 Flush happens only on genuine failures, never on transient drops or intentional
 teardown:
@@ -156,7 +156,7 @@ teardown:
 The buffer size is set by `coder.connectionLogBuffer.size` (maximum number of
 entries, capped at 10,000; `0` disables it). It lives in memory, so a hard kill or out-of-memory event
 loses it. Extension SSH debug logs that pass through the shared logger are
-buffered; the CLI `ProxyCommand` writes its own file logs under
+buffered. The CLI `ProxyCommand` writes its own file logs under
 `coder.proxyLogDirectory`, which support bundles already collect from disk, so
 those are not buffered here.
 
