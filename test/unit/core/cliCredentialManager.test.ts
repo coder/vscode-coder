@@ -153,7 +153,7 @@ describe("CliCredentialManager", () => {
 	});
 
 	// Store selection is covered by cliConfig.test.ts; this checks the wiring.
-	interface Case {
+	interface StoreCase {
 		scenario: string;
 		platform: NodeJS.Platform;
 		configs: typeof configs;
@@ -161,7 +161,7 @@ describe("CliCredentialManager", () => {
 		store: string;
 	}
 
-	it.each<Case>([
+	it.each<StoreCase>([
 		{
 			scenario: "extension directory when keyring is unsupported",
 			platform: "linux",
@@ -212,7 +212,13 @@ describe("CliCredentialManager", () => {
 			expect(execCalls()[0]).not.toContain("my-secret-token");
 		});
 
-		it.each([
+		interface CliErrorCase {
+			scenario: string;
+			error: Error;
+			message: string;
+		}
+
+		it.each<CliErrorCase>([
 			{
 				scenario: "the CLI's stderr",
 				error: Object.assign(new Error("Command failed"), {
@@ -251,7 +257,12 @@ describe("CliCredentialManager", () => {
 			expect(execCalls()).toEqual([[...KEYRING_FLAGS, "login", "token"]]);
 		});
 
-		it.each([
+		interface ReadTokenCase {
+			scenario: string;
+			token: ExecResult;
+		}
+
+		it.each<ReadTokenCase>([
 			{ scenario: "whitespace-only stdout", token: "  \n" },
 			{ scenario: "a CLI error", token: new Error("no token found") },
 		])("returns undefined on $scenario", async ({ token }) => {
@@ -271,7 +282,7 @@ describe("CliCredentialManager", () => {
 	});
 
 	describe("holdsToken", () => {
-		interface Case {
+		interface HoldsTokenCase {
 			scenario: string;
 			platform: NodeJS.Platform;
 			version?: string;
@@ -279,7 +290,7 @@ describe("CliCredentialManager", () => {
 			expected: boolean;
 		}
 
-		it.each<Case>([
+		it.each<HoldsTokenCase>([
 			{ scenario: "the extension store", platform: "linux", expected: false },
 			{
 				scenario: "the CLI store holding the token",
@@ -318,8 +329,44 @@ describe("CliCredentialManager", () => {
 		);
 	});
 
+	interface HasCliStoreCase {
+		scenario: string;
+		platform: NodeJS.Platform;
+		binary: string | undefined;
+		expected: boolean;
+	}
+
+	it.each<HasCliStoreCase>([
+		{
+			scenario: "the extension store",
+			platform: "linux",
+			binary: TEST_BIN,
+			expected: false,
+		},
+		{
+			scenario: "the CLI store",
+			platform: "darwin",
+			binary: TEST_BIN,
+			expected: true,
+		},
+		{
+			scenario: "the CLI store without a binary",
+			platform: "darwin",
+			binary: undefined,
+			expected: false,
+		},
+	])(
+		"hasCliStore is $expected for $scenario",
+		async ({ platform, binary, expected }) => {
+			vi.mocked(os.platform).mockReturnValue(platform);
+			const { manager } = setup(vi.fn().mockResolvedValue(binary));
+
+			expect(await manager.hasCliStore(TEST_URL, configs)).toBe(expected);
+		},
+	);
+
 	describe("deleteToken", () => {
-		interface Case {
+		interface DeleteTokenCase {
 			scenario: string;
 			platform: NodeJS.Platform;
 			signOutCli: boolean;
@@ -327,7 +374,7 @@ describe("CliCredentialManager", () => {
 			outcome: string;
 		}
 
-		it.each<Case>([
+		it.each<DeleteTokenCase>([
 			{
 				scenario: "always logs out of the extension store",
 				platform: "linux",
@@ -388,13 +435,14 @@ describe("CliCredentialManager", () => {
 			manager: CliCredentialManager,
 			options: { signal: AbortSignal },
 		) => Promise<unknown>;
-		const operations: Array<{
+		interface Operation {
 			name: string;
 			run: Run;
 			event?: string;
 			whenMissing: (result: Promise<unknown>) => Promise<unknown>;
 			whenBroken: (result: Promise<unknown>) => Promise<unknown>;
-		}> = [
+		}
+		const operations: Operation[] = [
 			{
 				name: "storeToken",
 				run: (m, o) => m.storeToken(TEST_URL, "token", configs, o),

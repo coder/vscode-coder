@@ -111,6 +111,27 @@ describe("cliExec", () => {
 			);
 		});
 
+		it("reuses the version until the binary changes", async () => {
+			const at = new Date("2026-01-01T00:00:00Z");
+			const versionBin = (v: string) => echoBin(JSON.stringify({ version: v }));
+			const bin = await writeExecutable(
+				tmp,
+				"ver-cached",
+				versionBin("v1.0.0"),
+			);
+			await fs.utimes(bin, at, at);
+			expect(await cliExec.version(bin)).toBe("v1.0.0");
+
+			// Same size and mtime: served from the cache without running the file.
+			await writeExecutable(tmp, "ver-cached", versionBin("v2.0.0"));
+			await fs.utimes(bin, at, at);
+			expect(await cliExec.version(bin)).toBe("v1.0.0");
+
+			// A new mtime invalidates it.
+			await writeExecutable(tmp, "ver-cached", versionBin("v3.0.0"));
+			expect(await cliExec.version(bin)).toBe("v3.0.0");
+		});
+
 		it("parses version from JSON output", async () => {
 			const bin = await writeExecutable(
 				tmp,

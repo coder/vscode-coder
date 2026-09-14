@@ -859,20 +859,19 @@ export class Commands {
 					"Remove All",
 				);
 				if (confirm === "Remove All") {
-					await Promise.all(
-						selected.hostnames.map(async (h) => {
-							const auth = await this.secretsManager.getSessionAuth(h);
-							if (auth?.url) {
-								await this.cliManager.clearCredentials(auth.url, {
-									signOutCli: await this.cliManager.holdsToken(
-										auth.url,
-										auth.token,
-									),
-								});
-							}
-							await this.secretsManager.clearAllAuthData(h);
-						}),
-					);
+					// One at a time: `coder logout` rewrites the whole keyring entry.
+					for (const h of selected.hostnames) {
+						const auth = await this.secretsManager.getSessionAuth(h);
+						if (auth?.url) {
+							await this.cliManager.clearCredentials(auth.url, {
+								signOutCli: await this.cliManager.holdsToken(
+									auth.url,
+									auth.token,
+								),
+							});
+						}
+						await this.secretsManager.clearAllAuthData(h);
+					}
 					this.logger.info(
 						"Removed credentials for all deployments:",
 						selected.hostnames.join(", "),

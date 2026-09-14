@@ -117,6 +117,13 @@ export function isKeyringEnabled(
 	return isKeyringSupported() && configs.get<boolean>("coder.useKeyring", true);
 }
 
+/** True when settings allow the CLI's own store: the keyring is on or a user config directory is set. `resolveCliAuth` adds the CLI version gates. */
+export function mayUseCliStore(
+	configs: Pick<WorkspaceConfiguration, "get">,
+): boolean {
+	return isKeyringEnabled(configs) || hasUserConfigDir(configs);
+}
+
 /** Uses the CLI's own store when the keyring is on or the user set a config directory. */
 export function resolveCliAuth(
 	configs: Pick<WorkspaceConfiguration, "get">,

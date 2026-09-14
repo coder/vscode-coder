@@ -7,9 +7,8 @@ import { needToken } from "../api/utils";
 import { CertificateError } from "../error/certificateError";
 import { OAuthAuthorizer } from "../oauth/authorizer";
 import { buildOAuthTokenData } from "../oauth/utils";
-import { withOptionalProgress } from "../progress";
+import { withCancellableProgress } from "../progress";
 import { maybeAskAuthMethod, maybeAskUrl } from "../promptUtils";
-import { isKeyringEnabled } from "../settings/cli";
 import { showStoreCredentialsError } from "../util/credentials";
 import { isSameOrigin, openInBrowser } from "../util/uri";
 import { vscodeProposed } from "../vscodeProposed";
@@ -424,13 +423,17 @@ export class LoginCoordinator implements vscode.Disposable {
 	): Promise<LoginResult | undefined> {
 		const { client, deployment, isAutoLogin, auth, sameOriginAuth } = ctx;
 		const configs = vscode.workspace.getConfiguration();
-		const cliCredentialResult = await withOptionalProgress(
+		if (
+			!(await this.cliCredentialManager.hasCliStore(deployment.url, configs))
+		) {
+			return undefined;
+		}
+		const cliCredentialResult = await withCancellableProgress(
 			({ signal }) =>
 				this.cliCredentialManager.readToken(deployment.url, configs, {
 					signal,
 				}),
 			{
-				enabled: isKeyringEnabled(configs),
 				location: vscode.ProgressLocation.Notification,
 				title: "Reading credentials from the Coder CLI",
 				cancellable: true,

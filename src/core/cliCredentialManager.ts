@@ -11,7 +11,12 @@ import {
 	CredentialTelemetry,
 } from "../instrumentation/credentials";
 import { recordError } from "../instrumentation/outcomes";
-import { type CliAuth, getGlobalFlags, resolveCliAuth } from "../settings/cli";
+import {
+	type CliAuth,
+	getGlobalFlags,
+	mayUseCliStore,
+	resolveCliAuth,
+} from "../settings/cli";
 import { type TelemetryReporter } from "../telemetry/reporter";
 import { toSafeHost } from "../util/uri";
 
@@ -89,7 +94,6 @@ export class CliCredentialManager {
 		try {
 			const cli = await this.resolveCli(url, configs);
 			if (!cli) {
-				this.logger.debug("No CLI session to read: the CLI is not downloaded");
 				return undefined;
 			}
 			if (!cli.featureSet.tokenRead) {
@@ -108,6 +112,16 @@ export class CliCredentialManager {
 		}
 	}
 
+	/** True when the CLI is downloaded and settings allow its own store. Otherwise reads and token checks have nothing to do. */
+	public async hasCliStore(
+		url: string,
+		configs: Pick<WorkspaceConfiguration, "get">,
+	): Promise<boolean> {
+		return (
+			mayUseCliStore(configs) && (await this.resolveBinary(url)) !== undefined
+		);
+	}
+
 	/**
 	 * True when the CLI's own store holds `token`. Below CLI 2.32 the token
 	 * cannot be read back, so the CLI's store counts as holding it. False without a working CLI.
@@ -116,13 +130,17 @@ export class CliCredentialManager {
 		url: string,
 		token: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
+		options?: { signal?: AbortSignal },
 	): Promise<boolean> {
 		try {
 			const cli = await this.resolveCli(url, configs);
 			if (cli?.auth.store !== "cli") {
 				return false;
 			}
-			return !cli.featureSet.tokenRead || (await this.cliToken(cli)) === token;
+			return (
+				!cli.featureSet.tokenRead ||
+				(await this.cliToken(cli, options?.signal)) === token
+			);
 		} catch (error) {
 			this.logger.warn("Could not read the CLI session:", error);
 			return false;

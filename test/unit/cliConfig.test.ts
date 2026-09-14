@@ -10,6 +10,7 @@ import {
 	getGlobalShellFlags,
 	getSshFlags,
 	isKeyringEnabled,
+	mayUseCliStore,
 	resolveCliAuth,
 } from "@/settings/cli";
 
@@ -263,13 +264,13 @@ describe("cliConfig", () => {
 	});
 
 	describe("isKeyringEnabled", () => {
-		interface Case {
+		interface KeyringEnabledCase {
 			platform: NodeJS.Platform;
 			useKeyring?: boolean;
 			expected: boolean;
 		}
 
-		it.each<Case>([
+		it.each<KeyringEnabledCase>([
 			{ platform: "darwin", expected: true },
 			{ platform: "win32", expected: true },
 			{ platform: "linux", expected: false },
@@ -288,6 +289,33 @@ describe("cliConfig", () => {
 		);
 	});
 
+	describe("mayUseCliStore", () => {
+		interface MayUseCliStoreCase {
+			platform: NodeJS.Platform;
+			flags: string[];
+			expected: boolean;
+		}
+
+		it.each<MayUseCliStoreCase>([
+			{ platform: "linux", flags: [], expected: false },
+			{ platform: "darwin", flags: [], expected: true },
+			{
+				platform: "linux",
+				flags: [`--global-config=${USER_DIR}`],
+				expected: true,
+			},
+		])(
+			"is $expected on $platform with flags $flags",
+			({ platform, flags, expected }) => {
+				vi.mocked(os.platform).mockReturnValue(platform);
+				const config = new MockConfigurationProvider();
+				config.set("coder.globalFlags", flags);
+
+				expect(mayUseCliStore(config)).toBe(expected);
+			},
+		);
+	});
+
 	describe("resolveCliAuth", () => {
 		function resolve(config: MockConfigurationProvider, version: string) {
 			const featureSet = featureSetForVersion(semver.parse(version));
@@ -302,7 +330,7 @@ describe("cliConfig", () => {
 			vi.unstubAllEnvs();
 		});
 
-		interface Case {
+		interface ResolveCliAuthCase {
 			scenario: string;
 			platform: NodeJS.Platform;
 			override: "none" | "flag" | "env";
@@ -310,7 +338,7 @@ describe("cliConfig", () => {
 			expected: string[];
 		}
 
-		it.each<Case>([
+		it.each<ResolveCliAuthCase>([
 			{
 				scenario: "uses the CLI store when keyring is enabled on 2.29+",
 				platform: "darwin",

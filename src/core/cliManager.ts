@@ -22,7 +22,6 @@ import {
 } from "../instrumentation/cli";
 import * as pgp from "../pgp";
 import { withCancellableProgress, withOptionalProgress } from "../progress";
-import { isKeyringEnabled } from "../settings/cli";
 import { showStoreCredentialsError } from "../util/credentials";
 import { tempFilePath } from "../util/fs";
 import { toSafeHost } from "../util/uri";
@@ -1061,13 +1060,22 @@ export class CliManager {
 		this.handleStoreError(result.error, configs);
 	}
 
-	/** True when the CLI's own store holds this token. */
-	public holdsToken(url: string, token: string): Promise<boolean> {
-		return this.cliCredentialManager.holdsToken(
-			url,
-			token,
-			vscode.workspace.getConfiguration(),
+	/** True when the CLI's own store holds this token. Cancelling the check counts as false. */
+	public async holdsToken(url: string, token: string): Promise<boolean> {
+		const configs = vscode.workspace.getConfiguration();
+		if (!(await this.cliCredentialManager.hasCliStore(url, configs))) {
+			return false;
+		}
+		const result = await withCancellableProgress(
+			({ signal }) =>
+				this.cliCredentialManager.holdsToken(url, token, configs, { signal }),
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: "Reading credentials from the Coder CLI",
+				cancellable: true,
+			},
 		);
+		return result.ok && result.value;
 	}
 
 	/**
@@ -1086,7 +1094,7 @@ export class CliManager {
 					signOutCli,
 				}),
 			{
-				enabled: signOutCli && isKeyringEnabled(configs),
+				enabled: signOutCli,
 				location: vscode.ProgressLocation.Notification,
 				title: `Removing credentials for ${url}`,
 				cancellable: true,

@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import * as pgp from "@/pgp";
-import { isKeyringEnabled } from "@/settings/cli";
 
 import { expectPathsEqual } from "../../utils/platform";
 
@@ -27,12 +26,6 @@ import type * as fs from "node:fs";
 
 vi.mock("os");
 vi.mock("axios");
-vi.mock("@/settings/cli", async () => {
-	const actual =
-		await vi.importActual<typeof import("@/settings/cli")>("@/settings/cli");
-	return { ...actual, isKeyringEnabled: vi.fn().mockReturnValue(false) };
-});
-
 vi.mock("fs", async () => {
 	const memfs: { fs: typeof fs } = await vi.importActual("memfs");
 	return { ...memfs.fs, default: memfs.fs };
@@ -306,36 +299,22 @@ describe("CliManager", () => {
 	describe("Clear Credentials", () => {
 		const CLEAR_URL = "https://dev.coder.com";
 
-		it.each([
-			{
-				scenario: "keyring disabled",
-				keyring: false,
-				signOutCli: true,
-				progress: false,
-			},
-			{
-				scenario: "CLI session kept",
-				keyring: true,
-				signOutCli: false,
-				progress: false,
-			},
-			{
-				scenario: "keyring sign-out",
-				keyring: true,
-				signOutCli: true,
-				progress: true,
-			},
+		interface ProgressCase {
+			signOutCli: boolean;
+			progress: number;
+		}
+
+		it.each<ProgressCase>([
+			{ signOutCli: false, progress: 0 },
+			{ signOutCli: true, progress: 1 },
 		])(
-			"$scenario: progress notification shown is $progress",
-			async ({ keyring, signOutCli, progress }) => {
+			"shows progress $progress time(s) when signOutCli is $signOutCli",
+			async ({ signOutCli, progress }) => {
 				const { manager, mockCredManager } = setupCliManager();
-				vi.mocked(isKeyringEnabled).mockReturnValue(keyring);
 
 				await manager.clearCredentials(CLEAR_URL, { signOutCli });
 
-				expect(vscode.window.withProgress).toHaveBeenCalledTimes(
-					Number(progress),
-				);
+				expect(vscode.window.withProgress).toHaveBeenCalledTimes(progress);
 				expect(mockCredManager.deleteToken).toHaveBeenCalledWith(
 					CLEAR_URL,
 					expect.anything(),
@@ -376,6 +355,35 @@ describe("CliManager", () => {
 				).resolves.toEqual(expected);
 			},
 		);
+	});
+
+	describe("Holds Token", () => {
+		const URL = "https://dev.coder.com";
+
+		it("asks the CLI under cancellable progress", async () => {
+			const { manager, mockCredManager } = setupCliManager();
+			vi.mocked(mockCredManager.holdsToken).mockResolvedValueOnce(true);
+
+			expect(await manager.holdsToken(URL, "t")).toBe(true);
+			expect(vscode.window.withProgress).toHaveBeenCalledTimes(1);
+		});
+
+		it("counts a cancelled check as not held", async () => {
+			const { manager, mockCredManager } = setupCliManager();
+			vi.mocked(mockCredManager.holdsToken).mockRejectedValueOnce(
+				makeAbortError(),
+			);
+
+			expect(await manager.holdsToken(URL, "t")).toBe(false);
+		});
+
+		it("skips the CLI when it has no store to check", async () => {
+			const { manager, mockCredManager } = setupCliManager();
+			vi.mocked(mockCredManager.hasCliStore).mockResolvedValueOnce(false);
+
+			expect(await manager.holdsToken(URL, "t")).toBe(false);
+			expect(vscode.window.withProgress).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("Binary Version Validation", () => {

@@ -17,12 +17,12 @@ describe("showStoreCredentialsError", () => {
 		vi.clearAllMocks();
 	});
 
-	interface Case {
+	interface StoreErrorCase {
 		platform: NodeJS.Platform;
 		message: string;
 	}
 
-	it.each<Case>([
+	it.each<StoreErrorCase>([
 		{
 			platform: "darwin",
 			message:
