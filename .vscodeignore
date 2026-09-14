@@ -4,6 +4,7 @@ coverage/**
 .nyc_output/**
 
 # Development files
+prototypes/**
 src/**
 test/**
 scripts/**

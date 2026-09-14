@@ -22,6 +22,8 @@ export default defineConfig(
 		".vscode-test/**",
 		"test/fixtures/scripts/**",
 		"storybook-static/**",
+		"prototypes/windows-acl/target/**",
+		"prototypes/windows-acl/artifacts/**",
 	]),
 
 	// Base ESLint recommended rules (for JS/TS/TSX files only)

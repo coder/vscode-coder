@@ -22,7 +22,7 @@ function writeArtifact(
 	artifactRoot: string,
 	arch: "x64" | "arm64",
 	name: "acl-helper.exe" | "acl.node",
-	contents = name,
+	contents: string = name,
 ): void {
 	const directory = path.join(artifactRoot, `win32-${arch}`);
 	fs.mkdirSync(directory, { recursive: true });
@@ -107,14 +107,15 @@ describe("package-prototype", () => {
 	});
 });
 
-const projectRoot = path.resolve(import.meta.dirname, "..", "..", "..");
+const projectRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const realArtifactRoot = path.join(
 	projectRoot,
 	"prototypes",
 	"windows-acl",
 	"artifacts",
 );
-const stagedVariants = (["helper", "addon"] as const).filter((variant) => {
+const variants = ["helper", "addon"] as const;
+const stagedVariants = variants.filter((variant) => {
 	const name = variant === "helper" ? "acl-helper.exe" : "acl.node";
 	return ["x64", "arm64"].every((arch) =>
 		fs
@@ -126,7 +127,7 @@ const stagedVariants = (["helper", "addon"] as const).filter((variant) => {
 });
 
 describe.runIf(stagedVariants.length === 2)("universal VSIX archives", () => {
-	it.each(stagedVariants)(
+	it.each(variants)(
 		"packages the real staged %s payload with the expected manifest and contents",
 		(variant) => {
 			const output = packagePrototype(variant);

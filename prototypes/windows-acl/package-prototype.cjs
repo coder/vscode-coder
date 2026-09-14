@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 "use strict";
+/* global __dirname, console, process */
 
 const childProcess = require("node:child_process");
 const fs = require("node:fs");
@@ -7,7 +8,7 @@ const path = require("node:path");
 
 const ROOT = __dirname;
 const ARTIFACT_ROOT = path.join(ROOT, "artifacts");
-const VSCE = path.join(ROOT, "..", "..", "node_modules", ".bin", "vsce");
+const VSCE = require.resolve("@vscode/vsce/vsce");
 const VARIANTS = new Set(["helper", "addon"]);
 const WINDOWS_ARCHITECTURES = ["x64", "arm64"];
 
@@ -33,7 +34,7 @@ function packageManifest(variant) {
 		version: "0.0.0",
 		publisher: "coder-prototype",
 		description: "Experimental Windows ACL packaging prototype.",
-		engines: { vscode: "^1.95.0" },
+		engines: { vscode: "^1.105.0" },
 		main: "./extension.cjs",
 		activationEvents: [],
 	};
@@ -85,8 +86,16 @@ function packagePrototype(variant, options = {}) {
 	);
 	fs.rmSync(output, { force: true });
 	childProcess.execFileSync(
-		vsce,
-		["package", "--no-dependencies", "--out", output],
+		process.execPath,
+		[
+			vsce,
+			"package",
+			"--no-dependencies",
+			"--allow-missing-repository",
+			"--skip-license",
+			"--out",
+			output,
+		],
 		{
 			cwd: assemblyDirectory,
 			stdio: "inherit",

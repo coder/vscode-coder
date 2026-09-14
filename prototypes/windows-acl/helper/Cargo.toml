@@ -1,0 +1,9 @@
+[package]
+name = "acl-prototype-helper"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+acl-prototype-core = { path = "../core" }
+serde_json = "1"

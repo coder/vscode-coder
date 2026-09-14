@@ -1,0 +1,16 @@
+[package]
+name = "acl-prototype-addon"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+acl-prototype-core = { path = "../core" }
+napi = { version = "=3.12.4", default-features = false, features = ["napi8"] }
+napi-derive = "=3.6.5"
+
+[build-dependencies]
+napi-build = "=2.4.2"

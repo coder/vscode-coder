@@ -10,6 +10,8 @@ flake.lock
 pnpm-debug.log
 pnpm-lock.yaml
 /storybook-static/
+/prototypes/windows-acl/target/
+/prototypes/windows-acl/artifacts/
 
 # Golden snapshots are written verbatim; prettier would drift them out of sync.
 **/__golden__/

@@ -1,0 +1,9 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"rootDir": ".",
+		"types": ["node"]
+	},
+	"files": ["bridge.d.cts", "stage.d.cts", "package-prototype.d.cts"]
+}

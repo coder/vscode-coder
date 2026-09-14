@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 "use strict";
+/* global __dirname, console, process */
 
 const fs = require("node:fs");
 const path = require("node:path");
