@@ -35,6 +35,20 @@ vi.mock("node:child_process", async (importOriginal) => {
 const cliExec = await import("@/core/cliExec");
 const { spawn } = await import("node:child_process");
 
+const sharedAuth = (url: string): CliEnv["auth"] => ({
+	store: "cli",
+	url,
+	useKeyring: undefined,
+	allowRedirects: false,
+});
+const privateAuth = (url: string, configDir: string): CliEnv["auth"] => ({
+	store: "extension",
+	url,
+	configDir,
+	useKeyring: undefined,
+	allowRedirects: false,
+});
+
 describe("cliExec", () => {
 	const tmp = path.join(os.tmpdir(), "vscode-coder-tests-cliExec");
 	let echoArgsBin: string;
@@ -97,6 +111,27 @@ describe("cliExec", () => {
 			);
 		});
 
+		it("reuses the version until the binary changes", async () => {
+			const at = new Date("2026-01-01T00:00:00Z");
+			const versionBin = (v: string) => echoBin(JSON.stringify({ version: v }));
+			const bin = await writeExecutable(
+				tmp,
+				"ver-cached",
+				versionBin("v1.0.0"),
+			);
+			await fs.utimes(bin, at, at);
+			expect(await cliExec.version(bin)).toBe("v1.0.0");
+
+			// Same size and mtime: served from the cache without running the file.
+			await writeExecutable(tmp, "ver-cached", versionBin("v2.0.0"));
+			await fs.utimes(bin, at, at);
+			expect(await cliExec.version(bin)).toBe("v1.0.0");
+
+			// A new mtime invalidates it.
+			await writeExecutable(tmp, "ver-cached", versionBin("v3.0.0"));
+			expect(await cliExec.version(bin)).toBe("v3.0.0");
+		});
+
 		it("parses version from JSON output", async () => {
 			const bin = await writeExecutable(
 				tmp,
@@ -154,10 +189,7 @@ describe("cliExec", () => {
 
 	describe("speedtest", () => {
 		it("passes global, header, and command-specific flags", async () => {
-			const { configs, env } = setup({
-				mode: "url",
-				url: "http://localhost:3000",
-			});
+			const { configs, env } = setup(sharedAuth("http://localhost:3000"));
 			configs.set("coder.headerCommand", "my-header-cmd");
 			const args = (await cliExec.speedtest(env, "owner/workspace", "10s"))
 				.trim()
@@ -182,10 +214,7 @@ describe("cliExec", () => {
 				`process.exit(1);`,
 			].join("\n");
 			const bin = await writeExecutable(tmp, "speedtest-err", code);
-			const { env } = setup(
-				{ mode: "global-config", configDir: "/tmp", allowOverride: true },
-				bin,
-			);
+			const { env } = setup(privateAuth("http://localhost:3000", "/tmp"), bin);
 			await expect(
 				cliExec.speedtest(env, "owner/workspace", "bad"),
 			).rejects.toThrow("invalid argument for -t flag");
@@ -195,10 +224,7 @@ describe("cliExec", () => {
 			// Hangs forever so the only way out is the abort signal.
 			const code = `setInterval(() => {}, 1000);`;
 			const bin = await writeExecutable(tmp, "speedtest-hang", code);
-			const { env } = setup(
-				{ mode: "global-config", configDir: "/tmp", allowOverride: true },
-				bin,
-			);
+			const { env } = setup(privateAuth("http://localhost:3000", "/tmp"), bin);
 			const ac = new AbortController();
 			ac.abort();
 			await expect(
@@ -209,10 +235,7 @@ describe("cliExec", () => {
 
 	describe("netcheck", () => {
 		it("passes global and header flags", async () => {
-			const { configs, env } = setup({
-				mode: "url",
-				url: "http://localhost:3000",
-			});
+			const { configs, env } = setup(sharedAuth("http://localhost:3000"));
 			configs.set("coder.headerCommand", "my-header-cmd");
 			const args = (await cliExec.netcheck(env)).trim().split("\n");
 			expect(args).toEqual([
@@ -230,10 +253,7 @@ describe("cliExec", () => {
 				`process.exit(1);`,
 			].join("\n");
 			const bin = await writeExecutable(tmp, "netcheck-err", code);
-			const { env } = setup(
-				{ mode: "global-config", configDir: "/tmp", allowOverride: true },
-				bin,
-			);
+			const { env } = setup(privateAuth("http://localhost:3000", "/tmp"), bin);
 			await expect(cliExec.netcheck(env)).rejects.toThrow(
 				"You are not logged in",
 			);
@@ -243,10 +263,7 @@ describe("cliExec", () => {
 			// Hangs forever so the only way out is the abort signal.
 			const code = `setInterval(() => {}, 1000);`;
 			const bin = await writeExecutable(tmp, "netcheck-hang", code);
-			const { env } = setup(
-				{ mode: "global-config", configDir: "/tmp", allowOverride: true },
-				bin,
-			);
+			const { env } = setup(privateAuth("http://localhost:3000", "/tmp"), bin);
 			const ac = new AbortController();
 			ac.abort();
 			await expect(cliExec.netcheck(env, ac.signal)).rejects.toMatchObject({
@@ -266,10 +283,7 @@ describe("cliExec", () => {
 			].join("\n");
 			const bin = await writeExecutable(tmp, "sb-echo-args", code);
 			const outputPath = path.join(tmp, "sb-args-output.zip");
-			const { configs, env } = setup(
-				{ mode: "url", url: "http://localhost:3000" },
-				bin,
-			);
+			const { configs, env } = setup(sharedAuth("http://localhost:3000"), bin);
 			configs.set("coder.headerCommand", "my-header-cmd");
 			await cliExec.supportBundle(env, "owner/workspace", {
 				outputPath,
@@ -307,7 +321,7 @@ describe("cliExec", () => {
 			].join("\n");
 			const bin = await writeExecutable(tmp, "sb-echo-defaults", code);
 			const outputPath = path.join(tmp, "sb-defaults-output.zip");
-			const { env } = setup({ mode: "url", url: "http://localhost:3000" }, bin);
+			const { env } = setup(sharedAuth("http://localhost:3000"), bin);
 			await cliExec.supportBundle(env, "owner/workspace", { outputPath });
 			const args = (await fs.readFile(outputPath, "utf-8")).trim().split("\n");
 			expect(args).toEqual([
@@ -328,10 +342,7 @@ describe("cliExec", () => {
 				`process.exit(1);`,
 			].join("\n");
 			const bin = await writeExecutable(tmp, "sb-err", code);
-			const { env } = setup(
-				{ mode: "global-config", configDir: "/tmp", allowOverride: true },
-				bin,
-			);
+			const { env } = setup(privateAuth("http://localhost:3000", "/tmp"), bin);
 			await expect(
 				cliExec.supportBundle(env, "owner/workspace", {
 					outputPath: "/tmp/bundle.zip",
@@ -376,7 +387,7 @@ describe("cliExec", () => {
 		});
 
 		it("spawns coder ping with raw argv (no shell, unescaped workspace name)", () => {
-			const { env } = setup({ mode: "url", url: "https://test.coder.com" });
+			const { env } = setup(sharedAuth("https://test.coder.com"));
 			cliExec.ping(env, "owner/my workspace");
 
 			expect(spawn).toHaveBeenCalledWith(
@@ -387,24 +398,30 @@ describe("cliExec", () => {
 		});
 
 		it("includes user global flags raw in the spawn argv", () => {
-			const { configs, env } = setup({
-				mode: "global-config",
-				configDir: "/cfg",
-				allowOverride: true,
-			});
+			const { configs, env } = setup(
+				privateAuth("https://test.coder.com", "/cfg"),
+			);
 			configs.set("coder.globalFlags", ["--verbose"]);
 
 			cliExec.ping(env, "owner/ws");
 
 			expect(spawn).toHaveBeenCalledWith(
 				env.binary,
-				["--verbose", "--global-config", "/cfg", "ping", "owner/ws"],
+				[
+					"--verbose",
+					"--global-config",
+					"/cfg",
+					"--url",
+					"https://test.coder.com",
+					"ping",
+					"owner/ws",
+				],
 				expect.objectContaining({ detached: process.platform !== "win32" }),
 			);
 		});
 
 		it("reports ENOENT once even when `close` fires after `error`", () => {
-			const { env } = setup({ mode: "url", url: "https://test.coder.com" });
+			const { env } = setup(sharedAuth("https://test.coder.com"));
 			cliExec.ping(env, "owner/ws");
 
 			// Real Node emits `error` then `close(null, null)` on missing binary.

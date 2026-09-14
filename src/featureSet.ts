@@ -10,6 +10,7 @@ export interface FeatureSet {
 	tokenRead: boolean;
 	supportBundle: boolean;
 	supportBundleWorkspaceFiles: boolean;
+	allowRedirects: boolean;
 }
 
 /**
@@ -54,11 +55,13 @@ export function featureSetForVersion(
 		cliUpdate: versionAtLeast(version, "2.24.0"),
 		// Keyring-backed token storage via `coder login`
 		keyringAuth: versionAtLeast(version, "2.29.0"),
-		// `coder login token` for reading tokens (keyring or file)
-		tokenRead: versionAtLeast(version, "2.31.0"),
+		// `coder login token`; from 2.32 file mode also checks the URL it stored.
+		tokenRead: versionAtLeast(version, "2.32.0"),
 		// `coder support bundle` (officially released/unhidden in 2.10.0)
 		supportBundle: versionAtLeast(version, "2.10.0"),
 		// --workspace-file flag for `coder support bundle`
 		supportBundleWorkspaceFiles: versionAtLeast(version, "2.36.0"),
+		// --allow-redirects; from 2.38 the CLI otherwise errors on a redirected URL.
+		allowRedirects: versionAtLeast(version, "2.38.0"),
 	};
 }

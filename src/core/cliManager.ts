@@ -22,7 +22,7 @@ import {
 } from "../instrumentation/cli";
 import * as pgp from "../pgp";
 import { withCancellableProgress, withOptionalProgress } from "../progress";
-import { isKeyringEnabled } from "../settings/cli";
+import { showStoreCredentialsError } from "../util/credentials";
 import { tempFilePath } from "../util/fs";
 import { toSafeHost } from "../util/uri";
 import { vscodeProposed } from "../vscodeProposed";
@@ -70,17 +70,10 @@ export class CliManager {
 		this.cliTelemetry = new CliTelemetry(telemetry);
 	}
 
-	/**
-	 * Return the path to a cached CLI binary for a deployment URL.
-	 * Stat check only, no network, no subprocess. Throws if absent.
-	 */
-	public async locateBinary(url: string): Promise<string> {
-		const safeHostname = toSafeHost(url);
-		const resolved = await this.resolveBinaryPath(safeHostname);
-		if (resolved.source === "not_found") {
-			throw new Error(`No CLI binary found at ${resolved.binPath}`);
-		}
-		return resolved.binPath;
+	/** The cached CLI binary for a deployment URL, or undefined when none is downloaded. Stat check only. */
+	public async locateBinary(url: string): Promise<string | undefined> {
+		const resolved = await this.resolveBinaryPath(toSafeHost(url));
+		return resolved.source === "not_found" ? undefined : resolved.binPath;
 	}
 
 	/**
@@ -1041,7 +1034,7 @@ export class CliManager {
 				await this.cliCredentialManager.storeToken(url, token, configs);
 			} catch (error) {
 				trace.error(error);
-				this.handleStoreError(error);
+				this.handleStoreError(error, configs);
 			}
 			return;
 		}
@@ -1064,21 +1057,44 @@ export class CliManager {
 			return;
 		}
 		trace.error(result.error);
-		this.handleStoreError(result.error);
+		this.handleStoreError(result.error, configs);
+	}
+
+	/** True when the CLI's own store holds this token. Cancelling the check counts as false. */
+	public async holdsToken(url: string, token: string): Promise<boolean> {
+		const configs = vscode.workspace.getConfiguration();
+		if (!(await this.cliCredentialManager.hasCliStore(url, configs))) {
+			return false;
+		}
+		const result = await withCancellableProgress(
+			({ signal }) =>
+				this.cliCredentialManager.holdsToken(url, token, configs, { signal }),
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: "Reading credentials from the Coder CLI",
+				cancellable: true,
+			},
+		);
+		return result.ok && result.value;
 	}
 
 	/**
-	 * Remove credentials for a deployment. Clears both file-based credentials
-	 * and keyring entries (via `coder logout`). Never throws; returns whether
-	 * every store was cleared.
+	 * Remove credentials for a deployment. `signOutCli` also logs a shared CLI
+	 * session out. Never throws; returns whether every store was cleared.
 	 */
-	public async clearCredentials(url: string): Promise<boolean> {
+	public async clearCredentials(
+		url: string,
+		{ signOutCli }: { signOutCli: boolean },
+	): Promise<boolean> {
 		const configs = vscode.workspace.getConfiguration();
 		const result = await withOptionalProgress(
 			({ signal }) =>
-				this.cliCredentialManager.deleteToken(url, configs, { signal }),
+				this.cliCredentialManager.deleteToken(url, configs, {
+					signal,
+					signOutCli,
+				}),
 			{
-				enabled: isKeyringEnabled(configs),
+				enabled: signOutCli,
 				location: vscode.ProgressLocation.Notification,
 				title: `Removing credentials for ${url}`,
 				cancellable: true,
@@ -1095,21 +1111,11 @@ export class CliManager {
 		return false;
 	}
 
-	private handleStoreError(error: unknown): void {
-		this.output.error("Failed to store credentials:", error);
-		vscode.window
-			.showErrorMessage(
-				`Failed to store credentials: ${errToStr(error)}.`,
-				"Open Settings",
-			)
-			.then((action) => {
-				if (action === "Open Settings") {
-					vscode.commands.executeCommand(
-						"workbench.action.openSettings",
-						"coder.useKeyring",
-					);
-				}
-			});
+	private handleStoreError(
+		error: unknown,
+		configs: Pick<vscode.WorkspaceConfiguration, "get">,
+	): never {
+		showStoreCredentialsError(error, configs, this.output);
 		throw error;
 	}
 }

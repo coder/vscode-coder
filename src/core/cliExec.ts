@@ -1,4 +1,5 @@
 import { type ExecFileException, execFile, spawn } from "node:child_process";
+import { stat } from "node:fs/promises";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
 
@@ -17,11 +18,25 @@ export interface CliEnv {
 	configs: Pick<vscode.WorkspaceConfiguration, "get">;
 }
 
+const VERSION_CACHE = new Map<string, { fileKey: string; version: string }>();
+
 /**
- * Return the version from the binary.  Throw if unable to execute the binary or
- * find the version for any reason.
+ * Return the version from the binary, cached until the file changes on disk.
+ * Throw if unable to execute the binary or find the version for any reason.
  */
 export async function version(binPath: string): Promise<string> {
+	const { mtimeNs, size } = await stat(binPath, { bigint: true });
+	const fileKey = `${mtimeNs}:${size}`;
+	const cached = VERSION_CACHE.get(binPath);
+	if (cached?.fileKey === fileKey) {
+		return cached.version;
+	}
+	const result = await readVersion(binPath);
+	VERSION_CACHE.set(binPath, { fileKey, version: result });
+	return result;
+}
+
+async function readVersion(binPath: string): Promise<string> {
 	let stdout: string;
 	try {
 		const result = await execFileAsync(binPath, [

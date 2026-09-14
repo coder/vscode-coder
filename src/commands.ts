@@ -43,7 +43,7 @@ import {
 	RECOMMENDED_SSH_SETTINGS,
 	applySettingOverrides,
 } from "./remote/sshOverrides";
-import { resolveCliAuth } from "./settings/cli";
+import { isKeyringEnabled, resolveCliAuth } from "./settings/cli";
 import { appendVsCodeLogs } from "./supportBundle/appendVsCodeLogs";
 import {
 	getRemoteServerDataPath,
@@ -82,7 +82,7 @@ import type { CliManager } from "./core/cliManager";
 import type { ServiceContainer } from "./core/container";
 import type { MementoManager } from "./core/mementoManager";
 import type { PathResolver } from "./core/pathResolver";
-import type { SecretsManager } from "./core/secretsManager";
+import type { SecretsManager, SessionAuth } from "./core/secretsManager";
 import type { DeploymentManager } from "./deployment/deploymentManager";
 import type { Logger } from "./logging/logger";
 import type { LoginCoordinator, LoginMethod } from "./login/loginCoordinator";
@@ -698,24 +698,41 @@ export class Commands {
 	}
 
 	private async performLogout(): Promise<AuthLogoutOutcome> {
-		if (!this.deploymentManager.isAuthenticated()) {
+		const deployment = this.deploymentManager.getCurrentDeployment();
+		if (!this.deploymentManager.isAuthenticated() || !deployment) {
+			return { success: false, reason: "not_authenticated" };
+		}
+
+		const auth = await this.secretsManager.getSessionAuth(
+			deployment.safeHostname,
+		);
+		const signOutCli = await this.askSignOutCli(auth);
+		if (signOutCli === undefined) {
+			return { success: false, reason: "user_dismissed" };
+		}
+		// Another window may have switched deployments while the prompt was open.
+		if (this.deploymentManager.getCurrentDeployment()?.url !== deployment.url) {
 			return { success: false, reason: "not_authenticated" };
 		}
 
 		this.logger.debug("Logging out");
-
-		const deployment = this.deploymentManager.getCurrentDeployment();
 		await this.deploymentManager.clearDeployment("logout");
-
-		if (deployment) {
-			const cleared = await this.cliManager.clearCredentials(deployment.url);
-			await this.secretsManager.clearAllAuthData(deployment.safeHostname);
-			if (!cleared) {
-				vscode.window.showWarningMessage(
+		const cleared = await this.cliManager.clearCredentials(deployment.url, {
+			signOutCli,
+		});
+		await this.secretsManager.clearAllAuthData(deployment.safeHostname);
+		if (!cleared) {
+			vscode.window
+				.showWarningMessage(
 					'You\'ve been logged out of Coder, but some credentials could not be removed. Log out again to retry, or run "coder logout" in a terminal.',
-				);
-				return { success: false, reason: "cleanup_incomplete" };
-			}
+					"Show Output",
+				)
+				.then((action) => {
+					if (action === "Show Output") {
+						this.logger.show();
+					}
+				});
+			return { success: false, reason: "cleanup_incomplete" };
 		}
 
 		this.showLogoutMessage();
@@ -733,6 +750,36 @@ export class Commands {
 					});
 				}
 			});
+	}
+
+	/** Whether to sign the CLI out too. Asks when it holds this session's token; undefined when dismissed. */
+	private async askSignOutCli(
+		auth: SessionAuth | undefined,
+	): Promise<boolean | undefined> {
+		if (
+			!auth?.token ||
+			!(await this.cliManager.holdsToken(auth.url, auth.token))
+		) {
+			return false;
+		}
+		// The CLI cannot refresh an OAuth token and logout revokes it, so there is nothing to keep.
+		if (auth.oauth) {
+			return true;
+		}
+		const action = await vscodeProposed.window.showWarningMessage(
+			"Sign out of the Coder CLI too?",
+			{
+				useCustom: true,
+				modal: true,
+				detail: `${auth.url}\n\nThe Coder CLI is signed in with this session. Signing it out also signs out other tools that rely on it.`,
+			},
+			"Sign Out",
+			"Keep Signed In",
+		);
+		if (action === undefined) {
+			return undefined;
+		}
+		return action === "Sign Out";
 	}
 
 	/**
@@ -790,7 +837,11 @@ export class Commands {
 				const selectedHostname = selected.hostnames[0];
 				const auth = await this.secretsManager.getSessionAuth(selectedHostname);
 				if (auth?.url) {
-					await this.cliManager.clearCredentials(auth.url);
+					const signOutCli = await this.askSignOutCli(auth);
+					if (signOutCli === undefined) {
+						return;
+					}
+					await this.cliManager.clearCredentials(auth.url, { signOutCli });
 				}
 				await this.secretsManager.clearAllAuthData(selectedHostname);
 				this.logger.info("Removed credentials for", selectedHostname);
@@ -803,20 +854,24 @@ export class Commands {
 					{
 						useCustom: true,
 						modal: true,
-						detail: `This will remove credentials for: ${selected.hostnames.join(", ")}\n\nYou'll need to log in again to access them.`,
+						detail: `This will remove credentials for: ${selected.hostnames.join(", ")}\n\nYou'll need to log in again to access them.${isKeyringEnabled(vscode.workspace.getConfiguration()) ? " This also signs the Coder CLI out where it shares a session." : ""}`,
 					},
 					"Remove All",
 				);
 				if (confirm === "Remove All") {
-					await Promise.all(
-						selected.hostnames.map(async (h) => {
-							const auth = await this.secretsManager.getSessionAuth(h);
-							if (auth?.url) {
-								await this.cliManager.clearCredentials(auth.url);
-							}
-							await this.secretsManager.clearAllAuthData(h);
-						}),
-					);
+					// One at a time: `coder logout` rewrites the whole keyring entry.
+					for (const h of selected.hostnames) {
+						const auth = await this.secretsManager.getSessionAuth(h);
+						if (auth?.url) {
+							await this.cliManager.clearCredentials(auth.url, {
+								signOutCli: await this.cliManager.holdsToken(
+									auth.url,
+									auth.token,
+								),
+							});
+						}
+						await this.secretsManager.clearAllAuthData(h);
+					}
 					this.logger.info(
 						"Removed credentials for all deployments:",
 						selected.hostnames.join(", "),
@@ -1410,12 +1465,9 @@ export class Commands {
 			throw new Error("You are not logged in");
 		}
 		const safeHost = toSafeHost(baseUrl);
-		let binary: string;
-		try {
-			binary = await this.cliManager.locateBinary(baseUrl);
-		} catch {
-			binary = await this.cliManager.fetchBinary(client);
-		}
+		const binary =
+			(await this.cliManager.locateBinary(baseUrl)) ??
+			(await this.cliManager.fetchBinary(client));
 		const version = semver.parse(await cliExec.version(binary));
 		const featureSet = featureSetForVersion(version);
 		const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
