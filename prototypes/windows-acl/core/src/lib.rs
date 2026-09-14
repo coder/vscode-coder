@@ -405,27 +405,6 @@ mod windows {
         }
     }
 
-    #[cfg(test)]
-    fn sid_to_sddl(sid: PSID) -> io::Result<String> {
-        let mut value = null_mut();
-        unsafe {
-            check_bool(
-                windows_sys::Win32::Security::Authorization::ConvertSidToStringSidW(
-                    sid, &mut value,
-                ),
-            )?;
-            let mut length = 0;
-            while *value.add(length) != 0 {
-                length += 1;
-            }
-            let sid = OsString::from_wide(std::slice::from_raw_parts(value, length))
-                .to_string_lossy()
-                .into_owned();
-            LocalFree(value.cast());
-            Ok(sid)
-        }
-    }
-
     fn check(result: u32) -> io::Result<()> {
         if result == 0 {
             Ok(())
@@ -450,12 +429,88 @@ mod windows {
     mod tests {
         use super::*;
         use std::fs;
+        use std::ptr::null_mut;
+        use windows_sys::Win32::Security::{
+            ACCESS_ALLOWED_ACE, GetAce, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
+            SE_DACL_PROTECTED,
+        };
+
+        const ACCESS_ALLOWED_ACE_TYPE: u8 = 0;
+
+        fn assert_protected_file_acl(path: &Path, expected_sids: [&SidBuffer; 3]) {
+            let path = WidePath::new(path).unwrap();
+            let handle = FileHandle::open_for_read(&path).unwrap();
+            let descriptor = SecurityDescriptor::get(handle.0).unwrap();
+            let mut control = 0;
+            let mut revision = 0;
+            unsafe {
+                check_bool(GetSecurityDescriptorControl(
+                    descriptor.0,
+                    &mut control,
+                    &mut revision,
+                ))
+                .unwrap();
+            }
+            assert_ne!(control & SE_DACL_PROTECTED, 0, "DACL must be protected");
+
+            let mut dacl_present = 0;
+            let mut dacl = null_mut();
+            let mut dacl_defaulted = 0;
+            unsafe {
+                check_bool(GetSecurityDescriptorDacl(
+                    descriptor.0,
+                    &mut dacl_present,
+                    &mut dacl,
+                    &mut dacl_defaulted,
+                ))
+                .unwrap();
+            }
+            assert_ne!(dacl_present, 0, "security descriptor must contain a DACL");
+            assert!(
+                !dacl.is_null(),
+                "security descriptor must contain a non-null DACL"
+            );
+            assert_eq!(
+                unsafe { (*dacl).AceCount },
+                3,
+                "DACL must contain three ACEs"
+            );
+
+            for (index, expected_sid) in expected_sids.into_iter().enumerate() {
+                let mut ace = null_mut();
+                unsafe {
+                    check_bool(GetAce(dacl, index as u32, &mut ace)).unwrap();
+                    let ace = ace.cast::<ACCESS_ALLOWED_ACE>();
+                    assert_eq!(
+                        (*ace).Header.AceType,
+                        ACCESS_ALLOWED_ACE_TYPE,
+                        "ACE {index} must allow access",
+                    );
+                    assert_eq!(
+                        (*ace).Header.AceFlags,
+                        0,
+                        "file ACE {index} must not inherit",
+                    );
+                    assert_eq!(
+                        (*ace).Mask,
+                        PROTECTED_FILE_ACCESS,
+                        "ACE {index} must grant full control",
+                    );
+                    let sid = std::ptr::addr_of!((*ace).SidStart).cast_mut().cast();
+                    assert_ne!(
+                        EqualSid(sid, expected_sid.as_psid()),
+                        0,
+                        "ACE {index} SID did not match",
+                    );
+                }
+            }
+        }
 
         #[test]
         fn secure_path_protects_a_real_file_with_the_current_user_ace() {
             let current_user = SidBuffer::current_user().unwrap();
-            assert_ne!(unsafe { IsValidSid(current_user.as_psid()) }, 0);
-            let current_user_sddl = sid_to_sddl(current_user.as_psid()).unwrap();
+            let system = SidBuffer::well_known(WinLocalSystemSid).unwrap();
+            let administrators = SidBuffer::well_known(WinBuiltinAdministratorsSid).unwrap();
             let path = std::env::temp_dir().join(format!(
                 "acl-prototype-{}-{}.txt",
                 std::process::id(),
@@ -474,10 +529,7 @@ mod windows {
                 !sddl.ends_with('\0'),
                 "SDDL must not retain the API terminator"
             );
-            assert_eq!(
-                sddl,
-                format!("D:P(A;;FA;;;{current_user_sddl})(A;;FA;;;SY)(A;;FA;;;BA)"),
-            );
+            assert_protected_file_acl(&path, [&current_user, &system, &administrators]);
 
             fs::remove_file(path).unwrap();
         }
