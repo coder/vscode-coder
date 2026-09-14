@@ -141,11 +141,9 @@ describe("CliManager", () => {
 			expectPathsEqual(await manager.locateBinary(TEST_URL), BINARY_PATH);
 		});
 
-		it("throws when binary does not exist", async () => {
+		it("returns undefined when binary does not exist", async () => {
 			const { manager } = setupCliManager();
-			await expect(manager.locateBinary(TEST_URL)).rejects.toThrow(
-				"No CLI binary found at",
-			);
+			await expect(manager.locateBinary(TEST_URL)).resolves.toBeUndefined();
 		});
 	});
 
@@ -183,12 +181,10 @@ describe("CliManager", () => {
 				expectPathsEqual(await t.manager.locateBinary(TEST_URL), FILE_PATH);
 			});
 
-			it("locateBinary throws when file does not exist", async () => {
+			it("locateBinary returns undefined when file does not exist", async () => {
 				const { manager, mockConfig } = setupCliManager();
 				mockConfig.set("coder.binaryDestination", "/nonexistent/coder");
-				await expect(manager.locateBinary(TEST_URL)).rejects.toThrow(
-					"No CLI binary found at",
-				);
+				await expect(manager.locateBinary(TEST_URL)).resolves.toBeUndefined();
 			});
 
 			it("fetchBinary uses file when version matches", async () => {
@@ -309,41 +305,44 @@ describe("CliManager", () => {
 
 	describe("Clear Credentials", () => {
 		const CLEAR_URL = "https://dev.coder.com";
-		const SESSION = {
-			url: CLEAR_URL,
-			token: "test-token",
-			tokenSource: "extension",
-		} as const;
 
-		it("should skip progress notification when keyring is disabled", async () => {
-			const { manager, mockCredManager } = setupCliManager();
+		it.each([
+			{
+				scenario: "keyring disabled",
+				keyring: false,
+				signOutCli: true,
+				progress: false,
+			},
+			{
+				scenario: "CLI session kept",
+				keyring: true,
+				signOutCli: false,
+				progress: false,
+			},
+			{
+				scenario: "keyring sign-out",
+				keyring: true,
+				signOutCli: true,
+				progress: true,
+			},
+		])(
+			"$scenario: progress notification shown is $progress",
+			async ({ keyring, signOutCli, progress }) => {
+				const { manager, mockCredManager } = setupCliManager();
+				vi.mocked(isKeyringEnabled).mockReturnValue(keyring);
 
-			await manager.clearCredentials(CLEAR_URL, SESSION);
+				await manager.clearCredentials(CLEAR_URL, { signOutCli });
 
-			expect(vscode.window.withProgress).not.toHaveBeenCalled();
-			expect(mockCredManager.deleteToken).toHaveBeenCalledWith(
-				CLEAR_URL,
-				expect.anything(),
-				SESSION,
-				{ signal: expect.any(AbortSignal) },
-			);
-		});
-
-		it("should show progress notification when keyring is enabled", async () => {
-			const { manager } = setupCliManager();
-			vi.mocked(isKeyringEnabled).mockReturnValue(true);
-
-			await manager.clearCredentials(CLEAR_URL, SESSION);
-
-			expect(vscode.window.withProgress).toHaveBeenCalledWith(
-				expect.objectContaining({
-					location: vscode.ProgressLocation.Notification,
-					title: `Removing credentials for ${CLEAR_URL}`,
-					cancellable: true,
-				}),
-				expect.any(Function),
-			);
-		});
+				expect(vscode.window.withProgress).toHaveBeenCalledTimes(
+					Number(progress),
+				);
+				expect(mockCredManager.deleteToken).toHaveBeenCalledWith(
+					CLEAR_URL,
+					expect.anything(),
+					{ signal: expect.any(AbortSignal), signOutCli },
+				);
+			},
+		);
 
 		it.each([
 			{
@@ -373,7 +372,7 @@ describe("CliManager", () => {
 					);
 				}
 				await expect(
-					manager.clearCredentials(CLEAR_URL, SESSION),
+					manager.clearCredentials(CLEAR_URL, { signOutCli: true }),
 				).resolves.toEqual(expected);
 			},
 		);

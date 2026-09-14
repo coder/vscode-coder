@@ -8,11 +8,11 @@ import type { WorkspaceConfiguration } from "vscode";
 
 import type { FeatureSet } from "../featureSet";
 
-/** The CLI's own store, shared with the terminal CLI, or a file in the extension's private directory. */
+/** The CLI's own store (its config directory or the keyring, shared with the terminal), or a directory private to the extension. */
 export type CliAuth =
-	| { store: "shared"; url: string; useKeyring: boolean | undefined }
+	| { store: "cli"; url: string; useKeyring: boolean | undefined }
 	| {
-			store: "private";
+			store: "extension";
 			url: string;
 			configDir: string;
 			useKeyring: false | undefined;
@@ -61,9 +61,9 @@ function buildGlobalFlags(
 	// Escape after stripping so expansion whitespace stays in one shell token.
 	const flags = stripManagedFlags(
 		getExpandedUserGlobalFlags(configs),
-		auth.store === "private",
+		auth.store === "extension",
 	).map(escAuth);
-	if (auth.store === "private") {
+	if (auth.store === "extension") {
 		flags.push("--global-config", escAuth(auth.configDir));
 	}
 	flags.push("--url", escAuth(auth.url));
@@ -114,7 +114,7 @@ export function isKeyringEnabled(
 	return isKeyringSupported() && configs.get<boolean>("coder.useKeyring", true);
 }
 
-/** Shares the CLI's store when the keyring is on or the user set a config directory. */
+/** Uses the CLI's own store when the keyring is on or the user set a config directory. */
 export function resolveCliAuth(
 	configs: Pick<WorkspaceConfiguration, "get">,
 	featureSet: FeatureSet,
@@ -128,9 +128,9 @@ export function resolveCliAuth(
 	// A user directory is honored on 2.32+, where the CLI reports its token.
 	const userDir = hasUserConfigDir(configs) && featureSet.tokenRead;
 	if (useKeyring || userDir) {
-		return { store: "shared", url, useKeyring };
+		return { store: "cli", url, useKeyring };
 	}
-	return { store: "private", url, configDir, useKeyring };
+	return { store: "extension", url, configDir, useKeyring };
 }
 
 function hasUserConfigDir(

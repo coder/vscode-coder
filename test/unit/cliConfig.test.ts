@@ -22,20 +22,20 @@ const URL = "https://dev.coder.com";
 const EXT_DIR = "/config/dir";
 const USER_DIR = "/custom/coderv2";
 
-const privateAuth: CliAuth = {
-	store: "private",
+const extensionStoreAuth: CliAuth = {
+	store: "extension",
 	url: URL,
 	configDir: EXT_DIR,
 	useKeyring: undefined,
 };
-const sharedAuth: CliAuth = {
-	store: "shared",
+const cliStoreAuth: CliAuth = {
+	store: "cli",
 	url: URL,
 	useKeyring: undefined,
 };
 
-const PRIVATE_FLAGS = ["--global-config", EXT_DIR, "--url", URL];
-const SHARED_FLAGS = ["--url", URL];
+const EXTENSION_FLAGS = ["--global-config", EXT_DIR, "--url", URL];
+const CLI_FLAGS = ["--url", URL];
 
 describe("cliConfig", () => {
 	describe("getGlobalShellFlags", () => {
@@ -46,17 +46,21 @@ describe("cliConfig", () => {
 		}
 
 		it.each<AuthFlagsCase>([
-			{ scenario: "private store", auth: privateAuth, expected: PRIVATE_FLAGS },
-			{ scenario: "shared store", auth: sharedAuth, expected: SHARED_FLAGS },
 			{
-				scenario: "private store with keyring off",
-				auth: { ...privateAuth, useKeyring: false },
-				expected: [...PRIVATE_FLAGS, "--use-keyring=false"],
+				scenario: "extension store",
+				auth: extensionStoreAuth,
+				expected: EXTENSION_FLAGS,
+			},
+			{ scenario: "CLI store", auth: cliStoreAuth, expected: CLI_FLAGS },
+			{
+				scenario: "extension store with keyring off",
+				auth: { ...extensionStoreAuth, useKeyring: false },
+				expected: [...EXTENSION_FLAGS, "--use-keyring=false"],
 			},
 			{
-				scenario: "shared store with keyring on",
-				auth: { ...sharedAuth, useKeyring: true },
-				expected: [...SHARED_FLAGS, "--use-keyring=true"],
+				scenario: "CLI store with keyring on",
+				auth: { ...cliStoreAuth, useKeyring: true },
+				expected: [...CLI_FLAGS, "--use-keyring=true"],
 			},
 		])("emits auth flags for a $scenario", ({ auth, expected }) => {
 			const config = new MockConfigurationProvider();
@@ -67,10 +71,10 @@ describe("cliConfig", () => {
 			const config = new MockConfigurationProvider();
 			config.set("coder.globalFlags", ["--verbose", "--global-configs"]);
 
-			expect(getGlobalShellFlags(config, privateAuth)).toStrictEqual([
+			expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
 				"--verbose",
 				"--global-configs", // similar prefixes are not managed flags
-				...PRIVATE_FLAGS,
+				...EXTENSION_FLAGS,
 			]);
 		});
 
@@ -78,9 +82,9 @@ describe("cliConfig", () => {
 			const config = new MockConfigurationProvider();
 			config.set("coder.globalFlags", ["--verbose", "--use-keyring=false"]);
 
-			expect(getGlobalShellFlags(config, privateAuth)).toStrictEqual([
+			expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
 				"--verbose",
-				...PRIVATE_FLAGS,
+				...EXTENSION_FLAGS,
 			]);
 		});
 
@@ -93,14 +97,14 @@ describe("cliConfig", () => {
 		];
 
 		it.each(userGlobalConfigCases)(
-			"passes user --global-config through in a shared store ($scenario)",
+			"passes user --global-config through in the CLI store ($scenario)",
 			({ flags }) => {
 				const config = new MockConfigurationProvider();
 				config.set("coder.globalFlags", flags);
 
-				expect(getGlobalShellFlags(config, sharedAuth)).toStrictEqual([
+				expect(getGlobalShellFlags(config, cliStoreAuth)).toStrictEqual([
 					...flags,
-					...SHARED_FLAGS,
+					...CLI_FLAGS,
 				]);
 			},
 		);
@@ -112,14 +116,14 @@ describe("cliConfig", () => {
 				flags: ["-v", `--global-config ${USER_DIR}`],
 			},
 		])(
-			"strips user --global-config in a private store ($scenario)",
+			"strips user --global-config in the extension store ($scenario)",
 			({ flags }) => {
 				const config = new MockConfigurationProvider();
 				config.set("coder.globalFlags", flags);
 
-				expect(getGlobalShellFlags(config, privateAuth)).toStrictEqual([
+				expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
 					"-v",
-					...PRIVATE_FLAGS,
+					...EXTENSION_FLAGS,
 				]);
 			},
 		);
@@ -130,10 +134,10 @@ describe("cliConfig", () => {
 			config.set("coder.headerCommand", headerCommand);
 			config.set("coder.globalFlags", ["-v", "--header-command custom"]);
 
-			expect(getGlobalShellFlags(config, sharedAuth)).toStrictEqual([
+			expect(getGlobalShellFlags(config, cliStoreAuth)).toStrictEqual([
 				"-v",
 				'"--header-command custom"', // ignored by CLI
-				...SHARED_FLAGS,
+				...CLI_FLAGS,
 				"--header-command",
 				quoteCommand(headerCommand),
 			]);
@@ -145,9 +149,9 @@ describe("cliConfig", () => {
 			config.set("coder.globalFlags", ["--cfg=${userHome}/coder"]);
 
 			// Without per-entry escaping the space splits the shell command.
-			expect(getGlobalShellFlags(config, privateAuth)).toStrictEqual([
+			expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
 				'"--cfg=C:\\Users\\John Doe/coder"',
-				...PRIVATE_FLAGS,
+				...EXTENSION_FLAGS,
 			]);
 		});
 	});
@@ -158,9 +162,9 @@ describe("cliConfig", () => {
 			config.set("coder.globalFlags", ["--verbose"]);
 			config.set("coder.headerCommand", "echo test");
 
-			expect(getGlobalFlags(config, privateAuth)).toStrictEqual([
+			expect(getGlobalFlags(config, extensionStoreAuth)).toStrictEqual([
 				"--verbose",
-				...PRIVATE_FLAGS,
+				...EXTENSION_FLAGS,
 				"--header-command",
 				"echo test",
 			]);
@@ -306,18 +310,18 @@ describe("cliConfig", () => {
 
 		it.each<Case>([
 			{
-				scenario: "shares the CLI store when keyring is enabled on 2.29+",
+				scenario: "uses the CLI store when keyring is enabled on 2.29+",
 				platform: "darwin",
 				override: "none",
 				version: "2.29.0",
-				expected: ["--verbose", ...SHARED_FLAGS, "--use-keyring=true"],
+				expected: ["--verbose", ...CLI_FLAGS, "--use-keyring=true"],
 			},
 			{
 				scenario: "uses the extension directory when keyring is unsupported",
 				platform: "linux",
 				override: "none",
 				version: "2.29.0",
-				expected: ["--verbose", ...PRIVATE_FLAGS, "--use-keyring=false"],
+				expected: ["--verbose", ...EXTENSION_FLAGS, "--use-keyring=false"],
 			},
 			{
 				scenario:
@@ -325,7 +329,7 @@ describe("cliConfig", () => {
 				platform: "darwin",
 				override: "none",
 				version: "2.28.0",
-				expected: ["--verbose", ...PRIVATE_FLAGS],
+				expected: ["--verbose", ...EXTENSION_FLAGS],
 			},
 			{
 				scenario: "honors a globalFlags --global-config on 2.32+",
@@ -335,7 +339,7 @@ describe("cliConfig", () => {
 				expected: [
 					"--verbose",
 					`--global-config=${USER_DIR}`,
-					...SHARED_FLAGS,
+					...CLI_FLAGS,
 					"--use-keyring=true",
 				],
 			},
@@ -344,7 +348,7 @@ describe("cliConfig", () => {
 				platform: "darwin",
 				override: "env",
 				version: "2.32.0",
-				expected: ["--verbose", ...SHARED_FLAGS, "--use-keyring=true"],
+				expected: ["--verbose", ...CLI_FLAGS, "--use-keyring=true"],
 			},
 			{
 				scenario: "honors a globalFlags --global-config with keyring disabled",
@@ -354,7 +358,7 @@ describe("cliConfig", () => {
 				expected: [
 					"--verbose",
 					`--global-config=${USER_DIR}`,
-					...SHARED_FLAGS,
+					...CLI_FLAGS,
 					"--use-keyring=false",
 				],
 			},
@@ -364,7 +368,7 @@ describe("cliConfig", () => {
 				platform: "linux",
 				override: "flag",
 				version: "2.31.0",
-				expected: ["--verbose", ...PRIVATE_FLAGS, "--use-keyring=false"],
+				expected: ["--verbose", ...EXTENSION_FLAGS, "--use-keyring=false"],
 			},
 			{
 				scenario:
@@ -372,7 +376,7 @@ describe("cliConfig", () => {
 				platform: "linux",
 				override: "env",
 				version: "2.31.0",
-				expected: ["--verbose", ...PRIVATE_FLAGS, "--use-keyring=false"],
+				expected: ["--verbose", ...EXTENSION_FLAGS, "--use-keyring=false"],
 			},
 		])("$scenario", ({ platform, override, version, expected }) => {
 			vi.mocked(os.platform).mockReturnValue(platform);

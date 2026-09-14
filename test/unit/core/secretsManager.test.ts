@@ -34,7 +34,6 @@ describe("SecretsManager", () => {
 			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com",
 				token: "test-token",
-				tokenSource: "extension",
 			});
 			const auth = await secretsManager.getSessionAuth("example.com");
 			expect(auth?.token).toBe("test-token");
@@ -43,7 +42,6 @@ describe("SecretsManager", () => {
 			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com",
 				token: "new-token",
-				tokenSource: "extension",
 			});
 			const newAuth = await secretsManager.getSessionAuth("example.com");
 			expect(newAuth?.token).toBe("new-token");
@@ -53,13 +51,11 @@ describe("SecretsManager", () => {
 			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com:8443",
 				token: "test-token",
-				tokenSource: "extension",
 			});
 
 			expect(await secretsManager.getSessionAuth("example.com")).toEqual({
 				url: "https://example.com:8443",
 				token: "test-token",
-				tokenSource: "extension",
 			});
 		});
 
@@ -92,7 +88,6 @@ describe("SecretsManager", () => {
 				const existingAuth = {
 					url: "https://example.com",
 					token: "existing-token",
-					tokenSource: "extension" as const,
 				};
 				await secretsManager.setSessionAuth("example.com", existingAuth);
 
@@ -100,7 +95,6 @@ describe("SecretsManager", () => {
 					secretsManager.setSessionAuth("example.com", {
 						url,
 						token: "secret-token",
-						tokenSource: "extension",
 					}),
 				).rejects.toThrow(error);
 
@@ -135,7 +129,6 @@ describe("SecretsManager", () => {
 			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com",
 				token: "test-token",
-				tokenSource: "extension",
 			});
 			await secretsManager.clearAllAuthData("example.com");
 			expect(
@@ -164,7 +157,6 @@ describe("SecretsManager", () => {
 			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com",
 				token: "test-token",
-				tokenSource: "extension",
 			});
 			expect(await secretsManager.getKnownSafeHostnames()).toContain(
 				"example.com",
@@ -173,7 +165,6 @@ describe("SecretsManager", () => {
 			await secretsManager.setSessionAuth("other.com", {
 				url: "https://other.com",
 				token: "other-token",
-				tokenSource: "extension",
 			});
 			expect(await secretsManager.getKnownSafeHostnames()).toContain(
 				"example.com",
@@ -187,7 +178,6 @@ describe("SecretsManager", () => {
 			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com",
 				token: "test-token",
-				tokenSource: "extension",
 			});
 			expect(await secretsManager.getKnownSafeHostnames()).toContain(
 				"example.com",
@@ -203,7 +193,6 @@ describe("SecretsManager", () => {
 			await secretsManager.setSessionAuth("example.com", {
 				url: "https://example.com",
 				token: "test-token",
-				tokenSource: "extension",
 			});
 			secretStorage.corruptStorage();
 
@@ -216,19 +205,16 @@ describe("SecretsManager", () => {
 			await secretsManager.setSessionAuth("first.com", {
 				url: "https://first.com",
 				token: "token1",
-				tokenSource: "extension",
 			});
 			vi.advanceTimersByTime(10);
 			await secretsManager.setSessionAuth("second.com", {
 				url: "https://second.com",
 				token: "token2",
-				tokenSource: "extension",
 			});
 			vi.advanceTimersByTime(10);
 			await secretsManager.setSessionAuth("first.com", {
 				url: "https://first.com",
 				token: "token1-updated",
-				tokenSource: "extension",
 			});
 
 			expect(await secretsManager.getKnownSafeHostnames()).toEqual([
@@ -247,7 +233,6 @@ describe("SecretsManager", () => {
 				await secretsManager.setSessionAuth(`host${i}.com`, {
 					url: `https://host${i}.com`,
 					token: `token${i}`,
-					tokenSource: "extension",
 				});
 				vi.advanceTimersByTime(10);
 			}
@@ -367,7 +352,6 @@ describe("SecretsManager", () => {
 			await secretsManager.setSessionAuth("existing.coder.com", {
 				url: "https://existing.coder.com",
 				token: "existing-token",
-				tokenSource: "extension",
 			});
 
 			// Set up legacy storage with same hostname
@@ -403,7 +387,6 @@ describe("SecretsManager", () => {
 			await secretsManager.setSessionAuth("mtls.coder.com", {
 				url: "https://mtls.coder.com",
 				token: "",
-				tokenSource: "extension",
 			});
 
 			const auth = await secretsManager.getSessionAuth("mtls.coder.com");
@@ -418,7 +401,6 @@ describe("SecretsManager", () => {
 				const authWithExtra = {
 					url: "https://coder.example.com",
 					token: "test-token",
-					tokenSource: "extension" as const,
 					extraField: "should be stripped",
 				};
 
@@ -428,7 +410,6 @@ describe("SecretsManager", () => {
 				expect(JSON.parse(raw!)).toEqual({
 					url: "https://coder.example.com",
 					token: "test-token",
-					tokenSource: "extension",
 				});
 			});
 
@@ -436,7 +417,6 @@ describe("SecretsManager", () => {
 				const authWithExtra = {
 					url: "https://coder.example.com",
 					token: "test-token",
-					tokenSource: "extension" as const,
 					oauth: {
 						scope: "workspace:read",
 						expiry_timestamp: 12345,
@@ -450,7 +430,6 @@ describe("SecretsManager", () => {
 				expect(JSON.parse(raw!)).toEqual({
 					url: "https://coder.example.com",
 					token: "test-token",
-					tokenSource: "extension",
 					oauth: { scope: "workspace:read", expiry_timestamp: 12345 },
 				});
 			});
@@ -523,12 +502,11 @@ describe("SecretsManager", () => {
 
 			const sessionAuthCases: BackwardsCompatTestCase[] = [
 				{
-					name: "without optional fields, defaulting tokenSource",
+					name: "without optional fields",
 					data: { url: "https://coder.example.com", token: "test-token" },
 					expected: {
 						url: "https://coder.example.com",
 						token: "test-token",
-						tokenSource: "extension",
 					},
 				},
 				{
@@ -542,20 +520,6 @@ describe("SecretsManager", () => {
 						url: "https://coder.example.com",
 						token: "test-token",
 						oauth: { scope: "workspace:read", expiry_timestamp: 12345 },
-						tokenSource: "extension",
-					},
-				},
-				{
-					name: "with a CLI token source",
-					data: {
-						url: "https://coder.example.com",
-						token: "test-token",
-						tokenSource: "cli",
-					},
-					expected: {
-						url: "https://coder.example.com",
-						token: "test-token",
-						tokenSource: "cli",
 					},
 				},
 			];

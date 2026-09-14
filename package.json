@@ -204,7 +204,7 @@
 					"ignoreSync": true
 				},
 				"coder.useKeyring": {
-					"markdownDescription": "Store session tokens in the OS keyring (macOS Keychain, Windows Credential Manager) instead of a file. Requires Coder CLI 2.29.0 or later; 2.32.0 or later to sign in with the CLI's existing session. Has no effect on Linux.\n\nThe keyring entry is shared with the `coder` CLI: signing in here also signs in the CLI, and signing out signs out the CLI only when it still holds the token this extension created.",
+					"markdownDescription": "Store session tokens in the OS keyring (macOS Keychain, Windows Credential Manager) instead of a file. Requires Coder CLI 2.29.0 or later; 2.32.0 or later to sign in with the CLI's existing session. Has no effect on Linux.\n\nThe keyring entry is shared with the `coder` CLI: signing in here also signs in the CLI, and signing out asks whether to sign out the CLI too.",
 					"type": "boolean",
 					"default": true,
 					"scope": "application"

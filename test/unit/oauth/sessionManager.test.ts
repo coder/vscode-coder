@@ -90,7 +90,6 @@ function createTestContext(deployment: Deployment = createTestDeployment()) {
 		await base.secretsManager.setSessionAuth(TEST_HOSTNAME, {
 			url: TEST_URL,
 			token: overrides.token ?? "access-token",
-			tokenSource: "extension",
 			username: overrides.username,
 			oauth: {
 				refresh_token: overrides.refreshToken ?? "refresh-token",
@@ -150,7 +149,6 @@ describe("OAuthSessionManager", () => {
 				auth: {
 					url: TEST_URL,
 					token: "access-token",
-					tokenSource: "extension",
 					oauth: {
 						refresh_token: "refresh-token",
 						expiry_timestamp: Date.now() + ONE_HOUR_MS,
@@ -169,7 +167,6 @@ describe("OAuthSessionManager", () => {
 				auth: {
 					url: TEST_URL,
 					token: "session-token",
-					tokenSource: "extension",
 				},
 				expected: false,
 			},
@@ -260,7 +257,6 @@ describe("OAuthSessionManager", () => {
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: `${TEST_URL}:8443`,
 				token: "access-token",
-				tokenSource: "extension",
 				oauth: {
 					refresh_token: "refresh-token",
 					expiry_timestamp: Date.now() + ONE_HOUR_MS,
@@ -515,7 +511,6 @@ describe("OAuthSessionManager", () => {
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "access-token",
-				tokenSource: "extension",
 				oauth: {
 					refresh_token: "refresh-token",
 					expiry_timestamp: Date.now() + ONE_HOUR_MS,
@@ -533,7 +528,6 @@ describe("OAuthSessionManager", () => {
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "access-token",
-				tokenSource: "extension",
 				oauth: {
 					refresh_token: "refresh-token",
 					expiry_timestamp: Date.now() + ONE_HOUR_MS,

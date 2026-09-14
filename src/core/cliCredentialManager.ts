@@ -6,9 +6,11 @@ import * as semver from "semver";
 import { isAbortError } from "../error/errorUtils";
 import { featureSetForVersion, type FeatureSet } from "../featureSet";
 import {
+	categorizeCredentialError,
 	CredentialCliError,
 	CredentialTelemetry,
 } from "../instrumentation/credentials";
+import { recordError } from "../instrumentation/outcomes";
 import { type CliAuth, getGlobalFlags, resolveCliAuth } from "../settings/cli";
 import { type TelemetryReporter } from "../telemetry/reporter";
 import { toSafeHost } from "../util/uri";
@@ -21,7 +23,6 @@ import type { Logger } from "../logging/logger";
 import type { Span } from "../telemetry/span";
 
 import type { PathResolver } from "./pathResolver";
-import type { SessionAuth } from "./secretsManager";
 
 const execFileAsync = promisify(execFile);
 
@@ -35,11 +36,10 @@ interface ResolvedCli {
 	flags: string[];
 }
 
-/**
- * Resolves a CLI binary path for a given deployment URL, fetching/downloading
- * if needed. Returns the path or throws if unavailable.
- */
-export type BinaryResolver = (deploymentUrl: string) => Promise<string>;
+/** The downloaded CLI binary for a deployment URL, or undefined when there is none. */
+export type BinaryResolver = (
+	deploymentUrl: string,
+) => Promise<string | undefined>;
 
 /** Stores, reads, and deletes credentials through `coder login` and `coder logout`. */
 export class CliCredentialManager {
@@ -54,7 +54,7 @@ export class CliCredentialManager {
 		this.credentialTelemetry = new CredentialTelemetry(telemetry);
 	}
 
-	/** Stores a token via `coder login`. Throws when the binary or the CLI fails. */
+	/** Stores a token via `coder login`. Skipped until the CLI is downloaded; throws when the CLI fails. */
 	public storeToken(
 		url: string,
 		token: string,
@@ -63,20 +63,20 @@ export class CliCredentialManager {
 	): Promise<void> {
 		return this.credentialTelemetry.traceStore(configs, async (span) => {
 			const cli = await this.resolveCli(url, configs);
-			span.setProperty("store", cli.auth.store);
-			try {
-				await this.exec(cli, ["login", "--use-token-as-session", url], {
-					env: { ...process.env, CODER_SESSION_TOKEN: token },
-					signal: options?.signal,
-				});
-				this.logger.info("Stored token via CLI for", url);
-			} catch (error) {
-				this.logger.warn("Failed to store token via CLI:", error);
-				if (isAbortError(error)) {
-					throw error;
-				}
-				throw new CredentialCliError(error);
+			if (!cli) {
+				span.setProperty("outcome", "no_binary");
+				this.logger.info(
+					"Skipped storing the token in the CLI: it is not downloaded yet",
+				);
+				return;
 			}
+			span.setProperty("store", cli.auth.store);
+			await this.exec(cli, ["login", "--use-token-as-session", url], {
+				env: { ...process.env, CODER_SESSION_TOKEN: token },
+				signal: options?.signal,
+			});
+			span.setProperty("outcome", "stored");
+			this.logger.info("Stored token via CLI for", url);
 		});
 	}
 
@@ -86,58 +86,71 @@ export class CliCredentialManager {
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
 	): Promise<string | undefined> {
-		let cli: ResolvedCli;
 		try {
-			cli = await this.resolveCli(url, configs);
-		} catch (error) {
-			this.logger.warn("Could not resolve CLI binary:", error);
-			return undefined;
-		}
-		if (!cli.featureSet.tokenRead) {
-			return undefined;
-		}
-		// Keyring entries drop the scheme, so an http lookup returns the https token.
-		if (cli.auth.useKeyring && !url.startsWith("https:")) {
-			this.logger.warn("Refusing to read keyring credentials for", url);
-			return undefined;
-		}
-		return this.readCliToken(cli, options?.signal);
-	}
-
-	private async readCliToken(
-		cli: ResolvedCli,
-		signal: AbortSignal | undefined,
-	): Promise<string | undefined> {
-		try {
-			const { stdout } = await this.exec(cli, ["login", "token"], { signal });
-			return stdout.trim() || undefined;
+			const cli = await this.resolveCli(url, configs);
+			if (!cli) {
+				this.logger.debug("No CLI session to read: the CLI is not downloaded");
+				return undefined;
+			}
+			if (!cli.featureSet.tokenRead) {
+				return undefined;
+			}
+			return await this.cliToken(cli, options?.signal);
 		} catch (error) {
 			if (isAbortError(error)) {
 				throw error;
 			}
-			this.logger.warn("Failed to read token via CLI:", error);
+			this.logger.info(
+				"Could not read the CLI session (it may not be signed in):",
+				error,
+			);
 			return undefined;
 		}
 	}
 
 	/**
-	 * Deletes the extension's credential files and runs `coder logout` when the
-	 * CLI session is ours (see `ownsCliSession`). Returns whether every store
-	 * was cleared; throws only on abort.
+	 * True when the CLI's own store holds `token`. Below CLI 2.32 the token
+	 * cannot be read back, so the CLI's store counts as holding it. False without a working CLI.
+	 */
+	public async holdsToken(
+		url: string,
+		token: string,
+		configs: Pick<WorkspaceConfiguration, "get">,
+	): Promise<boolean> {
+		try {
+			const cli = await this.resolveCli(url, configs);
+			if (cli?.auth.store !== "cli") {
+				return false;
+			}
+			return !cli.featureSet.tokenRead || (await this.cliToken(cli)) === token;
+		} catch (error) {
+			this.logger.warn("Could not read the CLI session:", error);
+			return false;
+		}
+	}
+
+	private async cliToken(
+		cli: ResolvedCli,
+		signal?: AbortSignal,
+	): Promise<string | undefined> {
+		const { stdout } = await this.exec(cli, ["login", "token"], { signal });
+		return stdout.trim() || undefined;
+	}
+
+	/**
+	 * Deletes the extension's credential files and runs `coder logout`, which
+	 * revokes the token. A shared CLI session is only logged out when
+	 * `signOutCli` is set. Returns whether every store was cleared; throws only on abort.
 	 */
 	public deleteToken(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
-		session: SessionAuth | undefined,
-		options?: { signal?: AbortSignal },
+		options: { signal?: AbortSignal; signOutCli: boolean },
 	): Promise<boolean> {
 		return this.credentialTelemetry.traceClear(configs, async (span) => {
 			const [filesCleared, cliCleared] = await Promise.all([
 				this.deleteCredentialFiles(url),
-				this.cliLogout(url, configs, session, {
-					signal: options?.signal,
-					span,
-				}),
+				this.cliLogout(url, configs, { ...options, span }),
 			]);
 			return filesCleared && cliCleared;
 		});
@@ -146,25 +159,27 @@ export class CliCredentialManager {
 	private async cliLogout(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
-		session: SessionAuth | undefined,
-		{ signal, span }: { signal?: AbortSignal; span: Span },
+		{
+			signal,
+			signOutCli,
+			span,
+		}: { signal?: AbortSignal; signOutCli: boolean; span: Span },
 	): Promise<boolean> {
-		let cli: ResolvedCli;
 		try {
-			cli = await this.resolveCli(url, configs);
-		} catch (error) {
-			this.logger.warn("Could not resolve CLI binary for logout:", error);
-			span.setProperty("error.type", "binary");
-			span.markError();
-			return false;
-		}
-		span.setProperty("store", cli.auth.store);
-		if (!(await this.ownsCliSession(cli, session, signal))) {
-			this.logger.info("Kept the CLI session for", url);
-			return true;
-		}
-		try {
+			const cli = await this.resolveCli(url, configs);
+			if (!cli) {
+				span.setProperty("outcome", "no_binary");
+				this.logger.info("Skipped signing out the CLI: it is not downloaded");
+				return true;
+			}
+			span.setProperty("store", cli.auth.store);
+			// The CLI's own session is the user's call; the extension's is always revoked.
+			if (cli.auth.store === "cli" && !signOutCli) {
+				span.setProperty("outcome", "kept");
+				return true;
+			}
 			await this.exec(cli, ["logout", "--yes"], { signal });
+			span.setProperty("outcome", "logged_out");
 			this.logger.info("Logged out via CLI for", url);
 			return true;
 		} catch (error) {
@@ -172,37 +187,19 @@ export class CliCredentialManager {
 				throw error;
 			}
 			this.logger.warn("Failed to log out via CLI:", error);
-			span.setProperty("error.type", "cli");
-			span.markError();
+			recordError(span, categorizeCredentialError(error));
 			return false;
 		}
-	}
-
-	/** A shared store is ours only if the CLI still holds the token this extension created. */
-	private async ownsCliSession(
-		cli: ResolvedCli,
-		session: SessionAuth | undefined,
-		signal: AbortSignal | undefined,
-	): Promise<boolean> {
-		if (cli.auth.store === "private") {
-			return true;
-		}
-		if (session?.tokenSource !== "extension") {
-			return false;
-		}
-		// Below 2.32 the token is not read back; trust the provenance.
-		if (!cli.featureSet.tokenRead) {
-			return true;
-		}
-		const cliToken = await this.readCliToken(cli, signal);
-		return cliToken === session.token;
 	}
 
 	private async resolveCli(
 		url: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
-	): Promise<ResolvedCli> {
+	): Promise<ResolvedCli | undefined> {
 		const binPath = await this.resolveBinary(url);
+		if (!binPath) {
+			return undefined;
+		}
 		const featureSet = featureSetForVersion(
 			semver.parse(await version(binPath)),
 		);
@@ -211,7 +208,7 @@ export class CliCredentialManager {
 		return { binPath, featureSet, auth, flags: getGlobalFlags(configs, auth) };
 	}
 
-	/** Runs a subcommand with a 60s timeout and periodic debug logging. */
+	/** Runs a subcommand with a 60s timeout. Failures become `CredentialCliError`; aborts pass through. */
 	private async exec(
 		cli: ResolvedCli,
 		args: string[],
@@ -225,6 +222,11 @@ export class CliCredentialManager {
 				...options,
 				timeout: EXEC_TIMEOUT_MS,
 			});
+		} catch (error) {
+			if (isAbortError(error)) {
+				throw error;
+			}
+			throw new CredentialCliError(error);
 		} finally {
 			clearInterval(timer);
 		}

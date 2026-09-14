@@ -51,7 +51,6 @@ interface SetupOptions {
 const TEST_SESSION: SessionAuth = {
 	url: TEST_URL,
 	token: "test-token",
-	tokenSource: "extension",
 };
 
 function setup(options: SetupOptions = {}) {
@@ -71,7 +70,6 @@ function setup(options: SetupOptions = {}) {
 			method: "stored_token",
 			user: createMockUser(),
 			token: "test-token",
-			tokenSource: "extension",
 		} satisfies LoginResultForTest);
 	const loginCoordinator: Pick<LoginCoordinator, "ensureLoggedIn"> = {
 		ensureLoggedIn: vi.fn(() => Promise.resolve(loginResult)),
@@ -90,10 +88,11 @@ function setup(options: SetupOptions = {}) {
 		clearDeployment: vi.fn(() => Promise.resolve()),
 	};
 
-	const cliManager: Pick<CliManager, "clearCredentials"> = {
+	const cliManager: Pick<CliManager, "clearCredentials" | "holdsToken"> = {
 		clearCredentials: vi.fn(() =>
 			Promise.resolve(options.clearCredentialsResult ?? true),
 		),
+		holdsToken: vi.fn(() => Promise.resolve(false)),
 	};
 
 	const secretsManager: Pick<
@@ -174,7 +173,6 @@ describe("Commands", () => {
 					method: "provided_token",
 					user: createMockUser(),
 					token: "test-token",
-					tokenSource: "extension",
 				},
 			});
 
@@ -267,14 +265,84 @@ describe("Commands", () => {
 			expect(mocks.deploymentManager.clearDeployment).toHaveBeenCalledWith(
 				"logout",
 			);
-			expect(mocks.cliManager.clearCredentials).toHaveBeenCalledWith(
+			expect(mocks.cliManager.holdsToken).toHaveBeenCalledWith(
 				TEST_URL,
-				TEST_SESSION,
+				TEST_SESSION.token,
 			);
+			expect(mocks.cliManager.clearCredentials).toHaveBeenCalledWith(TEST_URL, {
+				signOutCli: false,
+			});
 			expect(mocks.secretsManager.clearAllAuthData).toHaveBeenCalledWith(
 				TEST_HOSTNAME,
 			);
 		});
+
+		const CLI_PROMPT = "Sign out of the Coder CLI too?";
+
+		interface PromptCase {
+			scenario: string;
+			oauth?: boolean;
+			answer?: string;
+			/** Undefined when the logout is aborted as user_dismissed. */
+			signOutCli?: boolean;
+		}
+
+		it.each<PromptCase>([
+			{
+				scenario: "keeps the CLI session on request",
+				answer: "Keep Signed In",
+				signOutCli: false,
+			},
+			{
+				scenario: "signs out the CLI on request",
+				answer: "Sign Out",
+				signOutCli: true,
+			},
+			{
+				scenario: "signs out the CLI without asking for OAuth",
+				oauth: true,
+				signOutCli: true,
+			},
+			{ scenario: "aborts when the prompt is dismissed" },
+		])(
+			"$scenario for a shared store",
+			async ({ oauth, answer, signOutCli }) => {
+				const { commands, mocks, interaction, sink } = setup({
+					authenticated: true,
+				});
+				vi.mocked(mocks.cliManager.holdsToken).mockResolvedValueOnce(true);
+				if (oauth) {
+					vi.mocked(mocks.secretsManager.getSessionAuth).mockResolvedValueOnce({
+						...TEST_SESSION,
+						oauth: { scope: "workspace:read", expiry_timestamp: 1 },
+					});
+				}
+				interaction.setResponse(CLI_PROMPT, answer);
+
+				await commands.logout();
+
+				const prompted = interaction
+					.getMessageCalls()
+					.some((call) => call.message === CLI_PROMPT);
+				expect(prompted).toBe(!oauth);
+				if (signOutCli === undefined) {
+					expect(sink.expectOne("auth.logout").properties).toMatchObject({
+						result: "aborted",
+						reason: "user_dismissed",
+					});
+					expect(
+						mocks.deploymentManager.clearDeployment,
+					).not.toHaveBeenCalled();
+					return;
+				}
+				expect(mocks.cliManager.clearCredentials).toHaveBeenCalledWith(
+					TEST_URL,
+					{
+						signOutCli,
+					},
+				);
+			},
+		);
 
 		it("records logout exceptions", async () => {
 			const { commands, sink } = setup({

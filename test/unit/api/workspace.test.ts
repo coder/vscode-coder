@@ -95,7 +95,7 @@ function createUpdateCtx(
 	const ctx = {
 		restClient: restClient as unknown as Api,
 		auth: {
-			store: "shared" as const,
+			store: "cli" as const,
 			url: "https://test.coder.com",
 			useKeyring: undefined,
 		},

@@ -42,11 +42,6 @@ const OAuthTokenDataSchema = z.object({
 
 export type OAuthTokenData = z.infer<typeof OAuthTokenDataSchema>;
 
-const TokenSourceSchema = z.enum(["extension", "cli"]);
-
-/** Who minted a session token: this extension, or the Coder CLI. */
-export type TokenSource = z.infer<typeof TokenSourceSchema>;
-
 const SessionAuthSchema = z.object({
 	url: z.string(),
 	token: z.string(),
@@ -54,8 +49,6 @@ const SessionAuthSchema = z.object({
 	username: z.string().optional(),
 	/** If present, this session uses OAuth authentication */
 	oauth: OAuthTokenDataSchema.optional(),
-	/** Only extension tokens are revoked at logout. Older sessions predate the CLI source. */
-	tokenSource: TokenSourceSchema.default("extension"),
 });
 
 export type SessionAuth = z.infer<typeof SessionAuthSchema>;
@@ -319,7 +312,6 @@ export class SecretsManager {
 			await this.setSessionAuth(safeHostname, {
 				url: legacyUrl,
 				token: oldToken ?? "",
-				tokenSource: "extension",
 			});
 		}
 

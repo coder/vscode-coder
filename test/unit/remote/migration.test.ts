@@ -56,7 +56,6 @@ describe("Session auth migration", () => {
 		expect(secretsManager.setSessionAuth).toHaveBeenCalledWith(HOSTNAME, {
 			url: "https://dep.example.com",
 			token: "legacy-token",
-			tokenSource: "extension",
 		});
 		expect(vol.existsSync(URL_PATH)).toBe(false);
 		expect(vol.existsSync(TOKEN_PATH)).toBe(false);
@@ -80,7 +79,6 @@ describe("Session auth migration", () => {
 			existingAuth: {
 				url: "https://dep.example.com",
 				token: "current",
-				tokenSource: "extension",
 			},
 		});
 		writeLegacyFiles();

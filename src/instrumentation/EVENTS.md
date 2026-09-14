@@ -168,10 +168,10 @@ Emitted by `AuthTelemetry`; the credential events by `CredentialTelemetry`.
 
 #### `auth.logout`
 
-| Attribute    | Values                                     |
-| ------------ | ------------------------------------------ |
-| `reason`     | `not_authenticated` (aborted logouts only) |
-| `error.type` | `exception`                                |
+| Attribute    | Values                                                                             |
+| ------------ | ---------------------------------------------------------------------------------- |
+| `reason`     | `not_authenticated`, `user_dismissed`, `cleanup_incomplete` (aborted logouts only) |
+| `error.type` | `exception`                                                                        |
 
 #### `auth.login_prompted`
 
@@ -206,11 +206,12 @@ Secret-storage session read during remote setup. No custom attributes.
 
 #### `auth.credential.store` / `auth.credential.clear`
 
-| Attribute         | Values                                                                |
-| ----------------- | --------------------------------------------------------------------- |
-| `keyring_enabled` | `true`, `false` (from settings)                                       |
-| `store`           | `shared` (the CLI's own store), `private` (the extension's directory) |
-| `error.type`      | `binary`, `cli`                                                       |
+| Attribute         | Values                                                                   |
+| ----------------- | ------------------------------------------------------------------------ |
+| `keyring_enabled` | `true`, `false` (from settings)                                          |
+| `store`           | `cli` (the CLI's own store), `extension` (the extension's directory)     |
+| `outcome`         | `stored`, `no_binary` (store); `logged_out`, `kept`, `no_binary` (clear) |
+| `error.type`      | `binary`, `cli`                                                          |
 
 ### Logs
 

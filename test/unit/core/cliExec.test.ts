@@ -36,12 +36,12 @@ const cliExec = await import("@/core/cliExec");
 const { spawn } = await import("node:child_process");
 
 const sharedAuth = (url: string): CliEnv["auth"] => ({
-	store: "shared",
+	store: "cli",
 	url,
 	useKeyring: undefined,
 });
 const privateAuth = (url: string, configDir: string): CliEnv["auth"] => ({
-	store: "private",
+	store: "extension",
 	url,
 	configDir,
 	useKeyring: undefined,

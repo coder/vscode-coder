@@ -63,16 +63,22 @@ export class CredentialTelemetry {
 	}
 }
 
-function categorizeCredentialError(error: unknown): CredentialErrorCategory {
+export function categorizeCredentialError(
+	error: unknown,
+): CredentialErrorCategory {
 	if (error instanceof CredentialCliError) {
 		return "cli";
 	}
 	return "binary";
 }
 
+/** A failed CLI command, described by its stderr when it printed any. */
 export class CredentialCliError extends Error {
 	public constructor(cause: unknown) {
-		super("Credential CLI operation failed", { cause });
+		const stderr = (cause as { stderr?: string } | undefined)?.stderr?.trim();
+		const fallback =
+			cause instanceof Error ? cause.message : "The Coder CLI failed";
+		super(stderr || fallback, { cause });
 		this.name = "CredentialCliError";
 	}
 }

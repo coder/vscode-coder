@@ -19,8 +19,6 @@ import {
 
 import type * as nodeFs from "node:fs";
 
-import type { SessionAuth } from "@/core/secretsManager";
-
 vi.mock("node:child_process", () => ({ execFile: vi.fn() }));
 
 vi.mock("node:os");
@@ -43,7 +41,7 @@ const PATH_RESOLVER = new PathResolver("/mock/base", "/mock/log");
 const CRED_DIR = path.join("/mock/base", "dev.coder.com");
 const USER_DIR = "/custom/coderv2";
 
-const PRIVATE_FLAGS = [
+const EXTENSION_FLAGS = [
 	"--global-config",
 	CRED_DIR,
 	"--url",
@@ -57,13 +55,6 @@ const USER_DIR_FLAGS = [
 	TEST_URL,
 	"--use-keyring=false",
 ];
-
-const EXTENSION_SESSION: SessionAuth = {
-	url: TEST_URL,
-	token: "my-token",
-	tokenSource: "extension",
-};
-const CLI_SESSION: SessionAuth = { ...EXTENSION_SESSION, tokenSource: "cli" };
 
 type ExecResult = string | Error;
 type ExecCallback = (err: Error | null, result?: { stdout: string }) => void;
@@ -135,9 +126,6 @@ const credentialFilesExist = () =>
 	memfs.existsSync(`${CRED_DIR}/url`) ||
 	memfs.existsSync(`${CRED_DIR}/session`);
 
-const missingBinary = (): BinaryResolver =>
-	vi.fn().mockRejectedValue(new Error("no binary"));
-
 function setup(resolver: BinaryResolver = vi.fn().mockResolvedValue(TEST_BIN)) {
 	const sink = new TestSink();
 	const manager = new CliCredentialManager(
@@ -178,22 +166,22 @@ describe("CliCredentialManager", () => {
 			scenario: "extension directory when keyring is unsupported",
 			platform: "linux",
 			configs,
-			expected: PRIVATE_FLAGS,
-			store: "private",
+			expected: EXTENSION_FLAGS,
+			store: "extension",
 		},
 		{
 			scenario: "CLI default store when keyring is enabled",
 			platform: "darwin",
 			configs,
 			expected: KEYRING_FLAGS,
-			store: "shared",
+			store: "cli",
 		},
 		{
 			scenario: "user --global-config directory",
 			platform: "linux",
 			configs: userDirConfigs,
 			expected: USER_DIR_FLAGS,
-			store: "shared",
+			store: "cli",
 		},
 	])(
 		"targets the $scenario",
@@ -224,17 +212,33 @@ describe("CliCredentialManager", () => {
 			expect(execCalls()[0]).not.toContain("my-secret-token");
 		});
 
-		it("throws a CredentialCliError when the CLI fails", async () => {
-			stubExecFile({ login: new Error("login failed") });
-			const { manager, sink } = setup();
+		it.each([
+			{
+				scenario: "the CLI's stderr",
+				error: Object.assign(new Error("Command failed"), {
+					stderr: "keychain is locked\n",
+				}),
+				message: "keychain is locked",
+			},
+			{
+				scenario: "the error message without stderr",
+				error: new Error("login failed"),
+				message: "login failed",
+			},
+		])(
+			"throws a CredentialCliError carrying $scenario",
+			async ({ error, message }) => {
+				stubExecFile({ login: error });
+				const { manager, sink } = setup();
 
-			await expect(
-				manager.storeToken(TEST_URL, "token", configs),
-			).rejects.toThrow("Credential CLI operation failed");
-			expect(sink.expectOne("auth.credential.store")).toMatchObject({
-				properties: { "error.type": "cli", result: "error" },
-			});
-		});
+				await expect(
+					manager.storeToken(TEST_URL, "token", configs),
+				).rejects.toThrow(message);
+				expect(sink.expectOne("auth.credential.store")).toMatchObject({
+					properties: { "error.type": "cli", result: "error" },
+				});
+			},
+		);
 	});
 
 	describe("readToken", () => {
@@ -257,17 +261,6 @@ describe("CliCredentialManager", () => {
 			expect(await manager.readToken(TEST_URL, configs)).toBeUndefined();
 		});
 
-		it("refuses the keyring for a non-HTTPS URL without running the CLI", async () => {
-			vi.mocked(os.platform).mockReturnValue("darwin");
-			stubExecFile({ token: "my-token" });
-			const { manager } = setup();
-
-			expect(
-				await manager.readToken("http://dev.coder.com", configs),
-			).toBeUndefined();
-			expect(execFile).not.toHaveBeenCalled();
-		});
-
 		it("returns undefined below CLI 2.32 without running the CLI", async () => {
 			vi.mocked(cliExec.version).mockResolvedValue("2.31.0");
 			const { manager } = setup();
@@ -277,129 +270,115 @@ describe("CliCredentialManager", () => {
 		});
 	});
 
-	describe("deleteToken", () => {
-		it.each([
-			{ scenario: "a CLI token", session: CLI_SESSION },
-			{ scenario: "no session", session: undefined },
+	describe("holdsToken", () => {
+		interface Case {
+			scenario: string;
+			platform: NodeJS.Platform;
+			version?: string;
+			cliToken?: string;
+			expected: boolean;
+		}
+
+		it.each<Case>([
+			{ scenario: "the extension store", platform: "linux", expected: false },
+			{
+				scenario: "the CLI store holding the token",
+				platform: "darwin",
+				expected: true,
+			},
+			{
+				scenario: "the CLI store holding another token",
+				platform: "darwin",
+				cliToken: "other",
+				expected: false,
+			},
+			{
+				scenario: "the CLI store below 2.32, which cannot be read",
+				platform: "darwin",
+				version: "2.31.0",
+				cliToken: "other",
+				expected: true,
+			},
 		])(
-			"logs out of the extension directory even for $scenario",
-			async ({ session }) => {
-				stubExecFile();
-				writeCredentialFiles();
-				const { manager, sink } = setup();
+			"is $expected for $scenario",
+			async ({
+				platform,
+				version = "2.32.0",
+				cliToken = "my-token",
+				expected,
+			}) => {
+				vi.mocked(os.platform).mockReturnValue(platform);
+				vi.mocked(cliExec.version).mockResolvedValue(version);
+				stubExecFile({ token: cliToken });
 
-				const result = await manager.deleteToken(TEST_URL, configs, session);
-
-				expect(result).toBe(true);
-				expect(execCalls()).toEqual([[...PRIVATE_FLAGS, "logout", "--yes"]]);
-				expect(credentialFilesExist()).toBe(false);
-				expect(sink.expectOne("auth.credential.clear")).toMatchObject({
-					properties: { store: "private", result: "success" },
-				});
+				expect(
+					await setup().manager.holdsToken(TEST_URL, "my-token", configs),
+				).toBe(expected);
 			},
 		);
+	});
+
+	describe("deleteToken", () => {
+		interface Case {
+			scenario: string;
+			platform: NodeJS.Platform;
+			signOutCli: boolean;
+			logout: string[] | undefined;
+			outcome: string;
+		}
+
+		it.each<Case>([
+			{
+				scenario: "always logs out of the extension store",
+				platform: "linux",
+				signOutCli: false,
+				logout: EXTENSION_FLAGS,
+				outcome: "logged_out",
+			},
+			{
+				scenario: "logs out of the CLI store when asked",
+				platform: "darwin",
+				signOutCli: true,
+				logout: KEYRING_FLAGS,
+				outcome: "logged_out",
+			},
+			{
+				scenario: "keeps the CLI session unless asked",
+				platform: "darwin",
+				signOutCli: false,
+				logout: undefined,
+				outcome: "kept",
+			},
+		])("$scenario", async ({ platform, signOutCli, logout, outcome }) => {
+			vi.mocked(os.platform).mockReturnValue(platform);
+			stubExecFile();
+			writeCredentialFiles();
+			const { manager, sink } = setup();
+
+			const result = await manager.deleteToken(TEST_URL, configs, {
+				signOutCli,
+			});
+
+			expect(result).toBe(true);
+			expect(execCalls()).toEqual(
+				logout ? [[...logout, "logout", "--yes"]] : [],
+			);
+			expect(credentialFilesExist()).toBe(false);
+			expect(sink.expectOne("auth.credential.clear").properties).toMatchObject({
+				result: "success",
+				outcome,
+			});
+		});
 
 		it("reports a failed logout without throwing", async () => {
 			stubExecFile({ logout: new Error("logout failed") });
 			const { manager, sink } = setup();
 
 			await expect(
-				manager.deleteToken(TEST_URL, configs, EXTENSION_SESSION),
+				manager.deleteToken(TEST_URL, configs, { signOutCli: true }),
 			).resolves.toBe(false);
 			expect(sink.expectOne("auth.credential.clear")).toMatchObject({
 				properties: { "error.type": "cli", result: "error" },
-			});
-		});
-
-		describe("in a store shared with the CLI", () => {
-			beforeEach(() => {
-				vi.mocked(os.platform).mockReturnValue("darwin");
-			});
-
-			it("logs out when the CLI holds the extension's token", async () => {
-				stubExecFile({ token: "my-token\n" });
-				writeCredentialFiles();
-				const { manager, sink } = setup();
-
-				const result = await manager.deleteToken(
-					TEST_URL,
-					configs,
-					EXTENSION_SESSION,
-				);
-
-				expect(result).toBe(true);
-				expect(execCalls()).toEqual([
-					[...KEYRING_FLAGS, "login", "token"],
-					[...KEYRING_FLAGS, "logout", "--yes"],
-				]);
-				expect(credentialFilesExist()).toBe(false);
-				expect(sink.expectOne("auth.credential.clear")).toMatchObject({
-					properties: { store: "shared", result: "success" },
-				});
-			});
-
-			interface Case {
-				scenario: string;
-				session?: SessionAuth;
-				token?: ExecResult;
-			}
-
-			it.each<Case>([
-				{
-					scenario: "the CLI holds another token",
-					session: EXTENSION_SESSION,
-					token: "someone-elses-token",
-				},
-				{
-					scenario: "the CLI token cannot be read",
-					session: EXTENSION_SESSION,
-					token: new Error("keychain locked"),
-				},
-				{ scenario: "the token came from the CLI", session: CLI_SESSION },
-				{ scenario: "there is no session", session: undefined },
-			])("keeps the CLI session when $scenario", async ({ session, token }) => {
-				stubExecFile({ token });
-				writeCredentialFiles();
-				const { manager } = setup();
-
-				const result = await manager.deleteToken(TEST_URL, configs, session);
-
-				expect(result).toBe(true);
-				expect(execCalls().some((args) => args.includes("logout"))).toBe(false);
-				expect(credentialFilesExist()).toBe(false);
-			});
-
-			it("logs out without verifying below CLI 2.32", async () => {
-				vi.mocked(cliExec.version).mockResolvedValue("2.31.0");
-				stubExecFile();
-				const { manager } = setup();
-
-				const result = await manager.deleteToken(
-					TEST_URL,
-					configs,
-					EXTENSION_SESSION,
-				);
-
-				expect(result).toBe(true);
-				expect(execCalls()).toEqual([[...KEYRING_FLAGS, "logout", "--yes"]]);
-			});
-
-			it("treats a user --global-config directory as shared", async () => {
-				vi.mocked(os.platform).mockReturnValue("linux");
-				stubExecFile({ token: "my-token" });
-				const { manager } = setup();
-
-				const result = await manager.deleteToken(
-					TEST_URL,
-					userDirConfigs,
-					EXTENSION_SESSION,
-				);
-
-				expect(result).toBe(true);
-				expect(execCalls()).toEqual([
-					[...USER_DIR_FLAGS, "login", "token"],
-					[...USER_DIR_FLAGS, "logout", "--yes"],
-				]);
 			});
 		});
 	});
@@ -413,24 +392,29 @@ describe("CliCredentialManager", () => {
 			name: string;
 			run: Run;
 			event?: string;
-			onMissingBinary: (result: Promise<unknown>) => Promise<unknown>;
+			whenMissing: (result: Promise<unknown>) => Promise<unknown>;
+			whenBroken: (result: Promise<unknown>) => Promise<unknown>;
 		}> = [
 			{
 				name: "storeToken",
 				run: (m, o) => m.storeToken(TEST_URL, "token", configs, o),
 				event: "auth.credential.store",
-				onMissingBinary: (r) => expect(r).rejects.toThrow("no binary"),
+				whenMissing: (r) => expect(r).resolves.toBeUndefined(),
+				whenBroken: (r) => expect(r).rejects.toThrow("broken"),
 			},
 			{
 				name: "readToken",
 				run: (m, o) => m.readToken(TEST_URL, configs, o),
-				onMissingBinary: (r) => expect(r).resolves.toBeUndefined(),
+				whenMissing: (r) => expect(r).resolves.toBeUndefined(),
+				whenBroken: (r) => expect(r).resolves.toBeUndefined(),
 			},
 			{
 				name: "deleteToken",
-				run: (m, o) => m.deleteToken(TEST_URL, configs, EXTENSION_SESSION, o),
+				run: (m, o) =>
+					m.deleteToken(TEST_URL, configs, { ...o, signOutCli: true }),
 				event: "auth.credential.clear",
-				onMissingBinary: (r) => expect(r).resolves.toBe(false),
+				whenMissing: (r) => expect(r).resolves.toBe(true),
+				whenBroken: (r) => expect(r).resolves.toBe(false),
 			},
 		];
 
@@ -468,11 +452,32 @@ describe("CliCredentialManager", () => {
 		);
 
 		it.each(operations)(
-			"$name handles a missing binary without running the CLI",
-			async ({ run, event, onMissingBinary }) => {
-				const { manager, sink } = setup(missingBinary());
+			"$name is skipped when no binary is downloaded",
+			async ({ run, event, whenMissing }) => {
+				const { manager, sink } = setup(vi.fn().mockResolvedValue(undefined));
 
-				await onMissingBinary(
+				await whenMissing(
+					run(manager, { signal: new AbortController().signal }),
+				);
+
+				expect(execFile).not.toHaveBeenCalled();
+				if (event) {
+					expect(sink.expectOne(event).properties).toMatchObject({
+						result: "success",
+						outcome: "no_binary",
+					});
+				}
+			},
+		);
+
+		it.each(operations)(
+			"$name reports a binary that cannot be resolved without running the CLI",
+			async ({ run, event, whenBroken }) => {
+				const { manager, sink } = setup(
+					vi.fn().mockRejectedValue(new Error("broken")),
+				);
+
+				await whenBroken(
 					run(manager, { signal: new AbortController().signal }),
 				);
 

@@ -42,7 +42,6 @@ import type { Span } from "../telemetry/span";
 
 import type { CliCredentialManager } from "./cliCredentialManager";
 import type { PathResolver } from "./pathResolver";
-import type { SessionAuth } from "./secretsManager";
 
 type ResolvedBinary =
 	| { binPath: string; stat: Stats; source: "file_path" | "directory" }
@@ -72,17 +71,10 @@ export class CliManager {
 		this.cliTelemetry = new CliTelemetry(telemetry);
 	}
 
-	/**
-	 * Return the path to a cached CLI binary for a deployment URL.
-	 * Stat check only, no network, no subprocess. Throws if absent.
-	 */
-	public async locateBinary(url: string): Promise<string> {
-		const safeHostname = toSafeHost(url);
-		const resolved = await this.resolveBinaryPath(safeHostname);
-		if (resolved.source === "not_found") {
-			throw new Error(`No CLI binary found at ${resolved.binPath}`);
-		}
-		return resolved.binPath;
+	/** The cached CLI binary for a deployment URL, or undefined when none is downloaded. Stat check only. */
+	public async locateBinary(url: string): Promise<string | undefined> {
+		const resolved = await this.resolveBinaryPath(toSafeHost(url));
+		return resolved.source === "not_found" ? undefined : resolved.binPath;
 	}
 
 	/**
@@ -1069,23 +1061,32 @@ export class CliManager {
 		this.handleStoreError(result.error, configs);
 	}
 
+	/** True when the CLI's own store holds this token. */
+	public holdsToken(url: string, token: string): Promise<boolean> {
+		return this.cliCredentialManager.holdsToken(
+			url,
+			token,
+			vscode.workspace.getConfiguration(),
+		);
+	}
+
 	/**
-	 * Remove credentials for a deployment. A store shared with the CLI is only
-	 * logged out of a token this extension created, so pass the stored
-	 * `session`. Never throws; returns whether every store was cleared.
+	 * Remove credentials for a deployment. `signOutCli` also logs a shared CLI
+	 * session out. Never throws; returns whether every store was cleared.
 	 */
 	public async clearCredentials(
 		url: string,
-		session: SessionAuth | undefined,
+		{ signOutCli }: { signOutCli: boolean },
 	): Promise<boolean> {
 		const configs = vscode.workspace.getConfiguration();
 		const result = await withOptionalProgress(
 			({ signal }) =>
-				this.cliCredentialManager.deleteToken(url, configs, session, {
+				this.cliCredentialManager.deleteToken(url, configs, {
 					signal,
+					signOutCli,
 				}),
 			{
-				enabled: isKeyringEnabled(configs),
+				enabled: signOutCli && isKeyringEnabled(configs),
 				location: vscode.ProgressLocation.Notification,
 				title: `Removing credentials for ${url}`,
 				cancellable: true,

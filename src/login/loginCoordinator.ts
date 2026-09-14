@@ -22,7 +22,6 @@ import type {
 	OAuthTokenData,
 	SecretsManager,
 	SessionAuth,
-	TokenSource,
 } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
 import type {
@@ -48,7 +47,6 @@ export type LoginResult =
 			user: User;
 			token: string;
 			oauth?: OAuthTokenData;
-			tokenSource: TokenSource;
 	  };
 
 export interface LoginOptions {
@@ -206,7 +204,6 @@ export class LoginCoordinator implements vscode.Disposable {
 				token: result.token,
 				username: result.user.username,
 				oauth: result.oauth, // undefined for non-OAuth logins
-				tokenSource: result.tokenSource,
 			});
 			await this.mementoManager.addToUrlHistory(url);
 
@@ -315,7 +312,6 @@ export class LoginCoordinator implements vscode.Disposable {
 			return withLoginMethod(
 				"mtls",
 				await this.tryMtlsAuth(client, isAutoLogin),
-				"extension",
 			);
 		}
 
@@ -399,7 +395,7 @@ export class LoginCoordinator implements vscode.Disposable {
 				}
 			}
 		}
-		return withLoginMethod("provided_token", result, "extension");
+		return withLoginMethod("provided_token", result);
 	}
 
 	/** Stored session for the deployment's exact origin, if it still works. */
@@ -419,7 +415,7 @@ export class LoginCoordinator implements vscode.Disposable {
 		if (result === "unauthorized") {
 			return undefined;
 		}
-		return withLoginMethod("stored_token", result, sameOriginAuth.tokenSource);
+		return withLoginMethod("stored_token", result);
 	}
 
 	/** The CLI's own session, adopted after confirmation if it is another user's. */
@@ -436,7 +432,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			{
 				enabled: isKeyringEnabled(configs),
 				location: vscode.ProgressLocation.Notification,
-				title: "Reading credentials from the Coder CLI...",
+				title: "Reading credentials from the Coder CLI",
 				cancellable: true,
 			},
 		);
@@ -455,8 +451,8 @@ export class LoginCoordinator implements vscode.Disposable {
 			const confirmed = await this.confirmSignIn(
 				deployment.url,
 				{
-					title: "Sign in with the Coder CLI session?",
-					detail: `The Coder CLI session signs you in as "${result.user.username}"`,
+					title: "Sign in with the Coder CLI's session?",
+					detail: `The Coder CLI's session signs you in as "${result.user.username}"`,
 				},
 				// A same-origin session reached this point only because it failed.
 				{ username: auth.username, expired: sameOriginAuth !== undefined },
@@ -465,7 +461,7 @@ export class LoginCoordinator implements vscode.Disposable {
 				return undefined;
 			}
 		}
-		return withLoginMethod("cli_token", result, "cli");
+		return withLoginMethod("cli_token", result);
 	}
 
 	/** Last resort: ask the user how to authenticate. */
@@ -476,13 +472,11 @@ export class LoginCoordinator implements vscode.Disposable {
 				return withLoginMethod(
 					"oauth",
 					await this.loginWithOAuth(ctx.deployment),
-					"extension",
 				);
 			case "legacy":
 				return withLoginMethod(
 					"cli_token",
 					await this.loginWithToken(ctx.client),
-					"extension",
 				);
 			case undefined:
 				return { success: false, reason: "user_dismissed" };
@@ -680,10 +674,6 @@ export class LoginCoordinator implements vscode.Disposable {
 function withLoginMethod(
 	method: LoginMethod,
 	result: LoginAttemptResult,
-	tokenSource: TokenSource,
 ): LoginResult {
-	if (!result.success) {
-		return { ...result, method };
-	}
-	return { ...result, method, tokenSource };
+	return { ...result, method };
 }

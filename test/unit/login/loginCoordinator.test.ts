@@ -3,7 +3,7 @@ import { describe, expect, it, vi, type Mock } from "vitest";
 import * as vscode from "vscode";
 
 import { MementoManager } from "@/core/mementoManager";
-import { SecretsManager, type TokenSource } from "@/core/secretsManager";
+import { SecretsManager } from "@/core/secretsManager";
 import { getHeaders } from "@/headers";
 import { AuthTelemetry } from "@/instrumentation/auth";
 import { LoginCoordinator, type LoginMethod } from "@/login/loginCoordinator";
@@ -202,7 +202,6 @@ function createSignInTestContext(
 		storeSession: (auth: { token: string; username?: string; url?: string }) =>
 			ctx.secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
-				tokenSource: "extension",
 				...auth,
 			}),
 		confirmSignIn: () => ctx.userInteraction.setResponse(prompt, "Sign In"),
@@ -225,38 +224,27 @@ function createSignInTestContext(
 
 describe("LoginCoordinator", () => {
 	describe("token authentication", () => {
-		interface Case {
-			tokenSource: TokenSource;
-		}
+		it("authenticates with a stored token", async () => {
+			const { secretsManager, coordinator, mockSuccessfulAuth } =
+				createTestContext();
+			const user = mockSuccessfulAuth();
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "stored-token",
+			});
 
-		it.each<Case>([{ tokenSource: "extension" }, { tokenSource: "cli" }])(
-			"authenticates with a stored token and keeps its $tokenSource source",
-			async ({ tokenSource }) => {
-				const { secretsManager, coordinator, mockSuccessfulAuth } =
-					createTestContext();
-				const user = mockSuccessfulAuth();
-				await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-					url: TEST_URL,
-					token: "stored-token",
-					tokenSource,
-				});
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+			});
 
-				const result = await coordinator.ensureLoggedIn({
-					url: TEST_URL,
-					safeHostname: TEST_HOSTNAME,
-				});
-
-				expect(result).toEqual({
-					success: true,
-					method: "stored_token",
-					user,
-					token: "stored-token",
-					tokenSource,
-				});
-				const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
-				expect(auth?.tokenSource).toBe(tokenSource);
-			},
-		);
+			expect(result).toEqual({
+				success: true,
+				method: "stored_token",
+				user,
+				token: "stored-token",
+			});
+		});
 
 		it("authenticates with CLI credential token on success", async () => {
 			const {
@@ -280,13 +268,11 @@ describe("LoginCoordinator", () => {
 				method: "cli_token",
 				user,
 				token: "cli-credential-token",
-				tokenSource: "cli",
 			});
 			expect(vscode.window.showInputBox).not.toHaveBeenCalled();
 
 			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
 			expect(auth?.token).toBe("cli-credential-token");
-			expect(auth?.tokenSource).toBe("cli");
 		});
 
 		it("prompts for token when no stored auth exists", async () => {
@@ -312,13 +298,11 @@ describe("LoginCoordinator", () => {
 				method: "cli_token",
 				user,
 				token: "new-token",
-				tokenSource: "extension",
 			});
 
 			// Verify new token was persisted
 			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
 			expect(auth?.token).toBe("new-token");
-			expect(auth?.tokenSource).toBe("extension");
 		});
 
 		it("returns success false when user cancels input", async () => {
@@ -395,7 +379,6 @@ describe("LoginCoordinator", () => {
 				method: "mtls",
 				user,
 				token: "",
-				tokenSource: "extension",
 			});
 
 			// Verify empty string token was persisted
@@ -477,7 +460,6 @@ describe("LoginCoordinator", () => {
 			method,
 			user,
 			token,
-			tokenSource: "extension",
 		});
 
 		function createLinkTestContext() {
@@ -720,7 +702,6 @@ describe("LoginCoordinator", () => {
 			await ctx.secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "stored-token",
-				tokenSource: "extension",
 			});
 			const login = async () => {
 				const result = await ctx.coordinator.ensureLoggedIn({
@@ -780,7 +761,6 @@ describe("LoginCoordinator", () => {
 				method: "stored_token",
 				user,
 				token: "stored-token",
-				tokenSource: "extension",
 			});
 			await vi.waitFor(() =>
 				expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
@@ -792,12 +772,12 @@ describe("LoginCoordinator", () => {
 	});
 
 	describe("CLI session confirmation", () => {
-		const CLI_PROMPT = "Sign in with the Coder CLI session?";
+		const CLI_PROMPT = "Sign in with the Coder CLI's session?";
 
 		function createCliTestContext() {
 			const ctx = createSignInTestContext(
 				CLI_PROMPT,
-				(username) => `The Coder CLI session signs you in as "${username}"`,
+				(username) => `The Coder CLI's session signs you in as "${username}"`,
 			);
 			return {
 				...ctx,
@@ -823,7 +803,6 @@ describe("LoginCoordinator", () => {
 			expect(await t.login()).toMatchObject({
 				method: "cli_token",
 				user,
-				tokenSource: "cli",
 			});
 			t.expectNoPrompt();
 		});
@@ -847,7 +826,6 @@ describe("LoginCoordinator", () => {
 
 			expect(await t.login()).toMatchObject({
 				token: "cli-token",
-				tokenSource: "cli",
 			});
 			t.expectSignInPrompt("cli-user", 'expired session for "old-user"');
 		});
@@ -866,7 +844,6 @@ describe("LoginCoordinator", () => {
 
 			expect(await t.login()).toMatchObject({
 				token: "new-token",
-				tokenSource: "extension",
 			});
 			expect(await t.storedToken()).toBe("new-token");
 		});
