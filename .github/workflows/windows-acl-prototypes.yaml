@@ -91,6 +91,8 @@ jobs:
           path: prototypes/windows-acl/artifacts/win32-arm64
       - name: Package and inspect both universal VSIXs
         run: pnpm exec vitest run --config prototypes/windows-acl/test/vitest.config.mts
+        env:
+          ACL_REQUIRE_UNIVERSAL: "1"
       - name: Upload experimental universal packages
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

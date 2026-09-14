@@ -107,13 +107,7 @@ describe("package-prototype", () => {
 	});
 });
 
-const projectRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
-const realArtifactRoot = path.join(
-	projectRoot,
-	"prototypes",
-	"windows-acl",
-	"artifacts",
-);
+const realArtifactRoot = path.resolve(import.meta.dirname, "..", "artifacts");
 const variants = ["helper", "addon"] as const;
 const stagedVariants = variants.filter((variant) => {
 	const name = variant === "helper" ? "acl-helper.exe" : "acl.node";
@@ -125,6 +119,15 @@ const stagedVariants = variants.filter((variant) => {
 			?.isFile(),
 	);
 });
+
+if (
+	process.env.ACL_REQUIRE_UNIVERSAL === "1" &&
+	stagedVariants.length !== variants.length
+) {
+	throw new Error(
+		"Both Windows architectures and both interfaces are required",
+	);
+}
 
 describe.runIf(stagedVariants.length === 2)("universal VSIX archives", () => {
 	it.each(variants)(

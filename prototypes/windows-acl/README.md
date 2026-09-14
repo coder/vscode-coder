@@ -26,7 +26,8 @@ variant, with both Windows architectures in the same universal extension.
 
 ## Results on September 14, 2026
 
-Performed in a Linux workspace using Rust 1.98.1:
+Performed using Rust 1.98.1. Native Windows results are from Actions run
+`34835778683`; package inspection was repeated locally with its real payloads:
 
 | Check                                           | Result                                             |
 | ----------------------------------------------- | -------------------------------------------------- |
@@ -35,11 +36,11 @@ Performed in a Linux workspace using Rust 1.98.1:
 | Clippy, all targets, warnings denied            | Passed on Linux and Windows source checks          |
 | Windows MSVC source/test check, x64             | Passed; not linked or executed                     |
 | Windows MSVC source/test check, ARM64           | Passed; not linked or executed                     |
-| Bridge/staging/assembly tests                   | 25 passed                                          |
-| Windows OpenSSH integration                     | Not run on Linux                                   |
-| Actual Windows universal VSIX archives          | Not built; Windows binary artifacts missing        |
+| Bridge/staging/assembly tests                   | 27 passed, 1 Windows-only skip with real payloads  |
+| Windows OpenSSH integration                     | Passed on Windows x64 and ARM64                    |
+| Actual Windows universal VSIX archives          | Passed locally with both real Windows payloads     |
 | macOS/Linux native bypass                       | Passed using injected platform/architecture values |
-| Actual macOS runtime                            | Not tested                                         |
+| Actual macOS runtime                            | Bridge bypass tests passed on macos-15             |
 | Node 24.15.0 transport probe                    | Passed                                             |
 | Electron 37.10.3 / Node 22.21.1 transport probe | Passed                                             |
 | Electron 42.5.1 / Node 24.17.0 transport probe  | Passed                                             |
@@ -113,9 +114,30 @@ Both approaches can preserve a universal VSIX. The helper avoids loading native
 code into the extension host and provides a process timeout, at the cost of a
 subprocess interface. The addon avoids process launch and successfully loaded
 across the tested Electron versions, but loads the native implementation into
-the host process. Neither option has been proven operationally superior on real
-Windows yet. The macOS keyring history argues for strict platform gating and
+the host process. Both passed the same Windows x64/ARM64 tests under Node 22 and Electron
+37/42. Neither has been proven operationally superior on end-user machines. The macOS keyring history argues for strict platform gating and
 package-level regression tests, not a claim that shipping binaries is risk-free.
+
+## Measured payloads
+
+The experimental universal packages built from run `34835778683` contain:
+
+| Payload                     | Helper                | Addon                 |
+| --------------------------- | --------------------- | --------------------- |
+| Windows x64                 | 186 KiB               | 291.5 KiB             |
+| Windows ARM64               | 178.5 KiB             | 268.5 KiB             |
+| Universal VSIX (compressed) | approximately 191 KiB | approximately 247 KiB |
+
+These are standalone prototype package sizes, not the production extension size.
+`objdump -p` showed that both x64 variants import `VCRUNTIME140.dll` and Universal
+CRT API DLLs. Hosted-runner success therefore does not establish that either
+payload is self-contained on a clean user machine. ARM64 DLL inspection remains
+outstanding. No runtime-linking or redistribution choice has been made.
+
+The first native run exposed a test-only SDDL spelling assumption (SID aliases and
+auto-inheritance descriptor flags); the test now inspects actual protection and
+ACE semantics. The first package job exposed an incorrect artifact lookup path;
+the package job now requires both architectures instead of silently skipping.
 
 ## Prototype limitations
 
@@ -123,7 +145,7 @@ package-level regression tests, not a claim that shipping binaries is risk-free.
 - Final reparse-point rejection and owner validation use the opened handle;
   parent directory chains and hard-link safety are not fully validated.
 - Does not integrate generated-file migration or user-config ACL preservation.
-- No Windows runtime, real ARM64, signing, or enterprise-policy validation yet.
+- No signing, clean end-user Windows, or enterprise-policy validation yet.
 - No production CI/release workflow changes were made.
 - Package assembly unit tests use synthetic fixture bytes; those are not Windows
   binaries and are never presented as functional native VSIXs.
