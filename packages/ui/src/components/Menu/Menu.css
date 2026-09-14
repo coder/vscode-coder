@@ -7,6 +7,9 @@
 		--radix-dropdown-menu-content-available-height,
 		var(--radix-context-menu-content-available-height)
 	);
+	--ui-overlay-highlight-background: var(--ui-menu-highlight-background);
+	--ui-overlay-highlight-foreground: var(--ui-menu-highlight-foreground);
+	--ui-overlay-highlight-outline: var(--ui-menu-selection-border);
 
 	/* Native .monaco-menu min-width */
 	min-width: 160px;
@@ -30,25 +33,6 @@
 	position: relative;
 	line-height: 1;
 	white-space: nowrap;
-	border-radius: var(--ui-radius-medium);
-	cursor: default;
-	user-select: none;
-	outline: 1px solid transparent;
-	outline-offset: -1px;
-}
-
-/* An open submenu keeps its parent highlighted, like native; the selection
-   border only resolves in high contrast. */
-.ui-menu__item[data-highlighted],
-.ui-menu__item[data-state="open"] {
-	forced-color-adjust: none;
-	color: var(--ui-menu-highlight-foreground);
-	background: var(--ui-menu-highlight-background);
-	outline-color: var(--ui-menu-selection-border);
-}
-
-.ui-menu__item[data-disabled] {
-	color: var(--ui-disabled-foreground);
 }
 
 /* Left gutter, like the native menu-item-check; a checked item's check is
@@ -149,16 +133,6 @@
 }
 
 @media (forced-colors: active) {
-	.ui-menu__item[data-highlighted],
-	.ui-menu__item[data-state="open"] {
-		color: HighlightText;
-		background: Highlight;
-	}
-
-	.ui-menu__item[data-disabled] {
-		color: GrayText;
-	}
-
 	.ui-menu__separator {
 		background: CanvasText;
 	}

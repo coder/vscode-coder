@@ -1,16 +1,21 @@
 import {
 	VscodeBadge,
 	VscodeButton,
+	VscodeCheckbox,
 	VscodeContextMenu,
 	VscodeIcon,
+	VscodeOption,
 	VscodeProgressBar,
 	VscodeProgressRing,
+	VscodeSingleSelect,
+	VscodeTextarea,
 	VscodeTextfield,
 	VscodeToolbarButton,
 } from "@vscode-elements/react-elements";
 import { useState } from "react";
 
 import { Button } from "./components/Button/Button";
+import { Checkbox } from "./components/Checkbox/Checkbox";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -20,10 +25,19 @@ import {
 	DropdownMenuTrigger,
 } from "./components/DropdownMenu/DropdownMenu";
 import { IconButton } from "./components/IconButton/IconButton";
+import { Input } from "./components/Input/Input";
 import { ProgressBar } from "./components/ProgressBar/ProgressBar";
 import { SearchInput } from "./components/SearchInput/SearchInput";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "./components/Select/Select";
 import { Spinner } from "./components/Spinner/Spinner";
 import { StatusPill } from "./components/StatusPill/StatusPill";
+import { Textarea } from "./components/Textarea/Textarea";
 import { PIXEL_ALL_THEMES } from "./storybook";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -117,6 +131,37 @@ const Parity = (): React.JSX.Element => (
 			}
 		/>
 		<Row
+			label="Input"
+			ours={
+				<Input
+					value="us-pittsburgh"
+					onChange={() => undefined}
+					aria-label="Region"
+					style={{ width: "180px" }}
+				/>
+			}
+			reference={
+				<VscodeTextfield value="us-pittsburgh" style={{ width: "180px" }} />
+			}
+		/>
+		<Row
+			label="Textarea"
+			ours={
+				<Textarea
+					value={"#!/bin/sh\necho hello"}
+					onChange={() => undefined}
+					aria-label="Init script"
+					style={{ width: "180px" }}
+				/>
+			}
+			reference={
+				<VscodeTextarea
+					value={"#!/bin/sh\necho hello"}
+					style={{ width: "180px" }}
+				/>
+			}
+		/>
+		<Row
 			label="Button"
 			// Narrower than the reference by design: VS Code core's
 			// monaco-text-button uses 4px/8px padding; vscode-elements uses 13px.
@@ -132,6 +177,37 @@ const Parity = (): React.JSX.Element => (
 					<VscodeButton secondary>Cancel</VscodeButton>
 				</>
 			}
+		/>
+		<Row
+			label="Select"
+			ours={
+				<Select value="us-pittsburgh" onValueChange={() => undefined}>
+					<SelectTrigger aria-label="Region" style={{ width: "180px" }}>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="us-pittsburgh">US East (Pittsburgh)</SelectItem>
+						<SelectItem value="eu-helsinki">EU North (Helsinki)</SelectItem>
+					</SelectContent>
+				</Select>
+			}
+			reference={
+				<VscodeSingleSelect style={{ width: "180px" }}>
+					<VscodeOption value="us-pittsburgh" selected>
+						US East (Pittsburgh)
+					</VscodeOption>
+					<VscodeOption value="eu-helsinki">EU North (Helsinki)</VscodeOption>
+				</VscodeSingleSelect>
+			}
+		/>
+		<Row
+			label="Checkbox"
+			ours={
+				<Checkbox checked onChange={() => undefined}>
+					Start on connect
+				</Checkbox>
+			}
+			reference={<VscodeCheckbox label="Start on connect" checked />}
 		/>
 		<Row
 			label="Link"

@@ -1,0 +1,13 @@
+.ui-textarea {
+	box-sizing: border-box;
+	display: block;
+	min-height: 60px;
+	padding: 4px 6px;
+	font: inherit;
+	outline: 0;
+	resize: vertical;
+}
+
+.ui-textarea:disabled {
+	resize: none;
+}
