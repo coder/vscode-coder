@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+projection = ["dep:acl-prototype-core-windows"]
+
 [dependencies]
 acl-prototype-core = { path = "../core" }
+acl-prototype-core-windows = { path = "../core-windows", optional = true }
 serde_json = "1"

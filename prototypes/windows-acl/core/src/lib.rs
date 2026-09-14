@@ -56,138 +56,105 @@ pub fn backend() -> &'static str {
 #[cfg(windows)]
 mod windows {
     use std::ffi::OsString;
+    use std::fs::{File, OpenOptions};
     use std::io;
-    use std::mem::size_of;
-    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    use std::os::windows::ffi::OsStringExt;
+    use std::os::windows::fs::OpenOptionsExt;
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
     use std::path::Path;
     use std::ptr::{null, null_mut};
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, LocalFree};
+    use windows_sys::Win32::Foundation::{HANDLE, LocalFree};
     use windows_sys::Win32::Security::Authorization::{
-        ConvertSecurityDescriptorToStringSecurityDescriptorW, GetSecurityInfo, SE_FILE_OBJECT,
+        ConvertSecurityDescriptorToStringSecurityDescriptorW, ConvertSidToStringSidW,
+        ConvertStringSecurityDescriptorToSecurityDescriptorW, GetSecurityInfo, SE_FILE_OBJECT,
         SetSecurityInfo,
     };
     use windows_sys::Win32::Security::{
-        ACL, ACL_REVISION, AddAccessAllowedAceEx, CopySid, CreateWellKnownSid,
         DACL_SECURITY_INFORMATION, EqualSid, GROUP_SECURITY_INFORMATION, GetLengthSid,
-        GetSecurityDescriptorOwner, GetTokenInformation, InitializeAcl, IsValidSid,
-        OBJECT_SECURITY_INFORMATION, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
-        TOKEN_QUERY, TOKEN_USER, TokenUser, WinBuiltinAdministratorsSid, WinLocalSystemSid,
+        GetSecurityDescriptorDacl, GetSecurityDescriptorOwner, GetTokenInformation, IsValidSid,
+        OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, TOKEN_QUERY, TOKEN_USER, TokenUser,
+        WinBuiltinAdministratorsSid, WinLocalSystemSid,
     };
     use windows_sys::Win32::Storage::FileSystem::{
-        BY_HANDLE_FILE_INFORMATION, CreateFileW, FILE_ALL_ACCESS, FILE_ATTRIBUTE_DIRECTORY,
-        FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
-        FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, GetFileInformationByHandle,
-        OPEN_EXISTING, READ_CONTROL, WRITE_DAC,
+        BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE,
+        FILE_SHARE_READ, FILE_SHARE_WRITE, GetFileInformationByHandle, READ_CONTROL, WRITE_DAC,
     };
     use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
     const PROTECTED_DACL_SECURITY_INFORMATION: u32 = 0x8000_0000;
-    const PROTECTED_FILE_ACCESS: u32 = FILE_ALL_ACCESS;
-    const CONTAINER_INHERIT_ACE: u8 = 0x02;
-    const OBJECT_INHERIT_ACE: u8 = 0x01;
     const SDDL_REVISION_1: u32 = 1;
 
     pub fn secure_path(path: &Path) -> io::Result<()> {
-        let path = WidePath::new(path)?;
-        let handle = FileHandle::open_for_write(&path)?;
-        let attributes = handle.attributes()?;
-        if attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-            return Err(invalid_input(
-                "final path component must not be a reparse point",
-            ));
-        }
+        let handle = open_path(path, READ_CONTROL | WRITE_DAC)?;
+        let attributes = attributes(&handle)?;
+        reject_reparse_point(attributes)?;
 
         let current_user = SidBuffer::current_user()?;
-        let descriptor = SecurityDescriptor::get(handle.0)?;
-        validate_owner(descriptor.owner()?, &current_user)?;
-
-        let inheritance = if attributes & FILE_ATTRIBUTE_DIRECTORY != 0 {
-            CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE
-        } else {
-            0
-        };
         let system = SidBuffer::well_known(WinLocalSystemSid)?;
         let administrators = SidBuffer::well_known(WinBuiltinAdministratorsSid)?;
-        let acl = ProtectedAcl::new([&current_user, &system, &administrators], inheritance)?;
+        let descriptor = SecurityDescriptor::get(handle.as_raw_handle().cast())?;
+        validate_owner(
+            descriptor.owner()?,
+            [&current_user, &system, &administrators],
+        )?;
+
+        let inheritance = if attributes & FILE_ATTRIBUTE_DIRECTORY != 0 {
+            "OICI"
+        } else {
+            ""
+        };
+        let sddl = format!(
+            "D:P(A;{inheritance};FA;;;{})(A;{inheritance};FA;;;SY)(A;{inheritance};FA;;;BA)",
+            current_user.to_sddl()?
+        );
+        let protected_descriptor = SecurityDescriptor::from_sddl(&sddl)?;
         unsafe {
             check(SetSecurityInfo(
-                handle.0,
+                handle.as_raw_handle().cast(),
                 SE_FILE_OBJECT,
-                (DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION)
-                    as OBJECT_SECURITY_INFORMATION,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
                 null_mut(),
                 null_mut(),
-                acl.as_ptr(),
+                protected_descriptor.dacl()? as *const _,
                 null(),
-            ))?;
+            ))
         }
-        Ok(())
     }
 
     pub fn inspect_path(path: &Path) -> io::Result<String> {
-        let path = WidePath::new(path)?;
-        let handle = FileHandle::open_for_read(&path)?;
-        SecurityDescriptor::get(handle.0)?.to_sddl()
+        let handle = open_path(path, READ_CONTROL)?;
+        SecurityDescriptor::get(handle.as_raw_handle().cast())?.to_sddl()
     }
 
-    struct WidePath(Vec<u16>);
-
-    impl WidePath {
-        fn new(path: &Path) -> io::Result<Self> {
-            if !path.is_absolute() {
-                return Err(invalid_input("path must be absolute"));
-            }
-            let units: Vec<u16> = path.as_os_str().encode_wide().collect();
-            if units.contains(&0) {
-                return Err(invalid_input("path contains a NUL character"));
-            }
-            Ok(Self(units.into_iter().chain(Some(0)).collect()))
+    fn open_path(path: &Path, access_mode: u32) -> io::Result<File> {
+        if !path.is_absolute() {
+            return Err(invalid_input("path must be absolute"));
         }
+        OpenOptions::new()
+            .access_mode(access_mode)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(path)
     }
 
-    struct FileHandle(HANDLE);
-
-    impl FileHandle {
-        fn open_for_read(path: &WidePath) -> io::Result<Self> {
-            Self::open(path, READ_CONTROL)
-        }
-
-        fn open_for_write(path: &WidePath) -> io::Result<Self> {
-            Self::open(path, READ_CONTROL | WRITE_DAC)
-        }
-
-        fn open(path: &WidePath, desired_access: u32) -> io::Result<Self> {
-            let handle = unsafe {
-                CreateFileW(
-                    path.0.as_ptr(),
-                    desired_access,
-                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                    null(),
-                    OPEN_EXISTING,
-                    FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
-                    null_mut(),
-                )
-            };
-            if handle == INVALID_HANDLE_VALUE {
-                return Err(io::Error::last_os_error());
-            }
-            Ok(Self(handle))
-        }
-
-        fn attributes(&self) -> io::Result<u32> {
-            let mut information = BY_HANDLE_FILE_INFORMATION::default();
-            unsafe { check_bool(GetFileInformationByHandle(self.0, &mut information))? };
-            Ok(information.dwFileAttributes)
-        }
+    fn attributes(file: &File) -> io::Result<u32> {
+        let mut information = BY_HANDLE_FILE_INFORMATION::default();
+        unsafe {
+            check_bool(GetFileInformationByHandle(
+                file.as_raw_handle().cast(),
+                &mut information,
+            ))?
+        };
+        Ok(information.dwFileAttributes)
     }
 
-    impl Drop for FileHandle {
-        fn drop(&mut self) {
-            unsafe { CloseHandle(self.0) };
-        }
+    fn owned_handle(handle: HANDLE) -> OwnedHandle {
+        // CreateFileW and OpenProcessToken return CloseHandle-owned handles.
+        unsafe { OwnedHandle::from_raw_handle(handle.cast::<()>() as RawHandle) }
     }
 
-    struct TokenHandle(HANDLE);
+    struct TokenHandle(OwnedHandle);
 
     impl TokenHandle {
         fn current_process() -> io::Result<Self> {
@@ -199,17 +166,18 @@ mod windows {
                     &mut token,
                 ))?
             };
-            Ok(Self(token))
+            if token.is_null() {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(Self(owned_handle(token)))
+        }
+
+        fn raw(&self) -> HANDLE {
+            self.0.as_raw_handle().cast()
         }
     }
 
-    impl Drop for TokenHandle {
-        fn drop(&mut self) {
-            unsafe { CloseHandle(self.0) };
-        }
-    }
-
-    /// Stores SID bytes in usize elements so the buffer remains properly aligned.
+    /// Stores copied SID bytes in usize elements so the buffer remains aligned.
     struct SidBuffer {
         storage: Vec<usize>,
     }
@@ -218,7 +186,7 @@ mod windows {
         fn current_user() -> io::Result<Self> {
             let token = TokenHandle::current_process()?;
             let mut length = 0;
-            unsafe { GetTokenInformation(token.0, TokenUser, null_mut(), 0, &mut length) };
+            unsafe { GetTokenInformation(token.raw(), TokenUser, null_mut(), 0, &mut length) };
             if length == 0 {
                 return Err(io::Error::last_os_error());
             }
@@ -226,7 +194,7 @@ mod windows {
             let mut token_user = vec![0usize; (length as usize).div_ceil(size_of::<usize>())];
             unsafe {
                 check_bool(GetTokenInformation(
-                    token.0,
+                    token.raw(),
                     TokenUser,
                     token_user.as_mut_ptr().cast(),
                     length,
@@ -241,7 +209,7 @@ mod windows {
                 }
 
                 let sid = Self::with_byte_capacity(GetLengthSid(source_sid) as usize);
-                check_bool(CopySid(
+                check_bool(windows_sys::Win32::Security::CopySid(
                     (sid.storage.len() * size_of::<usize>()) as u32,
                     sid.as_psid(),
                     source_sid,
@@ -252,14 +220,21 @@ mod windows {
 
         fn well_known(kind: i32) -> io::Result<Self> {
             let mut length = 0;
-            unsafe { CreateWellKnownSid(kind, null_mut(), null_mut(), &mut length) };
+            unsafe {
+                windows_sys::Win32::Security::CreateWellKnownSid(
+                    kind,
+                    null_mut(),
+                    null_mut(),
+                    &mut length,
+                )
+            };
             if length == 0 {
                 return Err(io::Error::last_os_error());
             }
 
             let mut sid = Self::with_byte_capacity(length as usize);
             unsafe {
-                check_bool(CreateWellKnownSid(
+                check_bool(windows_sys::Win32::Security::CreateWellKnownSid(
                     kind,
                     null_mut(),
                     sid.storage.as_mut_ptr().cast(),
@@ -270,6 +245,19 @@ mod windows {
                 }
             }
             Ok(sid)
+        }
+
+        fn to_sddl(&self) -> io::Result<String> {
+            let mut value = null_mut();
+            unsafe {
+                check_bool(ConvertSidToStringSidW(self.as_psid(), &mut value))?;
+                if value.is_null() {
+                    return Err(io::Error::last_os_error());
+                }
+                let sddl = wide_c_string(value);
+                LocalFree(value.cast());
+                Ok(sddl)
+            }
         }
 
         fn with_byte_capacity(bytes: usize) -> Self {
@@ -286,22 +274,41 @@ mod windows {
     struct SecurityDescriptor(PSECURITY_DESCRIPTOR);
 
     impl SecurityDescriptor {
+        fn from_sddl(sddl: &str) -> io::Result<Self> {
+            let sddl: Vec<u16> = sddl.encode_utf16().chain(Some(0)).collect();
+            let mut descriptor = null_mut();
+            unsafe {
+                check_bool(ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    sddl.as_ptr(),
+                    SDDL_REVISION_1,
+                    &mut descriptor,
+                    null_mut(),
+                ))?;
+            }
+            if descriptor.is_null() {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(Self(descriptor))
+        }
+
         fn get(handle: HANDLE) -> io::Result<Self> {
             let mut descriptor = null_mut();
             unsafe {
                 check(GetSecurityInfo(
                     handle,
                     SE_FILE_OBJECT,
-                    (OWNER_SECURITY_INFORMATION
+                    OWNER_SECURITY_INFORMATION
                         | GROUP_SECURITY_INFORMATION
-                        | DACL_SECURITY_INFORMATION)
-                        as OBJECT_SECURITY_INFORMATION,
+                        | DACL_SECURITY_INFORMATION,
                     null_mut(),
                     null_mut(),
                     null_mut(),
                     null_mut(),
                     &mut descriptor,
                 ))?;
+            }
+            if descriptor.is_null() {
+                return Err(io::Error::last_os_error());
             }
             Ok(Self(descriptor))
         }
@@ -316,10 +323,32 @@ mod windows {
                     &mut owner_defaulted,
                 ))?
             };
-            if owner.is_null() {
-                return Err(invalid_input("path security descriptor has no owner"));
+            if owner.is_null() || unsafe { IsValidSid(owner) } == 0 {
+                return Err(invalid_input(
+                    "path security descriptor has an invalid owner",
+                ));
             }
             Ok(owner)
+        }
+
+        fn dacl(&self) -> io::Result<&windows_sys::Win32::Security::ACL> {
+            let mut present = 0;
+            let mut dacl = null_mut();
+            let mut defaulted = 0;
+            unsafe {
+                check_bool(GetSecurityDescriptorDacl(
+                    self.0,
+                    &mut present,
+                    &mut dacl,
+                    &mut defaulted,
+                ))?
+            };
+            if present == 0 || dacl.is_null() {
+                return Err(invalid_input(
+                    "parsed protected SDDL must contain a non-null DACL",
+                ));
+            }
+            Ok(unsafe { &*dacl })
         }
 
         fn to_sddl(&self) -> io::Result<String> {
@@ -329,15 +358,14 @@ mod windows {
                 check_bool(ConvertSecurityDescriptorToStringSecurityDescriptorW(
                     self.0,
                     SDDL_REVISION_1,
-                    DACL_SECURITY_INFORMATION as OBJECT_SECURITY_INFORMATION,
+                    DACL_SECURITY_INFORMATION,
                     &mut value,
                     &mut length,
                 ))?;
-                let mut units = std::slice::from_raw_parts(value, length as usize).to_vec();
-                while units.last() == Some(&0) {
-                    units.pop();
+                if value.is_null() {
+                    return Err(io::Error::last_os_error());
                 }
-                let sddl = OsString::from_wide(&units).to_string_lossy().into_owned();
+                let sddl = wide_c_string(value);
                 LocalFree(value.cast());
                 Ok(sddl)
             }
@@ -350,13 +378,23 @@ mod windows {
         }
     }
 
-    fn validate_owner(owner: PSID, current_user: &SidBuffer) -> io::Result<()> {
-        let system = SidBuffer::well_known(WinLocalSystemSid)?;
-        let administrators = SidBuffer::well_known(WinBuiltinAdministratorsSid)?;
+    fn wide_c_string(value: *const u16) -> String {
+        let mut length = 0;
+        unsafe {
+            while *value.add(length) != 0 {
+                length += 1;
+            }
+            OsString::from_wide(std::slice::from_raw_parts(value, length))
+                .to_string_lossy()
+                .into_owned()
+        }
+    }
+
+    fn validate_owner(owner: PSID, trusted_sids: [&SidBuffer; 3]) -> io::Result<()> {
         let trusted = unsafe {
-            EqualSid(owner, current_user.as_psid()) != 0
-                || EqualSid(owner, system.as_psid()) != 0
-                || EqualSid(owner, administrators.as_psid()) != 0
+            trusted_sids
+                .into_iter()
+                .any(|trusted_sid| EqualSid(owner, trusted_sid.as_psid()) != 0)
         };
         if trusted {
             Ok(())
@@ -368,40 +406,13 @@ mod windows {
         }
     }
 
-    struct ProtectedAcl {
-        // usize elements keep the ACL allocation aligned for all Win32 structures.
-        storage: Vec<usize>,
-    }
-
-    impl ProtectedAcl {
-        fn new(sids: [&SidBuffer; 3], inheritance: u8) -> io::Result<Self> {
-            let bytes = size_of::<ACL>()
-                + sids
-                    .iter()
-                    .map(|sid| {
-                        // ACE_HEADER + ACCESS_MASK, followed by the SID.
-                        8 + unsafe { GetLengthSid(sid.as_psid()) as usize }
-                    })
-                    .sum::<usize>();
-            let mut storage = vec![0usize; bytes.div_ceil(size_of::<usize>())];
-            let acl = storage.as_mut_ptr().cast::<ACL>();
-            unsafe {
-                check_bool(InitializeAcl(acl, bytes as u32, ACL_REVISION))?;
-                for sid in sids {
-                    check_bool(AddAccessAllowedAceEx(
-                        acl,
-                        ACL_REVISION,
-                        inheritance as u32,
-                        PROTECTED_FILE_ACCESS,
-                        sid.as_psid(),
-                    ))?;
-                }
-            }
-            Ok(Self { storage })
-        }
-
-        fn as_ptr(&self) -> *const ACL {
-            self.storage.as_ptr().cast()
+    fn reject_reparse_point(attributes: u32) -> io::Result<()> {
+        if attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            Err(invalid_input(
+                "final path component must not be a reparse point",
+            ))
+        } else {
+            Ok(())
         }
     }
 
@@ -434,13 +445,40 @@ mod windows {
             ACCESS_ALLOWED_ACE, GetAce, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
             SE_DACL_PROTECTED,
         };
+        use windows_sys::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
 
         const ACCESS_ALLOWED_ACE_TYPE: u8 = 0;
+        const OBJECT_INHERIT_ACE: u8 = 0x01;
+        const CONTAINER_INHERIT_ACE: u8 = 0x02;
+        const INHERITED_ACE: u8 = 0x10;
 
-        fn assert_protected_file_acl(path: &Path, expected_sids: [&SidBuffer; 3]) {
-            let path = WidePath::new(path).unwrap();
-            let handle = FileHandle::open_for_read(&path).unwrap();
-            let descriptor = SecurityDescriptor::get(handle.0).unwrap();
+        fn temporary_path(name: &str) -> std::path::PathBuf {
+            std::env::temp_dir().join(format!(
+                "acl-prototype-{name}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ))
+        }
+
+        fn trusted_sids() -> (SidBuffer, SidBuffer, SidBuffer) {
+            (
+                SidBuffer::current_user().unwrap(),
+                SidBuffer::well_known(WinLocalSystemSid).unwrap(),
+                SidBuffer::well_known(WinBuiltinAdministratorsSid).unwrap(),
+            )
+        }
+
+        fn assert_acl(
+            path: &Path,
+            expected_sids: [&SidBuffer; 3],
+            expected_flags: u8,
+            protected: bool,
+        ) {
+            let handle = open_path(path, READ_CONTROL).unwrap();
+            let descriptor = SecurityDescriptor::get(handle.as_raw_handle().cast()).unwrap();
             let mut control = 0;
             let mut revision = 0;
             unsafe {
@@ -451,7 +489,12 @@ mod windows {
                 ))
                 .unwrap();
             }
-            assert_ne!(control & SE_DACL_PROTECTED, 0, "DACL must be protected");
+            assert_eq!(
+                control & SE_DACL_PROTECTED != 0,
+                protected,
+                "protected DACL state was unexpected for {}",
+                path.display()
+            );
 
             let mut dacl_present = 0;
             let mut dacl = null_mut();
@@ -488,12 +531,12 @@ mod windows {
                     );
                     assert_eq!(
                         (*ace).Header.AceFlags,
-                        0,
-                        "file ACE {index} must not inherit",
+                        expected_flags,
+                        "ACE {index} inheritance flags were unexpected",
                     );
                     assert_eq!(
                         (*ace).Mask,
-                        PROTECTED_FILE_ACCESS,
+                        FILE_ALL_ACCESS,
                         "ACE {index} must grant full control",
                     );
                     let sid = std::ptr::addr_of!((*ace).SidStart).cast_mut().cast();
@@ -506,32 +549,117 @@ mod windows {
             }
         }
 
+        fn assert_inherited_child_acl(path: &Path, expected_sids: [&SidBuffer; 3]) {
+            let handle = open_path(path, READ_CONTROL).unwrap();
+            let descriptor = SecurityDescriptor::get(handle.as_raw_handle().cast()).unwrap();
+            let dacl = descriptor.dacl().unwrap();
+            assert_eq!(dacl.AceCount, 3, "child DACL must inherit three ACEs");
+
+            for (index, expected_sid) in expected_sids.into_iter().enumerate() {
+                let mut ace = null_mut();
+                unsafe {
+                    check_bool(GetAce(dacl as *const _ as *mut _, index as u32, &mut ace)).unwrap();
+                    let ace = ace.cast::<ACCESS_ALLOWED_ACE>();
+                    assert_ne!(
+                        (*ace).Header.AceFlags & INHERITED_ACE,
+                        0,
+                        "child ACE {index} must be inherited",
+                    );
+                    assert_eq!(
+                        (*ace).Mask,
+                        FILE_ALL_ACCESS,
+                        "child ACE {index} must grant full control",
+                    );
+                    let sid = std::ptr::addr_of!((*ace).SidStart).cast_mut().cast();
+                    assert_ne!(
+                        EqualSid(sid, expected_sid.as_psid()),
+                        0,
+                        "child ACE {index} SID did not match",
+                    );
+                }
+            }
+        }
+
         #[test]
-        fn secure_path_protects_a_real_file_with_the_current_user_ace() {
-            let current_user = SidBuffer::current_user().unwrap();
-            let system = SidBuffer::well_known(WinLocalSystemSid).unwrap();
-            let administrators = SidBuffer::well_known(WinBuiltinAdministratorsSid).unwrap();
-            let path = std::env::temp_dir().join(format!(
-                "acl-prototype-{}-{}.txt",
-                std::process::id(),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
+        fn validate_owner_accepts_trusted_sids_and_rejects_world() {
+            let (current_user, system, administrators) = trusted_sids();
+            let trusted = [&current_user, &system, &administrators];
+            for owner in trusted {
+                validate_owner(owner.as_psid(), trusted).unwrap();
+            }
+
+            let world = SidBuffer::well_known(windows_sys::Win32::Security::WinWorldSid).unwrap();
+            assert_eq!(
+                validate_owner(world.as_psid(), trusted).unwrap_err().kind(),
+                io::ErrorKind::PermissionDenied
+            );
+        }
+
+        #[test]
+        fn open_path_rejects_relative_and_nul_paths() {
+            assert_eq!(
+                open_path(Path::new("relative"), READ_CONTROL)
+                    .err()
                     .unwrap()
-                    .as_nanos()
-            ));
+                    .kind(),
+                io::ErrorKind::InvalidInput
+            );
+            let nul_path = std::path::PathBuf::from(OsString::from_wide(&[
+                b'C' as u16,
+                b':' as u16,
+                b'\\' as u16,
+                0,
+                b'x' as u16,
+            ]));
+            assert_eq!(
+                open_path(&nul_path, READ_CONTROL).err().unwrap().kind(),
+                io::ErrorKind::InvalidInput
+            );
+        }
+
+        #[test]
+        fn secure_path_applies_an_exact_protected_file_dacl_idempotently() {
+            let (current_user, system, administrators) = trusted_sids();
+            let path = temporary_path("file");
             fs::write(&path, "test").unwrap();
 
             secure_path(&path).unwrap();
+            let first = inspect_path(&path).unwrap();
             secure_path(&path).unwrap();
-            let sddl = inspect_path(&path).unwrap();
-
+            assert_eq!(
+                inspect_path(&path).unwrap(),
+                first,
+                "file DACL must be idempotent"
+            );
             assert!(
-                !sddl.ends_with('\0'),
+                !first.ends_with('\0'),
                 "SDDL must not retain the API terminator"
             );
-            assert_protected_file_acl(&path, [&current_user, &system, &administrators]);
+            assert_acl(&path, [&current_user, &system, &administrators], 0, true);
 
             fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn secure_path_applies_inheritable_protected_directory_aces() {
+            let (current_user, system, administrators) = trusted_sids();
+            let directory = temporary_path("directory");
+            fs::create_dir(&directory).unwrap();
+
+            secure_path(&directory).unwrap();
+            assert_acl(
+                &directory,
+                [&current_user, &system, &administrators],
+                OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE,
+                true,
+            );
+
+            let child = directory.join("child.txt");
+            fs::write(&child, "test").unwrap();
+            assert_inherited_child_acl(&child, [&current_user, &system, &administrators]);
+
+            fs::remove_file(child).unwrap();
+            fs::remove_dir(directory).unwrap();
         }
     }
 }

@@ -1,3 +1,8 @@
+#[cfg(not(feature = "projection"))]
+use acl_prototype_core as core;
+#[cfg(feature = "projection")]
+use acl_prototype_core_windows as core;
+
 use std::{env, path::Path, process::ExitCode};
 
 use serde_json::json;
@@ -5,10 +10,7 @@ use serde_json::json;
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().skip(1).collect();
     if args.len() == 1 && args[0] == "probe" {
-        println!(
-            "{}",
-            json!({ "version": 1, "backend": acl_prototype_core::backend() })
-        );
+        println!("{}", json!({ "version": 1, "backend": core::backend() }));
         return ExitCode::SUCCESS;
     }
     if args.len() != 2 || (args[0] != "secure" && args[0] != "inspect") {
@@ -20,9 +22,9 @@ fn main() -> ExitCode {
     }
     let path = Path::new(&args[1]);
     let result = if args[0] == "secure" {
-        acl_prototype_core::secure_path(path).map(|()| None)
+        core::secure_path(path).map(|()| None)
     } else {
-        acl_prototype_core::inspect_path(path).map(Some)
+        core::inspect_path(path).map(Some)
     };
     match result {
         Ok(sddl) => {

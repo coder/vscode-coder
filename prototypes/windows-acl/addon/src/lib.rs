@@ -1,3 +1,8 @@
+#[cfg(not(feature = "projection"))]
+use acl_prototype_core as core;
+#[cfg(feature = "projection")]
+use acl_prototype_core_windows as core;
+
 use std::path::PathBuf;
 
 use napi::{bindgen_prelude::AsyncTask, Env, Error, Result, Task};
@@ -5,7 +10,7 @@ use napi_derive::napi;
 
 #[napi]
 pub fn probe() -> String {
-    acl_prototype_core::backend().to_owned()
+    core::backend().to_owned()
 }
 
 pub struct SecureTask {
@@ -17,7 +22,7 @@ impl Task for SecureTask {
     type JsValue = ();
 
     fn compute(&mut self) -> Result<()> {
-        acl_prototype_core::secure_path(&self.path).map_err(|error| {
+        core::secure_path(&self.path).map_err(|error| {
             Error::from_reason(format!("{} (osCode={:?})", error, error.raw_os_error()))
         })
     }
@@ -43,7 +48,7 @@ impl Task for InspectTask {
     type JsValue = String;
 
     fn compute(&mut self) -> Result<String> {
-        acl_prototype_core::inspect_path(&self.path).map_err(|error| {
+        core::inspect_path(&self.path).map_err(|error| {
             Error::from_reason(format!("{} (osCode={:?})", error, error.raw_os_error()))
         })
     }

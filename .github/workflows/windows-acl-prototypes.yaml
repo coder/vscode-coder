@@ -28,7 +28,7 @@ jobs:
             arch: arm64
             target: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -37,6 +37,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - name: Check out comparison baseline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 22a751efc2fc859641e387921e115d01829db1ac
+          path: .acl-baseline
+          persist-credentials: false
       - name: Verify native runtime architecture
         run: node -e 'if (process.arch !== "${{ matrix.arch }}") throw new Error(process.arch); console.log(process.versions)'
       - name: Install pinned Rust toolchain
@@ -46,28 +52,23 @@ jobs:
       - name: Format and lint native code
         run: |
           cargo +1.98.1 fmt --all --manifest-path prototypes/windows-acl/Cargo.toml --check
-          cargo +1.98.1 clippy --workspace --all-targets --target ${{ matrix.target }} --manifest-path prototypes/windows-acl/Cargo.toml --locked -- -D warnings
+          cargo +1.98.1 clippy --workspace --all-features --all-targets --target ${{ matrix.target }} --manifest-path prototypes/windows-acl/Cargo.toml --locked -- -D warnings
       - name: Test native ACL core
-        run: cargo +1.98.1 test -p acl-prototype-core --target ${{ matrix.target }} --manifest-path prototypes/windows-acl/Cargo.toml --locked
-      - name: Build and stage both interfaces
-        run: |
-          cargo +1.98.1 build --release --workspace --target ${{ matrix.target }} --manifest-path prototypes/windows-acl/Cargo.toml --locked
-          node prototypes/windows-acl/stage.cjs --target ${{ matrix.target }}
-      - name: Test real Windows OpenSSH and both interfaces in Node
-        run: pnpm exec vitest run --config prototypes/windows-acl/test/vitest.config.mts
-      - name: Test both interfaces in current Electron
-        run: pnpm exec electron "$(node -p 'require("node:path").resolve("node_modules/vitest/vitest.mjs")')" run --config prototypes/windows-acl/test/vitest.config.mts
+        run: cargo +1.98.1 test -p acl-prototype-core -p acl-prototype-core-windows --target ${{ matrix.target }} --manifest-path prototypes/windows-acl/Cargo.toml --locked
+      - name: Resolve Electron 37 executable
+        run: pnpm dlx electron@37.10.3 -e 'require("node:fs").appendFileSync(process.env.GITHUB_ENV, "ACL_ELECTRON37_PATH=" + process.execPath + "\n")'
         env:
           ELECTRON_RUN_AS_NODE: "1"
-      - name: Test both interfaces in Electron 37
-        run: pnpm dlx electron@37.10.3 "$(node -p 'require("node:path").resolve("node_modules/vitest/vitest.mjs")')" run --config prototypes/windows-acl/test/vitest.config.mts
+      - name: Compare source, size profiles, and CRT linkage
+        run: node prototypes/windows-acl/experiment.cjs --target ${{ matrix.target }}
         env:
-          ELECTRON_RUN_AS_NODE: "1"
-      - name: Upload native artifacts
+          ACL_BASELINE_ROOT: ${{ github.workspace }}/.acl-baseline/prototypes/windows-acl
+      - name: Upload experimental native payloads and reports
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: acl-native-${{ matrix.arch }}
-          path: prototypes/windows-acl/artifacts/win32-${{ matrix.arch }}/
+          name: acl-experiments-${{ matrix.arch }}
+          path: prototypes/windows-acl/artifacts/experiments/
           if-no-files-found: error
           retention-days: 7
 
@@ -83,21 +84,21 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: acl-native-x64
-          path: prototypes/windows-acl/artifacts/win32-x64
+          name: acl-experiments-x64
+          path: prototypes/windows-acl/artifacts/experiments
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: acl-native-arm64
-          path: prototypes/windows-acl/artifacts/win32-arm64
-      - name: Package and inspect both universal VSIXs
-        run: pnpm exec vitest run --config prototypes/windows-acl/test/vitest.config.mts
-        env:
-          ACL_REQUIRE_UNIVERSAL: "1"
+          name: acl-experiments-arm64
+          path: prototypes/windows-acl/artifacts/experiments
+      - name: Package and inspect each universal comparison payload
+        run: node prototypes/windows-acl/experiment-report.cjs
       - name: Upload experimental universal packages
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: acl-universal-prototypes
-          path: prototypes/windows-acl/artifacts/*.vsix
+          path: |
+            prototypes/windows-acl/artifacts/experiments/**/*.vsix
+            prototypes/windows-acl/artifacts/experiments/*.json
           if-no-files-found: error
           retention-days: 7
 

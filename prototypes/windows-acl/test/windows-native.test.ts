@@ -25,6 +25,23 @@ afterEach(async () => {
 describe.runIf(process.platform === "win32")(
 	"staged Windows ACL implementations",
 	() => {
+		it("rejects a final directory junction without changing its target", async () => {
+			const root = await fs.mkdtemp(
+				path.join(os.tmpdir(), "windows-acl-junction-"),
+			);
+			temporaryDirectories.push(root);
+			const target = path.join(root, "target");
+			const junction = path.join(root, "junction");
+			await fs.mkdir(target);
+			await fs.symlink(target, junction, "junction");
+			for (const variant of ["helper", "addon"] as const) {
+				const bridge = createBridge({ variant, artifactRoot });
+				const before = await bridge.inspect(target);
+				await expect(bridge.secure(junction)).rejects.toThrow();
+				expect(await bridge.inspect(target)).toBe(before);
+			}
+		});
+
 		it("repair an included file and preserve the policy through an atomic rewrite", async () => {
 			const root = await fs.mkdtemp(
 				path.join(os.tmpdir(), "windows-acl-native-"),

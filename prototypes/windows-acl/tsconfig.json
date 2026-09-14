@@ -5,5 +5,11 @@
 		"rootDir": ".",
 		"types": ["node"]
 	},
-	"files": ["bridge.d.cts", "stage.d.cts", "package-prototype.d.cts"]
+	"files": [
+		"bridge.d.cts",
+		"stage.d.cts",
+		"package-prototype.d.cts",
+		"experiment.d.cts",
+		"experiment-report.d.cts"
+	]
 }
