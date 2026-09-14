@@ -140,7 +140,7 @@ describe("experiment", () => {
 	});
 
 	it("requires an absolute Electron 37 executable path", () => {
-		expect(() => electron37Path()).toThrow("ACL_ELECTRON37_PATH");
+		expect(() => electron37Path("")).toThrow("ACL_ELECTRON37_PATH");
 		expect(() => electron37Path("relative/electron.exe")).toThrow(
 			"ACL_ELECTRON37_PATH",
 		);
