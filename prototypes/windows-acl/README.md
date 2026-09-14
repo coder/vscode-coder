@@ -5,13 +5,16 @@ SSH writer. Do not apply these prototypes to real user config directories.
 
 ## Scope
 
-Compare a Rust executable against a Rust Node-API addon using the same Win32 core.
+Compare a Rust executable against a Rust Node-API addon using interchangeable Win32 cores.
 The intended distribution remains one universal VSIX containing Windows x64 and
 ARM64 assets. Linux/macOS return before resolving, loading, or executing native
 code. Native Windows builds are separate from VSIX packaging; platform-specific
 Marketplace releases are not required.
 
 - `core`: direct `windows-sys` ACL operations on an existing file or directory.
+- `core-windows`: Microsoft `windows` typed bindings with the same ACL policy.
+- `experiment.cjs` / `experiment-report.cjs`: isolated builds, runtime checks, PE
+  import inspection, and universal package comparisons.
 - `helper`: process interface with a versioned JSON response.
 - `addon`: Node-API 8 interface using `napi-rs`, with work off the JS thread.
 - `bridge.cjs`: lazy, Windows-only selection and error propagation.
@@ -26,31 +29,88 @@ variant, with both Windows architectures in the same universal extension.
 
 ## Results on September 14, 2026
 
-Performed using Rust 1.98.1. Native Windows results are from Actions run
-`34835778683`; package inspection was repeated locally with its real payloads:
+Measured at commit `29de7d9` using Rust 1.98.1. Prototype Actions run
+`34840561914` and standard repository CI run `34840562010` both passed.
 
-| Check                                           | Result                                             |
-| ----------------------------------------------- | -------------------------------------------------- |
-| Linux release build: helper + addon             | Passed                                             |
-| Linux Rust unit tests                           | Passed (unsupported-platform behavior only)        |
-| Clippy, all targets, warnings denied            | Passed on Linux and Windows source checks          |
-| Windows MSVC source/test check, x64             | Passed; not linked or executed                     |
-| Windows MSVC source/test check, ARM64           | Passed; not linked or executed                     |
-| Bridge/staging/assembly tests                   | 27 passed, 1 Windows-only skip with real payloads  |
-| Windows OpenSSH integration                     | Passed on Windows x64 and ARM64                    |
-| Actual Windows universal VSIX archives          | Passed locally with both real Windows payloads     |
-| macOS/Linux native bypass                       | Passed using injected platform/architecture values |
-| Actual macOS runtime                            | Bridge bypass tests passed on macos-15             |
-| Node 24.15.0 transport probe                    | Passed                                             |
-| Electron 37.10.3 / Node 22.21.1 transport probe | Passed                                             |
-| Electron 42.5.1 / Node 24.17.0 transport probe  | Passed                                             |
-| Production VSIX listing excludes prototypes     | Passed with `vsce ls --no-dependencies`            |
+- All six configurations built helper/addon payloads on native Windows x64 and
+  ARM64 and passed the shared OpenSSH rejection/repair/rewrite, idempotence, and
+  final-junction rejection tests under Node 22 and Electron 37/42.
+- Both cores' Rust tests passed. The typed core still needs the low-level core's
+  independent exact-ACE and directory-inheritance assertions before adoption.
+- Linux/macOS bridge-bypass jobs and all twelve real universal VSIX archive
+  inspections passed. Inert package activation is not a full editor integration test.
+- PE import inspection covered both interfaces and architectures in every cell.
 
-The same Linux `.node` binary was loaded in all three runtimes, without rebuild.
-This validates interface loading/error handling, NOT Windows ACL correctness.
-The explicit transport probe is development-only: it deliberately loads a Linux
-build that always returns Unsupported for ACL operations. No Linux native asset
-is intended for distribution.
+### Universal package size
+
+Each experimental package contains x64 and ARM64 assets for one interface.
+These are compressed prototype sizes, not production extension sizes.
+
+| Configuration                     | Helper (KiB) | Addon (KiB) |
+| --------------------------------- | -----------: | ----------: |
+| Original manual ACL, opt 3        |        190.7 |       246.6 |
+| Low-level SDDL, opt 3             |        194.2 |       250.1 |
+| Low-level SDDL, opt s             |        160.5 |       231.1 |
+| Microsoft `windows` + SDDL, opt s |        160.9 |       231.7 |
+| Low-level SDDL, opt z             |        159.5 |       223.0 |
+| Low-level SDDL, opt s, static CRT |        254.7 |       320.4 |
+
+All cells use LTO, one codegen unit, stripping, and unwind panic strategy. The
+original source at `22a751efc2fc859641e387921e115d01829db1ac` was rebuilt on the
+same runners. At equal opt s, typed bindings add only 380 helper package bytes
+and 693 addon package bytes. Size reductions versus original include compiler
+optimization changes; they are not solely a dependency benefit. No latency
+distributions were measured.
+
+### Handwritten Rust and dependency maintenance
+
+Counts include production-core comments/blanks and exclude the line containing
+its first `#[cfg(test)]` and everything after it. Unsafe-token counts are rough
+indicators, not safety scores.
+
+| Core                       | Physical lines | Nonblank lines | `unsafe` tokens |
+| -------------------------- | -------------: | -------------: | --------------: |
+| Original manual ACL        |            427 |            381 |              17 |
+| Low-level SDDL             |            438 |            395 |              19 |
+| Microsoft `windows` + SDDL |            352 |            317 |              20 |
+
+The typed implementation has 75 fewer lines than original (~18%), but more
+unsafe sites. Some reduction comes from implementation choices such as
+`IsWellKnownSid`, not the dependency alone. SDDL with `windows-sys` did not
+reduce total code or package size at equal opt 3; it replaces manual ACL layout
+arithmetic with parser/conversion lifetime handling.
+
+`windows = 0.62.2` supplies typed API signatures and some error plumbing, not a
+complete safe ACL abstraction. We still own descriptor allocation lifetimes,
+aligned token/SID storage, handle sequencing, and owner/reparse policy. It adds
+11 registry packages to this experimental lockfile, not separately shipped DLLs.
+A selected implementation would retain only one core.
+
+The published-source dependency investigation found no complete maintained safe
+wrapper matching this boundary. `winsafe 0.0.29` lacks the central security-info
+and SDDL APIs; `windows-acl` and `windows-permissions` use older `winapi` bindings
+and do not cover the whole policy; `qiongli-windows-security` has a specialized
+owner-only policy rather than the required existing-handle protected-DACL write.
+SID-only helpers and descriptor parsers cannot replace the central operation.
+The Microsoft typed binding was therefore implemented and measured rather than
+rejected on dependency count alone.
+
+### Runtime linkage
+
+All dynamic cells import `VCRUNTIME140.dll` and UCRT API-set DLLs on both
+architectures. Static CRT removes these explicit imports for both interfaces,
+with approximately 94 KiB helper / 89 KiB addon universal-package growth versus
+low-level opt s. Windows OS DLL dependencies remain.
+
+The typed-binding plus static-CRT combination was not tested. Neither hosted
+runner success nor import inspection proves clean-machine portability. Signing,
+application control, DLL search/integrity, and addon CRT ownership boundaries
+remain deployment review work. No production linkage choice has been made.
+
+The consolidated measurements are in `report.json` of the
+`acl-universal-prototypes` artifact from run `34840561914`. The workflow rebuilds
+all cells and records source revisions, compiler versions, PE imports, native
+bytes, runtime outcomes, and package bytes.
 
 ## Reproduce checks
 
@@ -104,9 +164,9 @@ The experimental extensions have inert activation. Installing them alone does
 not exercise ACL behavior; use the bridge/native test harness explicitly.
 The archive tests currently use `unzip`; run them on the Linux assembly host.
 
-Before selecting a production implementation, also inspect PE DLL dependencies,
-validate signing/application-control behavior, exercise real macOS activation
-with no native assets, and test the minimum supported Windows editor runtime.
+Before selecting a production implementation, validate clean-machine and
+signing/application-control behavior, exercise real editor activation, and
+equalize the cores' independent ACL-shape and inheritance assertions.
 
 ## Interpretation
 
@@ -118,26 +178,18 @@ the host process. Both passed the same Windows x64/ARM64 tests under Node 22 and
 37/42. Neither has been proven operationally superior on end-user machines. The macOS keyring history argues for strict platform gating and
 package-level regression tests, not a claim that shipping binaries is risk-free.
 
-## Measured payloads
+## Decision gate
 
-The experimental universal packages built from run `34835778683` contain:
+For discussion, the typed-binding helper is the strongest measured candidate for
+less handwritten Rust and avoiding native code inside the extension host. This
+is not a safety proof or an adoption decision. The helper's same-user process
+boundary provides memory/crash containment, not a sandbox.
 
-| Payload                     | Helper                | Addon                 |
-| --------------------------- | --------------------- | --------------------- |
-| Windows x64                 | 186 KiB               | 291.5 KiB             |
-| Windows ARM64               | 178.5 KiB             | 268.5 KiB             |
-| Universal VSIX (compressed) | approximately 191 KiB | approximately 247 KiB |
-
-These are standalone prototype package sizes, not the production extension size.
-`objdump -p` showed that both x64 variants import `VCRUNTIME140.dll` and Universal
-CRT API DLLs. Hosted-runner success therefore does not establish that either
-payload is self-contained on a clean user machine. ARM64 DLL inspection remains
-outstanding. No runtime-linking or redistribution choice has been made.
-
-The first native run exposed a test-only SDDL spelling assumption (SID aliases and
-auto-inheritance descriptor flags); the test now inspects actual protection and
-ACE semantics. The first package job exposed an incorrect artifact lookup path;
-the package job now requires both architectures instead of silently skipping.
+A possible next experiment is typed bindings plus static CRT, with independent
+ACL/inheritance tests brought to parity. The user must approve narrowing to that
+candidate, further experiments, and any later production integration. Both
+interfaces remain experimental; no dependency, profile, or CRT option is selected
+for production.
 
 ## Prototype limitations
 
