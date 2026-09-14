@@ -31,6 +31,9 @@ export function buildEnvironment(
 	targetDirectory: string,
 ): NodeJS.ProcessEnv;
 export function parsePortableExecutable(buffer: Buffer): PortableExecutable;
+export function verifyStaticRuntime(
+	binaries: Array<{ name: string; pe: PortableExecutable }>,
+): void;
 export function reportFilename(arch: "x64" | "arm64"): string;
 export function electron37Path(value?: string): string;
 export function vitestEntrypoint(): string;

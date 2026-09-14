@@ -13,6 +13,7 @@ const {
 	parsePortableExecutable,
 	targetEnvironmentName,
 	vitestEntrypoint,
+	verifyStaticRuntime,
 } = experimentModule;
 const temporaryDirectories: string[] = [];
 
@@ -78,6 +79,55 @@ describe("experiment", () => {
 				"acl-prototype-addon/projection",
 			],
 		});
+	});
+
+	it("compares typed bindings with identical settings except CRT linkage", () => {
+		const dynamic = CELLS.find((cell) => cell.name === "projection-s");
+		const staticCell = CELLS.find(
+			(cell) => cell.name === "projection-s-static",
+		);
+		expect(dynamic).toBeDefined();
+		expect(staticCell).toEqual({
+			...dynamic,
+			name: "projection-s-static",
+			crtStatic: true,
+		});
+	});
+
+	it.each([
+		"VCRUNTIME140.dll",
+		"vcruntime140_1.dll",
+		"MSVCP140.dll",
+		"msvcrt.dll",
+		"ucrtbase.dll",
+		"api-ms-win-crt-runtime-l1-1-0.dll",
+	])("rejects a static payload importing %s", (name) => {
+		expect(() =>
+			verifyStaticRuntime([
+				{
+					name: "acl-helper.exe",
+					pe: { architecture: "x64", imports: ["KERNEL32.dll", name] },
+				},
+			]),
+		).toThrow(`imports runtime DLLs: ${name}`);
+	});
+
+	it("allows Windows OS imports in both static payloads", () => {
+		expect(() =>
+			verifyStaticRuntime([
+				{
+					name: "acl-helper.exe",
+					pe: {
+						architecture: "x64",
+						imports: ["KERNEL32.dll", "advapi32.dll"],
+					},
+				},
+				{
+					name: "acl.node",
+					pe: { architecture: "arm64", imports: ["ntdll.dll"] },
+				},
+			]),
+		).not.toThrow();
 	});
 
 	it("uses distinct target directories and Cargo profile overrides", () => {

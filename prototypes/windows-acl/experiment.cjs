@@ -39,6 +39,16 @@ const CELLS = [
 		],
 	},
 	{
+		name: "projection-s-static",
+		source: "current",
+		optLevel: "s",
+		crtStatic: true,
+		features: [
+			"acl-prototype-helper/projection",
+			"acl-prototype-addon/projection",
+		],
+	},
+	{
 		name: "simplified-z",
 		source: "current",
 		optLevel: "z",
@@ -200,6 +210,19 @@ function parsePortableExecutable(buffer) {
 		}
 	}
 	return { architecture, imports: imports.sort() };
+}
+
+function verifyStaticRuntime(binaries) {
+	for (const binary of binaries) {
+		const runtimeImports = binary.pe.imports.filter((name) =>
+			/^(?:vcruntime|msvcp|msvcr|ucrtbase|api-ms-win-crt-)/i.test(name),
+		);
+		if (runtimeImports.length > 0) {
+			throw new Error(
+				`Static CRT payload ${binary.name} imports runtime DLLs: ${runtimeImports.join(", ")}`,
+			);
+		}
+	}
 }
 
 function copyBuildOutputs(targetDirectory, target, artifactDirectory) {
@@ -381,6 +404,7 @@ function runExperiment(target, options = {}) {
 				targetDirectory,
 				binaries: copyBuildOutputs(targetDirectory, target, artifactDirectory),
 			};
+			if (cell.crtStatic) verifyStaticRuntime(report.build.binaries);
 			copyBuildOutputs(
 				targetDirectory,
 				target,
@@ -434,4 +458,5 @@ module.exports = {
 	sourceRootFor,
 	targetEnvironmentName,
 	vitestEntrypoint,
+	verifyStaticRuntime,
 };

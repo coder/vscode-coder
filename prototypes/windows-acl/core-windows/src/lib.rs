@@ -353,28 +353,191 @@ mod windows {
     #[cfg(test)]
     mod tests {
         use super::*;
+        use std::ffi::OsString;
         use std::fs;
+        use std::mem::size_of;
+        use std::os::windows::ffi::OsStringExt;
+        use std::path::{Path, PathBuf};
+        use windows::Win32::Security::{
+            ACCESS_ALLOWED_ACE, CreateWellKnownSid, GetAce, GetSecurityDescriptorControl,
+            SE_DACL_PROTECTED, WELL_KNOWN_SID_TYPE, WinWorldSid,
+        };
+        use windows::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
 
-        #[test]
-        fn secure_path_applies_an_idempotent_protected_dacl() {
-            let path = std::env::temp_dir().join(format!(
-                "acl-prototype-windows-{}-{}.conf",
+        const ACCESS_ALLOWED_ACE_TYPE: u8 = 0;
+        const OBJECT_INHERIT_ACE: u8 = 0x01;
+        const CONTAINER_INHERIT_ACE: u8 = 0x02;
+        const INHERITED_ACE: u8 = 0x10;
+
+        fn temporary_path(name: &str) -> PathBuf {
+            std::env::temp_dir().join(format!(
+                "acl-prototype-windows-{name}-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_nanos(),
-            ));
-            fs::write(&path, "Host acl-prototype\n").unwrap();
+            ))
+        }
+
+        fn well_known_sid(kind: WELL_KNOWN_SID_TYPE) -> Sid {
+            let mut length = 0;
+            let _ = unsafe { CreateWellKnownSid(kind, None, None, &mut length) };
+            assert_ne!(length, 0, "Windows did not report the well-known SID size");
+
+            let mut storage = vec![0usize; (length as usize).div_ceil(size_of::<usize>())];
+            unsafe {
+                CreateWellKnownSid(
+                    kind,
+                    None,
+                    Some(PSID(storage.as_mut_ptr().cast())),
+                    &mut length,
+                )
+                .unwrap();
+            }
+            Sid(storage)
+        }
+
+        fn trusted_sids() -> (Sid, Sid, Sid) {
+            (
+                current_user_sid().unwrap(),
+                well_known_sid(WinLocalSystemSid),
+                well_known_sid(WinBuiltinAdministratorsSid),
+            )
+        }
+
+        fn assert_acl(path: &Path, expected_sids: [&Sid; 3], expected_flags: u8, protected: bool) {
+            let file = open(path, READ_CONTROL.0).unwrap();
+            let descriptor = SecurityDescriptor::get(&file).unwrap();
+            let mut control = 0;
+            let mut revision = 0;
+            unsafe {
+                GetSecurityDescriptorControl(descriptor.0, &mut control, &mut revision).unwrap();
+            }
+            assert_eq!(
+                control & SE_DACL_PROTECTED.0 != 0,
+                protected,
+                "protected DACL state was unexpected for {}",
+                path.display()
+            );
+
+            let dacl = descriptor.dacl().unwrap();
+            assert_eq!(dacl.AceCount, 3, "DACL must contain three ACEs");
+
+            for (index, expected_sid) in expected_sids.into_iter().enumerate() {
+                let mut ace = std::ptr::null_mut();
+                unsafe {
+                    GetAce(dacl, index as u32, &mut ace).unwrap();
+                    let ace = ace.cast::<ACCESS_ALLOWED_ACE>();
+                    assert_eq!(
+                        (*ace).Header.AceType,
+                        ACCESS_ALLOWED_ACE_TYPE,
+                        "ACE {index} must allow access",
+                    );
+                    assert_eq!(
+                        (*ace).Header.AceFlags,
+                        expected_flags,
+                        "ACE {index} inheritance flags were unexpected",
+                    );
+                    assert_eq!(
+                        (*ace).Mask,
+                        FILE_ALL_ACCESS.0,
+                        "ACE {index} must grant full control",
+                    );
+                    let sid = PSID(std::ptr::addr_of!((*ace).SidStart).cast_mut().cast());
+                    assert!(
+                        EqualSid(sid, expected_sid.as_psid()).is_ok(),
+                        "ACE {index} SID did not match",
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn validate_owner_accepts_trusted_sids_and_rejects_world() {
+            let (current_user, system, administrators) = trusted_sids();
+            for owner in [&current_user, &system, &administrators] {
+                validate_owner(owner.as_psid(), current_user.as_psid()).unwrap();
+            }
+
+            let world = well_known_sid(WinWorldSid);
+            assert_eq!(
+                validate_owner(world.as_psid(), current_user.as_psid())
+                    .unwrap_err()
+                    .kind(),
+                io::ErrorKind::PermissionDenied
+            );
+        }
+
+        #[test]
+        fn open_rejects_relative_and_nul_paths() {
+            assert_eq!(
+                open(Path::new("relative"), READ_CONTROL.0)
+                    .unwrap_err()
+                    .kind(),
+                io::ErrorKind::InvalidInput
+            );
+            let nul_path = PathBuf::from(OsString::from_wide(&[
+                b'C' as u16,
+                b':' as u16,
+                b'\\' as u16,
+                0,
+                b'x' as u16,
+            ]));
+            assert_eq!(
+                open(&nul_path, READ_CONTROL.0).unwrap_err().kind(),
+                io::ErrorKind::InvalidInput
+            );
+        }
+
+        #[test]
+        fn secure_path_applies_an_exact_protected_file_dacl_idempotently() {
+            let (current_user, system, administrators) = trusted_sids();
+            let path = temporary_path("file");
+            fs::write(&path, "test").unwrap();
 
             secure_path(&path).unwrap();
             let first = inspect_path(&path).unwrap();
             secure_path(&path).unwrap();
-            let second = inspect_path(&path).unwrap();
+            assert_eq!(
+                inspect_path(&path).unwrap(),
+                first,
+                "file DACL must be idempotent"
+            );
+            assert!(
+                !first.ends_with('\0'),
+                "SDDL must not retain the API terminator"
+            );
+            assert_acl(&path, [&current_user, &system, &administrators], 0, true);
 
-            assert!(first.contains("D:P"), "DACL must be protected: {first}");
-            assert_eq!(second, first, "secure_path must be idempotent");
             fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn secure_path_applies_inheritable_protected_directory_aces() {
+            let (current_user, system, administrators) = trusted_sids();
+            let directory = temporary_path("directory");
+            fs::create_dir(&directory).unwrap();
+
+            secure_path(&directory).unwrap();
+            assert_acl(
+                &directory,
+                [&current_user, &system, &administrators],
+                OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE,
+                true,
+            );
+
+            let child = directory.join("child.txt");
+            fs::write(&child, "test").unwrap();
+            assert_acl(
+                &child,
+                [&current_user, &system, &administrators],
+                INHERITED_ACE,
+                false,
+            );
+
+            fs::remove_file(child).unwrap();
+            fs::remove_dir(directory).unwrap();
         }
     }
 }

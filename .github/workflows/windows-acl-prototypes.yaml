@@ -55,6 +55,12 @@ jobs:
           cargo +1.98.1 clippy --workspace --all-features --all-targets --target ${{ matrix.target }} --manifest-path prototypes/windows-acl/Cargo.toml --locked -- -D warnings
       - name: Test native ACL core
         run: cargo +1.98.1 test -p acl-prototype-core -p acl-prototype-core-windows --target ${{ matrix.target }} --manifest-path prototypes/windows-acl/Cargo.toml --locked
+      - name: Test typed ACL core with static CRT
+        run: cargo +1.98.1 test -p acl-prototype-core-windows --release --target ${{ matrix.target }} --manifest-path prototypes/windows-acl/Cargo.toml --locked
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+          CARGO_PROFILE_RELEASE_OPT_LEVEL: "s"
+          CARGO_TARGET_DIR: "prototypes/windows-acl/target/static-core-tests"
       - name: Resolve Electron 37 executable
         run: pnpm dlx electron@37.10.3 -e 'require("node:fs").appendFileSync(process.env.GITHUB_ENV, "ACL_ELECTRON37_PATH=" + process.execPath + "\n")'
         env:

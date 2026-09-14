@@ -178,6 +178,21 @@ the host process. Both passed the same Windows x64/ARM64 tests under Node 22 and
 37/42. Neither has been proven operationally superior on end-user machines. The macOS keyring history argues for strict platform gating and
 package-level regression tests, not a claim that shipping binaries is risk-free.
 
+## Static CRT follow-up
+
+The user approved accepting a larger package to reduce deployment dependencies.
+`projection-s-static` compares typed bindings with the existing dynamic
+`projection-s` cell at identical optimization settings. The existing addon
+comparison remains intact; the deployment assessment prioritizes the helper.
+Static cells fail if the inspected PE import table contains VC/UCRT runtime DLLs.
+This checks direct imports, not transitive or dynamically loaded dependencies,
+and is not a substitute for running on a clean Windows installation.
+
+Independent typed-core tests check exact file/directory ACEs, real child
+inheritance, path rejection, and the owner allow-list. These follow-up changes
+require native runner validation; the results above describe the earlier six-cell
+experiment, not this seven-cell run.
+
 ## Decision gate
 
 For discussion, the typed-binding helper is the strongest measured candidate for
