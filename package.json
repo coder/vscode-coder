@@ -1,7 +1,7 @@
 {
 	"name": "coder-remote",
 	"displayName": "Coder",
-	"version": "1.16.2",
+	"version": "1.16.3",
 	"description": "Open any workspace with a single click.",
 	"categories": [
 		"Other"
@@ -678,14 +678,17 @@
 			"view/title": [
 				{
 					"command": "coder.logout",
+					"group": "deployment@2",
 					"when": "coder.authenticated && view == myWorkspaces"
 				},
 				{
 					"command": "coder.netcheck",
+					"group": "diagnostics@1",
 					"when": "coder.authenticated && view == myWorkspaces"
 				},
 				{
 					"command": "coder.switchDeployment",
+					"group": "deployment@1",
 					"when": "coder.authenticated && view == myWorkspaces"
 				},
 				{
