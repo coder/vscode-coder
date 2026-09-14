@@ -9,14 +9,14 @@ import type { WorkspaceConfiguration } from "vscode";
 import type { FeatureSet } from "../featureSet";
 
 /** The CLI's own store (its config directory or the keyring, shared with the terminal), or a directory private to the extension. */
-export type CliAuth =
-	| { store: "cli"; url: string; useKeyring: boolean | undefined }
-	| {
-			store: "extension";
-			url: string;
-			configDir: string;
-			useKeyring: false | undefined;
-	  };
+export type CliAuth = {
+	url: string;
+	/** The extension follows redirects itself; from 2.38 the CLI needs the flag to match. */
+	allowRedirects: boolean;
+} & (
+	| { store: "cli"; useKeyring: boolean | undefined }
+	| { store: "extension"; configDir: string; useKeyring: false | undefined }
+);
 
 /**
  * Returns the user's `coder.globalFlags` with `expandPath` applied. For
@@ -69,6 +69,9 @@ function buildGlobalFlags(
 	flags.push("--url", escAuth(auth.url));
 	if (auth.useKeyring !== undefined) {
 		flags.push(`--use-keyring=${auth.useKeyring}`);
+	}
+	if (auth.allowRedirects) {
+		flags.push("--allow-redirects");
 	}
 	return [...flags, ...getHeaderArgs(configs, escHeader)];
 }
@@ -127,10 +130,11 @@ export function resolveCliAuth(
 		: undefined;
 	// A user directory is honored on 2.32+, where the CLI reports its token.
 	const userDir = hasUserConfigDir(configs) && featureSet.tokenRead;
+	const common = { url, allowRedirects: featureSet.allowRedirects };
 	if (useKeyring || userDir) {
-		return { store: "cli", url, useKeyring };
+		return { ...common, store: "cli", useKeyring };
 	}
-	return { store: "extension", url, configDir, useKeyring };
+	return { ...common, store: "extension", configDir, useKeyring };
 }
 
 function hasUserConfigDir(

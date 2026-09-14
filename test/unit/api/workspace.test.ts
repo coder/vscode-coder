@@ -31,6 +31,7 @@ const featureSet: FeatureSet = {
 	tokenRead: true,
 	supportBundle: true,
 	supportBundleWorkspaceFiles: true,
+	allowRedirects: true,
 };
 
 function mockStream(): UnidirectionalStream<unknown> {
@@ -98,6 +99,7 @@ function createUpdateCtx(
 			store: "cli" as const,
 			url: "https://test.coder.com",
 			useKeyring: undefined,
+			allowRedirects: false,
 		},
 		binPath: "/usr/bin/coder",
 		workspace,

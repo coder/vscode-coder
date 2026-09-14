@@ -27,6 +27,12 @@
   login, and a **Show Output** button when logout cannot remove every
   credential.
 
+### Fixed
+
+- Pass `--allow-redirects` to Coder CLI 2.38.0 or later. The extension already
+  follows a redirected deployment URL, and without the flag that CLI fails
+  `coder login`, `coder logout`, and `coder ssh` for it.
+
 ## [v1.16.2](https://github.com/coder/vscode-coder/releases/tag/v1.16.2) 2026-08-25
 
 ### Fixed

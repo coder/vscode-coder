@@ -109,7 +109,12 @@ function setup(
 		startupMode,
 		"/usr/bin/coder",
 		{} as FeatureSet,
-		{ store: "cli", url: "https://test.coder.com", useKeyring: undefined },
+		{
+			store: "cli",
+			url: "https://test.coder.com",
+			useKeyring: undefined,
+			allowRedirects: false,
+		},
 		createMockServiceContainer({ telemetry, logger: createMockLogger() }),
 	);
 	return { sm, progress, userInteraction };

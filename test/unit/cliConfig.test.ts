@@ -27,11 +27,13 @@ const extensionStoreAuth: CliAuth = {
 	url: URL,
 	configDir: EXT_DIR,
 	useKeyring: undefined,
+	allowRedirects: false,
 };
 const cliStoreAuth: CliAuth = {
 	store: "cli",
 	url: URL,
 	useKeyring: undefined,
+	allowRedirects: false,
 };
 
 const EXTENSION_FLAGS = ["--global-config", EXT_DIR, "--url", URL];
@@ -315,6 +317,18 @@ describe("cliConfig", () => {
 				override: "none",
 				version: "2.29.0",
 				expected: ["--verbose", ...CLI_FLAGS, "--use-keyring=true"],
+			},
+			{
+				scenario: "follows redirects on 2.38+",
+				platform: "darwin",
+				override: "none",
+				version: "2.38.0",
+				expected: [
+					"--verbose",
+					...CLI_FLAGS,
+					"--use-keyring=true",
+					"--allow-redirects",
+				],
 			},
 			{
 				scenario: "uses the extension directory when keyring is unsupported",

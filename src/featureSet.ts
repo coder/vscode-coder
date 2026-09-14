@@ -10,6 +10,7 @@ export interface FeatureSet {
 	tokenRead: boolean;
 	supportBundle: boolean;
 	supportBundleWorkspaceFiles: boolean;
+	allowRedirects: boolean;
 }
 
 /**
@@ -60,5 +61,7 @@ export function featureSetForVersion(
 		supportBundle: versionAtLeast(version, "2.10.0"),
 		// --workspace-file flag for `coder support bundle`
 		supportBundleWorkspaceFiles: versionAtLeast(version, "2.36.0"),
+		// --allow-redirects; from 2.38 the CLI otherwise errors on a redirected URL.
+		allowRedirects: versionAtLeast(version, "2.38.0"),
 	};
 }
