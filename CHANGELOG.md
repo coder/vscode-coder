@@ -5,33 +5,35 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
-## Unreleased
+## [v1.16.3](https://github.com/coder/vscode-coder/releases/tag/v1.16.3) 2026-09-14
 
 ### Changed
 
-- Store session tokens in the OS keyring by default on macOS and Windows, in
-  addition to the extension's own storage. The `coder` CLI reads the same
-  entry, so once the extension has downloaded the CLI, signing in here also
-  signs in the CLI. Requires Coder CLI 2.29.0 or later; older CLIs and Linux
-  keep using a file. To opt out, set `coder.useKeyring` to `false`.
-- Ask at logout whether to sign the `coder` CLI out too when it shares the
-  session, since anything else using that session is signed out with it.
-- Pass `coder.useKeyring` to the CLI as `--use-keyring`, so the setting wins
-  over the `CODER_USE_KEYRING` environment variable.
-- Honor `CODER_CONFIG_DIR` like `--global-config` in `coder.globalFlags`.
-- Read the `coder` CLI's session only on Coder CLI 2.32.0 or later, up from
-  2.31.0, where the CLI checks the stored URL against the one you connect to.
+- Store your session token in the OS keyring by default on macOS and Windows,
+  shared with the `coder` CLI: signing in here also signs in the CLI. Requires
+  Coder CLI 2.29.0 or later; Linux and older CLIs keep using a file. To opt
+  out, set `coder.useKeyring` to `false`.
+- Ask whether to sign the `coder` CLI out too when you sign out, or remove
+  credentials with **Coder: Manage Credentials**, and the CLI shares your
+  session.
+- Pass `coder.useKeyring` to the CLI as `--use-keyring`, so it overrides the
+  `CODER_USE_KEYRING` environment variable.
+- Treat the `CODER_CONFIG_DIR` environment variable like `--global-config` in
+  `coder.globalFlags`.
+- Require Coder CLI 2.32.0 or later, up from 2.31.0, to sign in with the CLI's
+  session or share its config directory.
 - Ask before signing in with the `coder` CLI's session when it belongs to a
-  different user than your previous session.
-- Show an error with **Open Settings** when the CLI cannot store the token at
-  login, and a **Show Output** button when logout cannot remove every
-  credential.
+  different user.
+- Show **Open Settings** when the CLI cannot store the token at login, and
+  **Show Output** when signing out cannot remove every credential.
+- Group the workspaces view's **...** menu: **Switch Deployment** and
+  **Logout** first, then **Network Check**.
 
 ### Fixed
 
-- Pass `--allow-redirects` to Coder CLI 2.38.0 or later. The extension already
-  follows a redirected deployment URL, and without the flag that CLI fails
-  `coder login`, `coder logout`, and `coder ssh` for it.
+- Pass `--allow-redirects` to Coder CLI 2.38.0 or later, which otherwise
+  refuses a redirected deployment URL and fails `coder login`, `coder logout`,
+  and `coder ssh`.
 
 ## [v1.16.2](https://github.com/coder/vscode-coder/releases/tag/v1.16.2) 2026-08-25
 
