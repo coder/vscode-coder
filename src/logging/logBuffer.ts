@@ -67,8 +67,8 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 	 * since this one, so consecutive failures never duplicate entries.
 	 */
 	public flush(reason: string): void {
-		// The channel writes nothing at Off, so replaying now would discard the
-		// context. Keep it buffered until logging is turned back on.
+		// The channel writes nothing at Off. Keep the entries for the next flush;
+		// nothing new is recorded while Off.
 		if (this.channel.logLevel === 0) {
 			return;
 		}
