@@ -1231,13 +1231,23 @@ function createMockWebSocket(
 	url: string,
 	overrides?: Partial<Ws>,
 ): Partial<Ws> {
-	return {
+	const mock: Partial<Ws> = {
 		url,
 		on: vi.fn(),
 		off: vi.fn(),
 		close: vi.fn(),
 		...overrides,
 	};
+	// OneWayWebSocket registers open/close/error via addEventListener and only
+	// message via on(). Tests still stub those handlers through `on`, so delegate
+	// unless a test provides its own addEventListener.
+	if (!overrides?.addEventListener) {
+		mock.addEventListener = mock.on as Ws["addEventListener"];
+	}
+	if (!overrides?.removeEventListener) {
+		mock.removeEventListener = mock.off as Ws["removeEventListener"];
+	}
+	return mock;
 }
 
 type MockEventSource = Partial<EventSource> & {
