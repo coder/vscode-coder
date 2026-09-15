@@ -179,6 +179,15 @@ export class ServiceContainer implements vscode.Disposable {
 		return this.logger;
 	}
 
+	/**
+	 * Flush the connection log buffer on a terminal socket failure. The
+	 * `<reason> <route>` key is what Support greps for, so both socket call
+	 * sites share this one funnel. Arrow property so it can be passed by value.
+	 */
+	readonly onConnectionFailure = (reason: string, route: string): void => {
+		this.logger.flush(`${reason} ${route}`);
+	};
+
 	getCliManager(): CliManager {
 		return this.cliManager;
 	}

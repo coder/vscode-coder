@@ -280,10 +280,7 @@ export class Remote {
 				token,
 				this.logger,
 				this.serviceContainer.getTelemetryService(),
-				(reason, route) =>
-					this.serviceContainer
-						.getConnectionLogBuffer()
-						.flush(`${reason} ${route}`),
+				this.serviceContainer.onConnectionFailure,
 			);
 			disposables.push(workspaceClient);
 

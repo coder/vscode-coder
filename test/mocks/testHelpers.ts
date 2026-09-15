@@ -646,6 +646,7 @@ export function createMockServiceContainer(
 		getTelemetryService: () => telemetry,
 		getLogger: () => logger,
 		getConnectionLogBuffer: (): ConnectionLogBuffer => ({ flush: () => {} }),
+		onConnectionFailure: (_reason: string, _route: string) => {},
 		getSecretsManager: () =>
 			require("secretsManager", overrides.secretsManager),
 		getMementoManager: () =>
