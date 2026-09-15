@@ -1,5 +1,11 @@
+import assert from "node:assert/strict";
 import path from "node:path";
 import { defineConfig } from "vitest/config";
+
+if (process.env.EXPECTED_ARCH) {
+	process.stdout.write(`Test runtime architecture: ${process.arch}\n`);
+	assert.equal(process.arch, process.env.EXPECTED_ARCH.toLowerCase());
+}
 
 const webviewSharedAlias = path.resolve(
 	import.meta.dirname,
