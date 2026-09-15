@@ -48,8 +48,10 @@ export function logRequest(
 		`→ [request ${shortId(requestId)}] ${method} ${url} ${requestSize}`,
 		...buildExtraLogs(
 			config.headers,
-			config.data,
-			logLevel,
+			config.sensitive ? undefined : config.data,
+			config.sensitive
+				? Math.min(logLevel, HttpClientLogLevel.HEADERS)
+				: logLevel,
 			config.headerCommandKeys,
 		),
 	];
@@ -76,8 +78,10 @@ export function logResponse(
 		`← [request ${shortId(requestId)}] ${response.status} ${method} ${url} ${responseSize} ${time}`,
 		...buildExtraLogs(
 			response.headers,
-			response.data,
-			logLevel,
+			response.config.sensitive ? undefined : response.data,
+			response.config.sensitive
+				? Math.min(logLevel, HttpClientLogLevel.HEADERS)
+				: logLevel,
 			response.config.headerCommandKeys,
 		),
 	];
@@ -98,8 +102,10 @@ export function logError(
 		const config = error.config as RequestConfigWithMeta | undefined;
 		const { requestId, method, url, time } = parseConfig(config);
 
-		const errMsg = getErrorMessage(error, "");
-		const detail = getErrorDetail(error) ?? "";
+		const errMsg = config?.sensitive
+			? "Parameter request failed"
+			: getErrorMessage(error, "");
+		const detail = config?.sensitive ? "" : (getErrorDetail(error) ?? "");
 		const errorParts = [errMsg, detail]
 			.map((part) => part.trim())
 			.filter(Boolean);
@@ -118,8 +124,10 @@ export function logError(
 			logPrefix = `← [request ${shortId(requestId)}] ${error.response.status} ${method} ${url} ${time}`;
 			extraLines = buildExtraLogs(
 				error.response.headers,
-				error.response.data,
-				logLevel,
+				config?.sensitive ? undefined : error.response.data,
+				config?.sensitive
+					? Math.min(logLevel, HttpClientLogLevel.HEADERS)
+					: logLevel,
 				config?.headerCommandKeys,
 			);
 		} else {
@@ -129,8 +137,10 @@ export function logError(
 			logPrefix = `✗ [request ${shortId(requestId)}] ${method} ${url} ${time}`;
 			extraLines = buildExtraLogs(
 				error?.config?.headers ?? {},
-				error.config?.data,
-				logLevel,
+				config?.sensitive ? undefined : error.config?.data,
+				config?.sensitive
+					? Math.min(logLevel, HttpClientLogLevel.HEADERS)
+					: logLevel,
 				config?.headerCommandKeys,
 			);
 		}

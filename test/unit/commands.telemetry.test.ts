@@ -119,6 +119,10 @@ function setup(options: SetupOptions = {}) {
 		getLoginCoordinator: () => loginCoordinator,
 		getDuplicateWorkspaceIpc: () => ({}) as DuplicateWorkspaceIpc,
 		getSpeedtestPanelFactory: () => ({}) as SpeedtestPanelFactory,
+		getWorkspaceUpdatePanelFactory: () =>
+			Object.create(null) as ReturnType<
+				ServiceContainer["getWorkspaceUpdatePanelFactory"]
+			>,
 		getNetcheckPanelFactory: () => ({}) as NetcheckPanelFactory,
 	} as ServiceContainer;
 

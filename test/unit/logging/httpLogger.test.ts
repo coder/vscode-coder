@@ -1,4 +1,4 @@
-import { AxiosError, type AxiosHeaders, type AxiosResponse } from "axios";
+import { AxiosError, AxiosHeaders, type AxiosResponse } from "axios";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -198,5 +198,56 @@ describe("REST HTTP Logger", () => {
 			// Every planted value contains "secret"; none may survive.
 			expect(logger.text).not.toContain("secret");
 		});
+	});
+});
+
+describe("sensitive parameter requests", () => {
+	it("keeps parameter values out of request, response and error logs at BODY level", () => {
+		const logger = createMockLogger();
+		const config: RequestConfigWithMeta = {
+			url: "/api/v2/templateversions/version/dynamic-parameters/evaluate",
+			method: "post",
+			headers: new AxiosHeaders(),
+			sensitive: true,
+			data: { inputs: { password: "secret-value" } },
+		};
+		const response: AxiosResponse = {
+			config,
+			status: 400,
+			statusText: "Bad Request",
+			headers: {},
+			data: {
+				message: "secret-value",
+				detail: "secret-value",
+				value: "secret-value",
+			},
+		};
+		logRequest(logger, config, HttpClientLogLevel.BODY);
+		logResponse(logger, response, HttpClientLogLevel.BODY);
+		logError(
+			logger,
+			new AxiosError(
+				"secret-value",
+				"ERR_BAD_REQUEST",
+				config,
+				undefined,
+				response,
+			),
+			HttpClientLogLevel.BODY,
+		);
+		logError(
+			logger,
+			new AxiosError("secret-value", "ERR_NETWORK", config),
+			HttpClientLogLevel.BODY,
+		);
+		expect(JSON.stringify(vi.mocked(logger.trace).mock.calls)).not.toContain(
+			"secret-value",
+		);
+		expect(JSON.stringify(vi.mocked(logger.error).mock.calls)).not.toContain(
+			"secret-value",
+		);
+		expect(logger.error).toHaveBeenCalledWith(
+			expect.stringContaining("Parameter request failed"),
+		);
 	});
 });

@@ -1,0 +1,76 @@
+@import "@repo/ui/tokens.css";
+@import "@repo/ui/codicon.css";
+
+:root {
+	color: var(--ui-foreground);
+	background: var(--ui-panel-background);
+	font-family: var(--ui-font-family);
+	font-size: var(--ui-font-size);
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--ui-panel-background);
+}
+
+.workspace-update-app__loading,
+.workspace-update-form {
+	max-width: 760px;
+	margin: 0 auto;
+	padding: 24px;
+}
+
+.workspace-update-form {
+	display: grid;
+	gap: 20px;
+}
+.workspace-update-form__header h1,
+.workspace-update-form__terminal h1 {
+	margin: 0;
+	font-size: 1.5em;
+}
+.workspace-update-form__header p,
+.workspace-update-form__terminal p {
+	margin: 8px 0 0;
+	color: var(--ui-description-foreground);
+}
+.workspace-update-form__fields {
+	display: grid;
+	gap: 18px;
+}
+.workspace-update-form__actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+.workspace-update-form__options {
+	display: grid;
+	gap: 8px;
+}
+.workspace-update-form__option-description {
+	display: block;
+	margin-left: 8px;
+	color: var(--ui-description-foreground);
+}
+.workspace-update-form__error,
+.workspace-update-form__diagnostics,
+.workspace-update-form__parameter-error {
+	color: var(--vscode-errorForeground);
+}
+.workspace-update-form__diagnostics p {
+	margin: 0;
+}
+.workspace-update-form__evaluating {
+	margin: 0;
+	color: var(--ui-description-foreground);
+}
+.workspace-update-form__terminal {
+	max-width: 760px;
+	margin: 72px auto;
+	padding: 24px;
+	text-align: center;
+}
