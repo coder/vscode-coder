@@ -18,6 +18,7 @@ import type { PathResolver } from "@/core/pathResolver";
 import type { SecretsManager, SessionAuth } from "@/core/secretsManager";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
 import type { Deployment } from "@/deployment/types";
+import type { ConnectionLogBuffer } from "@/logging/logBuffer";
 import type { LoginCoordinator, LoginResult } from "@/login/loginCoordinator";
 import type { NetcheckPanelFactory } from "@/webviews/netcheck/netcheckPanelFactory";
 import type { SpeedtestPanelFactory } from "@/webviews/speedtest/speedtestPanelFactory";
@@ -120,7 +121,7 @@ function setup(options: SetupOptions = {}) {
 		getDuplicateWorkspaceIpc: () => ({}) as DuplicateWorkspaceIpc,
 		getSpeedtestPanelFactory: () => ({}) as SpeedtestPanelFactory,
 		getNetcheckPanelFactory: () => ({}) as NetcheckPanelFactory,
-		getConnectionLogBuffer: () => ({ flush: () => {} }),
+		getConnectionLogBuffer: (): ConnectionLogBuffer => ({ flush: () => {} }),
 	} as ServiceContainer;
 
 	const extensionClient = {
