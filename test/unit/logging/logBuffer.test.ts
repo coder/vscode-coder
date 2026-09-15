@@ -11,10 +11,10 @@ const INFO = 3;
 const WARNING = 4;
 const ERROR = 5;
 
-type LogMethod = "trace" | "debug" | "info" | "warn" | "error";
+type LogMethod = Exclude<keyof Logger, "show">;
 
 interface Call {
-	level: keyof Logger;
+	level: LogMethod;
 	message: string;
 	args: unknown[];
 }
@@ -22,7 +22,7 @@ interface Call {
 function setup(level: number, capacity: number) {
 	const calls: Call[] = [];
 	const push =
-		(method: keyof Logger) =>
+		(method: LogMethod) =>
 		(message: string, ...args: unknown[]) =>
 			calls.push({ level: method, message, args });
 	const logger: Logger = {
@@ -67,30 +67,37 @@ describe("BufferingLogger", () => {
 		]);
 	});
 
-	it.each([
+	interface LevelCase {
+		level: number;
+		hidden: LogMethod;
+		shown: LogMethod;
+		sink: "info" | "warn" | "error";
+	}
+
+	it.each<LevelCase>([
 		{
 			level: DEBUG,
-			hidden: "trace" as LogMethod,
-			shown: "debug" as LogMethod,
-			sink: "info" as const,
+			hidden: "trace",
+			shown: "debug",
+			sink: "info",
 		},
 		{
 			level: INFO,
-			hidden: "debug" as LogMethod,
-			shown: "info" as LogMethod,
-			sink: "info" as const,
+			hidden: "debug",
+			shown: "info",
+			sink: "info",
 		},
 		{
 			level: WARNING,
-			hidden: "info" as LogMethod,
-			shown: "warn" as LogMethod,
-			sink: "warn" as const,
+			hidden: "info",
+			shown: "warn",
+			sink: "warn",
 		},
 		{
 			level: ERROR,
-			hidden: "warn" as LogMethod,
-			shown: "error" as LogMethod,
-			sink: "error" as const,
+			hidden: "warn",
+			shown: "error",
+			sink: "error",
 		},
 	])(
 		"at level $level buffers below-level entries and replays them via the $sink sink",
@@ -119,18 +126,24 @@ describe("BufferingLogger", () => {
 		expect(lines.some((l) => l.includes("info at info level"))).toBe(false);
 	});
 
-	it.each([
+	interface CapacityCase {
+		name: string;
+		capacity: number;
+		shrinkTo?: number;
+		present: string[];
+		absent: string[];
+	}
+
+	it.each<CapacityCase>([
 		{
 			name: "evicts the oldest entry when capacity is exceeded",
 			capacity: 2,
-			shrinkTo: undefined as number | undefined,
 			present: ["two", "three"],
 			absent: ["one"],
 		},
 		{
 			name: "buffers nothing when capacity is zero",
 			capacity: 0,
-			shrinkTo: undefined as number | undefined,
 			present: [],
 			absent: ["one", "two", "three"],
 		},
