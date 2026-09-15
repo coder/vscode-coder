@@ -1168,14 +1168,11 @@ const mockAdapterImpl = vi.hoisted(
 );
 
 type MockWebSocket = Partial<Ws> & {
-	fireOpen: () => void;
 	fireClose: (event: {
 		code: number;
 		reason: string;
 		wasClean?: boolean;
 	}) => void;
-	fireError: (event: { error?: Error; message?: string }) => void;
-	fireMessage: (data: unknown) => void;
 };
 
 interface MockWebSocketOptions {
@@ -1188,25 +1185,30 @@ function createMockWebSocket(
 	options: MockWebSocketOptions = {},
 ): MockWebSocket {
 	// OneWayWebSocket registers open/close/error via addEventListener and only
-	// message via on(), mirroring the DOM/ws split in production.
-	const domHandlers: Record<string, ((e: unknown) => void) | undefined> = {};
-	const messageHandlers = new Set<(e: unknown) => void>();
+	// message via on(), mirroring the DOM/ws split in production. A Set per event
+	// with identity removal matches how production adds and removes each listener.
+	const listeners: Record<string, Set<(e: unknown) => void>> = {
+		open: new Set(),
+		close: new Set(),
+		error: new Set(),
+		message: new Set(),
+	};
 	const mock: MockWebSocket = {
 		url,
 		on: vi.fn((event: string, handler: (e: unknown) => void) => {
 			if (event === "message") {
-				messageHandlers.add(handler);
+				listeners.message.add(handler);
 			}
 			return mock as Ws;
 		}),
 		off: vi.fn((event: string, handler: (e: unknown) => void) => {
 			if (event === "message") {
-				messageHandlers.delete(handler);
+				listeners.message.delete(handler);
 			}
 			return mock as Ws;
 		}),
 		addEventListener: vi.fn((event: string, handler: (e: unknown) => void) => {
-			domHandlers[event] = handler;
+			listeners[event]?.add(handler);
 			if (event === "open" && !options.connectError) {
 				setImmediate(() => handler(new Event("open")));
 			}
@@ -1214,14 +1216,17 @@ function createMockWebSocket(
 				setImmediate(() => handler(options.connectError));
 			}
 		}),
-		removeEventListener: vi.fn((event: string) => {
-			domHandlers[event] = undefined;
-		}),
+		removeEventListener: vi.fn(
+			(event: string, handler: (e: unknown) => void) => {
+				listeners[event]?.delete(handler);
+			},
+		),
 		close: vi.fn(),
-		fireOpen: () => domHandlers.open?.(new Event("open")),
-		fireClose: (event) => domHandlers.close?.(event),
-		fireError: (event) => domHandlers.error?.(event),
-		fireMessage: (data) => messageHandlers.forEach((handler) => handler(data)),
+		fireClose: (event) => {
+			for (const cb of listeners.close) {
+				cb(event);
+			}
+		},
 	};
 	return mock;
 }
