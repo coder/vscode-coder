@@ -18,7 +18,7 @@ type Level = keyof typeof SEVERITY;
 /** Sink methods that the output channel persists at any non-Off level. */
 type ReplaySink = "info" | "warn" | "error";
 
-/** The failure-time surface used by connection-failure call sites. */
+/** Replays buffered below-level log entries on a connection failure. */
 export interface ConnectionLogBuffer {
 	flush(reason: string): void;
 }
