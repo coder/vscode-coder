@@ -213,6 +213,27 @@ Alternatively:
 4. If your change is something users ought to be aware of, add an entry in the
    changelog.
 
+### Windows SSH config permissions
+
+On Windows, the extension repairs generated SSH config permissions using
+`whoami.exe`, `icacls.exe`, and a fixed JScript file run by `cscript.exe`.
+It disables inheritance while copying existing grants, then replaces only the
+file DACL through ADSI and verifies the resulting permissions. File owners,
+existing directory permissions, and the main SSH config permissions stay unchanged.
+
+Repair requires Windows Script Host, JScript, and ADSI to be allowed by policy.
+The extension does not request elevation or bypass policy. If repair fails, it
+logs a warning and still attempts the SSH connection. OpenSSH may reject the
+remaining permissions. Write and rename failures still stop setup. If script
+execution fails after inheritance is disabled, copied grants remain until a
+successful retry; access is not reset to the parent's permissions.
+
+`scripts/windows-acl.js` is shipped as source in the universal VSIX. It uses ES3
+syntax for Windows Script Host, not Node.js. `pnpm typecheck` checks it against
+narrow WScript and ADSI declarations, and ESLint enforces ES3 syntax. The usual
+`pnpm build` and `pnpm package` commands need no additional build step. Tests using
+real Windows tools and OpenSSH run in the x64 and ARM64 Windows unit-test jobs.
+
 ## Node.js Version
 
 This extension targets the Node.js version bundled with VS Code's Electron:

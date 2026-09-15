@@ -5,6 +5,12 @@
 			"options": {
 				"trailingComma": "none"
 			}
+		},
+		{
+			"files": "scripts/windows-acl.js",
+			"options": {
+				"trailingComma": "none"
+			}
 		}
 	]
 }

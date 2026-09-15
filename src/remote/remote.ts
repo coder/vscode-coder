@@ -925,9 +925,10 @@ export class Remote {
 		const sshConfig = new SshConfig(this.getMainSshConfigPath(), this.logger);
 		await sshConfig.load();
 		// Never loaded: update() regenerates it without reading the old content.
-		const coderConfig = new SshConfig(
+		const coderConfig = SshConfig.createManaged(
 			this.pathResolver.getSshConfigPath(safeHostname, hostEditorId(sshHost)),
 			this.logger,
+			this.extensionContext.asAbsolutePath("scripts/windows-acl.js"),
 		);
 
 		// Options the user set themselves win the merge below, so they are exempt
