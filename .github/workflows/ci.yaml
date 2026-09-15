@@ -13,6 +13,52 @@ permissions:
   contents: read
 
 jobs:
+  acl-production:
+    name: Windows ACL production (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025-vs2026, windows-11-arm]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup pnpm, Node.js, and dependencies
+        uses: ./.github/actions/setup
+
+      - name: Bundle production Windows ACL adapter
+        shell: cmd
+        run: |
+          if exist C:\CoderAclProduction rmdir /s /q C:\CoderAclProduction
+          mkdir C:\CoderAclProduction
+          call pnpm exec esbuild src/remote/windowsAcl.ts --bundle --platform=node --format=cjs --outfile=C:\CoderAclProduction\windowsAcl.cjs
+          copy /y scripts\windows-acl.js C:\CoderAclProduction\windows-acl.js
+          copy /y scripts\acl-production-probe.mjs C:\CoderAclProduction\acl-production-probe.mjs
+          copy /y scripts\acl-production-runner.cs C:\CoderAclProduction\acl-production-runner.cs
+
+      - name: Verify production Windows ACL adapter as a standard user
+        shell: cmd
+        run: |
+          node C:\CoderAclProduction\acl-production-probe.mjs admin C:\CoderAclProduction
+          node C:\CoderAclProduction\acl-production-probe.mjs evaluate C:\CoderAclProduction
+
+      - name: Summarize ACL production evidence
+        if: always()
+        shell: cmd
+        run: node -e "const fs=require('node:fs');const root='C:\\CoderAclProduction';const admin=root+'\\admin-results.json';const summary=process.env.GITHUB_STEP_SUMMARY;const heading='## Windows ACL production evidence (${{ matrix.os }})\\n\\n';const body=fs.existsSync(admin)?'The downloadable JSON artifact is the verification record; job status alone is not evidence.\\n\\n```json\\n'+fs.readFileSync(admin,'utf8')+'\\n```\\n':'No admin evidence JSON was produced.\\n';fs.appendFileSync(summary,heading+body);"
+
+      - name: Upload ACL production evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-acl-production-${{ matrix.os }}
+          path: C:\CoderAclProduction\*.json
+          if-no-files-found: warn
+          retention-days: 7
+          archive: true
+
   lint:
     name: Lint
     runs-on: ubuntu-24.04
