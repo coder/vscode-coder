@@ -58,7 +58,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		private readonly binaryPath: string,
 		private readonly featureSet: FeatureSet,
 		private readonly cliAuth: CliAuth,
-		container: ServiceContainer,
+		private readonly container: ServiceContainer,
 	) {
 		this.logger = container.getLogger();
 		this.terminal = new TerminalOutputChannel("Coder: Workspace Build");
@@ -302,6 +302,14 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		this.logger.info(`Updating ${workspaceName}`, {
 			status: workspace.latest_build.status,
 		});
+		if (workspace.template_use_classic_parameter_flow === false) {
+			const updated = await this.container
+				.getWorkspaceUpdatePanelFactory()
+				.show(this.workspaceClient, workspace);
+			if (!updated) throw new WorkspaceUpdateCancelledError();
+			this.workspace = await this.workspaceClient.getWorkspace(workspace.id);
+			return this.workspace;
+		}
 		try {
 			const parameters = await this.operationTelemetry.traceParametersPrompt(
 				() => collectUpdateParameters(this.workspaceClient, workspace),
