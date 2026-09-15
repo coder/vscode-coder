@@ -179,6 +179,19 @@ export default defineConfig(
 		},
 	},
 
+	// Windows Script Host runs JScript with ES3 syntax and globals.
+	{
+		files: ["scripts/windows-acl.js"],
+		languageOptions: {
+			ecmaVersion: 3,
+			sourceType: "script",
+			globals: {
+				ActiveXObject: "readonly",
+				WScript: "readonly",
+			},
+		},
+	},
+
 	// Build config - ESM with Node globals
 	{
 		files: ["esbuild.mjs", "scripts/*.mjs", ".storybook/themes/*.{mjs,cjs}"],

@@ -5,22 +5,16 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
+import { createManagedSshConfig } from "@/remote/managedSshConfig";
 import { SshConfig, type SshValues } from "@/remote/sshConfig";
 import { WindowsAcl } from "@/remote/windowsAcl";
 
-import type { Logger } from "@/logging/logger";
+import { createMockLogger } from "../../mocks/testHelpers";
 
 const execFile = promisify(execFileCallback);
 const enabled =
 	process.platform === "win32" && process.env.CODER_WINDOWS_ACL_TEST === "1";
-const logger: Logger = {
-	trace: () => {},
-	debug: () => {},
-	info: () => {},
-	warn: () => {},
-	error: () => {},
-	show: () => {},
-};
+const scriptPath = path.resolve("scripts/windows-acl.js");
 
 const sshValues = (host: string, proxyCommand: string): SshValues => ({
 	Host: host,
@@ -107,13 +101,17 @@ async function grantAccess(
 	}
 }
 
-const test = it.extend("root", async ({ task: _task }, { onCleanup }) => {
-	const root = await fs.mkdtemp(path.join(os.tmpdir(), "coder-acl-test-"));
-	onCleanup(async () => {
-		await fs.rm(root, { recursive: true, force: true });
+const test = it
+	.extend("logger", () => createMockLogger())
+	.extend("root", async ({ task: _task }, { onCleanup }) => {
+		const root = await fs.mkdtemp(
+			path.join(os.tmpdir(), "coder acl é & test-"),
+		);
+		onCleanup(async () => {
+			await fs.rm(root, { recursive: true, force: true });
+		});
+		return root;
 	});
-	return root;
-});
 
 const targetTypes = [
 	[
@@ -154,9 +152,7 @@ describe.runIf(enabled)("Windows SSH config ACL repair", () => {
 			const [target, unchanged] = await createTarget(root);
 			const before = await savedAcl(unchanged);
 
-			await expect(
-				new WindowsAcl(path.resolve("scripts/windows-acl.js")).secure(target),
-			).rejects.toThrow();
+			await expect(new WindowsAcl(scriptPath).secure(target)).rejects.toThrow();
 			expect(await savedAcl(unchanged)).toBe(before);
 		});
 	}
@@ -171,6 +167,7 @@ describe.runIf(enabled)("Windows SSH config ACL repair", () => {
 	] as const) {
 		test(`repairs inherited directory and explicit sibling ${name} access without changing the directory or main config`, async ({
 			root,
+			logger,
 		}) => {
 			const includeDirectory = path.join(root, "coder");
 			const parentConfig = path.join(root, "config");
@@ -204,12 +201,7 @@ describe.runIf(enabled)("Windows SSH config ACL repair", () => {
 				stderr: expect.stringMatching(/Bad owner or permissions/),
 			});
 
-			const config = new SshConfig(
-				currentConfig,
-				logger,
-				undefined,
-				new WindowsAcl(path.resolve("scripts/windows-acl.js")),
-			);
+			const config = createManagedSshConfig(currentConfig, logger, scriptPath);
 			for (const user of ["repaired-user", "rewritten-user"]) {
 				await config.update(sshValues(currentHost, user));
 				expect(await resolve(parentConfig, currentHost)).toContain(
@@ -222,28 +214,89 @@ describe.runIf(enabled)("Windows SSH config ACL repair", () => {
 		}, 60_000);
 	}
 
-	test("fails on a linked sibling without changing its external file or directory", async ({
+	test("skips a linked sibling without changing its external file or directory", async ({
 		root,
+		logger,
 	}) => {
 		const includeDirectory = path.join(root, "coder");
 		const external = path.join(root, "external.conf");
 		const linkedSibling = path.join(includeDirectory, "linked.conf");
 		const currentConfig = path.join(includeDirectory, "current.conf");
 		await fs.mkdir(includeDirectory);
-		await fs.writeFile(external, "external");
+		await fs.writeFile(external, "# external");
 		await fs.link(external, linkedSibling);
 		const externalBefore = await savedAcl(external);
 		const directoryBefore = await savedAcl(includeDirectory);
 
-		await expect(
-			new SshConfig(
-				currentConfig,
-				logger,
-				undefined,
-				new WindowsAcl(path.resolve("scripts/windows-acl.js")),
-			).update(sshValues("coder-acl-linked", "linked-user")),
-		).rejects.toThrow();
+		await createManagedSshConfig(currentConfig, logger, scriptPath).update(
+			sshValues("coder-acl-linked", "linked-user"),
+		);
+		expect(await fs.readFile(currentConfig, "utf8")).toContain("linked-user");
+		expect(await fs.readFile(external, "utf8")).toBe("# external");
 		expect(await savedAcl(external)).toBe(externalBefore);
 		expect(await savedAcl(includeDirectory)).toBe(directoryBefore);
 	});
+
+	test("leaves an included .conf directory alone and lets OpenSSH read the config", async ({
+		root,
+		logger,
+	}) => {
+		const directory = path.join(root, "folder.conf");
+		const current = path.join(root, "current.conf");
+		const parent = path.join(root, "config");
+		await fs.mkdir(directory);
+		await fs.writeFile(
+			parent,
+			`Include "${root.replaceAll("\\", "/")}/*.conf"\n`,
+		);
+		const before = await savedAcl(directory);
+		await createManagedSshConfig(current, logger, scriptPath).update(
+			sshValues("coder-directory", "directory-user"),
+		);
+		expect(await savedAcl(directory)).toBe(before);
+		expect(await resolve(parent, "coder-directory")).toContain(
+			"proxycommand directory-user",
+		);
+	});
+
+	test("still writes a usable config when the script cannot run", async ({
+		root,
+		logger,
+	}) => {
+		const current = path.join(root, "current.conf");
+		await createManagedSshConfig(
+			current,
+			logger,
+			path.join(root, "missing.js"),
+		).update(sshValues("coder-unavailable", "unavailable-user"));
+		expect(await resolve(current, "coder-unavailable")).toContain(
+			"proxycommand unavailable-user",
+		);
+		expect(
+			(await fs.readdir(root)).filter((name) =>
+				name.includes("vscode-coder-tmp"),
+			),
+		).toEqual([]);
+	});
+
+	test.for([
+		[[], "Expected a file path and user SID"],
+		[["unused.conf", "S-1-invalid"], "Invalid Windows user SID"],
+	] as const)(
+		"rejects invalid script arguments %j",
+		async ([args, message]) => {
+			await expect(
+				execFile(windowsExecutable("cscript.exe"), [
+					"//nologo",
+					"//B",
+					"//E:JScript",
+					scriptPath,
+					...args,
+				]),
+			).rejects.toMatchObject({
+				code: 1,
+				stderr: expect.stringContaining(message),
+			});
+		},
+	);
 });

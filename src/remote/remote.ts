@@ -50,6 +50,7 @@ import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
 import { applySshEnvironment, SSH_PROXY_SETTINGS } from "./environment";
+import { createManagedSshConfig } from "./managedSshConfig";
 import { migrateAuthToSecretsStorage } from "./migration";
 import {
 	SshConfig,
@@ -67,7 +68,6 @@ import {
 	sshSupportsSetEnv,
 	type SshProperties,
 } from "./sshSupport";
-import { WindowsAcl } from "./windowsAcl";
 import { WorkspaceStateMachine } from "./workspaceStateMachine";
 
 import type { Api } from "coder/site/src/api/api";
@@ -926,15 +926,10 @@ export class Remote {
 		const sshConfig = new SshConfig(this.getMainSshConfigPath(), this.logger);
 		await sshConfig.load();
 		// Never loaded: update() regenerates it without reading the old content.
-		const coderConfig = new SshConfig(
+		const coderConfig = createManagedSshConfig(
 			this.pathResolver.getSshConfigPath(safeHostname, hostEditorId(sshHost)),
 			this.logger,
-			undefined,
-			process.platform === "win32"
-				? new WindowsAcl(
-						this.extensionContext.asAbsolutePath("scripts/windows-acl.js"),
-					)
-				: undefined,
+			this.extensionContext.asAbsolutePath("scripts/windows-acl.js"),
 		);
 
 		// Options the user set themselves win the merge below, so they are exempt

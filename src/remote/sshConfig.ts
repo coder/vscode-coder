@@ -46,11 +46,6 @@ export interface FileSystem {
 	writeFile: typeof writeFile;
 }
 
-/** Repairs permissions on Coder-managed SSH files. */
-export interface ManagedSshAcl {
-	secure(path: string): Promise<void>;
-}
-
 const defaultFileSystem: FileSystem = {
 	mkdir,
 	readFile,
@@ -304,15 +299,14 @@ export function mergeSshConfigValues(
 
 export class SshConfig {
 	private readonly filePath: string;
-	private readonly fileSystem: FileSystem;
-	private readonly logger: Logger;
+	protected readonly fileSystem: FileSystem;
+	protected readonly logger: Logger;
 	private raw: string | undefined;
 
 	constructor(
 		filePath: string,
 		logger: Logger,
 		fileSystem: FileSystem = defaultFileSystem,
-		private readonly managedSshAcl?: ManagedSshAcl,
 	) {
 		this.filePath = filePath;
 		this.logger = logger;
@@ -458,7 +452,7 @@ export class SshConfig {
 			mode: 0o700,
 			recursive: true,
 		});
-		await this.repairManagedFiles(dirName);
+		await this.prepareWrite(dirName);
 		const tempPath = tempFilePath(
 			`${dirName}/.${fileName}`,
 			"vscode-coder-tmp",
@@ -484,7 +478,7 @@ export class SshConfig {
 		try {
 			await this.fileSystem.writeFile(tempPath, this.getRaw(), {
 				encoding: "utf-8",
-				flag: this.managedSshAcl ? "wx" : "w",
+				flag: "wx",
 				mode,
 			});
 		} catch (err) {
@@ -499,20 +493,14 @@ export class SshConfig {
 		}
 	}
 
-	private async secureTemp(tempPath: string): Promise<void> {
-		if (process.platform !== "win32" || !this.managedSshAcl) {
-			return;
-		}
-		try {
-			await this.managedSshAcl.secure(tempPath);
-		} catch (err) {
-			await this.discardTemp(tempPath);
-			throw new Error(
-				`Failed to secure temporary SSH config file at ${tempPath}: ${err instanceof Error ? err.message : String(err)}. ` +
-					`Please check its ownership and permissions.`,
-				{ cause: err },
-			);
-		}
+	/** Prepare the destination directory before writing a temporary file. */
+	protected prepareWrite(_dirName: string): Promise<void> {
+		return Promise.resolve();
+	}
+
+	/** Secure a fully written temporary file before atomically replacing the destination. */
+	protected secureTemp(_tempPath: string): Promise<void> {
+		return Promise.resolve();
 	}
 
 	private async replaceWithTemp(tempPath: string): Promise<void> {
@@ -531,29 +519,6 @@ export class SshConfig {
 				}. Please check your disk space, permissions, and that the directory exists.`,
 				{ cause: err },
 			);
-		}
-	}
-
-	private async repairManagedFiles(dirName: string): Promise<void> {
-		if (process.platform !== "win32" || !this.managedSshAcl) {
-			return;
-		}
-
-		// OpenSSH parses every Include match, so a bad sibling blocks other hosts.
-		const entries = await this.fileSystem.readdir(dirName, {
-			withFileTypes: true,
-		});
-		for (const entry of entries) {
-			if (!entry.name.toLowerCase().endsWith(SSH_CONFIG_EXT)) {
-				continue;
-			}
-			const filePath = path.join(dirName, entry.name);
-			if (!entry.isFile()) {
-				throw new Error(
-					`Coder-managed SSH config entry ${filePath} must be a regular file.`,
-				);
-			}
-			await this.managedSshAcl.secure(filePath);
 		}
 	}
 

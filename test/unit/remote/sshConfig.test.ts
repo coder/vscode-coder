@@ -1,7 +1,6 @@
 import { vol } from "memfs";
 import * as fsPromises from "node:fs/promises";
 import * as os from "node:os";
-import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -10,7 +9,6 @@ import {
 	parseSshConfig,
 	SshConfig,
 	type FileSystem,
-	type ManagedSshAcl,
 	type SshValues,
 	validateDeploymentSshOptions,
 } from "@/remote/sshConfig";
@@ -91,18 +89,12 @@ async function loadSshConfig(
 	contents?: string,
 	mode = 0o644,
 	fileSystem: FileSystem = fsPromises,
-	managedSshAcl?: ManagedSshAcl,
 ): Promise<SshConfig> {
 	if (contents !== undefined) {
 		vol.fromJSON({ [sshFilePath]: contents });
 		vol.chmodSync(sshFilePath, mode);
 	}
-	const sshConfig = new SshConfig(
-		sshFilePath,
-		mockLogger,
-		fileSystem,
-		managedSshAcl,
-	);
+	const sshConfig = new SshConfig(sshFilePath, mockLogger, fileSystem);
 	await sshConfig.load();
 	return sshConfig;
 }
@@ -395,9 +387,7 @@ describe("persistence", () => {
 		const tempPath =
 			"/Path/To/UserHomeDir/.sshConfigDir/.sshConfigFile.vscode-coder-tmp-00000000";
 		vol.fromJSON({ [tempPath]: "unrelated temp" });
-		const sshConfig = await loadSshConfig(undefined, 0o644, fsPromises, {
-			secure: vi.fn(),
-		});
+		const sshConfig = await loadSshConfig(undefined, 0o644, fsPromises);
 
 		await expect(sshConfig.update(BASE_SSH_VALUES)).rejects.toThrow(
 			"Failed to write temporary SSH config file",
@@ -435,65 +425,6 @@ describe("persistence", () => {
 		expect(writeFileSpy).not.toHaveBeenCalled();
 		expect(renameSpy).not.toHaveBeenCalled();
 	});
-
-	describe.runIf(process.platform === "win32")(
-		"managed Windows configs",
-		() => {
-			it("repairs matching siblings and the written temp before replacing the config", async () => {
-				const sibling = path.join(path.dirname(sshFilePath), "other.CONF");
-				vol.fromJSON({ [sibling]: "Host sibling" });
-				const secure = vi.fn(async (pathname: string) => {
-					expect(await readConfig()).toBe("Host original");
-					expect(await fsPromises.readFile(pathname, "utf-8")).not.toBe("");
-				});
-				const config = await loadSshConfig("Host original", 0o644, fsPromises, {
-					secure,
-				});
-
-				await config.update(BASE_SSH_VALUES);
-
-				expect(secure.mock.calls).toEqual([
-					[sibling],
-					[expect.stringContaining(".sshConfigFile.vscode-coder-tmp-")],
-				]);
-				expect(await readConfig()).toContain(BASE_SSH_VALUES.ProxyCommand);
-			});
-
-			it.each(["sibling", "temporary file"])(
-				"preserves the config and cleans up when %s repair fails",
-				async (stage) => {
-					if (stage === "sibling") {
-						vol.fromJSON({
-							[path.join(path.dirname(sshFilePath), "other.conf")]:
-								"Host sibling",
-						});
-					}
-					const failure = new Error("permission repair failed");
-					const secure = vi
-						.fn<ManagedSshAcl["secure"]>()
-						.mockRejectedValue(failure);
-					const config = await loadSshConfig(
-						"Host original",
-						0o644,
-						fsPromises,
-						{ secure },
-					);
-
-					await expect(config.update(BASE_SSH_VALUES)).rejects.toThrow(
-						"permission repair failed",
-					);
-
-					expect(await readConfig()).toBe("Host original");
-					expect(secure).toHaveBeenCalledOnce();
-					expect(
-						Object.keys(vol.toJSON()).filter((name) =>
-							name.includes("vscode-coder-tmp"),
-						),
-					).toEqual([]);
-				},
-			);
-		},
-	);
 });
 
 describe("parseSshConfig", () => {

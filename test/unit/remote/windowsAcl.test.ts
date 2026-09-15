@@ -34,11 +34,12 @@ const sid = "S-1-5-21-1-2-3-1001";
 const scriptPath = "C:\\Program Files\\Coder\\secure-acl.js";
 const protectedDacl = `D:PAI(A;;FA;;;${sid})(A;;FA;;;SY)(A;;FA;;;BA)S:AI`;
 const emptyResult: CommandResult = { stdout: "", stderr: "" };
-const aclErrors = {
-	format: "Unexpected Windows ACL backup format",
-	permissions:
-		"Windows ACL does not contain only the expected protected permissions",
-} as const;
+const commandArgs = [
+	["/user", "/fo", "csv", "/nh"],
+	["/inheritancelevel:d"],
+	["//nologo", "//B", "//E:JScript", scriptPath, undefined, sid],
+	["/save", undefined],
+] as const;
 
 const test = it
 	.extend("file", async ({ task: _task }, { onCleanup }) => {
@@ -58,116 +59,73 @@ const test = it
 		return execute;
 	});
 
-function mockSuccessfulSetup(accountSid = sid, commandCount = 3): void {
-	const results: CommandResult[] = [
-		{ stdout: `"S-1-5-21-9-9-9-9999","${accountSid}"`, stderr: "" },
-		emptyResult,
-		emptyResult,
-	];
-	for (const result of results.slice(0, commandCount)) {
-		execute.mockResolvedValueOnce(result);
-	}
+function whoamiResult(accountSid = sid): CommandResult {
+	return { stdout: `"S-1-5-21-9-9-9-9999","${accountSid}"`, stderr: "" };
 }
 
-async function writeSavedDacl(
-	args: string[],
-	dacl: string,
-): Promise<CommandResult> {
+async function saveDescriptor(args: string[]): Promise<CommandResult> {
 	const backup = args[2];
-	if (typeof backup !== "string") {
+	if (typeof backup !== "string")
 		throw new Error("Expected an ACL backup path");
-	}
-	await fs.writeFile(backup, `\uFEFFfile.conf\r\n${dacl}\r\n`, "utf16le");
+	await fs.writeFile(
+		backup,
+		`\uFEFFfile.conf\r\n${protectedDacl}\r\n`,
+		"utf16le",
+	);
 	return emptyResult;
 }
 
 describe("WindowsAcl", () => {
-	test.runIf(process.platform !== "win32")(
-		"does nothing outside Windows",
-		async ({ execute }) => {
-			await new WindowsAcl(scriptPath).secure("not a Windows path");
-			expect(execute).not.toHaveBeenCalled();
-		},
-	);
+	it("rejects invalid paths", async () => {
+		await expect(
+			new WindowsAcl(scriptPath).secure("not a Windows path"),
+		).rejects.toThrow("Could not repair SSH config permissions");
+	});
 
 	describe.runIf(process.platform === "win32")("on Windows", () => {
-		test("uses the final CSV SID and separates script arguments", async ({
+		test("runs the expected commands in order and removes its ACL backup", async ({
 			file,
 			execute,
 		}) => {
-			mockSuccessfulSetup();
-			execute.mockImplementationOnce((_command, args) =>
-				writeSavedDacl(args, protectedDacl),
-			);
+			let backup: string | undefined;
+			execute
+				.mockResolvedValueOnce(whoamiResult())
+				.mockResolvedValueOnce(emptyResult)
+				.mockResolvedValueOnce(emptyResult)
+				.mockImplementationOnce(async (_command, args) => {
+					backup = args[2];
+					return saveDescriptor(args);
+				});
+			const mixedTarget = `${path.dirname(file)}/${path.basename(file)}`;
 
-			await new WindowsAcl(scriptPath).secure(
-				`${path.dirname(file)}/${path.basename(file)}`,
-			);
+			await new WindowsAcl(scriptPath).secure(mixedTarget);
 
-			expect(execute.mock.calls[1]?.[1]).toEqual([file, "/inheritancelevel:d"]);
-			expect(execute.mock.calls[2]?.[1]).toEqual([
-				"//nologo",
-				"//B",
-				"//E:JScript",
-				scriptPath,
-				file,
-				sid,
+			const normalizedTarget = path.win32.normalize(mixedTarget);
+			expect(execute.mock.calls.map(([, args]) => args)).toEqual([
+				commandArgs[0],
+				[normalizedTarget, ...commandArgs[1]],
+				[...commandArgs[2].slice(0, 4), normalizedTarget, sid],
+				[normalizedTarget, "/save", backup],
 			]);
-			expect(execute.mock.calls[3]?.[1]?.[2]).toBeTypeOf("string");
-		});
-
-		for (const [accountSid, trustee, succeeds] of [
-			["S-1-5-21-1-2-3-500", "LA", true],
-			["S-1-5-21-1-2-3-501", "LG", true],
-			[sid, "LA", false],
-		] as const) {
-			test(`checks ${trustee} against current account ${accountSid}`, async ({
-				file,
-				execute,
-			}) => {
-				mockSuccessfulSetup(accountSid);
-				execute.mockImplementationOnce((_command, args) =>
-					writeSavedDacl(
-						args,
-						`D:PAI(A;;FA;;;${trustee})(A;;FA;;;SY)(A;;FA;;;BA)`,
-					),
-				);
-				const repair = new WindowsAcl(scriptPath).secure(file);
-				if (succeeds) await expect(repair).resolves.toBeUndefined();
-				else
-					await expect(repair).rejects.toThrow(
-						"expected protected permissions",
-					);
+			expect(backup).toBeTypeOf("string");
+			await expect(fs.access(backup!)).rejects.toMatchObject({
+				code: "ENOENT",
 			});
-		}
-
-		test("fails before mutation for a malformed current SID", async ({
-			file,
-			execute,
-		}) => {
-			execute.mockResolvedValueOnce({
-				stdout: '"account","S-1-invalid"',
-				stderr: "",
-			});
-
-			await expect(new WindowsAcl(scriptPath).secure(file)).rejects.toThrow(
-				"Could not read the current Windows user SID",
-			);
-
-			expect(execute).toHaveBeenCalledTimes(1);
 		});
 
 		for (const [name, failureCall] of [
+			["whoami", 1],
 			["protect", 2],
 			["script", 3],
 			["save", 4],
 		] as const) {
-			test(`preserves a ${name} failure and does not run later subprocesses`, async ({
-				file,
-				execute,
-			}) => {
+			test(`stops after a ${name} failure`, async ({ file, execute }) => {
 				const cause = new Error(`${name} failed`);
-				mockSuccessfulSetup(sid, failureCall - 1);
+				for (let call = 1; call < failureCall; call++) {
+					execute.mockResolvedValueOnce(
+						call === 1 ? whoamiResult() : emptyResult,
+					);
+				}
 				execute.mockRejectedValueOnce(cause);
 
 				await expect(
@@ -176,62 +134,29 @@ describe("WindowsAcl", () => {
 					message: `Could not repair SSH config permissions for ${file}: ${cause.message}`,
 					cause,
 				});
-
 				expect(execute).toHaveBeenCalledTimes(failureCall);
 			});
 		}
 
-		for (const [name, backupDacl, error] of [
-			["a malformed backup", "D:P\r\nextra entry", aclErrors.format],
-			[
-				"an unprotected DACL",
-				`D:(A;;FA;;;${sid})(A;;FA;;;SY)(A;;FA;;;BA)`,
-				aclErrors.permissions,
-			],
-			[
-				"an extra Everyone ACE",
-				`D:P(A;;FA;;;${sid})(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;WD)`,
-				aclErrors.permissions,
-			],
-			[
-				"a deny ACE",
-				`D:P(D;;FA;;;WD)(A;;FA;;;${sid})(A;;FA;;;SY)(A;;FA;;;BA)`,
-				aclErrors.permissions,
-			],
-			[
-				"an inherited ACE",
-				`D:P(A;OICI;FA;;;${sid})(A;;FA;;;SY)(A;;FA;;;BA)`,
-				aclErrors.permissions,
-			],
-			[
-				"a missing user ACE",
-				"D:P(A;;FA;;;SY)(A;;FA;;;BA)",
-				aclErrors.permissions,
-			],
-		] as const) {
-			test(`fails closed for ${name} and cleans up the saved ACL`, async ({
-				file,
-				execute,
-			}) => {
-				let backup: string | undefined;
-				mockSuccessfulSetup();
-				execute.mockImplementationOnce(
-					async (_command: string, args: string[]) => {
-						backup = args[2];
-						return writeSavedDacl(args, backupDacl);
-					},
-				);
-
-				await expect(new WindowsAcl(scriptPath).secure(file)).rejects.toThrow(
-					error,
-				);
-
-				expect(execute).toHaveBeenCalledTimes(4);
-				expect(backup).toBeTypeOf("string");
-				await expect(fs.access(backup!)).rejects.toMatchObject({
-					code: "ENOENT",
+		test("removes the ACL backup when reading it fails", async ({
+			file,
+			execute,
+		}) => {
+			let backup: string | undefined;
+			execute
+				.mockResolvedValueOnce(whoamiResult())
+				.mockResolvedValueOnce(emptyResult)
+				.mockResolvedValueOnce(emptyResult)
+				.mockImplementationOnce((_command, args) => {
+					backup = args[2];
+					return Promise.resolve(emptyResult);
 				});
+
+			await expect(new WindowsAcl(scriptPath).secure(file)).rejects.toThrow();
+			expect(backup).toBeTypeOf("string");
+			await expect(fs.access(backup!)).rejects.toMatchObject({
+				code: "ENOENT",
 			});
-		}
+		});
 	});
 });

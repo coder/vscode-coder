@@ -36,7 +36,7 @@
 		"test:extension": "cross-env ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs --project extension",
 		"test:integration": "pnpm compile-tests:integration && node esbuild.mjs && vscode-test",
 		"test:webview": "cross-env ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs --project webview",
-		"typecheck": "concurrently -g -n extension,tests,packages,storybook \"tsc --noEmit\" \"tsc --noEmit -p test\" \"pnpm typecheck:packages\" \"tsc --noEmit -p .storybook\"",
+		"typecheck": "concurrently -g -n extension,tests,packages,storybook,windows-acl \"tsc --noEmit\" \"tsc --noEmit -p test\" \"pnpm typecheck:packages\" \"tsc --noEmit -p .storybook\" \"tsc -p scripts/tsconfig.windows-acl.json\"",
 		"typecheck:packages": "pnpm -r --filter \"./packages/*\" --parallel typecheck",
 		"watch": "concurrently -g -n extension,webviews \"pnpm watch:extension\" \"pnpm watch:webviews\"",
 		"watch:extension": "node esbuild.mjs --watch",
