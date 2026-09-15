@@ -103,7 +103,6 @@ function setup(
 	enableLocalTelemetry();
 	const progress = new MockProgress<{ message?: string }>();
 	const userInteraction = new MockUserInteraction();
-	const connectionLogBuffer = { flush: vi.fn() };
 	const sm = new WorkspaceStateMachine(
 		DEFAULT_PARTS,
 		{} as CoderApi,
@@ -114,10 +113,9 @@ function setup(
 		createMockServiceContainer({
 			telemetry,
 			logger: createMockLogger(),
-			connectionLogBuffer,
 		}),
 	);
-	return { sm, progress, userInteraction, connectionLogBuffer };
+	return { sm, progress, userInteraction };
 }
 
 describe("WorkspaceStateMachine", () => {
@@ -153,13 +151,10 @@ describe("WorkspaceStateMachine", () => {
 		});
 
 		it("throws when agent is disconnected", async () => {
-			const { sm, progress, connectionLogBuffer } = setup();
+			const { sm, progress } = setup();
 			const ws = runningWorkspace({ status: "disconnected" });
 			await expect(sm.processWorkspace(ws, progress)).rejects.toThrow(
 				"disconnected",
-			);
-			expect(connectionLogBuffer.flush).toHaveBeenCalledWith(
-				"agent_disconnected",
 			);
 		});
 

@@ -143,7 +143,8 @@ async function doActivate(
 		deploymentSessionAuth?.token,
 		output,
 		telemetryService,
-		(reason) => serviceContainer.getConnectionLogBuffer().flush(reason),
+		(reason, route) =>
+			serviceContainer.getConnectionLogBuffer().flush(`${reason} ${route}`),
 	);
 	ctx.subscriptions.push(client);
 
@@ -512,6 +513,7 @@ async function doActivate(
 				);
 			}
 			// Always close remote session when we fail to open a workspace.
+			serviceContainer.getConnectionLogBuffer().flush("workspace_open_failed");
 			await remote.closeRemote();
 			return;
 		}

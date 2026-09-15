@@ -128,6 +128,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		private readonly authConfigTracker: AuthConfigTracker,
 		private readonly onConnectionFailure?: (
 			reason: ConnectionStateReason,
+			route: string,
 		) => void,
 	) {
 		super();
@@ -149,7 +150,10 @@ export class CoderApi extends Api implements vscode.Disposable {
 		token: string | undefined,
 		output: Logger,
 		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
-		onConnectionFailure?: (reason: ConnectionStateReason) => void,
+		onConnectionFailure?: (
+			reason: ConnectionStateReason,
+			route: string,
+		) => void,
 	): CoderApi {
 		const httpRequestsTelemetry = new HttpRequestsTelemetry(telemetry);
 		const authConfigTracker = new AuthConfigTracker();

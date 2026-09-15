@@ -152,6 +152,61 @@ describe("ReconnectingWebSocket", () => {
 			},
 		);
 
+		it("does not flush on an unrecoverable 401 (token refresh reconnects the same socket)", async () => {
+			const onConnectionFailure = vi.fn();
+			const { ws, sockets } = await createReconnectingWebSocket({
+				onConnectionFailure,
+			});
+
+			sockets[0].fireError(
+				new Error(`Unexpected server response: ${HttpStatusCode.UNAUTHORIZED}`),
+			);
+
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
+			expect(onConnectionFailure).not.toHaveBeenCalled();
+			ws.close();
+		});
+
+		it.each([
+			HttpStatusCode.FORBIDDEN,
+			HttpStatusCode.GONE,
+			HttpStatusCode.UPGRADE_REQUIRED,
+		])(
+			"flushes with the route on an unrecoverable HTTP failure: %i",
+			async (statusCode) => {
+				const onConnectionFailure = vi.fn();
+				const { ws, sockets } = await createReconnectingWebSocket({
+					onConnectionFailure,
+				});
+
+				sockets[0].fireError(
+					new Error(`Unexpected server response: ${statusCode}`),
+				);
+
+				expect(onConnectionFailure).toHaveBeenCalledWith(
+					"unrecoverable_http",
+					expect.any(String),
+				);
+				ws.close();
+			},
+		);
+
+		it("does not read host/port digits as a status code", async () => {
+			const onConnectionFailure = vi.fn();
+			const { ws, sockets } = await createReconnectingWebSocket({
+				onConnectionFailure,
+			});
+
+			// A port ending in 404x must not be treated as HTTP 404.
+			sockets[0].fireError(new Error("connect ECONNREFUSED 127.0.0.1:4040"));
+
+			expect(onConnectionFailure).not.toHaveBeenCalled();
+			// Generic connection errors retry rather than terminate.
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(sockets.length).toBeGreaterThan(1);
+			ws.close();
+		});
+
 		it("reconnect() connects immediately and cancels pending reconnections", async () => {
 			const { ws, sockets } = await createReconnectingWebSocket();
 
@@ -835,7 +890,10 @@ describe("ReconnectingWebSocket", () => {
 				reason: "Unrecoverable",
 			});
 
-			expect(onConnectionFailure).toHaveBeenCalledWith("unrecoverable_close");
+			expect(onConnectionFailure).toHaveBeenCalledWith(
+				"unrecoverable_close",
+				expect.any(String),
+			);
 			ws.close();
 		});
 
@@ -957,7 +1015,7 @@ function createMockSocket(): MockSocket {
 interface FactoryOptions {
 	onDispose?: () => void;
 	onCertificateRefreshNeeded?: () => Promise<boolean>;
-	onConnectionFailure?: (reason: ConnectionStateReason) => void;
+	onConnectionFailure?: (reason: ConnectionStateReason, route: string) => void;
 	telemetry?: TelemetryReporter;
 }
 

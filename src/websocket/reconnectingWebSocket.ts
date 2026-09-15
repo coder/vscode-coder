@@ -8,6 +8,7 @@ import {
 
 import {
 	WebSocketCloseCode,
+	HttpStatusCode,
 	NORMAL_CLOSURE_CODES,
 	UNRECOVERABLE_WS_CLOSE_CODES,
 	UNRECOVERABLE_HTTP_CODES,
@@ -131,7 +132,7 @@ export interface ReconnectingWebSocketOptions {
 	/** Callback invoked when a refreshable certificate error is detected. Returns true if refresh succeeded. */
 	onCertificateRefreshNeeded: () => Promise<boolean>;
 	/** Callback invoked when the connection fails terminally (not a transient drop). */
-	onConnectionFailure?: (reason: ConnectionStateReason) => void;
+	onConnectionFailure?: (reason: ConnectionStateReason, route: string) => void;
 }
 
 export class ReconnectingWebSocket<
@@ -143,7 +144,10 @@ export class ReconnectingWebSocket<
 	readonly #options: Required<
 		Omit<ReconnectingWebSocketOptions, "telemetry" | "onConnectionFailure">
 	>;
-	readonly #onConnectionFailure?: (reason: ConnectionStateReason) => void;
+	readonly #onConnectionFailure?: (
+		reason: ConnectionStateReason,
+		route: string,
+	) => void;
 	readonly #eventHandlers: {
 		[K in WebSocketEventType]: Set<EventHandler<TData, K>>;
 	} = {
@@ -301,7 +305,12 @@ export class ReconnectingWebSocket<
 	private disconnectWithReason(
 		reason: ConnectionStateReason,
 		cause: ConnectionDropCause,
-		options: { code?: number; closeReason?: string; error?: unknown } = {},
+		options: {
+			code?: number;
+			closeReason?: string;
+			error?: unknown;
+			flushable?: boolean;
+		} = {},
 	): void {
 		if (!this.#dispatch({ type: "DISCONNECT" }, reason)) {
 			return;
@@ -312,8 +321,8 @@ export class ReconnectingWebSocket<
 			error: options.error,
 		});
 		this.clearCurrentSocket(options.code, options.closeReason);
-		if (isTerminalConnectionFailure(reason)) {
-			this.#onConnectionFailure?.(reason);
+		if (isTerminalConnectionFailure(reason) && options.flushable !== false) {
+			this.#onConnectionFailure?.(reason, this.#route);
 		}
 	}
 
@@ -418,7 +427,7 @@ export class ReconnectingWebSocket<
 
 		if (UNRECOVERABLE_WS_CLOSE_CODES.has(event.code)) {
 			this.#logger.error(
-				`WebSocket connection closed with unrecoverable error code ${event.code}`,
+				`WebSocket connection closed with unrecoverable error code ${event.code} for ${this.#route}`,
 			);
 			this.disconnectWithReason("unrecoverable_close", "unrecoverable_close", {
 				code: event.code,
@@ -537,12 +546,18 @@ export class ReconnectingWebSocket<
 			return;
 		}
 
-		if (this.isUnrecoverableHttpError(error)) {
+		const unrecoverableStatus = this.unrecoverableHttpStatus(error);
+		if (unrecoverableStatus !== undefined) {
 			this.#logger.error(
-				`Unrecoverable HTTP error during connection for ${this.#route}`,
+				`Unrecoverable HTTP error (${unrecoverableStatus}) during connection for ${this.#route}`,
 				error,
 			);
-			this.disconnectWithReason("unrecoverable_http", "error", { error });
+			// An expired token surfaces as 401, but OAuth refreshes and reconnects
+			// the same socket seconds later, so it is not a genuine outage to flush.
+			this.disconnectWithReason("unrecoverable_http", "error", {
+				error,
+				flushable: unrecoverableStatus !== HttpStatusCode.UNAUTHORIZED,
+			});
 			return;
 		}
 
@@ -562,16 +577,19 @@ export class ReconnectingWebSocket<
 	}
 
 	/**
-	 * Check if an error message contains an unrecoverable HTTP status code.
+	 * Returns the unrecoverable HTTP status carried by a failed handshake, or
+	 * `undefined`. Matches the `ws` "Unexpected server response: <code>" message
+	 * exactly so host/port digits like `127.0.0.1:4040` cannot masquerade as a
+	 * status code.
 	 */
-	private isUnrecoverableHttpError(error: unknown): boolean {
+	private unrecoverableHttpStatus(error: unknown): number | undefined {
 		const message = (error as { message?: string }).message || String(error);
-		for (const code of UNRECOVERABLE_HTTP_CODES) {
-			if (message.includes(String(code))) {
-				return true;
-			}
+		const match = /unexpected server response:\s*(\d{3})/i.exec(message);
+		if (!match) {
+			return undefined;
 		}
-		return false;
+		const status = Number(match[1]);
+		return UNRECOVERABLE_HTTP_CODES.has(status) ? status : undefined;
 	}
 
 	private dispose(code?: number, reason?: string): void {

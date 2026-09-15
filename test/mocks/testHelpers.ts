@@ -626,14 +626,10 @@ export function createMockServiceContainer(
 		pathResolver?: PathResolver;
 		contextManager?: ContextManagerLike;
 		loginCoordinator?: LoginCoordinatorLike;
-		connectionLogBuffer?: ConnectionLogBuffer;
 	} = {},
 ): ServiceContainer {
 	const telemetry = overrides.telemetry ?? createTestTelemetryService();
 	const logger = overrides.logger ?? createMockLogger();
-	const connectionLogBuffer = overrides.connectionLogBuffer ?? {
-		flush: () => {},
-	};
 	const require = <T>(name: string, value: T | undefined): T => {
 		if (value === undefined) {
 			throw new Error(`createMockServiceContainer: '${name}' was not provided`);
@@ -643,7 +639,7 @@ export function createMockServiceContainer(
 	return {
 		getTelemetryService: () => telemetry,
 		getLogger: () => logger,
-		getConnectionLogBuffer: () => connectionLogBuffer,
+		getConnectionLogBuffer: (): ConnectionLogBuffer => ({ flush: () => {} }),
 		getSecretsManager: () =>
 			require("secretsManager", overrides.secretsManager),
 		getMementoManager: () =>

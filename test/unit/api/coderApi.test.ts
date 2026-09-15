@@ -618,7 +618,10 @@ describe("CoderApi", () => {
 				wasClean: false,
 			});
 
-			expect(onConnectionFailure).toHaveBeenCalledWith("unrecoverable_close");
+			expect(onConnectionFailure).toHaveBeenCalledWith(
+				"unrecoverable_close",
+				expect.any(String),
+			);
 			connection.close();
 		});
 	});
