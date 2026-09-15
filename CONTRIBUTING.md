@@ -141,19 +141,11 @@ a `BufferingLogger` ([`src/logging/logBuffer.ts`](src/logging/logBuffer.ts))
 wraps the channel and keeps a bounded, in-memory ring of the entries that sit
 **below** the current level, which the channel would otherwise drop.
 
-On a genuine connection failure the buffer is flushed: the captured entries are
-re-emitted into the output channel (each marked `[buffered]` with its original
-timestamp and level) so they land on disk and in a support bundle. Only
-below-level entries are buffered, so nothing already written is duplicated.
-
-The buffer flushes only on genuine connection failures, not on transient
-reconnects, a handshake `401` that a token refresh recovers, or intentional
-teardown:
-
-- a reconnecting WebSocket terminal failure (`unrecoverable_close`,
-  `unrecoverable_http`, or `certificate_error`);
-- a failure while opening a workspace (canceled build, missing agent, timeout,
-  or CLI/certificate error).
+When a WebSocket fails terminally, a workspace fails to open, or you collect a
+support bundle, the extension replays the ring into the channel. Each replayed
+line carries a `[buffered]` marker with its original timestamp and level, so it
+lands on disk and in the bundle. Transient reconnects and intentional teardown
+never flush. Nothing is recorded or flushed while the channel is at `Off`.
 
 The buffer size is set by `coder.connectionLogBuffer.size` (number of entries;
 `0` disables it) and lives in memory, so a hard kill or out-of-memory event
