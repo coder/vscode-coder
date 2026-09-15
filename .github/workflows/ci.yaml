@@ -67,6 +67,7 @@ jobs:
         shell: bash
         env:
           CI: true
+          EXPECTED_ARCH: ${{ runner.arch }}
           CODER_WINDOWS_ACL_TEST: ${{ runner.os == 'Windows' && '1' || '0' }}
 
   test-integration:
