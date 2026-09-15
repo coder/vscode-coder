@@ -133,7 +133,7 @@ describe("ReconnectingWebSocket", () => {
 				expect(socketCreationAttempts).toBe(1);
 				expect(onConnectionFailure).toHaveBeenCalledWith(
 					"unrecoverable_http",
-					expect.any(String),
+					"/api/v2/test",
 				);
 
 				ws.close();
@@ -958,6 +958,7 @@ interface FactoryOptions {
 	onDispose?: () => void;
 	onCertificateRefreshNeeded?: () => Promise<boolean>;
 	onConnectionFailure?: (reason: ConnectionStateReason, route: string) => void;
+	route?: string;
 	telemetry?: TelemetryReporter;
 }
 
@@ -1021,6 +1022,7 @@ async function fromFactory<T>(
 		createMockLogger(),
 		{
 			telemetry: options.telemetry ?? NOOP_TELEMETRY_REPORTER,
+			route: options.route ?? "/api/v2/test",
 			onCertificateRefreshNeeded:
 				options.onCertificateRefreshNeeded ?? (() => Promise.resolve(false)),
 			onConnectionFailure: options.onConnectionFailure ?? vi.fn(),

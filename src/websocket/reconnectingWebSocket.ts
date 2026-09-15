@@ -116,6 +116,8 @@ export interface ReconnectingWebSocketOptions {
 	maxBackoffMs?: number;
 	jitterFactor?: number;
 	telemetry: TelemetryReporter;
+	/** API route (pathname) of the socket, used to seed logging before the first connect resolves. */
+	route: string;
 	/** Callback invoked when a refreshable certificate error is detected. Returns true if refresh succeeded. */
 	onCertificateRefreshNeeded: () => Promise<boolean>;
 	/** Callback invoked when the connection fails terminally (not a transient drop). */
@@ -129,7 +131,10 @@ export class ReconnectingWebSocket<
 	readonly #logger: Logger;
 	readonly #telemetry: WebSocketTelemetry;
 	readonly #options: Required<
-		Omit<ReconnectingWebSocketOptions, "telemetry" | "onConnectionFailure">
+		Omit<
+			ReconnectingWebSocketOptions,
+			"telemetry" | "onConnectionFailure" | "route"
+		>
 	>;
 	readonly #onConnectionFailure?: (
 		reason: ConnectionStateReason,
@@ -145,7 +150,7 @@ export class ReconnectingWebSocket<
 	};
 
 	#currentSocket: UnidirectionalStream<TData> | null = null;
-	#lastRoute = "unknown"; // Cached route for logging when socket is closed
+	#lastRoute: string; // Cached route for logging when socket is closed
 	#backoffMs: number;
 	#reconnectTimeoutId: NodeJS.Timeout | null = null;
 	#state: ConnectionState = ConnectionState.IDLE;
@@ -189,6 +194,7 @@ export class ReconnectingWebSocket<
 			onCertificateRefreshNeeded: options.onCertificateRefreshNeeded,
 		};
 		this.#onConnectionFailure = options.onConnectionFailure;
+		this.#lastRoute = options.route;
 		this.#backoffMs = this.#options.initialBackoffMs;
 		this.#onDispose = onDispose;
 	}

@@ -600,7 +600,7 @@ describe("CoderApi", () => {
 
 			expect(onConnectionFailure).toHaveBeenCalledWith(
 				"unrecoverable_close",
-				expect.any(String),
+				`/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
 			);
 			connection.close();
 		});
