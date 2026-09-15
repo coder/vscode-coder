@@ -1,3 +1,5 @@
+import { safeStringify } from "./utils";
+
 import type { Logger } from "./logger";
 
 /**
@@ -18,6 +20,15 @@ type Level = keyof typeof SEVERITY;
 /** Sink methods that the output channel persists at any non-Off level. */
 type ReplaySink = "info" | "warn" | "error";
 
+/**
+ * Character budget for the buffered text, independent of the entry count. Bounds
+ * worst-case memory when `httpClientLogLevel: body` makes each entry large.
+ */
+const MAX_BUFFERED_CHARS = 2_000_000;
+
+/** Entries replayed per channel call, so a flush is not one RPC per entry. */
+const REPLAY_CHUNK = 100;
+
 /** Replays buffered below-level log entries on a connection failure. */
 export interface ConnectionLogBuffer {
 	flush(reason: string): void;
@@ -26,8 +37,8 @@ export interface ConnectionLogBuffer {
 interface LogEntry {
 	readonly atMs: number;
 	readonly level: Level;
-	readonly message: string;
-	readonly args: unknown[];
+	/** Message and args formatted once at record time; holds no live references. */
+	readonly text: string;
 }
 
 /**
@@ -36,6 +47,7 @@ interface LogEntry {
  */
 export class BufferingLogger implements Logger, ConnectionLogBuffer {
 	private entries: LogEntry[] = [];
+	private chars = 0;
 
 	public constructor(
 		private readonly inner: Logger,
@@ -53,12 +65,10 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 		this.inner.show();
 	}
 
-	/** Resize the ring, keeping the most recent entries. */
+	/** Resize the ring, keeping the most recent entries within both budgets. */
 	public setCapacity(capacity: number): void {
 		this.capacity = capacity;
-		if (this.entries.length > this.capacity) {
-			this.entries.splice(0, this.entries.length - this.capacity);
-		}
+		this.trim();
 	}
 
 	/**
@@ -77,14 +87,20 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 		}
 		const entries = this.entries;
 		this.entries = [];
+		this.chars = 0;
 
 		const sink = this.replaySink();
 		this.inner[sink](
 			`[buffered] connection failure (${reason}): replaying ${entries.length} buffered entries`,
 		);
-		for (const entry of entries) {
-			const line = `[buffered] ${new Date(entry.atMs).toISOString()} ${entry.level.toUpperCase()} ${entry.message}`;
-			this.inner[sink](line.replaceAll("\n", "\n[buffered] "), ...entry.args);
+		const lines = entries.map((entry) =>
+			`[buffered] ${new Date(entry.atMs).toISOString()} ${entry.level.toUpperCase()} ${entry.text}`.replaceAll(
+				"\n",
+				"\n[buffered] ",
+			),
+		);
+		for (let i = 0; i < lines.length; i += REPLAY_CHUNK) {
+			this.inner[sink](lines.slice(i, i + REPLAY_CHUNK).join("\n"));
 		}
 		this.inner[sink](`[buffered] end of buffered logs (${reason})`);
 	}
@@ -116,9 +132,25 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 		if (this.capacity === 0 || SEVERITY[level] >= this.channel.logLevel) {
 			return;
 		}
-		this.entries.push({ atMs: Date.now(), level, message, args });
-		if (this.entries.length > this.capacity) {
-			this.entries.shift();
+		const text = [message, ...args.map((arg) => safeStringify(arg) ?? "")].join(
+			" ",
+		);
+		this.entries.push({ atMs: Date.now(), level, text });
+		this.chars += text.length;
+		this.trim();
+	}
+
+	/** Evict oldest entries until both the count and character budgets hold. */
+	private trim(): void {
+		while (
+			this.entries.length > this.capacity ||
+			this.chars > MAX_BUFFERED_CHARS
+		) {
+			const removed = this.entries.shift();
+			if (removed === undefined) {
+				break;
+			}
+			this.chars -= removed.text.length;
 		}
 	}
 }

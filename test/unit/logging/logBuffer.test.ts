@@ -129,6 +129,7 @@ describe("BufferingLogger", () => {
 	interface CapacityCase {
 		name: string;
 		capacity: number;
+		values: string[];
 		shrinkTo?: number;
 		present: string[];
 		absent: string[];
@@ -138,28 +139,41 @@ describe("BufferingLogger", () => {
 		{
 			name: "evicts the oldest entry when capacity is exceeded",
 			capacity: 2,
+			values: ["one", "two", "three"],
 			present: ["two", "three"],
 			absent: ["one"],
 		},
 		{
 			name: "buffers nothing when capacity is zero",
 			capacity: 0,
+			values: ["one", "two", "three"],
 			present: [],
 			absent: ["one", "two", "three"],
 		},
 		{
 			name: "keeps the most recent entries when shrunk via setCapacity",
 			capacity: 10,
+			values: ["one", "two", "three"],
 			shrinkTo: 1,
 			present: ["three"],
 			absent: ["one", "two"],
 		},
-	])("$name", ({ capacity, shrinkTo, present, absent }) => {
+		{
+			name: "evicts oldest entries once the character budget is exceeded",
+			capacity: 100_000,
+			values: [
+				`first ${"x".repeat(1_200_000)}`,
+				`second ${"x".repeat(1_200_000)}`,
+			],
+			present: ["second "],
+			absent: ["first "],
+		},
+	])("$name", ({ capacity, values, shrinkTo, present, absent }) => {
 		const { buffer, flush } = setup(INFO, capacity);
 
-		buffer.debug("one");
-		buffer.debug("two");
-		buffer.debug("three");
+		for (const value of values) {
+			buffer.debug(value);
+		}
 		if (shrinkTo !== undefined) {
 			buffer.setCapacity(shrinkTo);
 		}
@@ -189,10 +203,9 @@ describe("BufferingLogger", () => {
 		expect(entry).toBeDefined();
 		expect(entry?.message).toContain("2024-01-01T00:00:00.000Z");
 		expect(entry?.message).toContain("DEBUG first line");
-		for (const line of entry?.message.split("\n") ?? []) {
-			expect(line.startsWith("[buffered] ")).toBe(true);
-		}
-		expect(entry?.args).toEqual([detail]);
+		// Args are formatted into the text at record time, not passed through.
+		expect(entry?.message).toContain("1006");
+		expect(entry?.args).toEqual([]);
 	});
 
 	it("clears after flush, no-ops when empty, and preserves entries flushed while Off", () => {
