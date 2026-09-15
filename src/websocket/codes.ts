@@ -51,9 +51,3 @@ export const UNRECOVERABLE_HTTP_CODES = new Set<number>([
 	HttpStatusCode.GONE,
 	HttpStatusCode.UPGRADE_REQUIRED,
 ]);
-
-/** Close codes indicating intentional closure - do not reconnect */
-export const NORMAL_CLOSURE_CODES = new Set<number>([
-	WebSocketCloseCode.NORMAL,
-	WebSocketCloseCode.GOING_AWAY,
-]);

@@ -9,7 +9,6 @@ import {
 import {
 	WebSocketCloseCode,
 	HttpStatusCode,
-	NORMAL_CLOSURE_CODES,
 	UNRECOVERABLE_WS_CLOSE_CODES,
 	UNRECOVERABLE_HTTP_CODES,
 } from "./codes";
@@ -435,14 +434,10 @@ export class ReconnectingWebSocket<
 			return;
 		}
 
-		if (NORMAL_CLOSURE_CODES.has(event.code)) {
-			this.disconnectWithReason("normal_close", "normal_close", {
-				code: event.code,
-				closeReason: event.reason,
-			});
-			return;
-		}
-
+		// Every close that reaches here is server-initiated: intentional
+		// disconnect()/close() dispatch first and return early above. Normal
+		// codes such as coderd's liveness 1001 or a shutdown 1000 must reconnect,
+		// so they fall through to the backoff retry below.
 		this.scheduleReconnect("unexpected_close", "unexpected_close", {
 			code: event.code,
 			error: toCloseEventError(event),

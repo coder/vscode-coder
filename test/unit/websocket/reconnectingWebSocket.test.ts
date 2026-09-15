@@ -61,16 +61,18 @@ describe("ReconnectingWebSocket", () => {
 			{ code: WebSocketCloseCode.NORMAL, name: "Normal Closure" },
 			{ code: WebSocketCloseCode.GOING_AWAY, name: "Going Away" },
 		])(
-			"does not reconnect on normal closure: $name ($code)",
+			"reconnects on a server-initiated normal closure: $name ($code)",
 			async ({ code }) => {
 				const { ws, sockets, onConnectionFailure } =
 					await createReconnectingWebSocket();
 
 				sockets[0].fireOpen();
 				sockets[0].fireClose({ code, reason: "Normal" });
+				expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
 
-				await vi.advanceTimersByTimeAsync(10000);
-				expect(sockets).toHaveLength(1);
+				await vi.advanceTimersByTimeAsync(300);
+				expect(sockets).toHaveLength(2);
+				// A server-initiated close is not a terminal failure.
 				expect(onConnectionFailure).not.toHaveBeenCalled();
 
 				ws.close();
@@ -713,7 +715,7 @@ describe("ReconnectingWebSocket", () => {
 			]);
 		});
 
-		it("emits a normal-close drop and disconnects on server-initiated close", async () => {
+		it("emits an unexpected-close drop and reconnects on a server-initiated close", async () => {
 			const sink = new TestSink();
 			const telemetry = createTestTelemetryService(sink);
 			const { ws, sockets } = await createReconnectingWebSocket({ telemetry });
@@ -724,18 +726,18 @@ describe("ReconnectingWebSocket", () => {
 				reason: "server restarting",
 			});
 
-			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
+			expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
 			const dropped = sink.eventsNamed("connection.dropped");
 			expect(dropped).toHaveLength(1);
 			expect(dropped[0].properties).toMatchObject({
-				cause: "normal_close",
+				cause: "unexpected_close",
 				close_code: String(WebSocketCloseCode.GOING_AWAY),
 			});
 			expect(
 				sink
 					.eventsNamed("connection.state_transitioned")
 					.map((e) => e.properties.reason),
-			).toContain("normal_close");
+			).toContain("unexpected_close");
 
 			ws.close();
 		});
