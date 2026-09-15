@@ -35,10 +35,8 @@ function toCloseEventError(event: CloseEvent): Error {
 const TERMINAL_CONNECTION_FAILURE_REASONS: ReadonlySet<ConnectionStateReason> =
 	new Set(["unrecoverable_close", "unrecoverable_http", "certificate_error"]);
 
-/** Whether a state-transition reason represents a genuine connection failure. */
-export function isTerminalConnectionFailure(
-	reason: ConnectionStateReason,
-): boolean {
+/** Whether a reason stops automatic retries. */
+function isTerminalConnectionFailure(reason: ConnectionStateReason): boolean {
 	return TERMINAL_CONNECTION_FAILURE_REASONS.has(reason);
 }
 

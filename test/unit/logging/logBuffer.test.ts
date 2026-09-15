@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BufferingLogger } from "@/logging/logBuffer";
 
@@ -11,39 +11,46 @@ const INFO = 3;
 const WARNING = 4;
 const ERROR = 5;
 
+type LogMethod = "trace" | "debug" | "info" | "warn" | "error";
+
 interface Call {
 	level: keyof Logger;
 	message: string;
 	args: unknown[];
 }
 
-function recordingLogger(): { logger: Logger; calls: Call[] } {
+function setup(level: number, capacity: number) {
 	const calls: Call[] = [];
 	const push =
-		(level: keyof Logger) =>
+		(method: keyof Logger) =>
 		(message: string, ...args: unknown[]) =>
-			calls.push({ level, message, args });
-	return {
-		calls,
-		logger: {
-			trace: push("trace"),
-			debug: push("debug"),
-			info: push("info"),
-			warn: push("warn"),
-			error: push("error"),
-			show: vi.fn(),
-		},
+			calls.push({ level: method, message, args });
+	const logger: Logger = {
+		trace: push("trace"),
+		debug: push("debug"),
+		info: push("info"),
+		warn: push("warn"),
+		error: push("error"),
+		show: vi.fn(),
 	};
+	const channel = { logLevel: level };
+	const buffer = new BufferingLogger(logger, channel, capacity);
+	// Ignore the pass-through calls, then return only what the flush replayed.
+	const flush = (reason = "r"): string[] => {
+		calls.length = 0;
+		buffer.flush(reason);
+		return calls.map((c) => c.message);
+	};
+	return { buffer, calls, channel, flush };
 }
 
-function fakeChannel(initial: number): { logLevel: number } {
-	return { logLevel: initial };
-}
+afterEach(() => {
+	vi.restoreAllMocks();
+});
 
 describe("BufferingLogger", () => {
 	it("forwards every call to the inner logger", () => {
-		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
+		const { buffer, calls } = setup(INFO, 10);
 
 		buffer.trace("t");
 		buffer.debug("d");
@@ -60,246 +67,150 @@ describe("BufferingLogger", () => {
 		]);
 	});
 
-	it("buffers only entries below the current level and replays them on flush", () => {
-		vi.useFakeTimers();
-		try {
-			vi.setSystemTime(new Date("2024-01-01T00:00:00.000Z"));
-			const { logger, calls } = recordingLogger();
-			const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
+	it.each([
+		{
+			level: DEBUG,
+			hidden: "trace" as LogMethod,
+			shown: "debug" as LogMethod,
+			sink: "info" as const,
+		},
+		{
+			level: INFO,
+			hidden: "debug" as LogMethod,
+			shown: "info" as LogMethod,
+			sink: "info" as const,
+		},
+		{
+			level: WARNING,
+			hidden: "info" as LogMethod,
+			shown: "warn" as LogMethod,
+			sink: "warn" as const,
+		},
+		{
+			level: ERROR,
+			hidden: "warn" as LogMethod,
+			shown: "error" as LogMethod,
+			sink: "error" as const,
+		},
+	])(
+		"at level $level buffers below-level entries and replays them via the $sink sink",
+		({ level, hidden, shown, sink }) => {
+			const { buffer, calls, flush } = setup(level, 10);
 
-			buffer.debug("hidden debug");
-			buffer.info("visible info");
+			buffer[hidden]("hidden line");
+			buffer[shown]("shown line");
+			const lines = flush();
 
-			// Flush later; the replay must carry the original record time.
-			vi.setSystemTime(new Date("2024-01-01T00:05:00.000Z"));
-			calls.length = 0; // ignore the pass-through calls
-			buffer.flush("test_reason");
-
-			const replayed = calls.filter((c) => c.message.includes("[buffered]"));
-			// header + one debug line + footer; the info line was at level and not buffered.
-			expect(replayed).toHaveLength(3);
-			expect(replayed[0].message).toContain("connection failure (test_reason)");
-			expect(replayed[1].message).toContain("DEBUG hidden debug");
-			expect(replayed[1].message).toContain("2024-01-01T00:00:00.000Z");
-			expect(replayed[2].message).toContain("end of buffered logs");
-		} finally {
-			vi.useRealTimers();
-		}
-	});
-
-	it("does not buffer entries at or above the current level", () => {
-		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
-
-		buffer.info("i");
-		buffer.warn("w");
-		buffer.error("e");
-
-		calls.length = 0;
-		buffer.flush("r");
-
-		expect(calls).toHaveLength(0);
-	});
-
-	it("evicts the oldest entry when capacity is exceeded", () => {
-		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 2);
-
-		buffer.debug("one");
-		buffer.debug("two");
-		buffer.debug("three");
-
-		calls.length = 0;
-		buffer.flush("r");
-
-		const lines = calls.map((c) => c.message);
-		expect(lines.some((l) => l.includes("one"))).toBe(false);
-		expect(lines.some((l) => l.includes("two"))).toBe(true);
-		expect(lines.some((l) => l.includes("three"))).toBe(true);
-	});
-
-	it("clears the buffer after a flush", () => {
-		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
-
-		buffer.debug("d");
-		buffer.flush("first");
-
-		calls.length = 0;
-		buffer.flush("second");
-
-		expect(calls).toHaveLength(0);
-	});
-
-	it("flushes newly accumulated entries on each consecutive failure", () => {
-		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
-
-		buffer.debug("before first failure");
-		calls.length = 0;
-		buffer.flush("first");
-		const firstLines = calls.map((c) => c.message);
-		expect(firstLines.some((l) => l.includes("before first failure"))).toBe(
-			true,
-		);
-
-		buffer.debug("before second failure");
-		calls.length = 0;
-		buffer.flush("second");
-		const secondLines = calls.map((c) => c.message);
-		expect(secondLines.some((l) => l.includes("before second failure"))).toBe(
-			true,
-		);
-		expect(secondLines.some((l) => l.includes("before first failure"))).toBe(
-			false,
-		);
-	});
-
-	it("is a no-op when the buffer is empty", () => {
-		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
-
-		buffer.flush("r");
-
-		expect(calls).toHaveLength(0);
-	});
+			expect(lines.some((l) => l.includes("hidden line"))).toBe(true);
+			expect(lines.some((l) => l.includes("shown line"))).toBe(false);
+			expect(calls.every((c) => c.level === sink)).toBe(true);
+		},
+	);
 
 	it("re-evaluates what is below level when the level changes", () => {
-		const { logger, calls } = recordingLogger();
-		const channel = fakeChannel(ERROR);
-		const buffer = new BufferingLogger(logger, channel, 10);
+		const { buffer, channel, flush } = setup(ERROR, 10);
 
 		buffer.info("info at error level"); // below ERROR -> buffered
 		channel.logLevel = INFO;
 		buffer.info("info at info level"); // at INFO -> not buffered
 
-		calls.length = 0;
-		buffer.flush("r");
-
-		const lines = calls.map((c) => c.message);
+		const lines = flush();
 		expect(lines.some((l) => l.includes("info at error level"))).toBe(true);
 		expect(lines.some((l) => l.includes("info at info level"))).toBe(false);
 	});
 
-	it("buffers nothing when capacity is zero", () => {
-		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 0);
-
-		buffer.debug("d");
-		calls.length = 0;
-		buffer.flush("r");
-
-		expect(calls).toHaveLength(0);
-	});
-
-	it("keeps the most recent entries when shrunk via setCapacity", () => {
-		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
+	it.each([
+		{
+			name: "evicts the oldest entry when capacity is exceeded",
+			capacity: 2,
+			shrinkTo: undefined as number | undefined,
+			present: ["two", "three"],
+			absent: ["one"],
+		},
+		{
+			name: "buffers nothing when capacity is zero",
+			capacity: 0,
+			shrinkTo: undefined as number | undefined,
+			present: [],
+			absent: ["one", "two", "three"],
+		},
+		{
+			name: "keeps the most recent entries when shrunk via setCapacity",
+			capacity: 10,
+			shrinkTo: 1,
+			present: ["three"],
+			absent: ["one", "two"],
+		},
+	])("$name", ({ capacity, shrinkTo, present, absent }) => {
+		const { buffer, flush } = setup(INFO, capacity);
 
 		buffer.debug("one");
 		buffer.debug("two");
 		buffer.debug("three");
-		buffer.setCapacity(1);
+		if (shrinkTo !== undefined) {
+			buffer.setCapacity(shrinkTo);
+		}
 
-		calls.length = 0;
-		buffer.flush("r");
-
-		const lines = calls.map((c) => c.message);
-		expect(lines.some((l) => l.includes("three"))).toBe(true);
-		expect(lines.some((l) => l.includes("one"))).toBe(false);
-		expect(lines.some((l) => l.includes("two"))).toBe(false);
+		const lines = flush();
+		for (const value of present) {
+			expect(lines.some((l) => l.includes(value))).toBe(true);
+		}
+		for (const value of absent) {
+			expect(lines.some((l) => l.includes(value))).toBe(false);
+		}
 	});
 
-	it.each([
-		{ level: INFO, expected: "info" as const },
-		{ level: WARNING, expected: "warn" as const },
-		{ level: ERROR, expected: "error" as const },
-	])(
-		"replays at $expected so the flush is written at level $level",
-		({ level, expected }) => {
-			const { logger, calls } = recordingLogger();
-			const buffer = new BufferingLogger(logger, fakeChannel(level), 10);
-
-			// Always below the current level so it is buffered.
-			buffer.trace("below");
-			calls.length = 0;
-			buffer.flush("r");
-
-			expect(calls.length).toBeGreaterThan(0);
-			expect(calls.every((c) => c.level === expected)).toBe(true);
-		},
-	);
-
-	it("preserves extra args on replay", () => {
-		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
+	it("replays each entry with its record time, args, and a [buffered] prefix on every line", () => {
+		const recordedAt = Date.parse("2024-01-01T00:00:00.000Z");
+		vi.spyOn(Date, "now").mockReturnValueOnce(recordedAt);
+		const { buffer, calls, flush } = setup(INFO, 10);
 		const detail = { code: 1006 };
 
-		buffer.debug("dropped", detail);
-		calls.length = 0;
-		buffer.flush("r");
+		buffer.debug("first line\nsecond line", detail);
+		const lines = flush();
 
-		const line = calls.find((c) => c.message.includes("dropped"));
-		expect(line?.args).toEqual([detail]);
-	});
-
-	it("does not buffer at the Off level", () => {
-		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeChannel(OFF), 10);
-
-		buffer.trace("t");
-		buffer.debug("d");
-		calls.length = 0;
-		buffer.flush("r");
-
-		expect(calls).toHaveLength(0);
-	});
-
-	it("buffers trace but not debug at the Debug level", () => {
-		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeChannel(DEBUG), 10);
-
-		buffer.trace("trace line");
-		buffer.debug("debug line");
-		calls.length = 0;
-		buffer.flush("r");
-
-		const lines = calls.map((c) => c.message);
-		expect(lines.some((l) => l.includes("trace line"))).toBe(true);
-		expect(lines.some((l) => l.includes("debug line"))).toBe(false);
-	});
-
-	it("preserves entries when flushed at Off and replays once logging returns", () => {
-		const { logger, calls } = recordingLogger();
-		const channel = fakeChannel(INFO);
-		const buffer = new BufferingLogger(logger, channel, 10);
-
-		buffer.debug("hidden debug");
-
-		// Off writes nothing, so the flush must keep the entry buffered.
-		channel.logLevel = OFF;
-		calls.length = 0;
-		buffer.flush("while off");
-		expect(calls).toHaveLength(0);
-
-		// Once logging is back on, the same entry replays.
-		channel.logLevel = INFO;
-		buffer.flush("after off");
-		expect(calls.some((c) => c.message.includes("hidden debug"))).toBe(true);
-	});
-
-	it("prefixes every physical line of a multi-line message with [buffered]", () => {
-		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
-
-		buffer.debug("first line\nsecond line\nthird line");
-		calls.length = 0;
-		buffer.flush("r");
+		expect(lines[0]).toContain("connection failure (r)");
+		expect(lines[lines.length - 1]).toContain("end of buffered logs");
 
 		const entry = calls.find((c) => c.message.includes("first line"));
 		expect(entry).toBeDefined();
-		for (const line of entry!.message.split("\n")) {
+		expect(entry?.message).toContain("2024-01-01T00:00:00.000Z");
+		expect(entry?.message).toContain("DEBUG first line");
+		for (const line of entry?.message.split("\n") ?? []) {
 			expect(line.startsWith("[buffered] ")).toBe(true);
 		}
+		expect(entry?.args).toEqual([detail]);
+	});
+
+	it("clears after flush, no-ops when empty, and preserves entries flushed while Off", () => {
+		const { buffer, channel, flush } = setup(INFO, 10);
+
+		// Empty flush is a no-op.
+		expect(flush()).toHaveLength(0);
+
+		// Each failure only replays entries accumulated since the previous one.
+		buffer.debug("before first");
+		expect(flush("first").some((l) => l.includes("before first"))).toBe(true);
+		buffer.debug("before second");
+		const second = flush("second");
+		expect(second.some((l) => l.includes("before second"))).toBe(true);
+		expect(second.some((l) => l.includes("before first"))).toBe(false);
+
+		// Nothing is buffered while the channel itself is at Off.
+		channel.logLevel = OFF;
+		buffer.debug("logged while off");
+		channel.logLevel = INFO;
+		expect(flush("after").some((l) => l.includes("logged while off"))).toBe(
+			false,
+		);
+
+		// A flush at Off keeps the context buffered until logging returns.
+		buffer.debug("buffered before going off");
+		channel.logLevel = OFF;
+		expect(flush("off")).toHaveLength(0);
+		channel.logLevel = INFO;
+		expect(
+			flush("back").some((l) => l.includes("buffered before going off")),
+		).toBe(true);
 	});
 });
