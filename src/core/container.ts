@@ -174,7 +174,7 @@ export class ServiceContainer implements vscode.Disposable {
 		return this.logger;
 	}
 
-	/** The below-level connection log buffer; flush it on a connection failure. */
+	/** The connection log buffer that replays below-level entries on failure. */
 	getConnectionLogBuffer(): ConnectionLogBuffer {
 		return this.logger;
 	}
