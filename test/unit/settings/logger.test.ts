@@ -62,4 +62,11 @@ describe("readHttpClientLogLevel", () => {
 			HttpClientLogLevel.BASIC,
 		);
 	});
+
+	it.each([2, null])(
+		"falls back to BASIC for a non-string value %p",
+		(value) => {
+			expect(readHttpClientLogLevel(cfg(value))).toBe(HttpClientLogLevel.BASIC);
+		},
+	);
 });

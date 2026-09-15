@@ -33,14 +33,18 @@ export function readConnectionLogBufferSize(
 export function readHttpClientLogLevel(
 	cfg: Pick<WorkspaceConfiguration, "get">,
 ): HttpClientLogLevel {
-	const value = cfg
-		.get(
-			HTTP_CLIENT_LOG_LEVEL_SETTING,
-			HttpClientLogLevel[HttpClientLogLevel.BASIC],
-		)
-		.toUpperCase();
+	const value = cfg.get(
+		HTTP_CLIENT_LOG_LEVEL_SETTING,
+		HttpClientLogLevel[HttpClientLogLevel.BASIC],
+	);
+	// settings.json can hold a non-string (e.g. 2 or null) despite the schema;
+	// guard so the axios interceptors never throw on .toUpperCase().
+	if (typeof value !== "string") {
+		return HttpClientLogLevel.BASIC;
+	}
 	return (
-		HttpClientLogLevel[value as keyof typeof HttpClientLogLevel] ??
-		HttpClientLogLevel.BASIC
+		HttpClientLogLevel[
+			value.toUpperCase() as keyof typeof HttpClientLogLevel
+		] ?? HttpClientLogLevel.BASIC
 	);
 }
