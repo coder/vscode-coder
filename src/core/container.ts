@@ -58,25 +58,21 @@ export class ServiceContainer implements vscode.Disposable {
 		this.outputChannel = vscode.window.createOutputChannel("Coder", {
 			log: true,
 		});
+		const readSize = () =>
+			readConnectionLogBufferSize(vscode.workspace.getConfiguration());
 		this.logger = new BufferingLogger(
 			prefixLogger(this.outputChannel, `[session ${shortId(sessionId)}]`),
 			this.outputChannel,
-			readConnectionLogBufferSize(vscode.workspace.getConfiguration()),
+			readSize(),
 		);
 		this.connectionLogBufferConfigSubscription = watchConfigurationChanges(
 			[
 				{
 					setting: CONNECTION_LOG_BUFFER_SIZE_SETTING,
-					getValue: () =>
-						readConnectionLogBufferSize(vscode.workspace.getConfiguration()),
+					getValue: readSize,
 				},
 			],
-			(changes) => {
-				const size = changes.get(CONNECTION_LOG_BUFFER_SIZE_SETTING);
-				if (typeof size === "number") {
-					this.logger.setCapacity(size);
-				}
-			},
+			() => this.logger.setCapacity(readSize()),
 		);
 		this.pathResolver = new PathResolver(
 			context.globalStorageUri.fsPath,
