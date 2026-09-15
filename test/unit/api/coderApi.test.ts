@@ -645,8 +645,8 @@ describe("CoderApi", () => {
 				`wss://${CODER_URL.replace("https://", "")}/api/v2/test`,
 				{
 					connectError: {
-						error: new Error("404 Not Found"),
-						message: "404 Not Found",
+						error: new Error("Unexpected server response: 404"),
+						message: "Unexpected server response: 404",
 					},
 				},
 			);
@@ -684,7 +684,9 @@ describe("CoderApi", () => {
 				vi.mocked(Ws).mockImplementation(function () {
 					wsAttempts++;
 					const mockWs = createMockWebSocket("wss://test", {
-						connectError: { error: new Error("Something 404") },
+						connectError: {
+							error: new Error("Unexpected server response: 404"),
+						},
 					});
 					return mockWs as Ws;
 				});

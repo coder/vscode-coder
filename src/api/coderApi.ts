@@ -46,6 +46,7 @@ import {
 	type SocketFactory,
 } from "../websocket/reconnectingWebSocket";
 import { SseConnection } from "../websocket/sseConnection";
+import { handshakeStatus } from "../websocket/utils";
 
 import { getRefreshCommand, refreshCertificates } from "./certificateRefresh";
 import {
@@ -538,8 +539,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 	 * Check if an error is a 404 Not Found error.
 	 */
 	private is404Error(error: unknown): boolean {
-		const msg = error instanceof Error ? error.message : String(error);
-		return msg.includes(String(HttpStatusCode.NOT_FOUND));
+		return handshakeStatus(error) === HttpStatusCode.NOT_FOUND;
 	}
 
 	/**

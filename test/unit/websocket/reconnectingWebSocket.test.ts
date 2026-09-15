@@ -106,19 +106,19 @@ describe("ReconnectingWebSocket", () => {
 		);
 
 		it.each([
-			HttpStatusCode.FORBIDDEN,
-			HttpStatusCode.GONE,
-			HttpStatusCode.UPGRADE_REQUIRED,
+			`Unexpected server response: ${HttpStatusCode.FORBIDDEN}`,
+			`Unexpected server response: ${HttpStatusCode.GONE}`,
+			`Unexpected server response: ${HttpStatusCode.UPGRADE_REQUIRED}`,
+			// eventsource (SSE fallback) reports the status this way.
+			`Non-200 status code (${HttpStatusCode.FORBIDDEN})`,
 		])(
-			"does not reconnect on unrecoverable HTTP error during creation: %i",
-			async (statusCode) => {
+			"does not reconnect on an unrecoverable handshake failure during creation: %s",
+			async (message) => {
 				let socketCreationAttempts = 0;
 				const factory = vi.fn(() => {
 					socketCreationAttempts++;
-					// Simulate HTTP error during WebSocket handshake
-					return Promise.reject(
-						new Error(`Unexpected server response: ${statusCode}`),
-					);
+					// Simulate an HTTP error during the handshake.
+					return Promise.reject(new Error(message));
 				});
 
 				// create() returns a disconnected instance instead of throwing

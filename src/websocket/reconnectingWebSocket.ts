@@ -12,6 +12,7 @@ import {
 	UNRECOVERABLE_WS_CLOSE_CODES,
 	UNRECOVERABLE_HTTP_CODES,
 } from "./codes";
+import { handshakeStatus } from "./utils";
 
 import type { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 
@@ -571,17 +572,13 @@ export class ReconnectingWebSocket<
 
 	/**
 	 * Returns the unrecoverable HTTP status carried by a failed handshake, or
-	 * `undefined`. Matches the `ws` "Unexpected server response: <code>" message
-	 * exactly so host/port digits like `127.0.0.1:4040` cannot masquerade as a
-	 * status code.
+	 * `undefined`.
 	 */
 	private unrecoverableHttpStatus(error: unknown): number | undefined {
-		const message = (error as { message?: string }).message || String(error);
-		const match = /unexpected server response:\s*(\d{3})/i.exec(message);
-		if (!match) {
+		const status = handshakeStatus(error);
+		if (status === undefined) {
 			return undefined;
 		}
-		const status = Number(match[1]);
 		return UNRECOVERABLE_HTTP_CODES.has(status) ? status : undefined;
 	}
 
