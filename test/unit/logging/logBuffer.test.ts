@@ -187,7 +187,7 @@ describe("BufferingLogger", () => {
 		}
 	});
 
-	it("replays each entry with its record time, args, and a [buffered] prefix on every line", () => {
+	it("replays each entry with its record time and formatted args, prefixing every physical line", () => {
 		const recordedAt = Date.parse("2024-01-01T00:00:00.000Z");
 		vi.spyOn(Date, "now").mockReturnValueOnce(recordedAt);
 		const { buffer, calls, flush } = setup(INFO, 10);
@@ -199,13 +199,17 @@ describe("BufferingLogger", () => {
 		expect(lines[0]).toContain("connection failure (r)");
 		expect(lines[lines.length - 1]).toContain("end of buffered logs");
 
-		const entry = calls.find((c) => c.message.includes("first line"));
-		expect(entry).toBeDefined();
-		expect(entry?.message).toContain("2024-01-01T00:00:00.000Z");
-		expect(entry?.message).toContain("DEBUG first line");
+		const replay = calls.find((c) => c.message.includes("first line"));
+		expect(replay).toBeDefined();
+		expect(replay?.message).toContain("2024-01-01T00:00:00.000Z");
+		expect(replay?.message).toContain("DEBUG first line");
 		// Args are formatted into the text at record time, not passed through.
-		expect(entry?.message).toContain("1006");
-		expect(entry?.args).toEqual([]);
+		expect(replay?.message).toContain("1006");
+		expect(replay?.args).toEqual([]);
+		// Every physical line of the joined replay text carries the prefix.
+		for (const line of replay?.message.split("\n") ?? []) {
+			expect(line.startsWith("[buffered] ")).toBe(true);
+		}
 	});
 
 	it("clears after flush, no-ops when empty, and preserves entries flushed while Off", () => {
