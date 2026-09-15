@@ -62,6 +62,7 @@ jobs:
         shell: bash
         env:
           CI: true
+          CODER_WINDOWS_ACL_TEST: ${{ runner.os == 'Windows' && '1' || '0' }}
 
   test-integration:
     name: Integration Test (${{ matrix.name }}, VS Code ${{ matrix.vscode-version }})

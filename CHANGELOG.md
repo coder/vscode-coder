@@ -5,6 +5,13 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Fixed
+
+- Repair permissions on Coder-managed Windows SSH config files when OpenSSH
+  rejects inherited or stale account access.
+
 ## [v1.16.3](https://github.com/coder/vscode-coder/releases/tag/v1.16.3) 2026-09-14
 
 ### Changed

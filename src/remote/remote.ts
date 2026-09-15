@@ -67,6 +67,7 @@ import {
 	sshSupportsSetEnv,
 	type SshProperties,
 } from "./sshSupport";
+import { WindowsAcl } from "./windowsAcl";
 import { WorkspaceStateMachine } from "./workspaceStateMachine";
 
 import type { Api } from "coder/site/src/api/api";
@@ -928,6 +929,12 @@ export class Remote {
 		const coderConfig = new SshConfig(
 			this.pathResolver.getSshConfigPath(safeHostname, hostEditorId(sshHost)),
 			this.logger,
+			undefined,
+			process.platform === "win32"
+				? new WindowsAcl(
+						this.extensionContext.asAbsolutePath("scripts/windows-acl.js"),
+					)
+				: undefined,
 		);
 
 		// Options the user set themselves win the merge below, so they are exempt
