@@ -30,17 +30,6 @@ function toCloseEventError(event: CloseEvent): Error {
 }
 
 /**
- * Connection failures that stop automatic retries.
- */
-const TERMINAL_CONNECTION_FAILURE_REASONS: ReadonlySet<ConnectionStateReason> =
-	new Set(["unrecoverable_close", "unrecoverable_http", "certificate_error"]);
-
-/** Whether a reason stops automatic retries. */
-function isTerminalConnectionFailure(reason: ConnectionStateReason): boolean {
-	return TERMINAL_CONNECTION_FAILURE_REASONS.has(reason);
-}
-
-/**
  * Connection states for the ReconnectingWebSocket state machine.
  */
 export enum ConnectionState {
@@ -307,7 +296,8 @@ export class ReconnectingWebSocket<
 			code?: number;
 			closeReason?: string;
 			error?: unknown;
-			flushable?: boolean;
+			/** Flush the connection log buffer: a genuine, surfaced failure. */
+			failure?: boolean;
 		} = {},
 	): void {
 		if (!this.#dispatch({ type: "DISCONNECT" }, reason)) {
@@ -319,7 +309,7 @@ export class ReconnectingWebSocket<
 			error: options.error,
 		});
 		this.clearCurrentSocket(options.code, options.closeReason);
-		if (isTerminalConnectionFailure(reason) && options.flushable !== false) {
+		if (options.failure) {
 			this.#onConnectionFailure?.(reason, this.#route);
 		}
 	}
@@ -431,6 +421,7 @@ export class ReconnectingWebSocket<
 				code: event.code,
 				closeReason: event.reason,
 				error: toCloseEventError(event),
+				failure: true,
 			});
 			return;
 		}
@@ -550,7 +541,7 @@ export class ReconnectingWebSocket<
 			// the same socket seconds later, so it is not a genuine outage to flush.
 			this.disconnectWithReason("unrecoverable_http", "error", {
 				error,
-				flushable: unrecoverableStatus !== HttpStatusCode.UNAUTHORIZED,
+				failure: unrecoverableStatus !== HttpStatusCode.UNAUTHORIZED,
 			});
 			return;
 		}
@@ -561,7 +552,10 @@ export class ReconnectingWebSocket<
 			if (await this.handleClientCertificateError(certError)) {
 				this.#reconnectInternal("certificate_refresh");
 			} else {
-				this.disconnectWithReason("certificate_error", "error", { error });
+				this.disconnectWithReason("certificate_error", "error", {
+					error,
+					failure: true,
+				});
 			}
 			return;
 		}
