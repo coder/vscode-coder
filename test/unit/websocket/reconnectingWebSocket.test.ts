@@ -168,7 +168,7 @@ describe("ReconnectingWebSocket", () => {
 			},
 		);
 
-		it("does not flush on an unrecoverable 401 (token refresh reconnects the same socket)", async () => {
+		it("does not flush on an unrecoverable 401 (a 401 explains itself, and with OAuth a refresh reconnects the same socket)", async () => {
 			const { ws, sockets, onConnectionFailure } =
 				await createReconnectingWebSocket();
 

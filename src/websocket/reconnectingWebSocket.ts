@@ -543,8 +543,8 @@ export class ReconnectingWebSocket<
 				`Unrecoverable HTTP error (${unrecoverableStatus}) during connection for ${this.#route}`,
 				error,
 			);
-			// An expired token surfaces as 401, but OAuth refreshes and reconnects
-			// the same socket seconds later, so it is not a genuine outage to flush.
+			// A 401 explains itself, and with OAuth a refresh reconnects the same
+			// socket, so it never flushes.
 			this.disconnectWithReason("unrecoverable_http", "error", {
 				error,
 				failure: unrecoverableStatus !== HttpStatusCode.UNAUTHORIZED,
