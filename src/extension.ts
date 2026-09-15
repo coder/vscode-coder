@@ -515,7 +515,6 @@ async function doActivate(
 				);
 			}
 			// Always close remote session when we fail to open a workspace.
-			serviceContainer.getConnectionLogBuffer().flush("workspace_open_failed");
 			await remote.closeRemote();
 			return;
 		}
