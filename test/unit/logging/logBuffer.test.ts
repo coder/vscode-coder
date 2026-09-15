@@ -268,4 +268,38 @@ describe("BufferingLogger", () => {
 		expect(lines.some((l) => l.includes("trace line"))).toBe(true);
 		expect(lines.some((l) => l.includes("debug line"))).toBe(false);
 	});
+
+	it("preserves entries when flushed at Off and replays once logging returns", () => {
+		const { logger, calls } = recordingLogger();
+		const channel = fakeChannel(INFO);
+		const buffer = new BufferingLogger(logger, channel, 10);
+
+		buffer.debug("hidden debug");
+
+		// Off writes nothing, so the flush must keep the entry buffered.
+		channel.logLevel = OFF;
+		calls.length = 0;
+		buffer.flush("while off");
+		expect(calls).toHaveLength(0);
+
+		// Once logging is back on, the same entry replays.
+		channel.logLevel = INFO;
+		buffer.flush("after off");
+		expect(calls.some((c) => c.message.includes("hidden debug"))).toBe(true);
+	});
+
+	it("prefixes every physical line of a multi-line message with [buffered]", () => {
+		const { logger, calls } = recordingLogger();
+		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
+
+		buffer.debug("first line\nsecond line\nthird line");
+		calls.length = 0;
+		buffer.flush("r");
+
+		const entry = calls.find((c) => c.message.includes("first line"));
+		expect(entry).toBeDefined();
+		for (const line of entry!.message.split("\n")) {
+			expect(line.startsWith("[buffered] ")).toBe(true);
+		}
+	});
 });

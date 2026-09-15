@@ -15,13 +15,8 @@ const SEVERITY = {
 
 type Level = keyof typeof SEVERITY;
 
-const LEVEL_LABEL: Readonly<Record<Level, string>> = {
-	trace: "TRACE",
-	debug: "DEBUG",
-	info: "INFO",
-	warn: "WARN",
-	error: "ERROR",
-};
+/** Sink methods that the output channel persists at any non-Off level. */
+type ReplaySink = "info" | "warn" | "error";
 
 /** The failure-time surface used by connection-failure call sites. */
 export interface ConnectionLogBuffer {
@@ -48,30 +43,11 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 		private capacity: number,
 	) {}
 
-	public trace(message: string, ...args: unknown[]): void {
-		this.record("trace", message, args);
-		this.inner.trace(message, ...args);
-	}
-
-	public debug(message: string, ...args: unknown[]): void {
-		this.record("debug", message, args);
-		this.inner.debug(message, ...args);
-	}
-
-	public info(message: string, ...args: unknown[]): void {
-		this.record("info", message, args);
-		this.inner.info(message, ...args);
-	}
-
-	public warn(message: string, ...args: unknown[]): void {
-		this.record("warn", message, args);
-		this.inner.warn(message, ...args);
-	}
-
-	public error(message: string, ...args: unknown[]): void {
-		this.record("error", message, args);
-		this.inner.error(message, ...args);
-	}
+	public readonly trace = this.wrap("trace");
+	public readonly debug = this.wrap("debug");
+	public readonly info = this.wrap("info");
+	public readonly warn = this.wrap("warn");
+	public readonly error = this.wrap("error");
 
 	public show(): void {
 		this.inner.show();
@@ -88,42 +64,52 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 	/**
 	 * Replay buffered entries into the sink and clear them. No-op when empty.
 	 * Clearing the buffer means a later flush only replays entries accumulated
-	 * since this one, so consecutive failures never duplicate lines.
+	 * since this one, so consecutive failures never duplicate entries.
 	 */
 	public flush(reason: string): void {
+		// The channel writes nothing at Off, so replaying now would discard the
+		// context. Keep it buffered until logging is turned back on.
+		if (this.channel.logLevel === 0) {
+			return;
+		}
 		if (this.entries.length === 0) {
 			return;
 		}
 		const entries = this.entries;
 		this.entries = [];
 
-		const emit = this.replayEmitter();
-		emit(
-			`[buffered] connection failure (${reason}): replaying ${entries.length} buffered log line(s)`,
+		const sink = this.replaySink();
+		this.inner[sink](
+			`[buffered] connection failure (${reason}): replaying ${entries.length} buffered entries`,
 		);
 		for (const entry of entries) {
-			emit(
-				`[buffered] ${new Date(entry.atMs).toISOString()} ${LEVEL_LABEL[entry.level]} ${entry.message}`,
-				...entry.args,
-			);
+			const line = `[buffered] ${new Date(entry.atMs).toISOString()} ${entry.level.toUpperCase()} ${entry.message}`;
+			this.inner[sink](line.replaceAll("\n", "\n[buffered] "), ...entry.args);
 		}
-		emit(`[buffered] end of buffered logs (${reason})`);
+		this.inner[sink](`[buffered] end of buffered logs (${reason})`);
+	}
+
+	/** Pass a call through to the sink and buffer it when below the level. */
+	private wrap(level: Level): (message: string, ...args: unknown[]) => void {
+		return (message, ...args) => {
+			this.record(level, message, args);
+			this.inner[level](message, ...args);
+		};
 	}
 
 	/**
 	 * The least-verbose sink method that is still written at the current level,
-	 * so a flush is captured whatever the user's log level (except Off, where the
-	 * sink writes nothing).
+	 * so a flush is captured whatever the user's log level.
 	 */
-	private replayEmitter(): (message: string, ...args: unknown[]) => void {
+	private replaySink(): ReplaySink {
 		const level = this.channel.logLevel;
 		if (level >= SEVERITY.error) {
-			return (message, ...args) => this.inner.error(message, ...args);
+			return "error";
 		}
 		if (level >= SEVERITY.warn) {
-			return (message, ...args) => this.inner.warn(message, ...args);
+			return "warn";
 		}
-		return (message, ...args) => this.inner.info(message, ...args);
+		return "info";
 	}
 
 	private record(level: Level, message: string, args: unknown[]): void {

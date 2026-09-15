@@ -24,6 +24,7 @@ const SENSITIVE_BODY_FIELDS: ReadonlySet<Lowercase<string>> = new Set([
 	"id_token",
 	"password",
 	"refresh_token",
+	"registration_access_token",
 	"token",
 ]);
 

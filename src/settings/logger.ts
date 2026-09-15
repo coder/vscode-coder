@@ -2,13 +2,12 @@ import { HttpClientLogLevel } from "../logging/types";
 
 import type { WorkspaceConfiguration } from "vscode";
 
-
 export const CONNECTION_LOG_BUFFER_SIZE_SETTING =
 	"coder.connectionLogBuffer.size";
 export const DEFAULT_CONNECTION_LOG_BUFFER_SIZE = 1000;
 /**
- * Largest configurable capacity, as an entry count. Bounds worst-case memory so
- * a typo or an unreasonable setting cannot grow the buffer without limit.
+ * Largest configurable capacity. Bounds the entry count kept in memory; each
+ * entry still holds live `args` references, so this is a count, not a byte cap.
  */
 export const MAX_CONNECTION_LOG_BUFFER_SIZE = 10_000;
 
