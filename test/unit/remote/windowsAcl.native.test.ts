@@ -5,7 +5,6 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
-import { createManagedSshConfig } from "@/remote/managedSshConfig";
 import { SshConfig, type SshValues } from "@/remote/sshConfig";
 import { WindowsAcl } from "@/remote/windowsAcl";
 
@@ -201,7 +200,7 @@ describe.runIf(enabled)("Windows SSH config ACL repair", () => {
 				stderr: expect.stringMatching(/Bad owner or permissions/),
 			});
 
-			const config = createManagedSshConfig(currentConfig, logger, scriptPath);
+			const config = SshConfig.createManaged(currentConfig, logger, scriptPath);
 			for (const user of ["repaired-user", "rewritten-user"]) {
 				await config.update(sshValues(currentHost, user));
 				expect(await resolve(parentConfig, currentHost)).toContain(
@@ -228,7 +227,7 @@ describe.runIf(enabled)("Windows SSH config ACL repair", () => {
 		const externalBefore = await savedAcl(external);
 		const directoryBefore = await savedAcl(includeDirectory);
 
-		await createManagedSshConfig(currentConfig, logger, scriptPath).update(
+		await SshConfig.createManaged(currentConfig, logger, scriptPath).update(
 			sshValues("coder-acl-linked", "linked-user"),
 		);
 		expect(await fs.readFile(currentConfig, "utf8")).toContain("linked-user");
@@ -237,7 +236,7 @@ describe.runIf(enabled)("Windows SSH config ACL repair", () => {
 		expect(await savedAcl(includeDirectory)).toBe(directoryBefore);
 	});
 
-	test("leaves an included .conf directory alone and lets OpenSSH read the config", async ({
+	test("rejects an included .conf directory that prevents OpenSSH from reading the config", async ({
 		root,
 		logger,
 	}) => {
@@ -250,10 +249,19 @@ describe.runIf(enabled)("Windows SSH config ACL repair", () => {
 			`Include "${root.replaceAll("\\", "/")}/*.conf"\n`,
 		);
 		const before = await savedAcl(directory);
-		await createManagedSshConfig(current, logger, scriptPath).update(
+		await expect(resolve(parent, "coder-directory")).rejects.toMatchObject({
+			stderr: expect.stringContaining("folder.conf: Permission denied"),
+		});
+		await expect(
+			SshConfig.createManaged(current, logger, scriptPath).update(
+				sshValues("coder-directory", "directory-user"),
+			),
+		).rejects.toThrow("Move or rename it");
+		expect(await savedAcl(directory)).toBe(before);
+		await fs.rename(directory, path.join(root, "folder"));
+		await SshConfig.createManaged(current, logger, scriptPath).update(
 			sshValues("coder-directory", "directory-user"),
 		);
-		expect(await savedAcl(directory)).toBe(before);
 		expect(await resolve(parent, "coder-directory")).toContain(
 			"proxycommand directory-user",
 		);
@@ -264,7 +272,7 @@ describe.runIf(enabled)("Windows SSH config ACL repair", () => {
 		logger,
 	}) => {
 		const current = path.join(root, "current.conf");
-		await createManagedSshConfig(
+		await SshConfig.createManaged(
 			current,
 			logger,
 			path.join(root, "missing.js"),

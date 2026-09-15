@@ -1,6 +1,7 @@
 import { vol } from "memfs";
 import * as fsPromises from "node:fs/promises";
 import * as os from "node:os";
+import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -12,10 +13,14 @@ import {
 	type SshValues,
 	validateDeploymentSshOptions,
 } from "@/remote/sshConfig";
+import { WindowsAcl } from "@/remote/windowsAcl";
 
 import { createMockLogger } from "../../mocks/testHelpers";
 
-vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
+vi.mock("node:fs/promises", async () => {
+	const fs = (await import("memfs")).fs.promises;
+	return { ...fs, readdir: vi.fn(fs.readdir) };
+});
 vi.mock("node:os", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:os")>();
 	return { ...actual, homedir: vi.fn(() => "/Path/To/UserHomeDir") };
@@ -23,6 +28,9 @@ vi.mock("node:os", async (importOriginal) => {
 
 const homeDir = "/Path/To/UserHomeDir";
 const sshFilePath = "/Path/To/UserHomeDir/.sshConfigDir/sshConfigFile";
+const managedSshDir = path.join(homeDir, ".sshConfigDir");
+const managedSshFilePath = path.join(managedSshDir, "deployment.conf");
+const windowsAclScriptPath = "/extension/scripts/windows-acl.js";
 const hostname = "dev.coder.com";
 const fileHeader = `# Coder workspace hosts. Do not edit; the Coder extension rewrites this file
 # on every connection. Override options with the "coder.sshConfig" setting.`;
@@ -118,6 +126,8 @@ async function updateInclude(
 
 beforeEach(() => {
 	vol.reset();
+	vi.clearAllMocks();
+	vi.mocked(fsPromises.readdir).mockReset();
 	vi.mocked(os.homedir).mockReturnValue(homeDir);
 });
 
@@ -424,6 +434,114 @@ describe("persistence", () => {
 		await sshConfig.updateInclude(includeDir, hostname);
 		expect(writeFileSpy).not.toHaveBeenCalled();
 		expect(renameSpy).not.toHaveBeenCalled();
+	});
+});
+
+describe.runIf(process.platform === "win32")("SshConfig.createManaged", () => {
+	it.each([{ repairFails: false }, { repairFails: true }])(
+		"repairs siblings and the temporary file ($repairFails)",
+		async ({ repairFails }) => {
+			const failing = path.join(managedSshDir, "failing.conf");
+			const later = path.join(managedSshDir, "later.CONF");
+			vol.fromJSON({
+				[managedSshFilePath]: "Host original",
+				[failing]: "Host failing",
+				[later]: "Host later",
+			});
+			const failure = new Error("permission repair failed");
+			const snapshots: Array<[string, string]> = [];
+			vi.spyOn(WindowsAcl.prototype, "secure").mockImplementation(
+				async (file) => {
+					snapshots.push([file, await fsPromises.readFile(file, "utf-8")]);
+					if (
+						repairFails &&
+						(file === failing || file.includes("vscode-coder-tmp"))
+					) {
+						throw failure;
+					}
+				},
+			);
+
+			await SshConfig.createManaged(
+				managedSshFilePath,
+				mockLogger,
+				windowsAclScriptPath,
+			).update(BASE_SSH_VALUES);
+
+			expect(snapshots).toEqual([
+				[managedSshFilePath, "Host original"],
+				[failing, "Host failing"],
+				[later, "Host later"],
+				[
+					expect.stringContaining(".deployment.conf.vscode-coder-tmp-"),
+					expect.stringContaining("ProxyCommand some-command-here"),
+				],
+			]);
+			expect(await fsPromises.readFile(managedSshFilePath, "utf-8")).toContain(
+				"ProxyCommand some-command-here",
+			);
+			if (repairFails) {
+				for (const file of [failing, snapshots[3][0]]) {
+					expect(mockLogger.warn).toHaveBeenCalledWith(
+						"Failed to repair SSH config permissions",
+						file,
+						failure,
+					);
+				}
+			} else expect(mockLogger.warn).not.toHaveBeenCalled();
+			expect(
+				Object.keys(vol.toJSON()).filter((file) =>
+					file.includes("vscode-coder-tmp"),
+				),
+			).toEqual([]);
+		},
+	);
+
+	it("rejects non-files and continues when enumeration fails", async () => {
+		const directory = path.join(managedSshDir, "directory.conf");
+		vol.fromJSON({ [managedSshFilePath]: "Host original", [directory]: null });
+		vi.spyOn(WindowsAcl.prototype, "secure").mockResolvedValue();
+		await expect(
+			SshConfig.createManaged(
+				managedSshFilePath,
+				mockLogger,
+				windowsAclScriptPath,
+			).update(BASE_SSH_VALUES),
+		).rejects.toThrow(`SSH config entry ${directory} is not a regular file`);
+		expect(await fsPromises.readFile(managedSshFilePath, "utf-8")).toBe(
+			"Host original",
+		);
+		expect((await fsPromises.stat(directory)).isDirectory()).toBe(true);
+		const error = new Error("cannot enumerate");
+		vi.mocked(fsPromises.readdir).mockRejectedValueOnce(error);
+		await SshConfig.createManaged(
+			managedSshFilePath,
+			mockLogger,
+			windowsAclScriptPath,
+		).update(BASE_SSH_VALUES);
+		expect(await fsPromises.readFile(managedSshFilePath, "utf-8")).toContain(
+			"ProxyCommand some-command-here",
+		);
+		expect(mockLogger.warn).toHaveBeenCalledWith(
+			"Failed to enumerate Coder-managed SSH config files",
+			error,
+		);
+	});
+});
+
+describe.runIf(process.platform !== "win32")("SshConfig.createManaged", () => {
+	it("does not repair or enumerate files off Windows", async () => {
+		const error = new Error("should not run");
+		vi.spyOn(WindowsAcl.prototype, "secure").mockRejectedValue(error);
+		vi.mocked(fsPromises.readdir).mockRejectedValueOnce(error);
+		await SshConfig.createManaged(
+			managedSshFilePath,
+			mockLogger,
+			windowsAclScriptPath,
+		).update(BASE_SSH_VALUES);
+		expect(WindowsAcl.prototype.secure).not.toHaveBeenCalled();
+		expect(fsPromises.readdir).not.toHaveBeenCalled();
+		expect(mockLogger.warn).not.toHaveBeenCalled();
 	});
 });
 

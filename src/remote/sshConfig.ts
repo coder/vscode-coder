@@ -14,6 +14,8 @@ import { SSH_CONFIG_EXT } from "../core/pathResolver";
 import { countSubstring, lowercase } from "../util";
 import { renameWithRetry, tempFilePath } from "../util/fs";
 
+import { WindowsAcl } from "./windowsAcl";
+
 import type { Logger } from "../logging/logger";
 
 class SshConfigBadFormat extends Error {}
@@ -299,9 +301,21 @@ export function mergeSshConfigValues(
 
 export class SshConfig {
 	private readonly filePath: string;
-	protected readonly fileSystem: FileSystem;
-	protected readonly logger: Logger;
+	private readonly fileSystem: FileSystem;
+	private readonly logger: Logger;
 	private raw: string | undefined;
+	private windowsAcl: WindowsAcl | undefined;
+
+	static createManaged(
+		filePath: string,
+		logger: Logger,
+		scriptPath: string,
+	): SshConfig {
+		const config = new SshConfig(filePath, logger);
+		if (process.platform === "win32")
+			config.windowsAcl = new WindowsAcl(scriptPath);
+		return config;
+	}
 
 	constructor(
 		filePath: string,
@@ -452,13 +466,13 @@ export class SshConfig {
 			mode: 0o700,
 			recursive: true,
 		});
-		await this.prepareWrite(dirName);
+		await this.repairIncludedFiles(dirName);
 		const tempPath = tempFilePath(
 			`${dirName}/.${fileName}`,
 			"vscode-coder-tmp",
 		);
 		await this.writeTemp(tempPath, existingMode);
-		await this.secureTemp(tempPath);
+		await this.repairPermissions(tempPath);
 		await this.replaceWithTemp(tempPath);
 	}
 
@@ -493,14 +507,41 @@ export class SshConfig {
 		}
 	}
 
-	/** Prepare the destination directory before writing a temporary file. */
-	protected prepareWrite(_dirName: string): Promise<void> {
-		return Promise.resolve();
+	private async repairIncludedFiles(dirName: string): Promise<void> {
+		if (!this.windowsAcl) return;
+		const entries = await this.fileSystem
+			.readdir(dirName, { withFileTypes: true })
+			.catch((error: unknown) => {
+				this.logger.warn(
+					"Failed to enumerate Coder-managed SSH config files",
+					error,
+				);
+				return [];
+			});
+		for (const entry of entries) {
+			if (!entry.name.toLowerCase().endsWith(SSH_CONFIG_EXT)) continue;
+			const filePath = path.join(dirName, entry.name);
+			// OpenSSH opens every Include match, including directories, before connecting.
+			// https://github.com/PowerShell/openssh-portable/blob/latestw_all/readconf.c
+			if (!entry.isFile()) {
+				throw new Error(
+					`SSH config entry ${filePath} is not a regular file. Move or rename it so it no longer matches *.conf, then reconnect.`,
+				);
+			}
+			await this.repairPermissions(filePath);
+		}
 	}
 
-	/** Secure a fully written temporary file before atomically replacing the destination. */
-	protected secureTemp(_tempPath: string): Promise<void> {
-		return Promise.resolve();
+	private async repairPermissions(filePath: string): Promise<void> {
+		try {
+			await this.windowsAcl?.secure(filePath);
+		} catch (error) {
+			this.logger.warn(
+				"Failed to repair SSH config permissions",
+				filePath,
+				error,
+			);
+		}
 	}
 
 	private async replaceWithTemp(tempPath: string): Promise<void> {

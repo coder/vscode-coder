@@ -1,21 +1,13 @@
 import * as path from "node:path";
 
-const sddlAcePattern = /^\(A;;FA;;;([A-Z]{2}|S-\d+(?:-\d+)+)\)$/;
-const sddlAceListPattern = /\(A;;FA;;;(?:[A-Z]{2}|S-\d+(?:-\d+)+)\)/g;
-const sddlDaclPattern = /^D:([A-Z]*)(.*)$/;
-const whoamiCsvSidPattern = /,"(S-\d+(?:-\d+)+)"\s*$/;
-
+// DACL: protected, optionally auto-inherited/requested, exactly three allow/full-control ACEs.
+// icacls /save can append SACL control flags without audit entries.
 // https://learn.microsoft.com/windows/win32/secauthz/security-descriptor-string-format
-// P, AI, and AR are the documented DACL and SACL control flags.
-function hasControlFlags(flags: string, protectedDacl = false): boolean {
-	if (flags === "") return !protectedDacl;
-	const controls = flags.match(/P|AI|AR/g);
-	return (
-		controls?.join("") === flags &&
-		new Set(controls).size === controls.length &&
-		(protectedDacl ? controls.includes("P") : true)
-	);
-}
+// https://learn.microsoft.com/windows/win32/secauthz/ace-strings
+const descriptorPattern =
+	/^D:P(?:AI)?(?:AR)?((?:\(A;;FA;;;[A-Z0-9-]+\)){3})(?:S:P?(?:AI)?(?:AR)?)?$/;
+const trusteePattern = /\(A;;FA;;;([A-Z0-9-]+)\)/g;
+const whoamiCsvSidPattern = /,"(S-\d+(?:-\d+)+)"\s*$/;
 
 // https://learn.microsoft.com/windows/win32/secauthz/well-known-sids
 // SY, BA, LS, NS, LA, and LG are SDDL aliases for these well-known SIDs.
@@ -65,31 +57,15 @@ export function hasCanonicalExpectedFileAcl(
 	descriptor: string,
 	currentUserSid: string,
 ): boolean {
-	const saclIndex = descriptor.indexOf("S:", 2);
-	const dacl = saclIndex === -1 ? descriptor : descriptor.slice(0, saclIndex);
-	const sacl = saclIndex === -1 ? undefined : descriptor.slice(saclIndex + 2);
-	const daclMatch = sddlDaclPattern.exec(dacl);
-	if (
-		!daclMatch ||
-		!hasControlFlags(daclMatch[1], true) ||
-		(sacl !== undefined && !hasControlFlags(sacl))
-	) {
-		return false;
-	}
-
-	const aces = daclMatch[2].match(sddlAceListPattern);
-	if (aces?.join("") !== daclMatch[2] || aces.length !== 3) return false;
-
-	const trustees: string[] = [];
-	for (const ace of aces) {
-		const trustee = sddlAcePattern.exec(ace)?.[1];
-		if (!trustee) return false;
-		trustees.push(canonicalTrustee(trustee, currentUserSid));
-	}
+	const aces = descriptorPattern.exec(descriptor)?.[1];
+	if (!aces) return false;
+	const trustees = [...aces.matchAll(trusteePattern)].map((ace) =>
+		canonicalTrustee(ace[1], currentUserSid),
+	);
 	const expected = [
 		canonicalTrustee(currentUserSid, currentUserSid),
 		"SY",
 		"BA",
-	].sort();
-	return trustees.sort().join("\0") === expected.join("\0");
+	];
+	return trustees.sort().join("\0") === expected.sort().join("\0");
 }

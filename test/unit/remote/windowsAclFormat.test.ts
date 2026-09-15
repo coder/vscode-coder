@@ -59,35 +59,19 @@ describe("Windows ACL format", () => {
 		}
 	});
 
-	it("normalizes only documented user and well-known SID aliases", () => {
-		expect(
-			hasCanonicalExpectedFileAcl(protectedAcl("S-1-5-18"), "S-1-5-18"),
-		).toBe(true);
-		expect(
-			hasCanonicalExpectedFileAcl(protectedAcl("S-1-5-19"), "S-1-5-19"),
-		).toBe(true);
-		expect(
-			hasCanonicalExpectedFileAcl(protectedAcl("S-1-5-20"), "S-1-5-20"),
-		).toBe(true);
-		expect(
-			hasCanonicalExpectedFileAcl(protectedAcl("LA"), "S-1-5-21-1-2-3-500"),
-		).toBe(true);
-		expect(
-			hasCanonicalExpectedFileAcl(protectedAcl("LG"), "S-1-5-21-1-2-3-501"),
-		).toBe(true);
-		expect(hasCanonicalExpectedFileAcl(protectedAcl("LA"), sid)).toBe(false);
-		expect(
-			hasCanonicalExpectedFileAcl(
-				protectedAcl("S-1-5-21-9-8-7-500"),
-				"S-1-5-21-1-2-3-500",
-			),
-		).toBe(false);
-		expect(
-			hasCanonicalExpectedFileAcl(
-				protectedAcl("S-1-5-21-9-8-7-501"),
-				"S-1-5-21-1-2-3-501",
-			),
-		).toBe(false);
+	it.each([
+		["S-1-5-18", "SY", true],
+		["S-1-5-19", "LS", true],
+		["S-1-5-20", "NS", true],
+		["S-1-5-21-1-2-3-500", "LA", true],
+		["S-1-5-21-1-2-3-501", "LG", true],
+		[sid, "LA", false],
+		["S-1-5-21-1-2-3-500", "S-1-5-21-9-8-7-500", false],
+		["S-1-5-21-1-2-3-501", "S-1-5-21-9-8-7-501", false],
+	])("checks account %s against trustee %s", (account, trustee, expected) => {
+		expect(hasCanonicalExpectedFileAcl(protectedAcl(trustee), account)).toBe(
+			expected,
+		);
 	});
 
 	it("rejects invalid descriptors and extra identities", () => {

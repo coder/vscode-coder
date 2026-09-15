@@ -50,7 +50,6 @@ import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
 import { applySshEnvironment, SSH_PROXY_SETTINGS } from "./environment";
-import { createManagedSshConfig } from "./managedSshConfig";
 import { migrateAuthToSecretsStorage } from "./migration";
 import {
 	SshConfig,
@@ -926,7 +925,7 @@ export class Remote {
 		const sshConfig = new SshConfig(this.getMainSshConfigPath(), this.logger);
 		await sshConfig.load();
 		// Never loaded: update() regenerates it without reading the old content.
-		const coderConfig = createManagedSshConfig(
+		const coderConfig = SshConfig.createManaged(
 			this.pathResolver.getSshConfigPath(safeHostname, hostEditorId(sshHost)),
 			this.logger,
 			this.extensionContext.asAbsolutePath("scripts/windows-acl.js"),
