@@ -18,37 +18,62 @@ function cfg(value: unknown): Pick<WorkspaceConfiguration, "get"> {
 }
 
 describe("readConnectionLogBufferSize", () => {
-	it("returns the configured value when in range", () => {
-		expect(readConnectionLogBufferSize(cfg(250))).toBe(250);
-	});
+	interface Case {
+		name: string;
+		value: unknown;
+		expected: number;
+	}
 
-	it("floors fractional values", () => {
-		expect(readConnectionLogBufferSize(cfg(250.9))).toBe(250);
-	});
-
-	it("treats zero as disabled", () => {
-		expect(readConnectionLogBufferSize(cfg(0))).toBe(0);
-	});
-
-	it("clamps values above the maximum", () => {
-		expect(readConnectionLogBufferSize(cfg(1_000_000))).toBe(
-			MAX_CONNECTION_LOG_BUFFER_SIZE,
-		);
-	});
-
-	it.each([-1, Infinity, Number.NaN, "2000", null, {}])(
-		"falls back to the default for invalid value %p",
-		(value) => {
-			expect(readConnectionLogBufferSize(cfg(value))).toBe(
-				DEFAULT_CONNECTION_LOG_BUFFER_SIZE,
-			);
+	it.each<Case>([
+		{
+			name: "returns the configured value when in range",
+			value: 250,
+			expected: 250,
 		},
-	);
-
-	it("uses the default when unset", () => {
-		expect(readConnectionLogBufferSize(cfg(undefined))).toBe(
-			DEFAULT_CONNECTION_LOG_BUFFER_SIZE,
-		);
+		{ name: "floors fractional values", value: 250.9, expected: 250 },
+		{ name: "treats zero as disabled", value: 0, expected: 0 },
+		{
+			name: "clamps values above the maximum",
+			value: 1_000_000,
+			expected: MAX_CONNECTION_LOG_BUFFER_SIZE,
+		},
+		{
+			name: "falls back to the default for a negative value",
+			value: -1,
+			expected: DEFAULT_CONNECTION_LOG_BUFFER_SIZE,
+		},
+		{
+			name: "falls back to the default for Infinity",
+			value: Infinity,
+			expected: DEFAULT_CONNECTION_LOG_BUFFER_SIZE,
+		},
+		{
+			name: "falls back to the default for NaN",
+			value: Number.NaN,
+			expected: DEFAULT_CONNECTION_LOG_BUFFER_SIZE,
+		},
+		{
+			name: "falls back to the default for a numeric string",
+			value: "2000",
+			expected: DEFAULT_CONNECTION_LOG_BUFFER_SIZE,
+		},
+		{
+			name: "falls back to the default for null",
+			value: null,
+			expected: DEFAULT_CONNECTION_LOG_BUFFER_SIZE,
+		},
+		{
+			name: "falls back to the default for an object",
+			value: {},
+			expected: DEFAULT_CONNECTION_LOG_BUFFER_SIZE,
+		},
+		{
+			name: "uses the default when unset",
+			value: undefined,
+			expected: DEFAULT_CONNECTION_LOG_BUFFER_SIZE,
+		},
+	])("$name", ({ value, expected }) => {
+		expect(readConnectionLogBufferSize(cfg(value))).toBe(expected);
 	});
 });
 
