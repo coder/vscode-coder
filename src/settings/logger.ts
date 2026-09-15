@@ -6,18 +6,15 @@ export const CONNECTION_LOG_BUFFER_SIZE_SETTING =
 	"coder.connectionLogBuffer.size";
 export const DEFAULT_CONNECTION_LOG_BUFFER_SIZE = 1000;
 /**
- * Largest configurable capacity. Bounds the entry count kept in memory; each
- * entry still holds live `args` references, so this is a count, not a byte cap.
+ * Largest configurable capacity, in entries.
  */
 export const MAX_CONNECTION_LOG_BUFFER_SIZE = 10_000;
 
 const HTTP_CLIENT_LOG_LEVEL_SETTING = "coder.httpClientLogLevel";
 
 /**
- * Number of connection log entries to buffer below the output channel's level.
- * `0` disables buffering; larger values are clamped to
- * {@link MAX_CONNECTION_LOG_BUFFER_SIZE}. Missing, non-numeric, non-finite, or
- * negative values fall back to the default rather than silently disabling.
+ * Buffer size in entries, clamped to the maximum; invalid values fall back
+ * to the default.
  */
 export function readConnectionLogBufferSize(
 	cfg: Pick<WorkspaceConfiguration, "get">,
