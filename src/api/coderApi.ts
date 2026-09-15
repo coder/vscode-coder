@@ -25,13 +25,11 @@ import {
 	logResponse,
 } from "../logging/httpLogger";
 import { HttpRequestsTelemetry } from "../logging/httpRequestsTelemetry";
-import {
-	HttpClientLogLevel,
-	type RequestConfigWithMeta,
-} from "../logging/types";
+import { type RequestConfigWithMeta } from "../logging/types";
 import { sizeOf } from "../logging/utils";
 import { AuthConfigTracker } from "../settings/authConfig";
 import { getHeaderCommand } from "../settings/headers";
+import { readHttpClientLogLevel } from "../settings/logger";
 import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
@@ -824,13 +822,6 @@ function getSize(headers: AxiosHeaders, data: unknown): number | undefined {
 	return sizeOf(data);
 }
 
-function getLogLevel(): HttpClientLogLevel {
-	const logLevelStr = vscode.workspace
-		.getConfiguration()
-		.get(
-			"coder.httpClientLogLevel",
-			HttpClientLogLevel[HttpClientLogLevel.BASIC],
-		)
-		.toUpperCase();
-	return HttpClientLogLevel[logLevelStr as keyof typeof HttpClientLogLevel];
+function getLogLevel() {
+	return readHttpClientLogLevel(vscode.workspace.getConfiguration());
 }

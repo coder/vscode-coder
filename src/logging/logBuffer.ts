@@ -36,33 +36,17 @@ interface LogEntry {
 }
 
 /**
- * Largest configurable capacity, as an entry count. Bounds worst-case memory
- * so a typo or an unreasonable setting cannot grow the buffer without limit.
- */
-export const MAX_CONNECTION_LOG_BUFFER_SIZE = 10_000;
-
-function normalizeCapacity(capacity: number): number {
-	if (!Number.isFinite(capacity) || capacity <= 0) {
-		return 0;
-	}
-	return Math.min(Math.floor(capacity), MAX_CONNECTION_LOG_BUFFER_SIZE);
-}
-
-/**
  * Buffers entries below the current log level and replays them on failure at a
  * level the output channel persists.
  */
 export class BufferingLogger implements Logger, ConnectionLogBuffer {
 	private entries: LogEntry[] = [];
-	private capacity: number;
 
 	public constructor(
 		private readonly inner: Logger,
-		private readonly getLogLevel: () => number,
-		capacity: number,
-	) {
-		this.capacity = normalizeCapacity(capacity);
-	}
+		private readonly channel: { readonly logLevel: number },
+		private capacity: number,
+	) {}
 
 	public trace(message: string, ...args: unknown[]): void {
 		this.record("trace", message, args);
@@ -95,7 +79,7 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 
 	/** Resize the ring, keeping the most recent entries. */
 	public setCapacity(capacity: number): void {
-		this.capacity = normalizeCapacity(capacity);
+		this.capacity = capacity;
 		if (this.entries.length > this.capacity) {
 			this.entries.splice(0, this.entries.length - this.capacity);
 		}
@@ -132,7 +116,7 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 	 * sink writes nothing).
 	 */
 	private replayEmitter(): (message: string, ...args: unknown[]) => void {
-		const level = this.getLogLevel();
+		const level = this.channel.logLevel;
 		if (level >= SEVERITY.error) {
 			return (message, ...args) => this.inner.error(message, ...args);
 		}
@@ -143,7 +127,7 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 	}
 
 	private record(level: Level, message: string, args: unknown[]): void {
-		if (this.capacity === 0 || SEVERITY[level] >= this.getLogLevel()) {
+		if (this.capacity === 0 || SEVERITY[level] >= this.channel.logLevel) {
 			return;
 		}
 		this.entries.push({ atMs: Date.now(), level, message, args });

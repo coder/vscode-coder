@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import { watchConfigurationChanges } from "../configWatcher";
 import { AuthTelemetry } from "../instrumentation/auth";
 import {
 	BufferingLogger,
@@ -9,6 +10,10 @@ import { prefixLogger } from "../logging/prefixLogger";
 import { shortId } from "../logging/utils";
 import { LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthCallback } from "../oauth/oauthCallback";
+import {
+	CONNECTION_LOG_BUFFER_SIZE_SETTING,
+	readConnectionLogBufferSize,
+} from "../settings/logger";
 import { buildSession, extractExtensionVersion } from "../telemetry/event";
 import { TelemetryService } from "../telemetry/service";
 import { LocalJsonlSink } from "../telemetry/sinks/localJsonlSink";
@@ -26,9 +31,6 @@ import { SecretsManager } from "./secretsManager";
 import { sessionId } from "./sessionId";
 
 import type { Logger } from "../logging/logger";
-
-const CONNECTION_LOG_BUFFER_SIZE_KEY = "coder.connectionLogBuffer.size";
-const DEFAULT_CONNECTION_LOG_BUFFER_SIZE = 1000;
 
 /**
  * Service container for dependency injection.
@@ -58,15 +60,24 @@ export class ServiceContainer implements vscode.Disposable {
 		});
 		this.logger = new BufferingLogger(
 			prefixLogger(this.outputChannel, `[session ${shortId(sessionId)}]`),
-			() => this.outputChannel.logLevel,
-			readConnectionLogBufferSize(),
+			this.outputChannel,
+			readConnectionLogBufferSize(vscode.workspace.getConfiguration()),
 		);
-		this.connectionLogBufferConfigSubscription =
-			vscode.workspace.onDidChangeConfiguration((event) => {
-				if (event.affectsConfiguration(CONNECTION_LOG_BUFFER_SIZE_KEY)) {
-					this.logger.setCapacity(readConnectionLogBufferSize());
+		this.connectionLogBufferConfigSubscription = watchConfigurationChanges(
+			[
+				{
+					setting: CONNECTION_LOG_BUFFER_SIZE_SETTING,
+					getValue: () =>
+						readConnectionLogBufferSize(vscode.workspace.getConfiguration()),
+				},
+			],
+			(changes) => {
+				const size = changes.get(CONNECTION_LOG_BUFFER_SIZE_SETTING);
+				if (typeof size === "number") {
+					this.logger.setCapacity(size);
 				}
-			});
+			},
+		);
 		this.pathResolver = new PathResolver(
 			context.globalStorageUri.fsPath,
 			context.logUri.fsPath,
@@ -220,13 +231,4 @@ export class ServiceContainer implements vscode.Disposable {
 			this.outputChannel.dispose();
 		}
 	}
-}
-
-function readConnectionLogBufferSize(): number {
-	return vscode.workspace
-		.getConfiguration()
-		.get<number>(
-			CONNECTION_LOG_BUFFER_SIZE_KEY,
-			DEFAULT_CONNECTION_LOG_BUFFER_SIZE,
-		);
 }

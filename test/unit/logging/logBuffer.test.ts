@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-	BufferingLogger,
-	MAX_CONNECTION_LOG_BUFFER_SIZE,
-} from "@/logging/logBuffer";
+import { BufferingLogger } from "@/logging/logBuffer";
 
 import type { Logger } from "@/logging/logger";
 
@@ -39,27 +36,14 @@ function recordingLogger(): { logger: Logger; calls: Call[] } {
 	};
 }
 
-function fakeLevelSource(initial: number): {
-	getLogLevel: () => number;
-	set(level: number): void;
-} {
-	let level = initial;
-	return {
-		getLogLevel: () => level,
-		set(next: number) {
-			level = next;
-		},
-	};
+function fakeChannel(initial: number): { logLevel: number } {
+	return { logLevel: initial };
 }
 
 describe("BufferingLogger", () => {
 	it("forwards every call to the inner logger", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(
-			logger,
-			fakeLevelSource(INFO).getLogLevel,
-			10,
-		);
+		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
 
 		buffer.trace("t");
 		buffer.debug("d");
@@ -81,11 +65,7 @@ describe("BufferingLogger", () => {
 		try {
 			vi.setSystemTime(new Date("2024-01-01T00:00:00.000Z"));
 			const { logger, calls } = recordingLogger();
-			const buffer = new BufferingLogger(
-				logger,
-				fakeLevelSource(INFO).getLogLevel,
-				10,
-			);
+			const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
 
 			buffer.debug("hidden debug");
 			buffer.info("visible info");
@@ -109,11 +89,7 @@ describe("BufferingLogger", () => {
 
 	it("does not buffer entries at or above the current level", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(
-			logger,
-			fakeLevelSource(INFO).getLogLevel,
-			10,
-		);
+		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
 
 		buffer.info("i");
 		buffer.warn("w");
@@ -127,11 +103,7 @@ describe("BufferingLogger", () => {
 
 	it("evicts the oldest entry when capacity is exceeded", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(
-			logger,
-			fakeLevelSource(INFO).getLogLevel,
-			2,
-		);
+		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 2);
 
 		buffer.debug("one");
 		buffer.debug("two");
@@ -148,11 +120,7 @@ describe("BufferingLogger", () => {
 
 	it("clears the buffer after a flush", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(
-			logger,
-			fakeLevelSource(INFO).getLogLevel,
-			10,
-		);
+		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
 
 		buffer.debug("d");
 		buffer.flush("first");
@@ -165,11 +133,7 @@ describe("BufferingLogger", () => {
 
 	it("flushes newly accumulated entries on each consecutive failure", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(
-			logger,
-			fakeLevelSource(INFO).getLogLevel,
-			10,
-		);
+		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
 
 		buffer.debug("before first failure");
 		calls.length = 0;
@@ -193,11 +157,7 @@ describe("BufferingLogger", () => {
 
 	it("is a no-op when the buffer is empty", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(
-			logger,
-			fakeLevelSource(INFO).getLogLevel,
-			10,
-		);
+		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
 
 		buffer.flush("r");
 
@@ -206,11 +166,11 @@ describe("BufferingLogger", () => {
 
 	it("re-evaluates what is below level when the level changes", () => {
 		const { logger, calls } = recordingLogger();
-		const level = fakeLevelSource(ERROR);
-		const buffer = new BufferingLogger(logger, level.getLogLevel, 10);
+		const channel = fakeChannel(ERROR);
+		const buffer = new BufferingLogger(logger, channel, 10);
 
 		buffer.info("info at error level"); // below ERROR -> buffered
-		level.set(INFO);
+		channel.logLevel = INFO;
 		buffer.info("info at info level"); // at INFO -> not buffered
 
 		calls.length = 0;
@@ -221,40 +181,9 @@ describe("BufferingLogger", () => {
 		expect(lines.some((l) => l.includes("info at info level"))).toBe(false);
 	});
 
-	it("clamps capacity to the maximum, evicting beyond it", () => {
-		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(
-			logger,
-			fakeLevelSource(INFO).getLogLevel,
-			MAX_CONNECTION_LOG_BUFFER_SIZE + 5,
-		);
-
-		for (let i = 0; i < MAX_CONNECTION_LOG_BUFFER_SIZE + 5; i++) {
-			buffer.debug(`entry ${i}`);
-		}
-
-		calls.length = 0;
-		buffer.flush("r");
-
-		// header + capped entries + footer; the oldest 5 were evicted.
-		const buffered = calls.filter((c) => c.message.includes("entry "));
-		expect(buffered).toHaveLength(MAX_CONNECTION_LOG_BUFFER_SIZE);
-		const lines = buffered.map((c) => c.message);
-		expect(lines.some((l) => l.endsWith("entry 0"))).toBe(false);
-		expect(
-			lines.some((l) =>
-				l.endsWith(`entry ${MAX_CONNECTION_LOG_BUFFER_SIZE + 4}`),
-			),
-		).toBe(true);
-	});
-
 	it("buffers nothing when capacity is zero", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(
-			logger,
-			fakeLevelSource(INFO).getLogLevel,
-			0,
-		);
+		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 0);
 
 		buffer.debug("d");
 		calls.length = 0;
@@ -265,11 +194,7 @@ describe("BufferingLogger", () => {
 
 	it("keeps the most recent entries when shrunk via setCapacity", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(
-			logger,
-			fakeLevelSource(INFO).getLogLevel,
-			10,
-		);
+		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
 
 		buffer.debug("one");
 		buffer.debug("two");
@@ -293,11 +218,7 @@ describe("BufferingLogger", () => {
 		"replays at $expected so the flush is written at level $level",
 		({ level, expected }) => {
 			const { logger, calls } = recordingLogger();
-			const buffer = new BufferingLogger(
-				logger,
-				fakeLevelSource(level).getLogLevel,
-				10,
-			);
+			const buffer = new BufferingLogger(logger, fakeChannel(level), 10);
 
 			// Always below the current level so it is buffered.
 			buffer.trace("below");
@@ -311,11 +232,7 @@ describe("BufferingLogger", () => {
 
 	it("preserves extra args on replay", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(
-			logger,
-			fakeLevelSource(INFO).getLogLevel,
-			10,
-		);
+		const buffer = new BufferingLogger(logger, fakeChannel(INFO), 10);
 		const detail = { code: 1006 };
 
 		buffer.debug("dropped", detail);
@@ -328,11 +245,7 @@ describe("BufferingLogger", () => {
 
 	it("does not buffer at the Off level", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(
-			logger,
-			fakeLevelSource(OFF).getLogLevel,
-			10,
-		);
+		const buffer = new BufferingLogger(logger, fakeChannel(OFF), 10);
 
 		buffer.trace("t");
 		buffer.debug("d");
@@ -344,11 +257,7 @@ describe("BufferingLogger", () => {
 
 	it("buffers trace but not debug at the Debug level", () => {
 		const { logger, calls } = recordingLogger();
-		const buffer = new BufferingLogger(
-			logger,
-			fakeLevelSource(DEBUG).getLogLevel,
-			10,
-		);
+		const buffer = new BufferingLogger(logger, fakeChannel(DEBUG), 10);
 
 		buffer.trace("trace line");
 		buffer.debug("debug line");
