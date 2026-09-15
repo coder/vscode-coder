@@ -1,5 +1,6 @@
 import { isApiError, isApiErrorResponse } from "coder/site/src/api/errors";
 import {
+	type User,
 	type Workspace,
 	type WorkspaceAgent,
 	type WorkspaceResource,
@@ -25,6 +26,11 @@ export function errToStr(error: unknown, def = "No error message provided") {
 		return error;
 	}
 	return def;
+}
+
+/** True when the user holds the deployment-wide owner role. */
+export function isOwner(user: User | undefined): boolean {
+	return user?.roles.some((role) => role.name === "owner") ?? false;
 }
 
 /**

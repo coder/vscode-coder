@@ -15,7 +15,7 @@ import type { CliManager } from "@/core/cliManager";
 import type { ServiceContainer } from "@/core/container";
 import type { MementoManager } from "@/core/mementoManager";
 import type { PathResolver } from "@/core/pathResolver";
-import type { SecretsManager } from "@/core/secretsManager";
+import type { SecretsManager, SessionAuth } from "@/core/secretsManager";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
 import type { Deployment } from "@/deployment/types";
 import type { LoginCoordinator, LoginResult } from "@/login/loginCoordinator";
@@ -47,6 +47,11 @@ interface SetupOptions {
 	readonly clearAllAuthDataError?: Error;
 	readonly clearCredentialsResult?: boolean;
 }
+
+const TEST_SESSION: SessionAuth = {
+	url: TEST_URL,
+	token: "test-token",
+};
 
 function setup(options: SetupOptions = {}) {
 	vi.clearAllMocks();
@@ -83,17 +88,19 @@ function setup(options: SetupOptions = {}) {
 		clearDeployment: vi.fn(() => Promise.resolve()),
 	};
 
-	const cliManager: Pick<CliManager, "clearCredentials"> = {
+	const cliManager: Pick<CliManager, "clearCredentials" | "holdsToken"> = {
 		clearCredentials: vi.fn(() =>
 			Promise.resolve(options.clearCredentialsResult ?? true),
 		),
+		holdsToken: vi.fn(() => Promise.resolve(false)),
 	};
 
 	const secretsManager: Pick<
 		SecretsManager,
-		"getCurrentDeployment" | "clearAllAuthData"
+		"getCurrentDeployment" | "getSessionAuth" | "clearAllAuthData"
 	> = {
 		getCurrentDeployment: vi.fn(() => Promise.resolve(null)),
+		getSessionAuth: vi.fn(() => Promise.resolve(TEST_SESSION)),
 		clearAllAuthData: vi.fn(() => {
 			if (options.clearAllAuthDataError) {
 				return Promise.reject(options.clearAllAuthDataError);
@@ -258,11 +265,84 @@ describe("Commands", () => {
 			expect(mocks.deploymentManager.clearDeployment).toHaveBeenCalledWith(
 				"logout",
 			);
-			expect(mocks.cliManager.clearCredentials).toHaveBeenCalledWith(TEST_URL);
+			expect(mocks.cliManager.holdsToken).toHaveBeenCalledWith(
+				TEST_URL,
+				TEST_SESSION.token,
+			);
+			expect(mocks.cliManager.clearCredentials).toHaveBeenCalledWith(TEST_URL, {
+				signOutCli: false,
+			});
 			expect(mocks.secretsManager.clearAllAuthData).toHaveBeenCalledWith(
 				TEST_HOSTNAME,
 			);
 		});
+
+		const CLI_PROMPT = "Sign out of the Coder CLI too?";
+
+		interface PromptCase {
+			scenario: string;
+			oauth?: boolean;
+			answer?: string;
+			/** Undefined when the logout is aborted as user_dismissed. */
+			signOutCli?: boolean;
+		}
+
+		it.each<PromptCase>([
+			{
+				scenario: "keeps the CLI session on request",
+				answer: "Keep Signed In",
+				signOutCli: false,
+			},
+			{
+				scenario: "signs out the CLI on request",
+				answer: "Sign Out",
+				signOutCli: true,
+			},
+			{
+				scenario: "signs out the CLI without asking for OAuth",
+				oauth: true,
+				signOutCli: true,
+			},
+			{ scenario: "aborts when the prompt is dismissed" },
+		])(
+			"$scenario for a shared store",
+			async ({ oauth, answer, signOutCli }) => {
+				const { commands, mocks, interaction, sink } = setup({
+					authenticated: true,
+				});
+				vi.mocked(mocks.cliManager.holdsToken).mockResolvedValueOnce(true);
+				if (oauth) {
+					vi.mocked(mocks.secretsManager.getSessionAuth).mockResolvedValueOnce({
+						...TEST_SESSION,
+						oauth: { scope: "workspace:read", expiry_timestamp: 1 },
+					});
+				}
+				interaction.setResponse(CLI_PROMPT, answer);
+
+				await commands.logout();
+
+				const prompted = interaction
+					.getMessageCalls()
+					.some((call) => call.message === CLI_PROMPT);
+				expect(prompted).toBe(!oauth);
+				if (signOutCli === undefined) {
+					expect(sink.expectOne("auth.logout").properties).toMatchObject({
+						result: "aborted",
+						reason: "user_dismissed",
+					});
+					expect(
+						mocks.deploymentManager.clearDeployment,
+					).not.toHaveBeenCalled();
+					return;
+				}
+				expect(mocks.cliManager.clearCredentials).toHaveBeenCalledWith(
+					TEST_URL,
+					{
+						signOutCli,
+					},
+				);
+			},
+		);
 
 		it("records logout exceptions", async () => {
 			const { commands, sink } = setup({

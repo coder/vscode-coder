@@ -123,8 +123,9 @@ export function quoteCommand(value: string): string {
 	return `${quote}${value}${quote}`;
 }
 
-export function expectPathsEqual(actual: string, expected: string) {
-	expect(normalizePath(actual)).toBe(normalizePath(expected));
+export function expectPathsEqual(actual: string | undefined, expected: string) {
+	expect(actual).toBeDefined();
+	expect(normalizePath(actual!)).toBe(normalizePath(expected));
 }
 
 function normalizePath(p: string): string {

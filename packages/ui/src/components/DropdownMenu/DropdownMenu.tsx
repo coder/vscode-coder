@@ -25,7 +25,7 @@ export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
 /** One selectable action row; a leading `Icon` sits in the gutter. */
 export const DropdownMenuItem = menuPart(
 	DropdownMenuPrimitive.Item,
-	"ui-menu__item",
+	"ui-overlay__item ui-menu__item",
 );
 
 /** Non-interactive heading above a group. */
@@ -43,21 +43,21 @@ export const DropdownMenuSeparator = menuPart(
 /** A toggleable row; checked shows a gutter check. */
 export const DropdownMenuCheckboxItem = menuPart(
 	DropdownMenuPrimitive.CheckboxItem,
-	"ui-menu__item",
+	"ui-overlay__item ui-menu__item",
 	{ indicator: DropdownMenuPrimitive.ItemIndicator },
 );
 
 /** One choice in a radio group. */
 export const DropdownMenuRadioItem = menuPart(
 	DropdownMenuPrimitive.RadioItem,
-	"ui-menu__item",
+	"ui-overlay__item ui-menu__item",
 	{ indicator: DropdownMenuPrimitive.ItemIndicator },
 );
 
 /** The row that opens its submenu. */
 export const DropdownMenuSubTrigger = menuPart(
 	DropdownMenuPrimitive.SubTrigger,
-	"ui-menu__item",
+	"ui-overlay__item ui-menu__item",
 	{ chevron: true },
 );
 

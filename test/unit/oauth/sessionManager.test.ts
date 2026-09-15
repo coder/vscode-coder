@@ -164,7 +164,10 @@ describe("OAuthSessionManager", () => {
 			},
 			{
 				name: "returns false when session auth has no OAuth data",
-				auth: { url: TEST_URL, token: "session-token" },
+				auth: {
+					url: TEST_URL,
+					token: "session-token",
+				},
 				expected: false,
 			},
 		])("$name", async ({ auth, expected }) => {

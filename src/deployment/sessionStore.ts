@@ -4,6 +4,17 @@ import type { User } from "coder/site/src/api/typesGenerated";
 
 import type { Deployment } from "./types";
 
+export interface SignedOutSession {
+	readonly kind: "signedOut";
+	readonly deployment: Deployment | null;
+}
+
+export interface SignedInSession {
+	readonly kind: "signedIn";
+	readonly deployment: Deployment;
+	readonly user: User;
+}
+
 /**
  * The deployment session: signed out (optionally keeping the last deployment
  * for re-login) or signed in with an authenticated user.
@@ -11,13 +22,7 @@ import type { Deployment } from "./types";
  * Every transition makes a new object, so callers can spot a change by
  * comparing identity against an earlier value.
  */
-export type SessionData =
-	| { readonly kind: "signedOut"; readonly deployment: Deployment | null }
-	| {
-			readonly kind: "signedIn";
-			readonly deployment: Deployment;
-			readonly user: User;
-	  };
+export type SessionData = SignedOutSession | SignedInSession;
 
 /**
  * Read-only session access: the current data plus change notifications.

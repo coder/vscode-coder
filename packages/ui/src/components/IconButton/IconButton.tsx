@@ -1,9 +1,10 @@
-import { type ComponentProps } from "react";
+import { type ComponentProps, type ReactNode } from "react";
 
 import { cx } from "#cx";
 
 import "../control.css";
 import { Icon } from "../Icon/Icon";
+import { Tooltip, TooltipScope } from "../Tooltip/Tooltip";
 
 import "./IconButton.css";
 
@@ -15,18 +16,20 @@ export interface IconButtonProps extends Omit<
 > {
 	icon: CodiconName;
 	label: string;
+	/** Hover content; defaults to the label, `null` opts out. */
+	tooltip?: ReactNode;
 }
 
-/* No default title: native toolbar buttons hint with the styled hover
-   widget, not the browser box. Wrap in Tooltip for that. */
+/* Hints through the hover widget, never the browser title box. */
 export function IconButton({
 	icon,
 	label,
+	tooltip = label,
 	className,
 	type = "button",
 	...props
 }: IconButtonProps): React.JSX.Element {
-	return (
+	const button = (
 		<button
 			{...props}
 			type={type}
@@ -35,5 +38,11 @@ export function IconButton({
 		>
 			<Icon name={icon} />
 		</button>
+	);
+	if (!tooltip) return button;
+	return (
+		<TooltipScope>
+			<Tooltip content={tooltip}>{button}</Tooltip>
+		</TooltipScope>
 	);
 }

@@ -27,13 +27,7 @@ import {
 import { type Logger } from "../../logging/logger";
 import { openInBrowser } from "../../util/uri";
 import { vscodeProposed } from "../../vscodeProposed";
-import {
-	dispatchCommand,
-	dispatchRequest,
-	isIpcCommand,
-	isIpcRequest,
-	notifyWebview,
-} from "../dispatch";
+import { dispatchWebviewMessage, notifyWebview } from "../dispatch";
 import { getWebviewHtml } from "../html";
 
 import type {
@@ -163,20 +157,16 @@ export class TasksPanelProvider
 		});
 	}
 
-	private async handleMessage(message: unknown): Promise<void> {
-		const showErrorToUser = (method: string) =>
-			TasksPanelProvider.USER_ACTION_METHODS.has(method);
-		if (isIpcRequest(message)) {
-			await dispatchRequest(message, this.requestHandlers, this.view?.webview, {
+	private handleMessage(message: unknown): Promise<void> {
+		return dispatchWebviewMessage(
+			message,
+			{ requests: this.requestHandlers, commands: this.commandHandlers },
+			this.view?.webview,
+			{
 				logger: this.logger,
-				showErrorToUser,
-			});
-		} else if (isIpcCommand(message)) {
-			await dispatchCommand(message, this.commandHandlers, {
-				logger: this.logger,
-				showErrorToUser,
-			});
-		}
+				userActions: TasksPanelProvider.USER_ACTION_METHODS,
+			},
+		);
 	}
 
 	private async handleGetTaskDetails(taskId: string): Promise<TaskDetails> {

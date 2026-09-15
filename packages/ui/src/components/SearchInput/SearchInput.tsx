@@ -1,10 +1,12 @@
 import { type ChangeEvent, type ComponentProps, useRef } from "react";
 
 import { cx } from "#cx";
+import { setForwardedRef } from "#ref";
 
 import "../control.css";
 import { Icon } from "../Icon/Icon";
 import { IconButton } from "../IconButton/IconButton";
+import "../text-control.css";
 
 import "./SearchInput.css";
 
@@ -42,8 +44,8 @@ export function SearchInput({
 		<div
 			className={cx(
 				"ui-control",
+				"ui-text-control",
 				"ui-search-input",
-				disabled && "ui-search-input--disabled",
 				className,
 			)}
 			style={style}
@@ -54,25 +56,20 @@ export function SearchInput({
 				// Track the node for clear-and-refocus, honoring the consumer ref
 				ref={(node) => {
 					inputRef.current = node;
-					if (typeof ref === "function") {
-						return ref(node);
-					}
-					if (ref) {
-						ref.current = node;
-					}
+					setForwardedRef(ref, node);
 				}}
 				type="search"
 				value={value}
 				onChange={handleChange}
 				disabled={disabled}
 				aria-label={label}
-				className="ui-search-input__control"
+				className="ui-text-control__control ui-search-input__control"
 			/>
 			{value.length > 0 && !disabled ? (
 				<IconButton
 					icon="close"
 					label={clearLabel}
-					className="ui-search-input__clear"
+					className="ui-text-control__action"
 					onClick={handleClear}
 				/>
 			) : null}

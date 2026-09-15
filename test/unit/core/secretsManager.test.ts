@@ -502,9 +502,12 @@ describe("SecretsManager", () => {
 
 			const sessionAuthCases: BackwardsCompatTestCase[] = [
 				{
-					name: "without optional oauth field",
+					name: "without optional fields",
 					data: { url: "https://coder.example.com", token: "test-token" },
-					expected: { url: "https://coder.example.com", token: "test-token" },
+					expected: {
+						url: "https://coder.example.com",
+						token: "test-token",
+					},
 				},
 				{
 					name: "with OAuth without optional fields",

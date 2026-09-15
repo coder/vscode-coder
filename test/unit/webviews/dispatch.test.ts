@@ -88,11 +88,11 @@ describe("dispatchCommand", () => {
 		expect(showError).not.toHaveBeenCalled();
 	});
 
-	it("shows errors when showErrorToUser opts in", async () => {
+	it("shows errors for methods listed as user actions", async () => {
 		await dispatchCommand(
 			{ method: "do" },
 			{ do: vi.fn().mockRejectedValue(new Error("kaboom")) },
-			{ logger, showErrorToUser: () => true },
+			{ logger, userActions: new Set(["do"]) },
 		);
 		expect(showError).toHaveBeenCalledWith("kaboom");
 	});
@@ -147,7 +147,7 @@ describe("dispatchRequest", () => {
 			{ requestId: "r4", method: "delete" },
 			{ delete: vi.fn().mockRejectedValue(new Error("nope")) },
 			webview,
-			{ logger, showErrorToUser: (m) => m === "delete" },
+			{ logger, userActions: new Set(["delete"]) },
 		);
 		expect(showError).toHaveBeenCalledWith("nope");
 	});

@@ -76,7 +76,10 @@ describe("Session auth migration", () => {
 
 	it("does not migrate or delete files when auth already exists", async () => {
 		const { migrate, secretsManager } = setup({
-			existingAuth: { url: "https://dep.example.com", token: "current" },
+			existingAuth: {
+				url: "https://dep.example.com",
+				token: "current",
+			},
 		});
 		writeLegacyFiles();
 

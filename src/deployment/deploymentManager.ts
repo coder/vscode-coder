@@ -1,3 +1,4 @@
+import { isOwner } from "../api/api-helper";
 import { CoderApi } from "../api/coderApi";
 import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
@@ -420,8 +421,7 @@ export class DeploymentManager implements vscode.Disposable {
 	 */
 	private updateAuthContexts(user: User | undefined): void {
 		this.contextManager.set("coder.authenticated", Boolean(user));
-		const isOwner = user?.roles.some((r) => r.name === "owner") ?? false;
-		this.contextManager.set("coder.isOwner", isOwner);
+		this.contextManager.set("coder.isOwner", isOwner(user));
 	}
 
 	/**

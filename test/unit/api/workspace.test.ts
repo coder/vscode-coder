@@ -31,6 +31,7 @@ const featureSet: FeatureSet = {
 	tokenRead: true,
 	supportBundle: true,
 	supportBundleWorkspaceFiles: true,
+	allowRedirects: true,
 };
 
 function mockStream(): UnidirectionalStream<unknown> {
@@ -94,7 +95,12 @@ function createUpdateCtx(
 	};
 	const ctx = {
 		restClient: restClient as unknown as Api,
-		auth: { mode: "url" as const, url: "https://test.coder.com" },
+		auth: {
+			store: "cli" as const,
+			url: "https://test.coder.com",
+			useKeyring: undefined,
+			allowRedirects: false,
+		},
 		binPath: "/usr/bin/coder",
 		workspace,
 		write: vi.fn<(data: string) => void>(),

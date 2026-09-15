@@ -6,9 +6,9 @@ import { type Logger } from "../logging/logger";
 import type { IpcRequest, IpcResponse, NotificationDef } from "@repo/shared";
 
 export interface DispatchOptions {
-	logger: Logger;
-	/** Returning true shows the handler's error via `showErrorMessage`. */
-	showErrorToUser?: (method: string) => boolean;
+	readonly logger: Logger;
+	/** Methods whose failures warrant a dialog; others are logged only. */
+	readonly userActions?: ReadonlySet<string>;
 }
 
 /** Push a typed notification to a webview. No-op when `webview` is undefined. */
@@ -73,6 +73,31 @@ export async function dispatchRequest(
 	}
 }
 
+export interface WebviewHandlers {
+	readonly requests: Readonly<
+		Record<string, (params: unknown) => Promise<unknown>>
+	>;
+	readonly commands: Readonly<
+		Record<string, (params: unknown) => void | Promise<void>>
+	>;
+}
+
+/** Route a message from a webview to its request or command handler. */
+export async function dispatchWebviewMessage(
+	message: unknown,
+	handlers: WebviewHandlers,
+	webview: vscode.Webview | undefined,
+	options: DispatchOptions,
+): Promise<void> {
+	if (isIpcRequest(message)) {
+		await dispatchRequest(message, handlers.requests, webview, options);
+	} else if (isIpcCommand(message)) {
+		await dispatchCommand(message, handlers.commands, options);
+	} else {
+		options.logger.warn("Unexpected webview message", message);
+	}
+}
+
 /** Fire `handler` on `event` only while `panel.visible` is true. */
 export function onWhileVisible<T>(
 	panel: { readonly visible: boolean },
@@ -119,7 +144,7 @@ function handleDispatchError(
 ): void {
 	const message = toError(err).message;
 	options.logger.warn(`${kind} ${method} failed`, err);
-	if (options.showErrorToUser?.(method)) {
+	if (options.userActions?.has(method)) {
 		vscode.window.showErrorMessage(message);
 	}
 }

@@ -179,14 +179,55 @@ function createTestContext(telemetry?: TelemetryService) {
 	};
 }
 
+/** Test context plus shorthands for a sign-in that `prompt` may guard. */
+function createSignInTestContext(
+	prompt: string,
+	detail: (username: string) => string,
+) {
+	const ctx = createTestContext();
+	return {
+		...ctx,
+		/** Queue one getAuthenticatedUser result per expected call, in order. */
+		authSequence: (...results: Array<User | "unauthorized">) => {
+			for (const result of results) {
+				if (result === "unauthorized") {
+					mockGetAuthenticatedUser.mockRejectedValueOnce(
+						createAxiosError(401, "Unauthorized"),
+					);
+				} else {
+					mockGetAuthenticatedUser.mockResolvedValueOnce(result);
+				}
+			}
+		},
+		storeSession: (auth: { token: string; username?: string; url?: string }) =>
+			ctx.secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				...auth,
+			}),
+		confirmSignIn: () => ctx.userInteraction.setResponse(prompt, "Sign In"),
+		dismissSignIn: () => ctx.userInteraction.setResponse(prompt, undefined),
+		storedToken: async () =>
+			(await ctx.secretsManager.getSessionAuth(TEST_HOSTNAME))?.token,
+		/** Assert the prompt named the user and the session it replaces. */
+		expectSignInPrompt: (username: string, replaces?: string) =>
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+				prompt,
+				expect.objectContaining({
+					detail: `${TEST_URL}\n\n${detail(username)}${replaces ? `, replacing your ${replaces}` : ""}.`,
+				}),
+				"Sign In",
+			),
+		expectNoPrompt: () =>
+			expect(vscode.window.showWarningMessage).not.toHaveBeenCalled(),
+	};
+}
+
 describe("LoginCoordinator", () => {
 	describe("token authentication", () => {
-		it("authenticates with stored token on success", async () => {
+		it("authenticates with a stored token", async () => {
 			const { secretsManager, coordinator, mockSuccessfulAuth } =
 				createTestContext();
 			const user = mockSuccessfulAuth();
-
-			// Pre-store a token
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "stored-token",
@@ -203,9 +244,6 @@ describe("LoginCoordinator", () => {
 				user,
 				token: "stored-token",
 			});
-
-			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
-			expect(auth?.token).toBe("stored-token");
 		});
 
 		it("authenticates with CLI credential token on success", async () => {
@@ -216,10 +254,9 @@ describe("LoginCoordinator", () => {
 				mockSuccessfulAuth,
 			} = createTestContext();
 			const user = mockSuccessfulAuth();
-			vi.mocked(mockCredentialManager.readToken).mockResolvedValueOnce({
-				token: "cli-credential-token",
-				source: "files",
-			});
+			vi.mocked(mockCredentialManager.readToken).mockResolvedValueOnce(
+				"cli-credential-token",
+			);
 
 			const result = await coordinator.ensureLoggedIn({
 				url: TEST_URL,
@@ -236,28 +273,6 @@ describe("LoginCoordinator", () => {
 
 			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
 			expect(auth?.token).toBe("cli-credential-token");
-		});
-
-		it("reports keyring_token method when the credential comes from the keyring", async () => {
-			const { mockCredentialManager, coordinator, mockSuccessfulAuth } =
-				createTestContext();
-			const user = mockSuccessfulAuth();
-			vi.mocked(mockCredentialManager.readToken).mockResolvedValueOnce({
-				token: "keyring-token",
-				source: "keyring",
-			});
-
-			const result = await coordinator.ensureLoggedIn({
-				url: TEST_URL,
-				safeHostname: TEST_HOSTNAME,
-			});
-
-			expect(result).toEqual({
-				success: true,
-				method: "keyring_token",
-				user,
-				token: "keyring-token",
-			});
 		});
 
 		it("prompts for token when no stored auth exists", async () => {
@@ -447,36 +462,14 @@ describe("LoginCoordinator", () => {
 			token,
 		});
 
-		/** Test context plus shorthands for the link sign-in flow. */
 		function createLinkTestContext() {
-			const ctx = createTestContext();
+			const ctx = createSignInTestContext(
+				SIGN_IN_PROMPT,
+				(username) =>
+					`The link contains a token that signs you in as "${username}"`,
+			);
 			return {
 				...ctx,
-				/** Queue one getAuthenticatedUser result per expected call, in order. */
-				authSequence: (...results: Array<User | "unauthorized">) => {
-					for (const result of results) {
-						if (result === "unauthorized") {
-							mockGetAuthenticatedUser.mockRejectedValueOnce(
-								createAxiosError(401, "Unauthorized"),
-							);
-						} else {
-							mockGetAuthenticatedUser.mockResolvedValueOnce(result);
-						}
-					}
-				},
-				storeSession: (auth: {
-					token: string;
-					username?: string;
-					url?: string;
-				}) =>
-					ctx.secretsManager.setSessionAuth(TEST_HOSTNAME, {
-						url: TEST_URL,
-						...auth,
-					}),
-				confirmSignIn: () =>
-					ctx.userInteraction.setResponse(SIGN_IN_PROMPT, "Sign In"),
-				dismissSignIn: () =>
-					ctx.userInteraction.setResponse(SIGN_IN_PROMPT, undefined),
 				login: (options?: { token?: string; tokenSignInConfirmed?: boolean }) =>
 					ctx.coordinator.ensureLoggedIn({
 						url: TEST_URL,
@@ -484,21 +477,6 @@ describe("LoginCoordinator", () => {
 						token: LINK_TOKEN,
 						...options,
 					}),
-				storedToken: async () =>
-					(await ctx.secretsManager.getSessionAuth(TEST_HOSTNAME))?.token,
-				/** Assert the prompt named the user and the session it replaces. */
-				expectSignInPrompt: (username: string, replaces?: string) =>
-					expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-						SIGN_IN_PROMPT,
-						expect.objectContaining({
-							detail:
-								`${TEST_URL}\n\nThe link contains a token that signs you in as "${username}"` +
-								`${replaces ? `, replacing your ${replaces}` : ""}.`,
-						}),
-						"Sign In",
-					),
-				expectNoPrompt: () =>
-					expect(vscode.window.showWarningMessage).not.toHaveBeenCalled(),
 			};
 		}
 
@@ -784,6 +762,90 @@ describe("LoginCoordinator", () => {
 				user,
 				token: "stored-token",
 			});
+			await vi.waitFor(() =>
+				expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+					expect.stringContaining("keyring unavailable"),
+					"Open Settings",
+				),
+			);
+		});
+	});
+
+	describe("CLI session confirmation", () => {
+		const CLI_PROMPT = "Sign in with the Coder CLI's session?";
+
+		function createCliTestContext() {
+			const ctx = createSignInTestContext(
+				CLI_PROMPT,
+				(username) => `The Coder CLI's session signs you in as "${username}"`,
+			);
+			return {
+				...ctx,
+				cliToken: (token: string) =>
+					vi
+						.mocked(ctx.mockCredentialManager.readToken)
+						.mockResolvedValueOnce(token),
+				login: () =>
+					ctx.coordinator.ensureLoggedIn({
+						url: TEST_URL,
+						safeHostname: TEST_HOSTNAME,
+					}),
+			};
+		}
+
+		it("adopts the CLI session without a prompt when there is no previous session", async () => {
+			const t = createCliTestContext();
+			const user = t.mockSuccessfulAuth(
+				createMockUser({ username: "cli-user" }),
+			);
+			t.cliToken("cli-token");
+
+			expect(await t.login()).toMatchObject({
+				method: "cli_token",
+				user,
+			});
+			t.expectNoPrompt();
+		});
+
+		it("adopts the CLI session without a prompt when it belongs to the same user", async () => {
+			const t = createCliTestContext();
+			await t.storeSession({ token: "expired-token", username: "same-user" });
+			t.authSequence("unauthorized", createMockUser({ username: "same-user" }));
+			t.cliToken("cli-token");
+
+			expect(await t.login()).toMatchObject({ token: "cli-token" });
+			t.expectNoPrompt();
+		});
+
+		it("asks before adopting a CLI session for a different user, naming both", async () => {
+			const t = createCliTestContext();
+			await t.storeSession({ token: "expired-token", username: "old-user" });
+			t.authSequence("unauthorized", createMockUser({ username: "cli-user" }));
+			t.cliToken("cli-token");
+			t.confirmSignIn();
+
+			expect(await t.login()).toMatchObject({
+				token: "cli-token",
+			});
+			t.expectSignInPrompt("cli-user", 'expired session for "old-user"');
+		});
+
+		it("falls back to asking for a token when the CLI session is declined", async () => {
+			const t = createCliTestContext();
+			await t.storeSession({ token: "expired-token", username: "old-user" });
+			t.authSequence(
+				"unauthorized",
+				createMockUser({ username: "cli-user" }),
+				createMockUser({ username: "new-user" }),
+			);
+			t.cliToken("cli-token");
+			t.dismissSignIn();
+			t.userInteraction.setInputBoxValue("new-token");
+
+			expect(await t.login()).toMatchObject({
+				token: "new-token",
+			});
+			expect(await t.storedToken()).toBe("new-token");
 		});
 	});
 

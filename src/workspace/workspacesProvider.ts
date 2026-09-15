@@ -1,4 +1,3 @@
-import { isAxiosError } from "axios";
 import {
 	type Workspace,
 	type WorkspaceAgent,
@@ -21,45 +20,17 @@ import {
 import { type CoderApi } from "../api/coderApi";
 import { type Logger } from "../logging/logger";
 
+import {
+	isQueryRejected,
+	WORKSPACE_FILTERS,
+	type WorkspaceFilterConfig,
+} from "./filters";
+
+import type { WorkspaceFilter } from "@repo/shared";
+
 import type { SessionData, SessionState } from "../deployment/sessionStore";
 
-export enum WorkspaceQuery {
-	Mine = "mine",
-	All = "all",
-	Shared = "shared",
-}
-
-type SignedInSession = Extract<SessionData, { kind: "signedIn" }>;
-
-/** Per-view rendering behavior and search query, keyed by workspace view. */
-interface WorkspaceQueryConfig {
-	readonly showOwner: boolean;
-	readonly showMetadata: boolean;
-	readonly getQuery: (session: SignedInSession) => string;
-}
-
-const WORKSPACE_QUERY_CONFIG = {
-	[WorkspaceQuery.Mine]: {
-		showOwner: false,
-		showMetadata: true,
-		getQuery: () => "owner:me",
-	},
-	[WorkspaceQuery.All]: {
-		showOwner: true,
-		showMetadata: false,
-		getQuery: () => "",
-	},
-	[WorkspaceQuery.Shared]: {
-		showOwner: true,
-		showMetadata: false,
-		// Only workspaces shared with the user; excludes workspaces the user
-		// owns and shared with others. Requires Coder 2.27.0+.
-		getQuery: (session) => `shared_with_user:${session.user.id}`,
-	},
-} as const satisfies Record<WorkspaceQuery, WorkspaceQueryConfig>;
-
 export interface WorkspaceProviderOptions {
-	readonly refreshIntervalMs?: number;
 	/**
 	 * Called when the server rejects the workspaces query with HTTP 400,
 	 * which indicates a deployment that does not support the query filter.
@@ -85,7 +56,7 @@ export class WorkspaceProvider
 		AgentMetadataWatcher
 	>();
 	private readonly sessionChangeDisposable: vscode.Disposable;
-	private readonly config: WorkspaceQueryConfig;
+	private readonly config: WorkspaceFilterConfig;
 	private timeout: NodeJS.Timeout | undefined;
 	private fetching = false;
 	private refetchPending = false;
@@ -93,13 +64,13 @@ export class WorkspaceProvider
 	private disposed = false;
 
 	constructor(
-		private readonly getWorkspacesQuery: WorkspaceQuery,
+		filter: WorkspaceFilter,
 		private readonly client: CoderApi,
 		private readonly logger: Logger,
 		private readonly sessionState: SessionState,
 		private readonly options: WorkspaceProviderOptions = {},
 	) {
-		this.config = WORKSPACE_QUERY_CONFIG[getWorkspacesQuery];
+		this.config = WORKSPACE_FILTERS[filter];
 		this.sessionChangeDisposable = this.sessionState.onDidChange(() => {
 			this.clear();
 			void this.fetchAndRefresh();
@@ -135,7 +106,7 @@ export class WorkspaceProvider
 					this.logger.warn("Failed to fetch workspaces:", error);
 					hadError = true;
 					this.setWorkspaces([]);
-					if (isAxiosError(error) && error.response?.status === 400) {
+					if (isQueryRejected(error)) {
 						this.options.onQueryRejected?.();
 					}
 				}
@@ -258,12 +229,13 @@ export class WorkspaceProvider
 		}
 	}
 
-	/** Schedule the next poll, unless one is pending or no interval is set. */
+	/** Schedule the next poll, unless one is pending or the filter never polls. */
 	private maybeScheduleRefresh() {
-		if (this.options.refreshIntervalMs && !this.timeout) {
+		const { pollIntervalMs } = this.config;
+		if (pollIntervalMs !== undefined && !this.timeout) {
 			this.timeout = setTimeout(() => {
 				void this.fetchAndRefresh();
-			}, this.options.refreshIntervalMs);
+			}, pollIntervalMs);
 		}
 	}
 

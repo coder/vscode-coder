@@ -7,9 +7,9 @@ import { needToken } from "../api/utils";
 import { CertificateError } from "../error/certificateError";
 import { OAuthAuthorizer } from "../oauth/authorizer";
 import { buildOAuthTokenData } from "../oauth/utils";
-import { withOptionalProgress } from "../progress";
+import { withCancellableProgress } from "../progress";
 import { maybeAskAuthMethod, maybeAskUrl } from "../promptUtils";
-import { isKeyringEnabled } from "../settings/cli";
+import { showStoreCredentialsError } from "../util/credentials";
 import { isSameOrigin, openInBrowser } from "../util/uri";
 import { vscodeProposed } from "../vscodeProposed";
 
@@ -32,12 +32,7 @@ import type { Logger } from "../logging/logger";
 import type { OAuthCallback } from "../oauth/oauthCallback";
 
 export type LoginMethod =
-	| "mtls"
-	| "provided_token"
-	| "stored_token"
-	| "keyring_token"
-	| "cli_token"
-	| "oauth";
+	"mtls" | "provided_token" | "stored_token" | "cli_token" | "oauth";
 
 type LoginAttemptResult =
 	| { success: false; reason: LoginPromptReason }
@@ -197,7 +192,7 @@ export class LoginCoordinator implements vscode.Disposable {
 	}
 
 	private async persistSessionAuth(
-		result: LoginAttemptResult,
+		result: LoginResult,
 		safeHostname: string,
 		url: string,
 	): Promise<void> {
@@ -212,11 +207,12 @@ export class LoginCoordinator implements vscode.Disposable {
 			await this.mementoManager.addToUrlHistory(url);
 
 			if (result.token) {
+				const configs = vscode.workspace.getConfiguration();
 				this.cliCredentialManager
-					.storeToken(url, result.token, vscode.workspace.getConfiguration())
-					.catch((error) => {
-						this.logger.warn("Failed to store token at login:", error);
-					});
+					.storeToken(url, result.token, configs)
+					.catch((error) =>
+						showStoreCredentialsError(error, configs, this.logger),
+					);
 			}
 		}
 	}
@@ -385,9 +381,12 @@ export class LoginCoordinator implements vscode.Disposable {
 					sameOriginAuth?.token !== undefined &&
 					(await this.tryTokenAuth(client, sameOriginAuth.token, true)) ===
 						"unauthorized";
-				const confirmed = await this.confirmLinkSignIn(
+				const confirmed = await this.confirmSignIn(
 					deployment.url,
-					result.user,
+					{
+						title: "Sign in with the token from the link?",
+						detail: `The link contains a token that signs you in as "${result.user.username}"`,
+					},
 					auth && { username: auth.username, expired },
 				);
 				if (!confirmed) {
@@ -418,43 +417,54 @@ export class LoginCoordinator implements vscode.Disposable {
 		return withLoginMethod("stored_token", result);
 	}
 
-	/** CLI credentials: the OS keyring when enabled, else the config dir. */
+	/** The CLI's own session, adopted after confirmation if it is another user's. */
 	private async tryCliCredentials(
 		ctx: LoginAttemptContext,
 	): Promise<LoginResult | undefined> {
-		const { client, deployment, isAutoLogin, auth } = ctx;
+		const { client, deployment, isAutoLogin, auth, sameOriginAuth } = ctx;
 		const configs = vscode.workspace.getConfiguration();
-		const cliCredentialResult = await withOptionalProgress(
+		if (
+			!(await this.cliCredentialManager.hasCliStore(deployment.url, configs))
+		) {
+			return undefined;
+		}
+		const cliCredentialResult = await withCancellableProgress(
 			({ signal }) =>
 				this.cliCredentialManager.readToken(deployment.url, configs, {
 					signal,
 				}),
 			{
-				enabled: isKeyringEnabled(configs),
 				location: vscode.ProgressLocation.Notification,
-				title: "Reading token from OS keyring...",
+				title: "Reading credentials from the Coder CLI",
 				cancellable: true,
 			},
 		);
-		const cliCredential = cliCredentialResult.ok
+		const cliToken = cliCredentialResult.ok
 			? cliCredentialResult.value
 			: undefined;
-		if (!cliCredential || cliCredential.token === auth?.token) {
+		if (!cliToken || cliToken === auth?.token) {
 			return undefined;
 		}
 		this.logger.debug("Trying token from CLI credentials");
-		const result = await this.tryTokenAuth(
-			client,
-			cliCredential.token,
-			isAutoLogin,
-		);
+		const result = await this.tryTokenAuth(client, cliToken, isAutoLogin);
 		if (result === "unauthorized") {
 			return undefined;
 		}
-		return withLoginMethod(
-			cliCredential.source === "keyring" ? "keyring_token" : "cli_token",
-			result,
-		);
+		if (result.success && auth && auth.username !== result.user.username) {
+			const confirmed = await this.confirmSignIn(
+				deployment.url,
+				{
+					title: "Sign in with the Coder CLI's session?",
+					detail: `The Coder CLI's session signs you in as "${result.user.username}"`,
+				},
+				// A same-origin session reached this point only because it failed.
+				{ username: auth.username, expired: sameOriginAuth !== undefined },
+			);
+			if (!confirmed) {
+				return undefined;
+			}
+		}
+		return withLoginMethod("cli_token", result);
 	}
 
 	/** Last resort: ask the user how to authenticate. */
@@ -476,10 +486,10 @@ export class LoginCoordinator implements vscode.Disposable {
 		}
 	}
 
-	/** Ask before a token from a link signs the user in. */
-	private async confirmLinkSignIn(
+	/** Ask before a token the user did not enter here signs them in. */
+	private async confirmSignIn(
 		url: string,
-		user: User,
+		prompt: { title: string; detail: string },
 		previousSession:
 			{ username: string | undefined; expired: boolean } | undefined,
 	): Promise<boolean> {
@@ -490,11 +500,11 @@ export class LoginCoordinator implements vscode.Disposable {
 			? `, replacing your ${previousSession.expired ? "expired" : "current"} session${previous}`
 			: "";
 		const action = await vscodeProposed.window.showWarningMessage(
-			"Sign in with the token from the link?",
+			prompt.title,
 			{
 				useCustom: true,
 				modal: true,
-				detail: `${url}\n\nThe link contains a token that signs you in as "${user.username}"${replacing}.`,
+				detail: `${url}\n\n${prompt.detail}${replacing}.`,
 			},
 			"Sign In",
 		);

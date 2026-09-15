@@ -1,0 +1,49 @@
+.ui-checkbox {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	cursor: pointer;
+	user-select: none;
+}
+
+.ui-checkbox:has(> :disabled) {
+	opacity: var(--ui-disabled-opacity);
+	cursor: default;
+}
+
+/* Invisible over the box, keeping the native hit target and focus source */
+.ui-checkbox__input {
+	position: absolute;
+	width: 18px;
+	height: 18px;
+	margin: 0;
+	opacity: 0;
+	cursor: inherit;
+}
+
+/* Native checkbox geometry (checkbox.css): 18px box, 3px parity-pinned radius */
+.ui-checkbox__box {
+	flex: none;
+	width: 18px;
+	height: 18px;
+	color: var(--ui-checkbox-foreground);
+	background: var(--ui-checkbox-background);
+	border: 1px solid var(--ui-checkbox-border);
+	border-radius: 3px;
+}
+
+.ui-checkbox__input:focus + .ui-checkbox__box {
+	border-color: var(--ui-focus-border);
+}
+
+@media (forced-colors: active) {
+	.ui-checkbox__box {
+		color: Highlight;
+		border-color: CanvasText;
+	}
+
+	.ui-checkbox__input:focus + .ui-checkbox__box {
+		border-color: Highlight;
+	}
+}

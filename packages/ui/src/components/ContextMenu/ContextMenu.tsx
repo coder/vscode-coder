@@ -25,7 +25,7 @@ export const ContextMenuRadioGroup = ContextMenuPrimitive.RadioGroup;
 /** One selectable action row; a leading `Icon` sits in the gutter. */
 export const ContextMenuItem = menuPart(
 	ContextMenuPrimitive.Item,
-	"ui-menu__item",
+	"ui-overlay__item ui-menu__item",
 );
 
 /** Non-interactive heading above a group. */
@@ -43,21 +43,21 @@ export const ContextMenuSeparator = menuPart(
 /** A toggleable row; checked shows a gutter check. */
 export const ContextMenuCheckboxItem = menuPart(
 	ContextMenuPrimitive.CheckboxItem,
-	"ui-menu__item",
+	"ui-overlay__item ui-menu__item",
 	{ indicator: ContextMenuPrimitive.ItemIndicator },
 );
 
 /** One choice in a radio group. */
 export const ContextMenuRadioItem = menuPart(
 	ContextMenuPrimitive.RadioItem,
-	"ui-menu__item",
+	"ui-overlay__item ui-menu__item",
 	{ indicator: ContextMenuPrimitive.ItemIndicator },
 );
 
 /** The row that opens its submenu. */
 export const ContextMenuSubTrigger = menuPart(
 	ContextMenuPrimitive.SubTrigger,
-	"ui-menu__item",
+	"ui-overlay__item ui-menu__item",
 	{ chevron: true },
 );
 

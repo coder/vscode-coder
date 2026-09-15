@@ -7,6 +7,11 @@ Its stable separation boundary is the public root exports, no monorepo runtime
 imports, and component CSS using only semantic `--ui-*` tokens. A future package
 build can emit those same entry points without API changes.
 
+Consumers compile these components with the React Compiler, so they follow the
+rules of React and lean on it for memoization. A component that breaks the
+rules is skipped silently rather than reported, which for a list or a tree
+costs a re-render per row, so check with the compiler and not only the linter.
+
 ## CSS
 
 Import the semantic token mapping and codicon assets once in each real webview
@@ -38,12 +43,126 @@ Every component forwards `className` and `style` to its root element, and
 default rules use single-class specificity, so a consumer class imported
 after the library overrides any default (width, height, spacing).
 
-Where VS Code's stable rendering and its Modern UI preview
-(`workbench.experimental.modernUI`) diverge, components follow Modern UI,
-and new components should too. Webviews get no signal for the setting, so
-the default cannot follow the host. Until the design settles,
-`data-ui-style="stable"` on the document root restores the stable-parity
-menu motion; Storybook's "UI style" toolbar switch toggles it live.
+VS Code currently uses its stable UI by default; Modern UI remains behind the
+experimental `workbench.experimental.modernUI` setting. `@repo/ui`
+intentionally uses Modern UI as its package default because webviews receive no
+host signal for that setting. The divergence is isolated: set
+`data-ui-style="stable"` on the document root to restore stable row geometry,
+focus behavior, and menu motion. Storybook's "UI style" toolbar switch toggles
+that override live.
+
+## Tree
+
+`Tree` is controlled: `nodes` describe the hierarchy, `expandedIds` controls
+branches, and the single- or multi-selection props control selection. Each
+visible node renders as a flat `treeitem`, while normal keyboard navigation
+keeps DOM focus on the `tree` container and identifies the active row with
+`aria-activedescendant`. Focus and selection are independent.
+
+```tsx
+const [selectedItemId, setSelectedItemId] = useState("src");
+const [expandedIds, setExpandedIds] = useState<readonly string[]>(["src"]);
+
+<Tree
+	aria-label="Explorer"
+	variant="explorer"
+	nodes={[
+		{
+			id: "src",
+			label: "src",
+			children: [{ id: "tree", label: "Tree.tsx", icon: "symbol-class" }],
+		},
+		{ id: "readme", label: "README.md", icon: "markdown" },
+	]}
+	expandedIds={expandedIds}
+	onExpandedIdsChange={setExpandedIds}
+	selectedItemId={selectedItemId}
+	onSelectedItemChange={setSelectedItemId}
+/>;
+```
+
+Ids must be unique across the whole tree, and a duplicate throws. A string
+`label` is also the accessible name; a rich label must provide `textValue`. `children` marks a branch, including an empty array for a branch
+whose children are still loading. `icon`, `action`, and `className` customize
+the row. Actions stay live on plain hover, as in the native list, and are
+isolated from row selection and expansion.
+
+Arrow Up/Down, Home, End, PageUp/PageDown, and buffered prefix/fuzzy typing
+move the active row through visible rows. Arrow Right
+expands a branch or enters it; Arrow Left collapses it or moves to its parent.
+
+`expandMode="singleClick"` is the default: clicking a branch selects
+and toggles it, and Enter does the same. With `expandMode="doubleClick"`, a
+single click or Enter only selects and a double click toggles expansion. Space
+toggles a branch without selecting it, or selects a leaf. A normal-row twistie
+toggles without changing selection. Alt-click recursively toggles descendant
+branches unless Alt is configured as the multi-selection modifier.
+
+Escape clears selection. It also clears the active focus mark when the tree has
+at most one selected row; after a larger multi-selection, a second Escape
+clears the remaining focus mark. Once neither selection nor a focus mark
+remains, Escape is left to the host. The root `onKeyDown` runs first, so a host
+can intercept shortcuts with `preventDefault()`.
+
+`multiSelect` uses `selectedItemIds` and `onSelectedItemsChange` and sets
+`aria-multiselectable`. `multiSelectModifier` chooses the toggle modifier:
+`"ctrlCmd"` (the default) uses Ctrl/Cmd and `"alt"` uses Alt. Shift-click and
+Shift+Arrow extend from the selection anchor; modifier clicks take precedence
+over expansion. Ctrl/Cmd+A selects the visible rows in the active sibling
+scope.
+
+`stickyScroll` pins ancestors against the nearest scrolling ancestor. `true`
+uses a maximum of seven pinned rows; a number supplies the maximum, and the
+widget is also capped at 40% of the viewport. The pinned region is a separate
+tab stop: Arrow Up/Down move among pinned ancestors, Arrow Down/Right from the
+deepest row enters its first visible child, Enter reveals, focuses, and selects
+the real row, Arrow Left reveals and focuses it and collapses an expanded
+branch, and Space only reveals and focuses it. A plain pointer click reveals,
+focuses, and selects; a pinned twistie additionally toggles the branch.
+Selection-modifier clicks update selection without revealing the real row.
+
+Webviews do not receive `workbench.tree.*` settings automatically. Consumers
+that mirror native sticky-scroll preferences must read
+`workbench.tree.enableStickyScroll` and
+`workbench.tree.stickyScrollMaxItemCount` in the extension host and send the
+values to the webview.
+
+```mermaid
+flowchart LR
+  accTitle: Tree architecture
+  accDescr: Data and input flow through the pure Tree modules into the React and DOM adapter.
+
+  Props[Nodes and controlled props] --> Model[treeModel.ts]
+  Events[Pointer and keyboard events] --> Policy[treePolicy.ts]
+  Policy --> Commands[Tree commands]
+  Model --> Transition[treeTransition.ts]
+  Commands --> Transition
+  Transition --> Adapter[useTreeAdapter.ts]
+  Adapter --> Rows[Tree.tsx and TreeRow.tsx]
+  Adapter --> Sticky[StickyScroll.tsx]
+  Rows --> Hover[TreeHover.tsx]
+```
+
+The model, policy, and transitions stay pure. The adapter owns React and DOM
+integration. The flat visible model supports future windowing, but the Tree is
+not currently virtualized.
+
+Rows are 22px tall and keep the VS Code twistie gutter. For Explorer-style file
+trees whose branches have no icons, `variant="explorer"` aligns leaf icons with
+branch twisties; do not combine it with branch icons. Indent guides appear on
+hover, selected ancestor paths stay active, and the focused path is active only
+while the tree has focus. The package default uses inset Modern UI rows;
+`data-ui-style="stable"` restores edge-to-edge square rows and stable focus
+styling.
+
+Labels hover with the node's text value, so truncated rows stay readable.
+Set `tooltip` for richer content or `null` to opt out. One bubble serves the
+whole tree, as in the native list: an invisible anchor moves to whatever the
+pointer reaches, taking its x from the cursor and its y from the target's box,
+the way a native hover placed at the mouse does. Each new target waits out the
+show delay, except within a row's action bar, where crossing between buttons is
+instant, the exception native grants a dense cluster of targets. Ctrl+K Ctrl+I opens the focused
+row's hover with no delay at all, and moving the focus closes it.
 
 ## Overlays
 
@@ -62,14 +181,54 @@ tooltips.
 `TooltipProvider` ancestor. Mount one provider per app so that a pointer
 moving between nearby triggers skips the show delay, like native hovers.
 The delay defaults to 500ms, matching VS Code's `workbench.hover.delay`,
-and tooltips stop growing at half the window height.
+and tooltips stop growing at half the window height. Components that own
+their hovers fall back to a private provider when the app has none, so
+`Tree` rows and `IconButton` work unwrapped. A private provider keeps its own
+skip-delay, though, so an app with several of them makes every hover wait out
+the full delay; mount one provider and they share it. `IconButton` hints with
+its label like a native action bar item; pass `tooltip` to say something else,
+or `null` for a button that stays quiet.
+
+`HoverDelegateScope` hands every `Tooltip` inside it to one shared bubble
+instead of a bubble each, the way a VS Code list serves its rows and their
+action bars from a single hover widget. `Tree` uses it, which is also what
+lets one place decide when a hover is instant rather than delayed.
 
 Overlay content is portalled to `body`, inherits webview typography from
 there, and shares the `.ui-overlay` base for stacking, border, shadow,
-and scrolling. Menus default to the Modern UI motion: they scale and fade in
-from the trigger corner and fade out on close, with Radix holding unmount
-until the exit animation ends. High contrast, `forced-colors`, and
+scrolling, and highlighted rows. Menus default to the Modern UI motion:
+they scale and fade in from the trigger corner and fade out on close, with
+Radix holding unmount until the exit animation ends. High contrast, `forced-colors`, and
 `prefers-reduced-motion` are handled.
+
+## Form controls
+
+`Input`, `Textarea`, `Checkbox`, `Select`, and `Field`/`Label` cover forms
+the way VS Code's own settings editor does: text field, number field,
+checkbox, and dropdown. Richer shapes map onto that vocabulary instead of
+getting bespoke widgets: a switch renders as `Checkbox`, a radio group or
+slider-bounded number as `Select` or a number `Input`, a multi-select as
+stacked `Checkbox` controls inside a `Field`.
+
+`Input` and `Textarea` are controlled with `value` and `onChange(next)`;
+`Checkbox` uses `checked` and `onChange(next)`. Native-element props and
+refs pass through to the control; `className` and `style` target the root.
+`Select` wraps `@radix-ui/react-select` and preserves its controlled
+(`value` / `onValueChange`) and uncontrolled (`defaultValue`) modes, with
+flat compound exports such as `SelectTrigger` and `SelectItem`, as the
+menus do.
+`Input` renders `children` after the control for trailing in-field
+actions; `PasswordInput` uses that slot for a reveal toggle styled like the
+find widget's option buttons.
+
+`Field` lays out a semibold `Label`, children, description, and error text.
+It does not clone children or require a form context, so native elements
+and third-party controls work the same way: connect `htmlFor` to the
+control's `id`, and pass `descriptionId` / `errorId` to give the rendered
+text IDs the control can point `aria-describedby` at. The consumer owns
+`aria-describedby`, `aria-invalid`, validation, and when to announce
+errors. For a group of checkboxes, use a native `fieldset` with a `legend`
+for the group name rather than pointing a single label at several controls.
 
 ## Known gaps
 
@@ -79,7 +238,6 @@ until the exit animation ends. High contrast, `forced-colors`, and
 - Keybinding hints show the contributed defaults the consumer passes, not
   user remaps: VS Code exposes no API for extensions to resolve a command's
   effective keybinding.
-- List/selection-row tokens are deferred to the Tree suite (#1037).
 
 ## Codicons
 
@@ -91,10 +249,12 @@ without a generated source file or a runtime list in the public API.
 
 ESLint rejects `@repo/*` imports and relative cross-package imports in
 `packages/ui` TypeScript and TSX source. `react` remains a peer dependency;
-the only runtime dependencies are the Radix overlay primitives and
+the only runtime dependencies are the Radix primitives and
 `@vscode/codicons`. Public consumers import from the package root or its
 declared CSS exports.
 
 Shared internals are reached through `package.json` subpath imports (`#cx`,
 `#codicons`, `#storybook`). These resolve only inside this package and ship
-with it, so they survive a standalone NPM split.
+with it, so they survive a standalone NPM split. Component families keep
+their own internals (contexts, stores) inside their folder and import them
+relatively, so a family can lift out wholesale.

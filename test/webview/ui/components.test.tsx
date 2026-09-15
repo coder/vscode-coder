@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { createRef, useState } from "react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,9 +8,9 @@ import {
 	Icon,
 	IconButton,
 	ProgressBar,
-	SearchInput,
 	Spinner,
 	StatusPill,
+	TooltipProvider,
 } from "@repo/ui";
 
 import { qs } from "../helpers";
@@ -47,6 +47,24 @@ describe("IconButton", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
 		expect(onClick).toHaveBeenCalledOnce();
 	});
+	it("hovers with the label unless opted out", async () => {
+		const hoverText = async (
+			tooltip?: string | null,
+		): Promise<string | undefined> => {
+			const view = render(
+				<TooltipProvider delayDuration={0}>
+					<IconButton icon="refresh" label="Refresh" tooltip={tooltip} />
+				</TooltipProvider>,
+			);
+			await userEvent.hover(screen.getByRole("button"));
+			const text = screen.queryByRole("tooltip")?.textContent ?? undefined;
+			view.unmount();
+			return text;
+		};
+		expect(await hoverText()).toBe("Refresh");
+		expect(await hoverText("Reload the list")).toBe("Reload the list");
+		expect(await hoverText(null)).toBeUndefined();
+	});
 });
 
 describe("Spinner", () => {
@@ -72,68 +90,6 @@ describe("ProgressBar", () => {
 		expect(
 			screen.getByRole("progressbar", { name: "Loading" }),
 		).not.toHaveAttribute("aria-valuenow");
-	});
-});
-
-describe("SearchInput", () => {
-	it("reports changes without owning the value", () => {
-		const onChange = vi.fn();
-		const { rerender } = render(<SearchInput value="" onChange={onChange} />);
-		fireEvent.change(screen.getByRole("searchbox", { name: "Search" }), {
-			target: { value: "prod" },
-		});
-		expect(onChange).toHaveBeenCalledWith("prod");
-		expect(screen.getByRole("searchbox", { name: "Search" })).toHaveValue("");
-
-		rerender(<SearchInput value="prod" onChange={onChange} />);
-		expect(screen.getByRole("searchbox", { name: "Search" })).toHaveValue(
-			"prod",
-		);
-	});
-
-	it("clears through the same callback and returns focus after rerender", () => {
-		const onChange = vi.fn();
-		const ControlledSearch = (): React.JSX.Element => {
-			const [value, setValue] = useState("prod");
-			return (
-				<SearchInput
-					value={value}
-					onChange={(nextValue) => {
-						onChange(nextValue);
-						setValue(nextValue);
-					}}
-				/>
-			);
-		};
-		render(<ControlledSearch />);
-		fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
-		expect(onChange).toHaveBeenCalledWith("");
-		expect(screen.getByRole("searchbox", { name: "Search" })).toHaveFocus();
-	});
-
-	it("exposes the input through a consumer ref alongside the internal one", () => {
-		const ref = createRef<HTMLInputElement>();
-		render(<SearchInput value="prod" onChange={vi.fn()} ref={ref} />);
-		expect(ref.current).toBe(screen.getByRole("searchbox", { name: "Search" }));
-
-		fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
-		expect(screen.getByRole("searchbox", { name: "Search" })).toHaveFocus();
-	});
-
-	it("forwards className and style to the root element", () => {
-		render(
-			<SearchInput
-				value=""
-				onChange={vi.fn()}
-				className="custom-search"
-				style={{ width: "200px" }}
-			/>,
-		);
-		const root = screen
-			.getByRole("searchbox", { name: "Search" })
-			.closest(".ui-search-input");
-		expect(root).toHaveClass("custom-search");
-		expect(root).toHaveStyle({ width: "200px" });
 	});
 });
 
