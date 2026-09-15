@@ -84,6 +84,7 @@ import type { MementoManager } from "./core/mementoManager";
 import type { PathResolver } from "./core/pathResolver";
 import type { SecretsManager, SessionAuth } from "./core/secretsManager";
 import type { DeploymentManager } from "./deployment/deploymentManager";
+import type { ConnectionLogBuffer } from "./logging/logBuffer";
 import type { Logger } from "./logging/logger";
 import type { LoginCoordinator, LoginMethod } from "./login/loginCoordinator";
 import type { TelemetryService } from "./telemetry/service";
@@ -168,6 +169,7 @@ export class Commands {
 	private readonly authTelemetry: AuthTelemetry;
 	private readonly diagnosticTelemetry: DiagnosticTelemetry;
 	private readonly workspaceOpenTelemetry: WorkspaceOpenTelemetry;
+	private readonly connectionLogBuffer: ConnectionLogBuffer;
 
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
@@ -193,6 +195,7 @@ export class Commands {
 			this.telemetryService,
 		);
 		this.logger = serviceContainer.getLogger();
+		this.connectionLogBuffer = serviceContainer.getConnectionLogBuffer();
 		this.pathResolver = serviceContainer.getPathResolver();
 		this.mementoManager = serviceContainer.getMementoManager();
 		this.secretsManager = serviceContainer.getSecretsManager();
@@ -494,6 +497,9 @@ export class Commands {
 				});
 
 				progress.report({ message: "Adding VS Code logs..." });
+				// Flush buffered below-level connection logs so the bundle carries the
+				// detail leading up to a failure even without debug logging enabled.
+				this.connectionLogBuffer.flush("support_bundle");
 				await appendVsCodeLogs(
 					outputUri.fsPath,
 					{

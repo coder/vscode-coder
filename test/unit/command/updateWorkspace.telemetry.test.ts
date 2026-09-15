@@ -30,6 +30,7 @@ function setup() {
 		getDuplicateWorkspaceIpc: () => ({}),
 		getSpeedtestPanelFactory: () => ({}),
 		getNetcheckPanelFactory: () => ({}),
+		getConnectionLogBuffer: () => ({ flush: () => {} }),
 	} as unknown as ServiceContainer;
 	const commands = new Commands(
 		container,

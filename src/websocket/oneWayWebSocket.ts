@@ -80,9 +80,34 @@ export class OneWayWebSocket<
 
 			this.#socket.on("message", wrapped);
 			this.#messageCallbacks.set(messageCallback, wrapped);
-		} else {
-			// For other events, cast and add directly
-			this.#socket.on(event, callback);
+			return;
+		}
+
+		// `ws` only exposes `.code`/`.reason` on the DOM-style CloseEvent from
+		// addEventListener; the `on()` emitter passes them positionally, which
+		// leaves `event.code` undefined for consumers.
+		switch (event) {
+			case "open":
+				this.#socket.addEventListener(
+					"open",
+					callback as EventHandler<TData, "open">,
+				);
+				break;
+			case "close":
+				this.#socket.addEventListener(
+					"close",
+					callback as EventHandler<TData, "close">,
+				);
+				break;
+			case "error":
+				this.#socket.addEventListener(
+					"error",
+					callback as EventHandler<TData, "error">,
+				);
+				break;
+			case "message":
+				// Handled above via the early return.
+				break;
 		}
 	}
 
@@ -98,8 +123,31 @@ export class OneWayWebSocket<
 				this.#socket.off("message", wrapper);
 				this.#messageCallbacks.delete(messageCallback);
 			}
-		} else {
-			this.#socket.off(event, callback);
+			return;
+		}
+
+		switch (event) {
+			case "open":
+				this.#socket.removeEventListener(
+					"open",
+					callback as EventHandler<TData, "open">,
+				);
+				break;
+			case "close":
+				this.#socket.removeEventListener(
+					"close",
+					callback as EventHandler<TData, "close">,
+				);
+				break;
+			case "error":
+				this.#socket.removeEventListener(
+					"error",
+					callback as EventHandler<TData, "error">,
+				);
+				break;
+			case "message":
+				// Handled above via the early return.
+				break;
 		}
 	}
 

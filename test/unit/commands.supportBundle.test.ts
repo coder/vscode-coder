@@ -79,9 +79,11 @@ function setup(options: { cliVersion?: string } = {}) {
 	vi.mocked(appendVsCodeLogs).mockResolvedValue(undefined);
 
 	const logger = createMockLogger();
+	const connectionLogBufferFlush = vi.fn();
 	const serviceContainer = {
 		getTelemetryService: () => service,
 		getLogger: () => logger,
+		getConnectionLogBuffer: () => ({ flush: connectionLogBufferFlush }),
 		getPathResolver: () => ({
 			getGlobalConfigDir: () => "/cfg",
 			getProxyLogPath: () => "/logs/proxy",
@@ -111,7 +113,7 @@ function setup(options: { cliVersion?: string } = {}) {
 		{} as DeploymentManager,
 	);
 
-	return { commands, client, logger, interaction };
+	return { commands, client, logger, interaction, connectionLogBufferFlush };
 }
 
 function setRemoteAuthority(value: string | undefined): void {
@@ -136,9 +138,12 @@ function connectToWorkspace(
 
 describe("Commands.supportBundle", () => {
 	it("collects the selected agent's bundle with remote log globs", async () => {
-		const { commands } = setup();
+		const { commands, connectionLogBufferFlush } = setup();
 
 		await commands.supportBundle(agentItem("dev"));
+
+		// The buffered below-level connection logs are flushed into the bundle.
+		expect(connectionLogBufferFlush).toHaveBeenCalledWith("support_bundle");
 
 		expect(cliExec.supportBundle).toHaveBeenCalledWith(
 			expect.anything(),

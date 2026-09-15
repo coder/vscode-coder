@@ -143,6 +143,7 @@ describe("Logging formatters", () => {
 			const result = formatBody({
 				access_token: "secret-access",
 				refresh_token: "secret-refresh",
+				registration_access_token: "secret-registration",
 				client_secret: "secret-client",
 				code: "secret-code",
 				code_verifier: "secret-verifier",
@@ -152,6 +153,7 @@ describe("Logging formatters", () => {
 				token_type: "bearer",
 			});
 			expect(result).toContain("access_token: '<redacted>'");
+			expect(result).toContain("registration_access_token: '<redacted>'");
 			expect(result).toContain("token_type: 'bearer'");
 			expect(result).not.toContain("secret-");
 		});

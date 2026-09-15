@@ -17,6 +17,7 @@ const COLLECTED_SETTINGS: readonly string[] = [
 	"coder.autologin",
 	"coder.binaryDestination",
 	"coder.binarySource",
+	"coder.connectionLogBuffer.size",
 	"coder.defaultUrl",
 	"coder.disableNotifications",
 	"coder.disableSignatureVerification",

@@ -1,10 +1,19 @@
 import * as vscode from "vscode";
 
+import { watchConfigurationChanges } from "../configWatcher";
 import { AuthTelemetry } from "../instrumentation/auth";
+import {
+	BufferingLogger,
+	type ConnectionLogBuffer,
+} from "../logging/logBuffer";
 import { prefixLogger } from "../logging/prefixLogger";
 import { shortId } from "../logging/utils";
 import { LoginCoordinator } from "../login/loginCoordinator";
 import { OAuthCallback } from "../oauth/oauthCallback";
+import {
+	CONNECTION_LOG_BUFFER_SIZE_SETTING,
+	readConnectionLogBufferSize,
+} from "../settings/logger";
 import { buildSession, extractExtensionVersion } from "../telemetry/event";
 import { TelemetryService } from "../telemetry/service";
 import { LocalJsonlSink } from "../telemetry/sinks/localJsonlSink";
@@ -29,7 +38,8 @@ import type { Logger } from "../logging/logger";
  */
 export class ServiceContainer implements vscode.Disposable {
 	private readonly outputChannel: vscode.LogOutputChannel;
-	private readonly logger: Logger;
+	private readonly logger: BufferingLogger;
+	private readonly connectionLogBufferConfigSubscription: vscode.Disposable;
 	private readonly pathResolver: PathResolver;
 	private readonly mementoManager: MementoManager;
 	private readonly secretsManager: SecretsManager;
@@ -48,9 +58,21 @@ export class ServiceContainer implements vscode.Disposable {
 		this.outputChannel = vscode.window.createOutputChannel("Coder", {
 			log: true,
 		});
-		this.logger = prefixLogger(
+		const readSize = () =>
+			readConnectionLogBufferSize(vscode.workspace.getConfiguration());
+		this.logger = new BufferingLogger(
+			prefixLogger(this.outputChannel, `[session ${shortId(sessionId)}]`),
 			this.outputChannel,
-			`[session ${shortId(sessionId)}]`,
+			readSize(),
+		);
+		this.connectionLogBufferConfigSubscription = watchConfigurationChanges(
+			[
+				{
+					setting: CONNECTION_LOG_BUFFER_SIZE_SETTING,
+					getValue: readSize,
+				},
+			],
+			() => this.logger.setCapacity(readSize()),
 		);
 		this.pathResolver = new PathResolver(
 			context.globalStorageUri.fsPath,
@@ -148,6 +170,20 @@ export class ServiceContainer implements vscode.Disposable {
 		return this.logger;
 	}
 
+	/** The connection log buffer that replays below-level entries on failure. */
+	getConnectionLogBuffer(): ConnectionLogBuffer {
+		return this.logger;
+	}
+
+	/**
+	 * Flush the connection log buffer on a terminal socket failure. The
+	 * `<reason> <route>` key is what Support greps for, so both socket call
+	 * sites share this one funnel. Arrow property so it can be passed by value.
+	 */
+	readonly onConnectionFailure = (reason: string, route: string): void => {
+		this.logger.flush(`${reason} ${route}`);
+	};
+
 	getCliManager(): CliManager {
 		return this.cliManager;
 	}
@@ -193,6 +229,7 @@ export class ServiceContainer implements vscode.Disposable {
 		this.commandManager.dispose();
 		this.contextManager.dispose();
 		this.loginCoordinator.dispose();
+		this.connectionLogBufferConfigSubscription.dispose();
 		try {
 			await this.telemetryService.dispose();
 		} finally {

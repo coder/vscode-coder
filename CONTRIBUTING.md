@@ -132,6 +132,29 @@ next to the code:
 
 **[`src/instrumentation/CONVENTIONS.md`](src/instrumentation/CONVENTIONS.md)**
 
+## Logging
+
+The extension logs to the "Coder" output channel, a `LogOutputChannel` that gates
+messages by the level chosen in its gear menu. To help Support diagnose
+connection failures without asking users to reproduce with debug logging enabled,
+a `BufferingLogger` ([`src/logging/logBuffer.ts`](src/logging/logBuffer.ts))
+wraps the channel and keeps a bounded, in-memory ring of the entries that sit
+**below** the current level, which the channel would otherwise drop.
+
+When a WebSocket fails terminally, a workspace fails to open, or you collect a
+support bundle, the extension replays the ring into the channel. Each replayed
+line carries a `[buffered]` marker with its original timestamp and level, so it
+lands on disk and in the bundle. Transient reconnects and intentional teardown
+never flush, and neither does a handshake `401` (a 401 explains itself, and with
+OAuth a refresh reconnects the same socket). Nothing is recorded or flushed
+while the channel is at `Off`.
+
+The buffer size is set by `coder.connectionLogBuffer.size` (number of entries;
+`0` disables it) and lives in memory, so a hard kill or out-of-memory event
+loses it. Extension SSH debug logs that pass through the shared logger are
+buffered; the CLI `ProxyCommand` file logs under `coder.proxyLogDirectory` are
+not, since support bundles already collect them from disk.
+
 ## Testing
 
 There are a few ways you can test the "Open in VS Code" flow:

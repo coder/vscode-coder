@@ -25,13 +25,11 @@ import {
 	logResponse,
 } from "../logging/httpLogger";
 import { HttpRequestsTelemetry } from "../logging/httpRequestsTelemetry";
-import {
-	HttpClientLogLevel,
-	type RequestConfigWithMeta,
-} from "../logging/types";
+import { type RequestConfigWithMeta } from "../logging/types";
 import { sizeOf } from "../logging/utils";
 import { AuthConfigTracker } from "../settings/authConfig";
 import { getHeaderCommand } from "../settings/headers";
+import { readHttpClientLogLevel } from "../settings/logger";
 import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
@@ -48,6 +46,7 @@ import {
 	type SocketFactory,
 } from "../websocket/reconnectingWebSocket";
 import { SseConnection } from "../websocket/sseConnection";
+import { handshakeStatus } from "../websocket/utils";
 
 import { getRefreshCommand, refreshCertificates } from "./certificateRefresh";
 import {
@@ -69,6 +68,7 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 import type { ClientOptions } from "ws";
 
+import type { ConnectionStateReason } from "../instrumentation/websocket";
 import type { Logger } from "../logging/logger";
 import type {
 	CloseEvent,
@@ -125,6 +125,10 @@ export class CoderApi extends Api implements vscode.Disposable {
 		private readonly telemetry: TelemetryReporter,
 		private readonly httpRequestsTelemetry: HttpRequestsTelemetry,
 		private readonly authConfigTracker: AuthConfigTracker,
+		private readonly onConnectionFailure?: (
+			reason: ConnectionStateReason,
+			route: string,
+		) => void,
 	) {
 		super();
 		wrapWithValidation(this);
@@ -145,6 +149,10 @@ export class CoderApi extends Api implements vscode.Disposable {
 		token: string | undefined,
 		output: Logger,
 		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
+		onConnectionFailure?: (
+			reason: ConnectionStateReason,
+			route: string,
+		) => void,
 	): CoderApi {
 		const httpRequestsTelemetry = new HttpRequestsTelemetry(telemetry);
 		const authConfigTracker = new AuthConfigTracker();
@@ -153,6 +161,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 			telemetry,
 			httpRequestsTelemetry,
 			authConfigTracker,
+			onConnectionFailure,
 		);
 		client.getAxiosInstance().defaults.timeout = DEFAULT_REQUEST_TIMEOUT_MS;
 		client.getAxiosInstance().defaults.headers.common[BAGGAGE_HEADER] =
@@ -282,26 +291,30 @@ export class CoderApi extends Api implements vscode.Disposable {
 		watchTargets: string[],
 		options?: ClientOptions,
 	) => {
-		return this.createReconnectingSocket(() =>
-			this.createOneWayWebSocket<GetInboxNotificationResponse>({
-				apiRoute: "/api/v2/notifications/inbox/watch",
-				searchParams: {
-					format: "plaintext",
-					templates: watchTemplates.join(","),
-					targets: watchTargets.join(","),
-				},
-				options,
-			}),
+		return this.createReconnectingSocket(
+			"/api/v2/notifications/inbox/watch",
+			() =>
+				this.createOneWayWebSocket<GetInboxNotificationResponse>({
+					apiRoute: "/api/v2/notifications/inbox/watch",
+					searchParams: {
+						format: "plaintext",
+						templates: watchTemplates.join(","),
+						targets: watchTargets.join(","),
+					},
+					options,
+				}),
 		);
 	};
 
 	watchWorkspace = async (workspace: Workspace, options?: ClientOptions) => {
-		return this.createReconnectingSocket(() =>
-			this.createStreamWithSseFallback({
-				apiRoute: `/api/v2/workspaces/${workspace.id}/watch-ws`,
-				fallbackApiRoute: `/api/v2/workspaces/${workspace.id}/watch`,
-				options,
-			}),
+		return this.createReconnectingSocket(
+			`/api/v2/workspaces/${workspace.id}/watch-ws`,
+			() =>
+				this.createStreamWithSseFallback({
+					apiRoute: `/api/v2/workspaces/${workspace.id}/watch-ws`,
+					fallbackApiRoute: `/api/v2/workspaces/${workspace.id}/watch`,
+					options,
+				}),
 		);
 	};
 
@@ -309,12 +322,14 @@ export class CoderApi extends Api implements vscode.Disposable {
 		agentId: WorkspaceAgent["id"],
 		options?: ClientOptions,
 	) => {
-		return this.createReconnectingSocket(() =>
-			this.createStreamWithSseFallback({
-				apiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata-ws`,
-				fallbackApiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata`,
-				options,
-			}),
+		return this.createReconnectingSocket(
+			`/api/v2/workspaceagents/${agentId}/watch-metadata-ws`,
+			() =>
+				this.createStreamWithSseFallback({
+					apiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata-ws`,
+					fallbackApiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata`,
+					options,
+				}),
 		);
 	};
 
@@ -530,17 +545,18 @@ export class CoderApi extends Api implements vscode.Disposable {
 	 * Check if an error is a 404 Not Found error.
 	 */
 	private is404Error(error: unknown): boolean {
-		const msg = error instanceof Error ? error.message : String(error);
-		return msg.includes(String(HttpStatusCode.NOT_FOUND));
+		return handshakeStatus(error) === HttpStatusCode.NOT_FOUND;
 	}
 
 	/**
 	 * Create a ReconnectingWebSocket and track it for lifecycle management.
 	 */
 	private async createReconnectingSocket<TData>(
+		apiRoute: string,
 		socketFactory: SocketFactory<TData>,
 	): Promise<ReconnectingWebSocket<TData>> {
 		const options: ReconnectingWebSocketOptions = {
+			route: apiRoute,
 			onCertificateRefreshNeeded: async () => {
 				const refreshCommand = getRefreshCommand();
 				if (!refreshCommand) {
@@ -548,6 +564,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 				}
 				return refreshCertificates(refreshCommand, this.output);
 			},
+			onConnectionFailure: this.onConnectionFailure,
 			telemetry: this.telemetry,
 		};
 
@@ -813,13 +830,6 @@ function getSize(headers: AxiosHeaders, data: unknown): number | undefined {
 	return sizeOf(data);
 }
 
-function getLogLevel(): HttpClientLogLevel {
-	const logLevelStr = vscode.workspace
-		.getConfiguration()
-		.get(
-			"coder.httpClientLogLevel",
-			HttpClientLogLevel[HttpClientLogLevel.BASIC],
-		)
-		.toUpperCase();
-	return HttpClientLogLevel[logLevelStr as keyof typeof HttpClientLogLevel];
+function getLogLevel() {
+	return readHttpClientLogLevel(vscode.workspace.getConfiguration());
 }
