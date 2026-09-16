@@ -142,8 +142,15 @@ describe("Commands.supportBundle", () => {
 
 		await commands.supportBundle(agentItem("dev"));
 
-		// The buffered below-level connection logs are flushed into the bundle.
-		expect(connectionLogBufferFlush).toHaveBeenCalledWith("support_bundle");
+		// The buffered below-level connection logs are replayed for the bundle,
+		// keeping the ring so a later failure flush still has them, and before the
+		// CLI runs so the channel has time to write them to disk.
+		expect(connectionLogBufferFlush).toHaveBeenCalledWith("support_bundle", {
+			retain: true,
+		});
+		expect(connectionLogBufferFlush.mock.invocationCallOrder[0]).toBeLessThan(
+			vi.mocked(cliExec.supportBundle).mock.invocationCallOrder[0],
+		);
 
 		expect(cliExec.supportBundle).toHaveBeenCalledWith(
 			expect.anything(),

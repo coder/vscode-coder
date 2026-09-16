@@ -489,6 +489,11 @@ export class Commands {
 					: [];
 
 				progress.report({ message: "Collecting diagnostics..." });
+				// Flush buffered below-level connection logs before the CLI runs so
+				// the channel has time to write them to disk; retain the ring so a
+				// later failure flush still replays them. Best-effort: the channel
+				// writes on its own schedule, so the tail may not land in this bundle.
+				this.connectionLogBuffer.flush("support_bundle", { retain: true });
 				await cliExec.supportBundle(env, workspaceId, {
 					outputPath: outputUri.fsPath,
 					agentName,
@@ -497,9 +502,6 @@ export class Commands {
 				});
 
 				progress.report({ message: "Adding VS Code logs..." });
-				// Flush buffered below-level connection logs so the bundle carries the
-				// detail leading up to a failure even without debug logging enabled.
-				this.connectionLogBuffer.flush("support_bundle");
 				await appendVsCodeLogs(
 					outputUri.fsPath,
 					{

@@ -36,9 +36,12 @@ function setup(level: number, capacity: number) {
 	const channel = { logLevel: level };
 	const buffer = new BufferingLogger(logger, channel, capacity);
 	// Ignore the pass-through calls, then return only what the flush replayed.
-	const flush = (reason = "r"): string[] => {
+	const flush = (
+		reason = "r",
+		options?: { readonly retain?: boolean },
+	): string[] => {
 		calls.length = 0;
-		buffer.flush(reason);
+		buffer.flush(reason, options);
 		return calls.map((c) => c.message);
 	};
 	return { buffer, calls, channel, flush };
@@ -242,5 +245,18 @@ describe("BufferingLogger", () => {
 		expect(
 			flush("back").some((l) => l.includes("buffered before going off")),
 		).toBe(true);
+	});
+
+	it("retains the ring on a snapshot flush so a later flush replays it again", () => {
+		const { buffer, flush } = setup(INFO, 10);
+
+		buffer.debug("snapshot me");
+		// A retained flush replays the entry but keeps it buffered.
+		expect(
+			flush("bundle", { retain: true }).some((l) => l.includes("snapshot me")),
+		).toBe(true);
+		// A following failure flush still replays the retained entry, then clears it.
+		expect(flush("failure").some((l) => l.includes("snapshot me"))).toBe(true);
+		expect(flush("again")).toHaveLength(0);
 	});
 });

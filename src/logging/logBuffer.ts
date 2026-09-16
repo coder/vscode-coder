@@ -31,7 +31,7 @@ const REPLAY_CHUNK = 100;
 
 /** Replays buffered below-level log entries on a connection failure. */
 export interface ConnectionLogBuffer {
-	flush(reason: string): void;
+	flush(reason: string, options?: { readonly retain?: boolean }): void;
 }
 
 interface LogEntry {
@@ -72,11 +72,15 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 	}
 
 	/**
-	 * Replay buffered entries into the sink and clear them. No-op when empty.
-	 * Clearing the buffer means a later flush only replays entries accumulated
-	 * since this one, so consecutive failures never duplicate entries.
+	 * Replay buffered entries into the sink. No-op when empty. Clears the ring by
+	 * default, so consecutive failures never replay the same entries twice; pass
+	 * `retain` for a snapshot flush (a support bundle) that must not disturb a
+	 * later failure flush.
 	 */
-	public flush(reason: string): void {
+	public flush(
+		reason: string,
+		options: { readonly retain?: boolean } = {},
+	): void {
 		// The channel writes nothing at Off. Keep the entries for the next flush;
 		// nothing new is recorded while Off.
 		if (this.channel.logLevel === 0) {
@@ -86,8 +90,10 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 			return;
 		}
 		const entries = this.entries;
-		this.entries = [];
-		this.chars = 0;
+		if (!options.retain) {
+			this.entries = [];
+			this.chars = 0;
+		}
 
 		const sink = this.replaySink();
 		this.inner[sink](
