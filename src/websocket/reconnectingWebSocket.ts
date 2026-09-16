@@ -111,6 +111,9 @@ function reduceState(
 
 export type SocketFactory<TData> = () => Promise<UnidirectionalStream<TData>>;
 
+/** Default failure callback for callers that do not observe connection failures. */
+const NOOP_CONNECTION_FAILURE = (): void => undefined;
+
 export interface ReconnectingWebSocketOptions {
 	initialBackoffMs?: number;
 	maxBackoffMs?: number;
@@ -131,15 +134,8 @@ export class ReconnectingWebSocket<
 	readonly #logger: Logger;
 	readonly #telemetry: WebSocketTelemetry;
 	readonly #options: Required<
-		Omit<
-			ReconnectingWebSocketOptions,
-			"telemetry" | "onConnectionFailure" | "route"
-		>
+		Omit<ReconnectingWebSocketOptions, "telemetry" | "route">
 	>;
-	readonly #onConnectionFailure?: (
-		reason: ConnectionStateReason,
-		route: string,
-	) => void;
 	readonly #eventHandlers: {
 		[K in WebSocketEventType]: Set<EventHandler<TData, K>>;
 	} = {
@@ -192,8 +188,9 @@ export class ReconnectingWebSocket<
 			maxBackoffMs: options.maxBackoffMs ?? 30000,
 			jitterFactor: options.jitterFactor ?? 0.1,
 			onCertificateRefreshNeeded: options.onCertificateRefreshNeeded,
+			onConnectionFailure:
+				options.onConnectionFailure ?? NOOP_CONNECTION_FAILURE,
 		};
-		this.#onConnectionFailure = options.onConnectionFailure;
 		this.#lastRoute = options.route;
 		this.#backoffMs = this.#options.initialBackoffMs;
 		this.#onDispose = onDispose;
@@ -316,7 +313,7 @@ export class ReconnectingWebSocket<
 		});
 		this.clearCurrentSocket(options.code, options.closeReason);
 		if (options.failure) {
-			this.#onConnectionFailure?.(reason, this.#route);
+			this.#options.onConnectionFailure(reason, this.#route);
 		}
 	}
 

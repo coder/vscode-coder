@@ -32,6 +32,7 @@ const REPLAY_CHUNK = 100;
 /** Replays buffered below-level log entries on a connection failure. */
 export interface ConnectionLogBuffer {
 	flush(reason: string, options?: { readonly retain?: boolean }): void;
+	readonly onConnectionFailure: (reason: string, route: string) => void;
 }
 
 interface LogEntry {
@@ -60,6 +61,18 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 	public readonly info = this.wrap("info");
 	public readonly warn = this.wrap("warn");
 	public readonly error = this.wrap("error");
+
+	/**
+	 * Flush the buffer on a terminal socket failure, keyed by the
+	 * `<reason> <route>` string Support greps for. Arrow property so it can be
+	 * passed by value as the socket's failure callback.
+	 */
+	public readonly onConnectionFailure = (
+		reason: string,
+		route: string,
+	): void => {
+		this.flush(`${reason} ${route}`);
+	};
 
 	public show(): void {
 		this.inner.show();

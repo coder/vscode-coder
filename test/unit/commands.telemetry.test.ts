@@ -121,7 +121,10 @@ function setup(options: SetupOptions = {}) {
 		getDuplicateWorkspaceIpc: () => ({}) as DuplicateWorkspaceIpc,
 		getSpeedtestPanelFactory: () => ({}) as SpeedtestPanelFactory,
 		getNetcheckPanelFactory: () => ({}) as NetcheckPanelFactory,
-		getConnectionLogBuffer: (): ConnectionLogBuffer => ({ flush: () => {} }),
+		getConnectionLogBuffer: (): ConnectionLogBuffer => ({
+			flush: () => {},
+			onConnectionFailure: () => {},
+		}),
 	} as ServiceContainer;
 
 	const extensionClient = {
