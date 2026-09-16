@@ -85,30 +85,12 @@ export class OneWayWebSocket<
 
 		// `ws` only exposes `.code`/`.reason` on the DOM-style CloseEvent from
 		// addEventListener; the `on()` emitter passes them positionally, which
-		// leaves `event.code` undefined for consumers.
-		switch (event) {
-			case "open":
-				this.#socket.addEventListener(
-					"open",
-					callback as EventHandler<TData, "open">,
-				);
-				break;
-			case "close":
-				this.#socket.addEventListener(
-					"close",
-					callback as EventHandler<TData, "close">,
-				);
-				break;
-			case "error":
-				this.#socket.addEventListener(
-					"error",
-					callback as EventHandler<TData, "error">,
-				);
-				break;
-			case "message":
-				// Handled above via the early return.
-				break;
-		}
+		// leaves `event.code` undefined for consumers. The per-event overloads
+		// force a cast for any of these, so one cast covers all three.
+		this.#socket.addEventListener(
+			event as "open",
+			callback as EventHandler<TData, "open">,
+		);
 	}
 
 	removeEventListener<TEvent extends WebSocketEventType>(
@@ -126,29 +108,10 @@ export class OneWayWebSocket<
 			return;
 		}
 
-		switch (event) {
-			case "open":
-				this.#socket.removeEventListener(
-					"open",
-					callback as EventHandler<TData, "open">,
-				);
-				break;
-			case "close":
-				this.#socket.removeEventListener(
-					"close",
-					callback as EventHandler<TData, "close">,
-				);
-				break;
-			case "error":
-				this.#socket.removeEventListener(
-					"error",
-					callback as EventHandler<TData, "error">,
-				);
-				break;
-			case "message":
-				// Handled above via the early return.
-				break;
-		}
+		this.#socket.removeEventListener(
+			event as "open",
+			callback as EventHandler<TData, "open">,
+		);
 	}
 
 	close(code?: number, reason?: string): void {
