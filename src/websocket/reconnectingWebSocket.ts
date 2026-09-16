@@ -146,7 +146,10 @@ export class ReconnectingWebSocket<
 	};
 
 	#currentSocket: UnidirectionalStream<TData> | null = null;
-	#lastRoute: string; // Cached route for logging when socket is closed
+	// Route to log while no socket is connected. Kept because the live URL
+	// diverges from the seeded route after an SSE fallback and after a redirect
+	// (followRedirects), so it is not simply the seeded value.
+	#lastRoute: string;
 	#backoffMs: number;
 	#reconnectTimeoutId: NodeJS.Timeout | null = null;
 	#state: ConnectionState = ConnectionState.IDLE;

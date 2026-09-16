@@ -25,7 +25,10 @@ import {
 	logResponse,
 } from "../logging/httpLogger";
 import { HttpRequestsTelemetry } from "../logging/httpRequestsTelemetry";
-import { type RequestConfigWithMeta } from "../logging/types";
+import {
+	type RequestConfigWithMeta,
+	type HttpClientLogLevel,
+} from "../logging/types";
 import { sizeOf } from "../logging/utils";
 import { AuthConfigTracker } from "../settings/authConfig";
 import { getHeaderCommand } from "../settings/headers";
@@ -291,30 +294,28 @@ export class CoderApi extends Api implements vscode.Disposable {
 		watchTargets: string[],
 		options?: ClientOptions,
 	) => {
-		return this.createReconnectingSocket(
-			"/api/v2/notifications/inbox/watch",
-			() =>
-				this.createOneWayWebSocket<GetInboxNotificationResponse>({
-					apiRoute: "/api/v2/notifications/inbox/watch",
-					searchParams: {
-						format: "plaintext",
-						templates: watchTemplates.join(","),
-						targets: watchTargets.join(","),
-					},
-					options,
-				}),
+		const apiRoute = "/api/v2/notifications/inbox/watch";
+		return this.createReconnectingSocket(apiRoute, () =>
+			this.createOneWayWebSocket<GetInboxNotificationResponse>({
+				apiRoute,
+				searchParams: {
+					format: "plaintext",
+					templates: watchTemplates.join(","),
+					targets: watchTargets.join(","),
+				},
+				options,
+			}),
 		);
 	};
 
 	watchWorkspace = async (workspace: Workspace, options?: ClientOptions) => {
-		return this.createReconnectingSocket(
-			`/api/v2/workspaces/${workspace.id}/watch-ws`,
-			() =>
-				this.createStreamWithSseFallback({
-					apiRoute: `/api/v2/workspaces/${workspace.id}/watch-ws`,
-					fallbackApiRoute: `/api/v2/workspaces/${workspace.id}/watch`,
-					options,
-				}),
+		const apiRoute = `/api/v2/workspaces/${workspace.id}/watch-ws`;
+		return this.createReconnectingSocket(apiRoute, () =>
+			this.createStreamWithSseFallback({
+				apiRoute,
+				fallbackApiRoute: `/api/v2/workspaces/${workspace.id}/watch`,
+				options,
+			}),
 		);
 	};
 
@@ -322,14 +323,13 @@ export class CoderApi extends Api implements vscode.Disposable {
 		agentId: WorkspaceAgent["id"],
 		options?: ClientOptions,
 	) => {
-		return this.createReconnectingSocket(
-			`/api/v2/workspaceagents/${agentId}/watch-metadata-ws`,
-			() =>
-				this.createStreamWithSseFallback({
-					apiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata-ws`,
-					fallbackApiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata`,
-					options,
-				}),
+		const apiRoute = `/api/v2/workspaceagents/${agentId}/watch-metadata-ws`;
+		return this.createReconnectingSocket(apiRoute, () =>
+			this.createStreamWithSseFallback({
+				apiRoute,
+				fallbackApiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata`,
+				options,
+			}),
 		);
 	};
 
@@ -830,6 +830,6 @@ function getSize(headers: AxiosHeaders, data: unknown): number | undefined {
 	return sizeOf(data);
 }
 
-function getLogLevel() {
+function getLogLevel(): HttpClientLogLevel {
 	return readHttpClientLogLevel(vscode.workspace.getConfiguration());
 }
