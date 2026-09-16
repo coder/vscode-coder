@@ -142,12 +142,14 @@ wraps the channel and keeps a bounded, in-memory ring of the entries that sit
 **below** the current level, which the channel would otherwise drop.
 
 When a WebSocket fails terminally, a workspace fails to open, or you collect a
-support bundle, the extension replays the ring into the channel. Each replayed
-line carries a `[buffered]` marker with its original timestamp and level, so it
-lands on disk and in the bundle. Transient reconnects and intentional teardown
-never flush, and neither does a handshake `401` (a 401 explains itself, and with
-OAuth a refresh reconnects the same socket). Nothing is recorded or flushed
-while the channel is at `Off`.
+support bundle, the extension replays the ring into the channel. The first
+physical line of each replayed entry carries a `[buffered]` marker with its
+original timestamp and level, and any continuation lines carry the bare marker.
+Capture is best-effort: the channel writes on its own schedule, so a bundle may
+miss the most recent lines, but a later failure flush still replays them.
+Transient reconnects and intentional teardown never flush, and neither does a
+handshake `401` (a 401 explains itself, and with OAuth a refresh reconnects the
+same socket). Nothing is recorded or flushed while the channel is at `Off`.
 
 The buffer size is set by `coder.connectionLogBuffer.size` (number of entries;
 `0` disables it) and lives in memory, so a hard kill or out-of-memory event

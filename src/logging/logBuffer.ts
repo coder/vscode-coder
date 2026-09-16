@@ -97,7 +97,7 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 
 		const sink = this.replaySink();
 		this.inner[sink](
-			`[buffered] connection failure (${reason}): replaying ${entries.length} buffered entries`,
+			`[buffered] replaying ${entries.length} buffered entries (${reason})`,
 		);
 		const lines = entries.map((entry) =>
 			`[buffered] ${new Date(entry.atMs).toISOString()} ${entry.level.toUpperCase()} ${entry.text}`.replaceAll(
@@ -121,7 +121,7 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 
 	/**
 	 * The least-verbose sink method that is still written at the current level,
-	 * so a flush is captured whatever the user's log level.
+	 * so replayed entries are persisted rather than dropped again.
 	 */
 	private replaySink(): ReplaySink {
 		const level = this.channel.logLevel;

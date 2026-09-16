@@ -199,7 +199,8 @@ describe("BufferingLogger", () => {
 		buffer.debug("first line\nsecond line", detail);
 		const lines = flush();
 
-		expect(lines[0]).toContain("connection failure (r)");
+		expect(lines[0]).toContain("replaying");
+		expect(lines[0]).toContain("(r)");
 		expect(lines[lines.length - 1]).toContain("end of buffered logs");
 
 		const replay = calls.find((c) => c.message.includes("first line"));

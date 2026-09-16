@@ -1094,9 +1094,7 @@ export class Remote {
 
 	// closeRemote ends the current remote session.
 	public async closeRemote() {
-		this.serviceContainer
-			.getConnectionLogBuffer()
-			.flush("workspace_open_failed");
+		this.serviceContainer.getConnectionLogBuffer().flush("remote_closed");
 		await vscode.commands.executeCommand("workbench.action.remote.close");
 	}
 
