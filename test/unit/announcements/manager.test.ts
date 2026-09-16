@@ -35,6 +35,7 @@ function appearance(messages: readonly string[] = []): AppearanceConfig {
 			message,
 			background_color: "#004852",
 		})),
+		codernauts_enabled: false,
 	};
 }
 
