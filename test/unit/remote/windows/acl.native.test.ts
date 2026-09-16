@@ -248,6 +248,7 @@ async function withAclBackup<T>(
 	}
 }
 
+/** Returns the ACL of a path. `icacls /save` writes the backup as UTF-16LE. */
 async function savedAcl(pathname: string): Promise<string> {
 	return withAclBackup(async (backup) => {
 		await execFile(system32("icacls.exe"), [pathname, "/save", backup]);
