@@ -5,6 +5,7 @@ coverage/**
 
 # Development files
 src/**
+assets/wsh/tsconfig.json
 test/**
 scripts/**
 **/*.ts

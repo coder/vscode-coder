@@ -1,7 +1,7 @@
 {
 	"overrides": [
 		{
-			"files": "*.jsonc",
+			"files": ["*.jsonc", "assets/wsh/acl.js"],
 			"options": {
 				"trailingComma": "none"
 			}

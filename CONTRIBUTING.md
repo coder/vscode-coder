@@ -87,6 +87,26 @@ command.
 Coder Remote periodically reads the `network-info-dir + "/" + matchingSSHPID`
 file to display network information.
 
+### Windows SSH config permissions
+
+Repair requires Windows Script Host, JScript, and ADSI to be allowed by policy.
+The extension does not request elevation or bypass policy. A standard user can
+repair files when they have access to read and change the DACL (`READ_CONTROL`
+and `WRITE_DAC`). If repair fails, it logs a warning and still attempts the SSH
+connection, which OpenSSH may then reject. Write and rename failures still stop
+setup. If the script fails after inheritance is disabled, copied grants remain
+until a successful retry; access is not reset to the parent's permissions.
+
+`assets/wsh/acl.js` ships as source in the universal VSIX and runs under Windows
+Script Host, so it uses ES3 syntax rather than Node.js. Its sibling
+`tsconfig.json` and `globals.d.ts` keep the WScript and ADSI types out of the
+extension's Node.js environment; `pnpm typecheck` covers both. Typechecking does
+not transpile the asset, so keep indexed loops: `for...of` fails the ES3 lint
+check. A typecheck is not a runtime compatibility check, so `acl.native.test.ts`
+drives the real `icacls.exe`, `cscript.exe`, and `ssh.exe` instead of mocks. It
+runs whenever the tests run on Windows, including x64 and ARM64 in CI, and needs
+the OpenSSH client installed.
+
 ## Other features
 
 The extension provides several sidebar panels:

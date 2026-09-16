@@ -67,6 +67,7 @@ import {
 	sshSupportsSetEnv,
 	type SshProperties,
 } from "./sshSupport";
+import { createFilePermissions } from "./windows/acl";
 import { WorkspaceStateMachine } from "./workspaceStateMachine";
 
 import type { Api } from "coder/site/src/api/api";
@@ -929,6 +930,8 @@ export class Remote {
 		const coderConfig = new SshConfig(
 			this.pathResolver.getSshConfigPath(safeHostname, hostEditorId(sshHost)),
 			this.logger,
+			undefined,
+			createFilePermissions(this.extensionContext.extensionPath),
 		);
 
 		// Options the user set themselves win the merge below, so they are exempt

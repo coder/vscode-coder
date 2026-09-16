@@ -77,6 +77,19 @@ export default defineConfig(
 		},
 	},
 
+	// Windows Script Host runs JScript with ES3 syntax and globals.
+	{
+		files: ["assets/wsh/acl.js"],
+		languageOptions: {
+			ecmaVersion: 3,
+			sourceType: "script",
+			globals: {
+				ActiveXObject: "readonly",
+				WScript: "readonly",
+			},
+		},
+	},
+
 	// Package.json linting.
 	packageJson.configs.recommended,
 	{
