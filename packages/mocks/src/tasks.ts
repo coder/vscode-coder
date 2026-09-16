@@ -114,6 +114,7 @@ export function template(overrides: Partial<Template> = {}): Template {
 		max_port_share_level: "public",
 		cors_behavior: "passthru",
 		use_classic_parameter_flow: false,
+		agents_allowed: true,
 		...overrides,
 	};
 }

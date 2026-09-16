@@ -31,6 +31,7 @@ function appearance(
 		docs_url: "",
 		service_banner: { enabled: false },
 		announcement_banners: [],
+		codernauts_enabled: false,
 		...overrides,
 	};
 }
