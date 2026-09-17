@@ -141,10 +141,11 @@ a `BufferingLogger` ([`src/logging/logBuffer.ts`](src/logging/logBuffer.ts))
 wraps the channel and keeps a bounded, in-memory ring of the entries that sit
 **below** the current level, which the channel would otherwise drop.
 
-When a WebSocket fails terminally, a workspace fails to open, or you collect a
-support bundle, the extension replays the ring into the channel. The first
-physical line of each replayed entry carries a `[buffered]` marker with its
-original timestamp and level, and any continuation lines carry the bare marker.
+When a WebSocket fails terminally, a remote session closes after a failed or
+canceled open, or you collect a support bundle, the extension replays the ring
+into the channel. The first physical line of each replayed entry carries a
+`[buffered]` marker with its original timestamp and level, and any continuation
+lines carry the bare marker.
 Capture is best-effort: the channel writes on its own schedule, so a bundle may
 miss the most recent lines, but a later failure flush still replays them.
 Transient reconnects and intentional teardown never flush, and neither does a
