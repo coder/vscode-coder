@@ -9,7 +9,7 @@ import {
 	parseCoderSshOptions,
 	parseSshConfig,
 	SshConfig,
-	type FilePermissions,
+	type ManagedPermissions,
 	type SshValues,
 	validateDeploymentSshOptions,
 } from "@/remote/sshConfig";
@@ -439,101 +439,139 @@ describe("persistence", () => {
 });
 
 describe("managed config permissions", () => {
-	/** Repair that fails for the paths the test names. Calls record the order. */
-	function permissions(failures: readonly string[] = []) {
+	const sibling = path.join(MANAGED_SSH_DIR, "sibling.conf");
+	const upperCase = path.join(MANAGED_SSH_DIR, "upper.CONF");
+	const siblings = { [sibling]: "Host sibling", [upperCase]: "Host upper" };
+	const existing = { [MANAGED_SSH_FILE_PATH]: "Host original" };
+	const anyTempFile = expect.stringContaining(TEMP_MARKER);
+
+	/** Repair that fails for the paths the test names. */
+	function permissions(...failures: readonly string[]): ManagedPermissions {
 		return {
-			secure: vi.fn((filePath: string): Promise<void> => {
-				if (failures.some((name) => filePath.includes(name))) {
-					return Promise.reject(FAILURE);
-				}
-				return Promise.resolve();
-			}),
+			prepareDirectory: vi.fn(() => Promise.resolve()),
+			secure: vi.fn((filePath: string) =>
+				failures.some((name) => filePath.includes(name))
+					? Promise.reject(FAILURE)
+					: Promise.resolve(),
+			),
 		};
 	}
 
 	function updateManaged(
-		secure: FilePermissions,
-		files: Record<string, string | null> = {},
+		acl: ManagedPermissions,
+		files: Record<string, string | null>,
 	) {
-		vol.fromJSON({ [MANAGED_SSH_FILE_PATH]: "Host original", ...files });
+		vol.fromJSON(files);
 		return new SshConfig(
 			MANAGED_SSH_FILE_PATH,
 			mockLogger,
 			fsPromises,
-			secure,
+			acl,
 		).update(BASE_SSH_VALUES);
 	}
 
-	const sibling = path.join(MANAGED_SSH_DIR, "failing.conf");
-	const later = path.join(MANAGED_SSH_DIR, "later.CONF");
-	const siblings = { [sibling]: "Host failing", [later]: "Host later" };
+	const securedPaths = (acl: ManagedPermissions) =>
+		vi.mocked(acl.secure).mock.calls.flat();
 
 	interface RepairCase {
 		name: string;
+		files: Record<string, string>;
 		failures: readonly string[];
+		secured: unknown[];
 		warnings: number;
 	}
 	it.each<RepairCase>([
-		{ name: "succeeds", failures: [], warnings: 0 },
-		{ name: "fails", failures: ["failing.conf", TEMP_MARKER], warnings: 2 },
-	])(
-		"repairs every Include match and the temp file when repair $name",
-		async ({ failures, warnings }) => {
-			const acl = permissions(failures);
-
-			await updateManaged(acl, siblings);
-
+		{
+			name: "rewriting an existing deployment",
+			files: { ...existing, ...siblings },
+			failures: [],
 			// The file being replaced is repaired too: the rename needs access to it.
-			expect(acl.secure.mock.calls.flat()).toEqual([
-				MANAGED_SSH_FILE_PATH,
-				sibling,
-				later,
-				expect.stringContaining(TEMP_MARKER),
-			]);
+			secured: [MANAGED_SSH_FILE_PATH, sibling, upperCase, anyTempFile],
+			warnings: 0,
+		},
+		{
+			name: "adding the first file of a new deployment",
+			files: siblings,
+			failures: [],
+			secured: [sibling, upperCase, anyTempFile],
+			warnings: 0,
+		},
+		{
+			name: "a sibling and the temp file cannot be repaired",
+			files: { ...existing, ...siblings },
+			failures: ["sibling.conf", TEMP_MARKER],
+			secured: [MANAGED_SSH_FILE_PATH, sibling, upperCase, anyTempFile],
+			warnings: 2,
+		},
+	])(
+		"repairs every Include match and the temp file when $name",
+		async ({ files, failures, secured, warnings }) => {
+			const acl = permissions(...failures);
+
+			await updateManaged(acl, files);
+
+			expect(acl.prepareDirectory).toHaveBeenCalledWith(MANAGED_SSH_DIR);
+			expect(securedPaths(acl)).toEqual(secured);
 			expect(
 				await fsPromises.readFile(MANAGED_SSH_FILE_PATH, "utf-8"),
 			).toContain("ProxyCommand some-command-here");
+			expect(await fsPromises.readFile(sibling, "utf-8")).toBe("Host sibling");
 			expect(mockLogger.warn).toHaveBeenCalledTimes(warnings);
 			expect(tempFiles()).toEqual([]);
 		},
 	);
 
-	it("repairs the temp file before it replaces the destination", async () => {
-		const acl = {
-			secure: vi.fn(async (filePath: string) => {
-				if (filePath.includes(TEMP_MARKER)) {
-					expect(await fsPromises.readFile(filePath, "utf-8")).toContain(
-						"ProxyCommand some-command-here",
-					);
-				}
-			}),
-		};
+	it("repairs the temp file before it replaces the config", async () => {
+		const acl = permissions();
+		let destinationDuringRepair: string | undefined;
+		vi.mocked(acl.secure).mockImplementation(async (filePath) => {
+			if (filePath.includes(TEMP_MARKER)) {
+				destinationDuringRepair = await fsPromises.readFile(
+					MANAGED_SSH_FILE_PATH,
+					"utf-8",
+				);
+			}
+		});
 
-		await updateManaged(acl);
+		await updateManaged(acl, existing);
 
-		expect(acl.secure).toHaveBeenCalledWith(
-			expect.stringContaining(TEMP_MARKER),
-		);
+		// Undefined would mean the temp file was never repaired at all.
+		expect(destinationDuringRepair).toBe("Host original");
 	});
 
-	it("preserves the config and reports a matching directory", async () => {
+	it("writes and repairs nothing when directory preparation fails", async () => {
+		const acl = permissions();
+		vi.mocked(acl.prepareDirectory).mockRejectedValueOnce(FAILURE);
+
+		await expect(
+			updateManaged(acl, { ...existing, ...siblings }),
+		).rejects.toThrow(FAILURE);
+
+		expect(acl.secure).not.toHaveBeenCalled();
+		expect(await fsPromises.readFile(MANAGED_SSH_FILE_PATH, "utf8")).toBe(
+			"Host original",
+		);
+		expect(tempFiles()).toEqual([]);
+	});
+
+	it("preserves the config and reports a directory matching the Include", async () => {
 		const directory = path.join(MANAGED_SSH_DIR, "directory.conf");
 
 		await expect(
-			updateManaged(permissions(), { [directory]: null }),
+			updateManaged(permissions(), { ...existing, [directory]: null }),
 		).rejects.toThrow(`SSH config entry ${directory} is not a regular file`);
 
 		expect(await fsPromises.readFile(MANAGED_SSH_FILE_PATH, "utf-8")).toBe(
 			"Host original",
 		);
-		expect((await fsPromises.stat(directory)).isDirectory()).toBe(true);
+		expect(tempFiles()).toEqual([]);
 	});
 
 	it("warns and still writes the config when enumeration fails", async () => {
 		const error = new Error("cannot enumerate");
 		vi.mocked(fsPromises.readdir).mockRejectedValueOnce(error);
 
-		await updateManaged(permissions());
+		await updateManaged(permissions(), existing);
 
 		expect(await fsPromises.readFile(MANAGED_SSH_FILE_PATH, "utf-8")).toContain(
 			"ProxyCommand some-command-here",
@@ -545,7 +583,7 @@ describe("managed config permissions", () => {
 	});
 
 	it("neither repairs nor enumerates without injected permissions", async () => {
-		vol.fromJSON({ [MANAGED_SSH_FILE_PATH]: "Host original" });
+		vol.fromJSON(existing);
 
 		await new SshConfig(MANAGED_SSH_FILE_PATH, mockLogger, fsPromises).update(
 			BASE_SSH_VALUES,

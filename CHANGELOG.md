@@ -21,11 +21,10 @@
   replay the buffered connection logs instead. Close codes never reached the
   reconnect logic, so these closes retried forever. Server-initiated normal
   closes (`1000`/`1001`) keep reconnecting.
-- Repair permissions on Coder-managed Windows SSH config files, including other
-  deployments' files matched by the shared Include. This fixes connections blocked
-  by inherited permissions or stale account access in an unrelated config. The
-  main SSH config and directory permissions are left unchanged. If repair fails,
-  log a warning and still attempt the SSH connection.
+- Repair permissions on the Windows SSH config files the extension generates,
+  so connections stop failing with "Bad owner or permissions". Only you,
+  SYSTEM, and Administrators keep access to them. The extension leaves your own
+  SSH config untouched and needs no admin rights.
 
 ## [v1.16.3](https://github.com/coder/vscode-coder/releases/tag/v1.16.3) 2026-09-14
 

@@ -89,23 +89,38 @@ file to display network information.
 
 ### Windows SSH config permissions
 
-Repair requires Windows Script Host, JScript, and ADSI to be allowed by policy.
-The extension does not request elevation or bypass policy. A standard user can
-repair files when they have access to read and change the DACL (`READ_CONTROL`
-and `WRITE_DAC`). If repair fails, it logs a warning and still attempts the SSH
-connection, which OpenSSH may then reject. Write and rename failures still stop
-setup. If the script fails after inheritance is disabled, copied grants remain
-until a successful retry; access is not reset to the parent's permissions.
+Windows files inherit their permissions from the directory they live in, so a
+config the extension generates under `%APPDATA%\coder.coder-remote\ssh` can end
+up readable by other accounts. OpenSSH rejects such a file with "Bad owner or
+permissions" and skips the whole `Include`, which blocks every Coder host, not
+just the one it came from.
 
-`assets/wsh/acl.js` ships as source in the universal VSIX and runs under Windows
-Script Host, so it uses ES3 syntax rather than Node.js. Its sibling
-`tsconfig.json` and `globals.d.ts` keep the WScript and ADSI types out of the
-extension's Node.js environment; `pnpm typecheck` covers both. Typechecking does
-not transpile the asset, so keep indexed loops: `for...of` fails the ES3 lint
-check. A typecheck is not a runtime compatibility check, so `acl.native.test.ts`
-drives the real `icacls.exe`, `cscript.exe`, and `ssh.exe` instead of mocks. It
-runs whenever the tests run on Windows, including x64 and ARM64 in CI, and needs
-the OpenSSH client installed.
+Before each managed write, `src/remote/windowsAcl.ts` locks the directory down
+and lets its files inherit from it:
+
+| Step                                                     | Command                                              |
+| -------------------------------------------------------- | ---------------------------------------------------- |
+| Read the current user's SID                              | `whoami.exe /user /fo csv /nh`                       |
+| Clear the directory's own grants                         | `icacls.exe <dir> /reset`                            |
+| Grant that user, SYSTEM, and Administrators full control | `icacls.exe <dir> /inheritance:r /grant:r <trustee>` |
+| Clear each `*.conf` file so it inherits the directory    | `icacls.exe <file> /reset`                           |
+
+Resetting every `*.conf` file, not only the one being written, also repairs
+files left behind by other deployments and editors.
+
+Worth knowing:
+
+- Like VS Code, the code checks exit codes but never reads ACLs back. It needs
+  no script, native module, ownership change, or elevation, and it leaves the
+  user's own SSH config alone.
+- Links and non-files are rejected before the repair, because inheritable
+  grants reach children even without `/T`. That stops mistakes, not an attacker
+  racing the check.
+- The repair is not atomic: a failure after `/reset` can leave the directory
+  with its parent's grants.
+
+`windowsAcl.native.test.ts` drives the real `icacls.exe`, `whoami.exe`, and
+OpenSSH. Run it unelevated as well as in CI to catch privilege assumptions.
 
 ## Other features
 

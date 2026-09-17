@@ -35,8 +35,12 @@ export interface SshValues {
 	SetEnv?: string;
 }
 
-/** Restricts a written file to its owner. Managed fragments only. */
-export interface FilePermissions {
+/**
+ * Restricts the Coder-managed config directory and the files it generates.
+ * A config without one is not Coder-managed, so it is written untouched.
+ */
+export interface ManagedPermissions {
+	prepareDirectory(directory: string): Promise<void>;
 	secure(filePath: string): Promise<void>;
 }
 
@@ -308,13 +312,13 @@ export class SshConfig {
 	private readonly logger: Logger;
 	private raw: string | undefined;
 	/** Marks this file as Coder-managed; absent for the user's own config. */
-	private readonly permissions: FilePermissions | undefined;
+	private readonly permissions: ManagedPermissions | undefined;
 
 	constructor(
 		filePath: string,
 		logger: Logger,
 		fileSystem: FileSystem = defaultFileSystem,
-		permissions?: FilePermissions,
+		permissions?: ManagedPermissions,
 	) {
 		this.filePath = filePath;
 		this.logger = logger;
@@ -461,6 +465,8 @@ export class SshConfig {
 			mode: 0o700,
 			recursive: true,
 		});
+		// Must come before any file reset or temporary write in this directory.
+		await this.permissions?.prepareDirectory(dirName);
 		await this.repairIncludedFiles(dirName);
 		const tempPath = tempFilePath(
 			`${dirName}/.${fileName}`,
@@ -483,7 +489,7 @@ export class SshConfig {
 		}
 	}
 
-	/** Repair direct Include matches; one unreadable sibling can block any host. */
+	/** Repair every direct Include match; one unsafe sibling blocks every host. */
 	private async repairIncludedFiles(dirName: string): Promise<void> {
 		if (!this.permissions) return;
 		const entries = await this.fileSystem
@@ -498,8 +504,8 @@ export class SshConfig {
 		for (const entry of entries) {
 			if (!entry.name.toLowerCase().endsWith(SSH_CONFIG_EXT)) continue;
 			const filePath = path.join(dirName, entry.name);
-			// OpenSSH opens every Include match, including directories, before connecting.
-			// https://github.com/PowerShell/openssh-portable/blob/latestw_all/readconf.c
+			// On Windows, fopen fails on a directory, so OpenSSH aborts the whole
+			// Include. No ACL change fixes that, so report it instead.
 			if (!entry.isFile()) {
 				throw new Error(
 					`SSH config entry ${filePath} is not a regular file. Move or rename it so it no longer matches *.conf, then reconnect.`,
@@ -509,7 +515,7 @@ export class SshConfig {
 		}
 	}
 
-	/** Create an exclusive temporary file, preserving any preexisting path. */
+	/** Create the temporary file exclusively, leaving any preexisting path alone. */
 	private async writeTemp(tempPath: string, mode: number): Promise<void> {
 		try {
 			await this.fileSystem.writeFile(tempPath, this.getRaw(), {
@@ -518,7 +524,7 @@ export class SshConfig {
 				mode,
 			});
 		} catch (err) {
-			// EEXIST means the path was not created by this write and must not be deleted.
+			// On EEXIST this write did not create the path, so it must not delete it.
 			if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
 				await this.discardTemp(tempPath);
 			}
