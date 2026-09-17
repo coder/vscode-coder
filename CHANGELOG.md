@@ -15,10 +15,12 @@
   connection failures without asking you to reproduce with debug logging on. Set
   to `0` to disable.
 
-### Changed
+### Fixed
 
-- Reconnect after server-initiated normal WebSocket closes (`1000`/`1001`)
-  instead of parking the socket.
+- Stop retrying after an unrecoverable WebSocket close (`1002`/`1003`) and
+  replay the buffered connection logs instead. Close codes never reached the
+  reconnect logic, so these closes retried forever. Server-initiated normal
+  closes (`1000`/`1001`) keep reconnecting.
 
 ## [v1.16.3](https://github.com/coder/vscode-coder/releases/tag/v1.16.3) 2026-09-14
 
