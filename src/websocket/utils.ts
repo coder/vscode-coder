@@ -27,3 +27,21 @@ export function rawDataToString(data: RawData): string {
 		return new TextDecoder().decode(data);
 	}
 }
+
+/**
+ * Parses the HTTP status carried by a failed WebSocket or SSE handshake.
+ *
+ * `ws` rejects with `Unexpected server response: <code>` and `eventsource`
+ * with `Non-200 status code (<code>)`. Matching the phrase before the digits
+ * keeps a host/port such as `127.0.0.1:4040` from masquerading as a status
+ * code.
+ */
+const HANDSHAKE_STATUS =
+	/(?:unexpected server response:|non-200 status code \()\s*(\d{3})/i;
+
+/** HTTP status from a failed `ws` or `eventsource` handshake, or `undefined`. */
+export function handshakeStatus(error: unknown): number | undefined {
+	const message = (error as { message?: string }).message || String(error);
+	const match = HANDSHAKE_STATUS.exec(message);
+	return match ? Number(match[1]) : undefined;
+}

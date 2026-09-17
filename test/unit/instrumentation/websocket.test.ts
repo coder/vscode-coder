@@ -104,7 +104,7 @@ describe("WebSocketTelemetry", () => {
 			const { ws, sink } = setup();
 
 			ws.opened("/api/test");
-			ws.dropped("normal_close");
+			ws.dropped("unexpected_close");
 			ws.dropped("error");
 
 			expect(sink.eventsNamed("connection.dropped")).toHaveLength(1);

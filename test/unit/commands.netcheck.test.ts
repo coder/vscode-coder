@@ -39,6 +39,7 @@ function setup(options: { extensionBaseUrl?: string } = {}) {
 		getDuplicateWorkspaceIpc: () => ({}),
 		getSpeedtestPanelFactory: () => ({}),
 		getNetcheckPanelFactory: () => ({}) as NetcheckPanelFactory,
+		getConnectionLogBuffer: () => ({ flush: () => {} }),
 	} as unknown as ServiceContainer;
 
 	const commands = new Commands(

@@ -215,6 +215,13 @@
 					"minimum": 0,
 					"default": 250
 				},
+				"coder.connectionLogBuffer.size": {
+					"markdownDescription": "Maximum number of log entries below the Coder output channel's log level to keep in memory. When a connection fails terminally or you collect a support bundle, the extension replays them into the channel so a bundle can carry the detail leading up to the failure without debug logging enabled beforehand. Capture is best-effort, since the channel writes on its own schedule. Set to `0` to disable.",
+					"type": "number",
+					"minimum": 0,
+					"maximum": 10000,
+					"default": 1000
+				},
 				"coder.httpClientLogLevel": {
 					"markdownDescription": "Controls the verbosity of HTTP client logging. This affects what details are logged for each HTTP request and response.",
 					"type": "string",

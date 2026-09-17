@@ -16,14 +16,12 @@ export type ConnectionStateReason =
 	| "unrecoverable_http"
 	| "certificate_error"
 	| "connection_error"
-	| "normal_close"
 	| "unexpected_close";
 
 export type ConnectionDropCause =
 	| "manual_disconnect"
 	| "replaced"
 	| "unrecoverable_close"
-	| "normal_close"
 	| "unexpected_close"
 	| "disposed"
 	| "error";

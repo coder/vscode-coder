@@ -8,10 +8,11 @@ import {
 
 import {
 	WebSocketCloseCode,
-	NORMAL_CLOSURE_CODES,
+	HttpStatusCode,
 	UNRECOVERABLE_WS_CLOSE_CODES,
 	UNRECOVERABLE_HTTP_CODES,
 } from "./codes";
+import { handshakeStatus } from "./utils";
 
 import type { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 
@@ -110,13 +111,20 @@ function reduceState(
 
 export type SocketFactory<TData> = () => Promise<UnidirectionalStream<TData>>;
 
+/** Default failure callback for callers that do not observe connection failures. */
+const NOOP_CONNECTION_FAILURE = (): void => undefined;
+
 export interface ReconnectingWebSocketOptions {
 	initialBackoffMs?: number;
 	maxBackoffMs?: number;
 	jitterFactor?: number;
 	telemetry: TelemetryReporter;
+	/** API route (pathname) of the socket, used to seed logging before the first connect resolves. */
+	route: string;
 	/** Callback invoked when a refreshable certificate error is detected. Returns true if refresh succeeded. */
 	onCertificateRefreshNeeded: () => Promise<boolean>;
+	/** Callback invoked when the connection fails terminally (not a transient drop). */
+	onConnectionFailure?: (reason: ConnectionStateReason, route: string) => void;
 }
 
 export class ReconnectingWebSocket<
@@ -125,7 +133,9 @@ export class ReconnectingWebSocket<
 	readonly #socketFactory: SocketFactory<TData>;
 	readonly #logger: Logger;
 	readonly #telemetry: WebSocketTelemetry;
-	readonly #options: Required<Omit<ReconnectingWebSocketOptions, "telemetry">>;
+	readonly #options: Required<
+		Omit<ReconnectingWebSocketOptions, "telemetry" | "route">
+	>;
 	readonly #eventHandlers: {
 		[K in WebSocketEventType]: Set<EventHandler<TData, K>>;
 	} = {
@@ -136,7 +146,10 @@ export class ReconnectingWebSocket<
 	};
 
 	#currentSocket: UnidirectionalStream<TData> | null = null;
-	#lastRoute = "unknown"; // Cached route for logging when socket is closed
+	// Route to log while no socket is connected. Kept because the live URL
+	// diverges from the seeded route after an SSE fallback and after a redirect
+	// (followRedirects), so it is not simply the seeded value.
+	#lastRoute: string;
 	#backoffMs: number;
 	#reconnectTimeoutId: NodeJS.Timeout | null = null;
 	#state: ConnectionState = ConnectionState.IDLE;
@@ -178,7 +191,10 @@ export class ReconnectingWebSocket<
 			maxBackoffMs: options.maxBackoffMs ?? 30000,
 			jitterFactor: options.jitterFactor ?? 0.1,
 			onCertificateRefreshNeeded: options.onCertificateRefreshNeeded,
+			onConnectionFailure:
+				options.onConnectionFailure ?? NOOP_CONNECTION_FAILURE,
 		};
+		this.#lastRoute = options.route;
 		this.#backoffMs = this.#options.initialBackoffMs;
 		this.#onDispose = onDispose;
 	}
@@ -282,7 +298,13 @@ export class ReconnectingWebSocket<
 	private disconnectWithReason(
 		reason: ConnectionStateReason,
 		cause: ConnectionDropCause,
-		options: { code?: number; closeReason?: string; error?: unknown } = {},
+		options: {
+			code?: number;
+			closeReason?: string;
+			error?: unknown;
+			/** Flush the connection log buffer: a genuine, surfaced failure. */
+			failure?: boolean;
+		} = {},
 	): void {
 		if (!this.#dispatch({ type: "DISCONNECT" }, reason)) {
 			return;
@@ -293,6 +315,9 @@ export class ReconnectingWebSocket<
 			error: options.error,
 		});
 		this.clearCurrentSocket(options.code, options.closeReason);
+		if (options.failure) {
+			this.#options.onConnectionFailure(reason, this.#route);
+		}
 	}
 
 	public close(code?: number, reason?: string): void {
@@ -396,24 +421,21 @@ export class ReconnectingWebSocket<
 
 		if (UNRECOVERABLE_WS_CLOSE_CODES.has(event.code)) {
 			this.#logger.error(
-				`WebSocket connection closed with unrecoverable error code ${event.code}`,
+				`WebSocket connection closed with unrecoverable error code ${event.code} for ${this.#route}`,
 			);
 			this.disconnectWithReason("unrecoverable_close", "unrecoverable_close", {
 				code: event.code,
 				closeReason: event.reason,
 				error: toCloseEventError(event),
+				failure: true,
 			});
 			return;
 		}
 
-		if (NORMAL_CLOSURE_CODES.has(event.code)) {
-			this.disconnectWithReason("normal_close", "normal_close", {
-				code: event.code,
-				closeReason: event.reason,
-			});
-			return;
-		}
-
+		// Every close that reaches here is server-initiated: intentional
+		// disconnect()/close() dispatch first and return early above. Normal
+		// codes such as coderd's liveness 1001 or a shutdown 1000 must reconnect,
+		// so they fall through to the backoff retry below.
 		this.scheduleReconnect("unexpected_close", "unexpected_close", {
 			code: event.code,
 			error: toCloseEventError(event),
@@ -515,12 +537,18 @@ export class ReconnectingWebSocket<
 			return;
 		}
 
-		if (this.isUnrecoverableHttpError(error)) {
+		const unrecoverableStatus = this.unrecoverableHttpStatus(error);
+		if (unrecoverableStatus !== undefined) {
 			this.#logger.error(
-				`Unrecoverable HTTP error during connection for ${this.#route}`,
+				`Unrecoverable HTTP error (${unrecoverableStatus}) during connection for ${this.#route}`,
 				error,
 			);
-			this.disconnectWithReason("unrecoverable_http", "error", { error });
+			// A 401 explains itself, and with OAuth a refresh reconnects the same
+			// socket, so it never flushes.
+			this.disconnectWithReason("unrecoverable_http", "error", {
+				error,
+				failure: unrecoverableStatus !== HttpStatusCode.UNAUTHORIZED,
+			});
 			return;
 		}
 
@@ -530,7 +558,10 @@ export class ReconnectingWebSocket<
 			if (await this.handleClientCertificateError(certError)) {
 				this.#reconnectInternal("certificate_refresh");
 			} else {
-				this.disconnectWithReason("certificate_error", "error", { error });
+				this.disconnectWithReason("certificate_error", "error", {
+					error,
+					failure: true,
+				});
 			}
 			return;
 		}
@@ -540,16 +571,15 @@ export class ReconnectingWebSocket<
 	}
 
 	/**
-	 * Check if an error message contains an unrecoverable HTTP status code.
+	 * Returns the unrecoverable HTTP status carried by a failed handshake, or
+	 * `undefined`.
 	 */
-	private isUnrecoverableHttpError(error: unknown): boolean {
-		const message = (error as { message?: string }).message || String(error);
-		for (const code of UNRECOVERABLE_HTTP_CODES) {
-			if (message.includes(String(code))) {
-				return true;
-			}
+	private unrecoverableHttpStatus(error: unknown): number | undefined {
+		const status = handshakeStatus(error);
+		if (status === undefined) {
+			return undefined;
 		}
-		return false;
+		return UNRECOVERABLE_HTTP_CODES.has(status) ? status : undefined;
 	}
 
 	private dispose(code?: number, reason?: string): void {

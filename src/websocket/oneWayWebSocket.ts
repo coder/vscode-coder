@@ -80,10 +80,18 @@ export class OneWayWebSocket<
 
 			this.#socket.on("message", wrapped);
 			this.#messageCallbacks.set(messageCallback, wrapped);
-		} else {
-			// For other events, cast and add directly
-			this.#socket.on(event, callback);
+			return;
 		}
+
+		// `ws` only exposes `.code`/`.reason` on the DOM-style CloseEvent from
+		// addEventListener; the `on()` emitter passes them positionally, which
+		// leaves `event.code` undefined for consumers. TypeScript cannot correlate
+		// `event` with `callback` across two parameters, so a cast is needed either
+		// way, and `ws` dispatches on the event name, so one cast covers all three.
+		this.#socket.addEventListener(
+			event as "open",
+			callback as EventHandler<TData, "open">,
+		);
 	}
 
 	removeEventListener<TEvent extends WebSocketEventType>(
@@ -98,9 +106,13 @@ export class OneWayWebSocket<
 				this.#socket.off("message", wrapper);
 				this.#messageCallbacks.delete(messageCallback);
 			}
-		} else {
-			this.#socket.off(event, callback);
+			return;
 		}
+
+		this.#socket.removeEventListener(
+			event as "open",
+			callback as EventHandler<TData, "open">,
+		);
 	}
 
 	close(code?: number, reason?: string): void {

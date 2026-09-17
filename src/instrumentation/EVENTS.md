@@ -428,7 +428,7 @@ Emitted by `WebSocketTelemetry`.
 These events share one value set, **ConnectionStateReason**: `initial_connect`,
 `manual_reconnect`, `certificate_refresh`, `scheduled_reconnect`, `open`,
 `disconnect`, `dispose`, `unrecoverable_close`, `unrecoverable_http`,
-`certificate_error`, `connection_error`, `normal_close`, `unexpected_close`.
+`certificate_error`, `connection_error`, `unexpected_close`.
 
 ### Logs
 
@@ -451,11 +451,11 @@ These events share one value set, **ConnectionStateReason**: `initial_connect`,
 Emitted as an error log (with the `error` block) when a socket error caused
 the drop.
 
-| Attribute                              | Values                                                                                                          |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `cause`                                | `manual_disconnect`, `replaced`, `unrecoverable_close`, `normal_close`, `unexpected_close`, `disposed`, `error` |
-| `close_code`                           | WebSocket close code (when known)                                                                               |
-| `connection_duration_ms` (measurement) | time the connection was open                                                                                    |
+| Attribute                              | Values                                                                                          |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `cause`                                | `manual_disconnect`, `replaced`, `unrecoverable_close`, `unexpected_close`, `disposed`, `error` |
+| `close_code`                           | WebSocket close code (when known)                                                               |
+| `connection_duration_ms` (measurement) | time the connection was open                                                                    |
 
 #### `connection.reconnect_resolved`
 

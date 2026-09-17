@@ -5,6 +5,23 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Added
+
+- Add `coder.connectionLogBuffer.size` to keep recent below-level Coder output
+  channel entries in memory and replay them into the channel when a connection
+  fails terminally or you collect a support bundle, so Support can diagnose
+  connection failures without asking you to reproduce with debug logging on. Set
+  to `0` to disable.
+
+### Fixed
+
+- Stop retrying after an unrecoverable WebSocket close (`1002`/`1003`) and
+  replay the buffered connection logs instead. Close codes never reached the
+  reconnect logic, so these closes retried forever. Server-initiated normal
+  closes (`1000`/`1001`) keep reconnecting.
+
 ## [v1.16.3](https://github.com/coder/vscode-coder/releases/tag/v1.16.3) 2026-09-14
 
 ### Changed

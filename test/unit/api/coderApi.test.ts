@@ -37,6 +37,7 @@ import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
 } from "@/telemetry/reporter";
+import { WebSocketCloseCode } from "@/websocket/codes";
 import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
 
 import {
@@ -114,8 +115,15 @@ describe("CoderApi", () => {
 		url = CODER_URL,
 		token = AXIOS_TOKEN,
 		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
+		onConnectionFailure?: (reason: string) => void,
 	) => {
-		return CoderApi.create(url, token, mockLogger, telemetry);
+		return CoderApi.create(
+			url,
+			token,
+			mockLogger,
+			telemetry,
+			onConnectionFailure,
+		);
 	};
 
 	beforeEach(() => {
@@ -457,15 +465,8 @@ describe("CoderApi", () => {
 
 		beforeEach(() => {
 			api = createApi(CODER_URL, AXIOS_TOKEN);
-			// createOneWayWebSocket waits for open, so we need to fire it
-			const mockWs = createMockWebSocket(wsUrl, {
-				on: vi.fn((event, handler) => {
-					if (event === "open") {
-						setImmediate(() => handler());
-					}
-					return mockWs as Ws;
-				}),
-			});
+			// createOneWayWebSocket waits for open, which the mock fires automatically.
+			const mockWs = createMockWebSocket(wsUrl);
 			setupWebSocketMock(mockWs);
 		});
 
@@ -574,6 +575,37 @@ describe("CoderApi", () => {
 		});
 	});
 
+	describe("connection failure callback", () => {
+		it("invokes onConnectionFailure on a terminal socket failure", async () => {
+			const onConnectionFailure = vi.fn();
+			const failingApi = createApi(
+				CODER_URL,
+				AXIOS_TOKEN,
+				NOOP_TELEMETRY_REPORTER,
+				onConnectionFailure,
+			);
+			const mockWs = createMockWebSocket(
+				`wss://${CODER_URL.replace("https://", "")}/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
+			);
+			setupWebSocketMock(mockWs);
+
+			const connection = await failingApi.watchAgentMetadata(AGENT_ID);
+
+			// An unrecoverable close code is a terminal failure, not a retry.
+			mockWs.fireClose({
+				code: WebSocketCloseCode.PROTOCOL_ERROR,
+				reason: "Unrecoverable",
+				wasClean: false,
+			});
+
+			expect(onConnectionFailure).toHaveBeenCalledWith(
+				"unrecoverable_close",
+				`/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
+			);
+			connection.close();
+		});
+	});
+
 	describe("SSE Fallback", () => {
 		beforeEach(() => {
 			api = createApi();
@@ -586,14 +618,6 @@ describe("CoderApi", () => {
 		it("uses WebSocket when no errors occur", async () => {
 			const mockWs = createMockWebSocket(
 				`wss://${CODER_URL.replace("https://", "")}/api/v2/workspaceagents/${AGENT_ID}/watch-metadata`,
-				{
-					on: vi.fn((event, handler) => {
-						if (event === "open") {
-							setImmediate(() => handler());
-						}
-						return mockWs as Ws;
-					}),
-				},
 			);
 			setupWebSocketMock(mockWs);
 
@@ -620,17 +644,10 @@ describe("CoderApi", () => {
 			const mockWs = createMockWebSocket(
 				`wss://${CODER_URL.replace("https://", "")}/api/v2/test`,
 				{
-					on: vi.fn((event: string, handler: (e: unknown) => void) => {
-						if (event === "error") {
-							setImmediate(() => {
-								handler({
-									error: new Error("404 Not Found"),
-									message: "404 Not Found",
-								});
-							});
-						}
-						return mockWs as Ws;
-					}),
+					connectError: {
+						error: new Error("Unexpected server response: 404"),
+						message: "Unexpected server response: 404",
+					},
 				},
 			);
 			setupWebSocketMock(mockWs);
@@ -667,14 +684,9 @@ describe("CoderApi", () => {
 				vi.mocked(Ws).mockImplementation(function () {
 					wsAttempts++;
 					const mockWs = createMockWebSocket("wss://test", {
-						on: vi.fn((event: string, handler: (e: unknown) => void) => {
-							if (event === "error") {
-								setImmediate(() =>
-									handler({ error: new Error("Something 404") }),
-								);
-							}
-							return mockWs as Ws;
-						}),
+						connectError: {
+							error: new Error("Unexpected server response: 404"),
+						},
 					});
 					return mockWs as Ws;
 				});
@@ -701,22 +713,13 @@ describe("CoderApi", () => {
 	});
 
 	const setupAutoOpeningWebSocket = () => {
-		const sockets: Array<Partial<Ws>> = [];
-		const handlers: Record<string, (...args: unknown[]) => void> = {};
+		const sockets: MockWebSocket[] = [];
 		vi.mocked(Ws).mockImplementation(function (url: string | URL) {
-			const mockWs = createMockWebSocket(String(url), {
-				on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
-					handlers[event] = handler;
-					if (event === "open") {
-						setImmediate(() => handler());
-					}
-					return mockWs as Ws;
-				}),
-			});
+			const mockWs = createMockWebSocket(String(url));
 			sockets.push(mockWs);
 			return mockWs as Ws;
 		});
-		return { sockets, handlers };
+		return { sockets };
 	};
 
 	describe("Reconnection on Host/Token Changes", () => {
@@ -852,14 +855,7 @@ describe("CoderApi", () => {
 			async ({ eventMessage, expectedMessage }) => {
 				api = createApi();
 				const mockWs = createMockWebSocket("wss://test", {
-					on: vi.fn((event: string, handler: (e: unknown) => void) => {
-						if (event === "error") {
-							setImmediate(() =>
-								handler({ error: undefined, message: eventMessage }),
-							);
-						}
-						return mockWs as Ws;
-					}),
+					connectError: { error: undefined, message: eventMessage },
 				});
 				setupWebSocketMock(mockWs);
 
@@ -1050,14 +1046,7 @@ describe("CoderApi", () => {
 		it("disposes all tracked reconnecting sockets", async () => {
 			const sockets: Array<Partial<Ws>> = [];
 			vi.mocked(Ws).mockImplementation(function (url: string | URL) {
-				const mockWs = createMockWebSocket(String(url), {
-					on: vi.fn((event, handler) => {
-						if (event === "open") {
-							setImmediate(() => handler());
-						}
-						return mockWs as Ws;
-					}),
-				});
+				const mockWs = createMockWebSocket(String(url));
 				sockets.push(mockWs);
 				return mockWs as Ws;
 			});
@@ -1123,12 +1112,12 @@ describe("CoderApi", () => {
 
 		it("does not reconnect sockets in AWAITING_RETRY state when config changes", async () => {
 			mockConfig.set("coder.insecure", false);
-			const { sockets, handlers } = setupAutoOpeningWebSocket();
+			const { sockets } = setupAutoOpeningWebSocket();
 			api = createApi(CODER_URL, AXIOS_TOKEN);
 			await api.watchAgentMetadata(AGENT_ID);
 
 			// Trigger close with abnormal code to put socket in AWAITING_RETRY
-			handlers["close"]?.({ code: 1006, reason: "Abnormal closure" });
+			sockets.at(-1)?.fireClose({ code: 1006, reason: "Abnormal closure" });
 			await tick();
 
 			mockConfig.set("coder.insecure", true);
@@ -1145,13 +1134,13 @@ describe("CoderApi", () => {
 			"reconnects sockets in DISCONNECTED state when %s changes",
 			async (setting, before, after) => {
 				mockConfig.set(setting, before);
-				const { sockets, handlers } = setupAutoOpeningWebSocket();
+				const { sockets } = setupAutoOpeningWebSocket();
 				api = createApi(CODER_URL, AXIOS_TOKEN);
 				await api.watchAgentMetadata(AGENT_ID);
 				await tick();
 
 				// Trigger close with unrecoverable code to put socket in DISCONNECTED
-				handlers["close"]?.({ code: 1002, reason: "Protocol error" });
+				sockets.at(-1)?.fireClose({ code: 1002, reason: "Protocol error" });
 				await tick();
 
 				mockConfig.set(setting, after);
@@ -1178,17 +1167,68 @@ const mockAdapterImpl = vi.hoisted(
 	},
 );
 
+type MockWebSocket = Partial<Ws> & {
+	fireClose: (event: {
+		code: number;
+		reason: string;
+		wasClean?: boolean;
+	}) => void;
+};
+
+interface MockWebSocketOptions {
+	/** Fire this error on connect instead of "open" to simulate a handshake failure. */
+	connectError?: { error?: Error; message?: string };
+}
+
 function createMockWebSocket(
 	url: string,
-	overrides?: Partial<Ws>,
-): Partial<Ws> {
-	return {
-		url,
-		on: vi.fn(),
-		off: vi.fn(),
-		close: vi.fn(),
-		...overrides,
+	options: MockWebSocketOptions = {},
+): MockWebSocket {
+	// OneWayWebSocket registers open/close/error via addEventListener and only
+	// message via on(), mirroring the DOM/ws split in production. A Set per event
+	// with identity removal matches how production adds and removes each listener.
+	const listeners: Record<string, Set<(e: unknown) => void>> = {
+		open: new Set(),
+		close: new Set(),
+		error: new Set(),
+		message: new Set(),
 	};
+	const mock: MockWebSocket = {
+		url,
+		on: vi.fn((event: string, handler: (e: unknown) => void) => {
+			if (event === "message") {
+				listeners.message.add(handler);
+			}
+			return mock as Ws;
+		}),
+		off: vi.fn((event: string, handler: (e: unknown) => void) => {
+			if (event === "message") {
+				listeners.message.delete(handler);
+			}
+			return mock as Ws;
+		}),
+		addEventListener: vi.fn((event: string, handler: (e: unknown) => void) => {
+			listeners[event]?.add(handler);
+			if (event === "open" && !options.connectError) {
+				setImmediate(() => handler(new Event("open")));
+			}
+			if (event === "error" && options.connectError) {
+				setImmediate(() => handler(options.connectError));
+			}
+		}),
+		removeEventListener: vi.fn(
+			(event: string, handler: (e: unknown) => void) => {
+				listeners[event]?.delete(handler);
+			},
+		),
+		close: vi.fn(),
+		fireClose: (event) => {
+			for (const cb of listeners.close) {
+				cb(event);
+			}
+		},
+	};
+	return mock;
 }
 
 type MockEventSource = Partial<EventSource> & {

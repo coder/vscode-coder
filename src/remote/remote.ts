@@ -280,6 +280,7 @@ export class Remote {
 				token,
 				this.logger,
 				this.serviceContainer.getTelemetryService(),
+				this.serviceContainer.getConnectionLogBuffer().onConnectionFailure,
 			);
 			disposables.push(workspaceClient);
 
@@ -1093,6 +1094,7 @@ export class Remote {
 
 	// closeRemote ends the current remote session.
 	public async closeRemote() {
+		this.serviceContainer.getConnectionLogBuffer().flush("remote_closed");
 		await vscode.commands.executeCommand("workbench.action.remote.close");
 	}
 
