@@ -16,6 +16,9 @@ scripts/**
 .vscode-test.mjs
 tsconfig.json
 eslint.config.mjs
+.oxlintrc.json
+.oxlintrc.react.json
+.oxfmtrc.json
 .eslintcache
 esbuild.mjs
 vitest.config.mts

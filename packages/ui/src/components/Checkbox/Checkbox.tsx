@@ -35,7 +35,7 @@ export function Checkbox({
 				className="ui-checkbox__input"
 			/>
 			<span className="ui-control ui-checkbox__box" aria-hidden="true">
-				{checked && <Icon name="check" />}
+				{checked ? <Icon name="check" /> : null}
 			</span>
 			{children}
 		</label>

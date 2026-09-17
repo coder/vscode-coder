@@ -18,10 +18,10 @@ export function StatePanel({
 	return (
 		<div className={["centered-state", className].filter(Boolean).join(" ")}>
 			{icon}
-			{title && <p className="centered-state-title">{title}</p>}
-			{description && (
+			{title ? <p className="centered-state-title">{title}</p> : null}
+			{description ? (
 				<p className="centered-state-description">{description}</p>
-			)}
+			) : null}
 			{action}
 		</div>
 	);

@@ -27,10 +27,9 @@ vi.mock("@/api/coderApi", async (importOriginal) => {
 	const original = await importOriginal<typeof import("@/api/coderApi")>();
 	return {
 		...original,
-		CoderApi: {
-			...original.CoderApi,
+		CoderApi: Object.assign({}, original.CoderApi, {
 			create: vi.fn(),
-		},
+		}),
 	};
 });
 

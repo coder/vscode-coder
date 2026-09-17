@@ -352,7 +352,7 @@ function typeaheadMatch(
 	current: TreeRowModel,
 ): TreeRowModel | undefined {
 	const repeated =
-		query.length > 1 && [...query].every((key) => key === query[0]);
+		query.length > 1 && query.split("").every((key) => key === query[0]);
 	const value = (repeated ? query[0] : query)?.toLocaleLowerCase() ?? "";
 	const from =
 		query.length === 1 || repeated

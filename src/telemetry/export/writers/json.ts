@@ -23,8 +23,10 @@ export async function writeJsonArrayExport(
 	async function* chunks(): AsyncGenerator<string> {
 		yield "[";
 		for await (const event of events) {
-			yield (count === 0 ? "\n" : ",\n") +
-				JSON.stringify(serializeTelemetryEvent(event));
+			yield (
+				(count === 0 ? "\n" : ",\n") +
+					JSON.stringify(serializeTelemetryEvent(event))
+			);
 			count += 1;
 		}
 		yield count === 0 ? "]\n" : "\n]\n";

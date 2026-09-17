@@ -13,12 +13,12 @@ export interface Logger {
  * In webviews, this appears in the DevTools console.
  */
 const consoleLogger: Logger = {
-	/* eslint-disable no-console */
+	/* oxlint-disable no-console */
 	debug: (...args) => console.debug("[webview]", ...args),
 	info: (...args) => console.info("[webview]", ...args),
 	warn: (...args) => console.warn("[webview]", ...args),
 	error: (...args) => console.error("[webview]", ...args),
-	/* eslint-enable no-console */
+	/* oxlint-enable no-console */
 };
 
 let currentLogger: Logger = consoleLogger;

@@ -10,7 +10,11 @@ import "./StatusPill.css";
 import type { CodiconName } from "#codicons";
 
 export type StatusPillTone =
-	"neutral" | "info" | "success" | "warning" | "danger";
+	| "neutral"
+	| "info"
+	| "success"
+	| "warning"
+	| "danger";
 
 export interface StatusPillProps extends ComponentProps<"span"> {
 	icon?: CodiconName;

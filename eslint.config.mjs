@@ -1,18 +1,21 @@
-import storybook from "eslint-plugin-storybook";
-
-// @ts-check
-import eslint from "@eslint/js";
-import { defineConfig, globalIgnores } from "eslint/config";
 import markdown from "@eslint/markdown";
-import tseslint from "typescript-eslint";
-import prettierConfig from "eslint-config-prettier";
+import { defineConfig, globalIgnores } from "eslint/config";
 import { createTypeScriptImportResolver } from "eslint-import-resolver-typescript";
 import { flatConfigs as importXFlatConfigs } from "eslint-plugin-import-x";
 import packageJson from "eslint-plugin-package-json";
-import eslintReact from "@eslint-react/eslint-plugin";
-import reactHooks from "eslint-plugin-react-hooks";
-import globals from "globals";
+import oxlint from "eslint-plugin-oxlint";
+import tseslint from "typescript-eslint";
 
+// Oxlint owns JS/TS/TSX linting (see `.oxlintrc.json`), including type-aware
+// rules. ESLint only covers what Oxlint cannot:
+//
+//   - `import-x/order`: Oxlint omits it; Oxfmt's `sortImports` reorders
+//     differently.
+//   - Markdown: `@eslint/markdown` uses processors the JS plugin API lacks.
+//   - `package.json`: Oxlint only lints source extensions.
+//
+// `oxlint.buildFromOxlintConfigFile` turns off every rule Oxlint already
+// covers, so the two never disagree. It must come last.
 export default defineConfig(
 	globalIgnores([
 		"out/**",
@@ -24,36 +27,16 @@ export default defineConfig(
 		"storybook-static/**",
 	]),
 
-	// Base ESLint recommended rules (for JS/TS/TSX files only)
-	{
-		files: [
-			"**/*.ts",
-			"**/*.tsx",
-			"**/*.mts",
-			"**/*.cts",
-			"**/*.js",
-			"**/*.mjs",
-			"**/*.cjs",
-		],
-		...eslint.configs.recommended,
-	},
-
-	// TypeScript configuration with type-checked rules
+	// Parse TypeScript without the type-aware programs; Oxlint owns typed rules.
 	{
 		files: ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
-		extends: [
-			...tseslint.configs.recommendedTypeChecked,
-			...tseslint.configs.stylisticTypeChecked,
-			importXFlatConfigs.typescript,
-		],
-		languageOptions: {
-			parserOptions: {
-				projectService: {
-					allowDefaultProject: ["vitest.config.mts"],
-				},
-				tsconfigRootDir: import.meta.dirname,
-			},
-		},
+		languageOptions: { parser: tseslint.parser },
+	},
+
+	// Import ordering for source files.
+	{
+		files: ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
+		extends: [importXFlatConfigs.typescript],
 		settings: {
 			"import-x/resolver-next": [
 				createTypeScriptImportResolver({ project: "./tsconfig.json" }),
@@ -61,38 +44,6 @@ export default defineConfig(
 			"import-x/internal-regex": "^@/",
 		},
 		rules: {
-			// Core ESLint rules
-			curly: "error",
-			eqeqeq: "error",
-			"no-throw-literal": "error",
-			"no-console": "error",
-
-			// TypeScript rules (extending/overriding presets)
-			"require-await": "off",
-			"@typescript-eslint/require-await": "error",
-			"@typescript-eslint/consistent-type-imports": "error",
-			"@typescript-eslint/switch-exhaustiveness-check": [
-				"error",
-				{ considerDefaultExhaustiveForUnions: true },
-			],
-			"@typescript-eslint/no-non-null-assertion": "error",
-			"@typescript-eslint/no-unused-vars": [
-				"error",
-				{ varsIgnorePattern: "^_", argsIgnorePattern: "^_" },
-			],
-			"@typescript-eslint/array-type": ["error", { default: "array-simple" }],
-			"@typescript-eslint/prefer-nullish-coalescing": [
-				"error",
-				// Allow || for strings where empty string should be treated as falsy
-				{ ignorePrimitives: { string: true } },
-			],
-			"@typescript-eslint/dot-notation": [
-				"error",
-				// Allow bracket notation for index signatures (e.g., Record<string, T>)
-				{ allowIndexSignaturePropertyAccess: true },
-			],
-
-			// Import rules
 			"import-x/order": [
 				"error",
 				{
@@ -113,36 +64,10 @@ export default defineConfig(
 					warnOnUnassignedImports: true,
 				},
 			],
-			"no-duplicate-imports": "off",
-			"import-x/no-duplicates": ["error", { "prefer-inline": true }],
-			"import-x/no-unresolved": ["error", { ignore: ["vscode"] }],
-
-			// Custom AST selector rule
-			"no-restricted-syntax": [
-				"error",
-				{
-					selector:
-						"CallExpression[callee.property.name='executeCommand'][arguments.0.value='setContext'][arguments.length>=3]",
-					message:
-						"Do not use executeCommand('setContext', ...) directly. Use the ContextManager class instead.",
-				},
-				{
-					selector:
-						"CallExpression[callee.property.name='registerCommand'][arguments.0.value=/^coder\\./][arguments.length>=2]",
-					message:
-						"Do not use registerCommand('coder.*', ...) directly. Use the CommandManager class instead.",
-				},
-				{
-					selector:
-						"MemberExpression[property.name='remoteAuthority'][object.property.name='env'][object.object.name='vscode']",
-					message:
-						"env.remoteAuthority is a proposed API (resolvers) and throws through our own vscode module. Read it via vscodeProposed.env.remoteAuthority.",
-				},
-			],
 		},
 	},
 
-	// Test files - use test tsconfig and relax some rules
+	// Test files resolve against the test tsconfig.
 	{
 		files: ["test/**/*.{ts,tsx}", "**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"],
 		settings: {
@@ -150,121 +75,9 @@ export default defineConfig(
 				createTypeScriptImportResolver({ project: "test/tsconfig.json" }),
 			],
 		},
-		rules: {
-			// Allow type annotations in tests (e.g., for vi.fn<SomeType>())
-			"@typescript-eslint/consistent-type-imports": [
-				"error",
-				{
-					disallowTypeAnnotations: false,
-				},
-			],
-			// vitest mocks trigger false positives for unbound-method
-			"@typescript-eslint/unbound-method": "off",
-			// Empty callbacks are common in test stubs
-			"@typescript-eslint/no-empty-function": "off",
-			// Test assertions often use non-null assertions for brevity
-			"@typescript-eslint/no-non-null-assertion": "off",
-			// Test mocks often have loose typing - relax unsafe rules
-			"@typescript-eslint/no-unsafe-assignment": "off",
-			"@typescript-eslint/no-unsafe-call": "off",
-			"@typescript-eslint/no-unsafe-return": "off",
-		},
 	},
 
-	// Disable no-restricted-syntax for contextManager and commandManager
-	{
-		files: ["src/core/contextManager.ts", "src/core/commandManager.ts"],
-		rules: {
-			"no-restricted-syntax": "off",
-		},
-	},
-
-	// Build config - ESM with Node globals
-	{
-		files: ["esbuild.mjs", "scripts/*.mjs", ".storybook/themes/*.{mjs,cjs}"],
-		languageOptions: {
-			globals: {
-				...globals.node,
-			},
-		},
-	},
-
-	// Webview packages - browser globals
-	{
-		files: ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
-		languageOptions: {
-			globals: {
-				...globals.browser,
-			},
-		},
-	},
-
-	// Prevent runtime package code from importing test/storybook-only packages
-	{
-		files: ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
-		ignores: ["**/*.stories.*"],
-		rules: {
-			"no-restricted-imports": [
-				"error",
-				{
-					patterns: [
-						{
-							group: ["@repo/mocks", "@repo/mocks/*"],
-							message:
-								"@repo/mocks is for tests and stories only. Do not import it from runtime code.",
-						},
-						{
-							group: ["@repo/storybook-utils", "@repo/storybook-utils/*"],
-							message:
-								"@repo/storybook-utils is for stories only. Do not import it from runtime code.",
-						},
-					],
-				},
-			],
-		},
-	},
-
-	// Keep the UI package independent from other workspace packages.
-	{
-		files: ["packages/ui/**/*.{ts,tsx}"],
-		rules: {
-			"import-x/no-relative-packages": "error",
-			"no-restricted-imports": [
-				"error",
-				{
-					patterns: [
-						{
-							group: ["@repo/*"],
-							message: "packages/ui must not import other workspace packages.",
-						},
-					],
-				},
-			],
-		},
-	},
-
-	// React rules with type-checked analysis (covers hooks, JSX, DOM)
-	{
-		files: ["packages/**/*.{ts,tsx}"],
-		extends: [
-			eslintReact.configs["recommended-type-checked"],
-			reactHooks.configs.flat.recommended,
-			// Keep @eslint-react's copy where both plugins ship the same rule
-			eslintReact.configs["disable-conflict-eslint-plugin-react-hooks"],
-		],
-		rules: {
-			// React Compiler auto-memoizes; exhaustive-deps false-positives on useCallback
-			"@eslint-react/exhaustive-deps": "off",
-			// Compiler rules the conflict preset drops but recommended leaves off
-			"@eslint-react/globals": "error",
-			"@eslint-react/immutability": "error",
-			"@eslint-react/refs": "error",
-			"@eslint-react/web-api-no-leaked-fetch": "error",
-			"@eslint-react/jsx-no-leaked-dollar": "error",
-		},
-	},
-
-	// Package.json linting
+	// Package.json linting.
 	packageJson.configs.recommended,
 	{
 		// The root package.json is a VS Code extension (not an npm package),
@@ -279,7 +92,7 @@ export default defineConfig(
 		},
 	},
 
-	// Markdown linting with GitHub-flavored admonitions allowed
+	// Markdown linting with GitHub-flavored admonitions allowed.
 	...markdown.configs.recommended,
 	{
 		files: ["**/*.md"],
@@ -293,9 +106,6 @@ export default defineConfig(
 		},
 	},
 
-	// Storybook recommended rules for story files
-	...storybook.configs["flat/recommended"],
-
-	// Prettier must be last to override other formatting rules
-	prettierConfig,
+	// Turn off every rule Oxlint already covers. Must stay last so its disables win.
+	...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),
 );

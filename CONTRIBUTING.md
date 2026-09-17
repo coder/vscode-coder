@@ -239,6 +239,36 @@ Alternatively:
 4. If your change is something users ought to be aware of, add an entry in the
    changelog.
 
+## Linting
+
+Linting runs in two stages: [Oxlint](https://oxc.rs) handles all JS/TS/TSX
+rules, and a residual ESLint pass covers what Oxlint cannot do yet. When an
+Oxlint equivalent lands, remove the corresponding entry from
+`eslint.config.mjs` and this list.
+
+| ESLint rule/plugin                                          | Why Oxlint can't do it                                                         |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `import-x/order`                                            | Oxlint has no import ordering rule; Oxfmt's `sortImports` reorders differently |
+| `@eslint/markdown` (`markdown/no-missing-label-refs`, etc.) | Oxlint only lints source extensions; Markdown needs processors                 |
+| `eslint-plugin-package-json` (58 rules)                     | Oxlint only lints source extensions                                            |
+
+`eslint-plugin-oxlint` reads `.oxlintrc.json` and disables every rule Oxlint
+already covers, so the two stages never overlap.
+
+## TypeScript Version
+
+TypeScript 7 has no programmatic API yet, so `typescript-eslint` cannot load
+against it. The two run side-by-side, following the
+[official guidance](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/):
+
+- `typescript` is aliased to `@typescript/typescript6`: the 6.0 API that
+  `typescript-eslint` consumes. Its binary is `tsc6`.
+- `@typescript/native` is aliased to `typescript@^7`: the `tsc` binary used by
+  `pnpm typecheck` and editors.
+
+When TypeScript 7 ships an API, drop `@typescript/native` and point `typescript`
+back at a single version.
+
 ## Node.js Version
 
 This extension targets the Node.js version bundled with VS Code's Electron:

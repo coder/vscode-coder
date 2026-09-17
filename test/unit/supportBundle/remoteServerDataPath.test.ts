@@ -44,7 +44,8 @@ function useRemoteSshExtension(id: string): void {
 	vi.mocked(vscode.extensions.getExtension).mockImplementation(
 		(extensionId) =>
 			(extensionId === id ? { id: extensionId } : undefined) as
-				vscode.Extension<unknown> | undefined,
+				| vscode.Extension<unknown>
+				| undefined,
 	);
 }
 

@@ -21,7 +21,9 @@ catalog:
   react-dom: ^19.3.0
   storybook: ^10.6.0
   storybook-addon-pseudo-states: ^10.6.0
-  typescript: ^6.0.3
+  # typescript stays on the 6.0 API for typescript-eslint; TypeScript 7 runs `tsc`.
+  # https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/
+  typescript: npm:@typescript/typescript6@^6.0.2
   vite: ^8.3.0
 
 catalogMode: strict

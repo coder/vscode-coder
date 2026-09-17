@@ -368,7 +368,7 @@ export class MockUserInteraction {
 
 		const handleMessage =
 			(level: MessageCall["level"]) =>
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- serves all show*Message overloads
+			// oxlint-disable-next-line no-explicit-any -- serves all show*Message overloads
 			(message: string, ...rest: unknown[]): Thenable<any> => {
 				const items = rest.filter(
 					(arg): arg is string => typeof arg === "string",
