@@ -324,7 +324,8 @@ When updating the minimum Node.js version, update these files:
 
 Some dependencies are not directly used in the source but are required anyway.
 
-- `bufferutil` and `utf-8-validate` are peer dependencies of `ws`.
+- `bufferutil` and `utf-8-validate` are peer dependencies of `ws`. Their source
+  builds are off, so Windows on ARM64 uses their JavaScript fallback.
 - `ua-parser-js` and `dayjs` are used by the Coder API client.
 
 The coder client is vendored from coder/coder. Pin it to a release tag in

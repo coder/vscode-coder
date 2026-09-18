@@ -32,13 +32,14 @@ dedupePeers: true
 
 allowBuilds:
   "@vscode/vsce-sign": true
-  bufferutil: true
+  # Only win32-arm64 lacks a prebuild, and its JavaScript fallback is fine.
+  bufferutil: false
   electron: true
   esbuild: true
   keytar: false
   odiff-bin: true
   unrs-resolver: true
-  utf-8-validate: true
+  utf-8-validate: false
 
 overrides:
   "@vscode-elements/elements": ^2.5.1
