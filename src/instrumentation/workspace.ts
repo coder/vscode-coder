@@ -11,7 +11,7 @@ import type { TelemetryReporter } from "../telemetry/reporter";
 import type { Span } from "../telemetry/span";
 
 export type WorkspacePromptAction = "start" | "update";
-export type WorkspaceUpdatePrompt = "parameters" | "confirmation";
+export type WorkspaceUpdatePrompt = "parameters" | "confirmation" | "failure";
 
 /**
  * Emits `workspace.state_transitioned` for a detected workspace transition.
@@ -141,13 +141,27 @@ export class WorkspaceOperationTelemetry {
 	public traceConfirmationPrompt<T>(
 		fn: () => Promise<T | undefined>,
 	): Promise<T | undefined> {
-		return this.traceUpdatePrompt("confirmation", async (span) => {
+		return this.tracePromptChoice("confirmation", "update", fn);
+	}
+
+	/** Records whether the user connects to the existing version anyway. */
+	public traceFailurePrompt(fn: () => Promise<boolean>): Promise<boolean> {
+		return this.tracePromptChoice("failure", "connect", fn);
+	}
+
+	/** Emits the prompt with `action`, or marks it aborted on a falsy answer. */
+	private tracePromptChoice<T>(
+		prompt: WorkspaceUpdatePrompt,
+		action: string,
+		fn: () => Promise<T>,
+	): Promise<T> {
+		return this.traceUpdatePrompt(prompt, async (span) => {
 			const value = await fn();
-			if (value === undefined) {
+			if (!value) {
 				span.markAborted();
-				return undefined;
+				return value;
 			}
-			span.setProperty("action", "update");
+			span.setProperty("action", action);
 			return value;
 		});
 	}

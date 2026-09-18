@@ -13,7 +13,7 @@ import { runDiagnosticCli } from "./command/diagnosticFlow";
 import * as cliExec from "./core/cliExec";
 import { CertificateError } from "./error/certificateError";
 import { raceWithAbort, toError } from "./error/errorUtils";
-import { type FeatureSet, featureSetForVersion } from "./featureSet";
+import { type CliFeatureSet, cliFeatureSet } from "./featureSet";
 import {
 	AuthTelemetry,
 	type AuthLoginOutcome,
@@ -1467,7 +1467,7 @@ export class Commands {
 	/** Resolve a CliEnv, preferring a locally cached binary over a network fetch. */
 	private async resolveCliEnv(
 		client: CoderApi,
-	): Promise<cliExec.CliEnv & { featureSet: FeatureSet }> {
+	): Promise<cliExec.CliEnv & { featureSet: CliFeatureSet }> {
 		const baseUrl = client.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
 			throw new Error("You are not logged in");
@@ -1477,7 +1477,7 @@ export class Commands {
 			(await this.cliManager.locateBinary(baseUrl)) ??
 			(await this.cliManager.fetchBinary(client));
 		const version = semver.parse(await cliExec.version(binary));
-		const featureSet = featureSetForVersion(version);
+		const featureSet = cliFeatureSet(version);
 		const configDir = this.pathResolver.getGlobalConfigDir(safeHost);
 		const configs = vscode.workspace.getConfiguration();
 		const auth = resolveCliAuth(configs, featureSet, baseUrl, configDir);
