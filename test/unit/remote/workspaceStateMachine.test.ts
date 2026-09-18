@@ -13,6 +13,7 @@ import {
 } from "@/api/workspace";
 import { maybeAskAgent } from "@/promptUtils";
 import { WorkspaceStateMachine } from "@/remote/workspaceStateMachine";
+import { WorkspaceUpdatePanelFactory } from "@/webviews/workspaceUpdate/workspaceUpdatePanelFactory";
 
 import {
 	agent as createAgent,
@@ -89,6 +90,7 @@ function runningWorkspace(
 	agentOverrides: Partial<WorkspaceAgent> = {},
 ): Workspace {
 	return createWorkspace({
+		template_use_classic_parameter_flow: true,
 		latest_build: {
 			status: "running",
 			resources: [createResource({ agents: [createAgent(agentOverrides)] })],
@@ -200,7 +202,10 @@ describe("WorkspaceStateMachine", () => {
 		for (const status of ["stopped", "failed"] as const) {
 			it(`auto-starts '${status}' workspace`, async () => {
 				const { sm, progress } = setup("start");
-				const ws = createWorkspace({ latest_build: { status } });
+				const ws = createWorkspace({
+					template_use_classic_parameter_flow: true,
+					latest_build: { status },
+				});
 
 				expect(await sm.processWorkspace(ws, progress)).toBe(false);
 				expect(startWorkspace).toHaveBeenCalledOnce();
@@ -209,7 +214,10 @@ describe("WorkspaceStateMachine", () => {
 
 		it("triggers update instead of start when mode is 'update'", async () => {
 			const { sm, progress } = setup("update");
-			const ws = createWorkspace({ latest_build: { status: "stopped" } });
+			const ws = createWorkspace({
+				template_use_classic_parameter_flow: true,
+				latest_build: { status: "stopped" },
+			});
 
 			expect(await sm.processWorkspace(ws, progress)).toBe(false);
 			expect(updateWorkspace).toHaveBeenCalledOnce();
@@ -218,7 +226,10 @@ describe("WorkspaceStateMachine", () => {
 		it("falls through to the agent check after an update completes", async () => {
 			vi.mocked(updateWorkspace).mockResolvedValueOnce(runningWorkspace());
 			const { sm, progress } = setup("update");
-			const ws = createWorkspace({ latest_build: { status: "stopped" } });
+			const ws = createWorkspace({
+				template_use_classic_parameter_flow: true,
+				latest_build: { status: "stopped" },
+			});
 
 			expect(await sm.processWorkspace(ws, progress)).toBe(true);
 			expect(updateWorkspace).toHaveBeenCalledOnce();
@@ -230,7 +241,10 @@ describe("WorkspaceStateMachine", () => {
 				new Error("template not found"),
 			);
 			const { sm, progress } = setup("update");
-			const ws = createWorkspace({ latest_build: { status: "stopped" } });
+			const ws = createWorkspace({
+				template_use_classic_parameter_flow: true,
+				latest_build: { status: "stopped" },
+			});
 
 			expect(await sm.processWorkspace(ws, progress)).toBe(false);
 			expect(updateWorkspace).toHaveBeenCalledOnce();
@@ -245,7 +259,10 @@ describe("WorkspaceStateMachine", () => {
 				new WorkspaceUpdateCancelledError(),
 			);
 			const { sm, progress } = setup("update");
-			const ws = createWorkspace({ latest_build: { status: "stopped" } });
+			const ws = createWorkspace({
+				template_use_classic_parameter_flow: true,
+				latest_build: { status: "stopped" },
+			});
 
 			expect(await sm.processWorkspace(ws, progress)).toBe(false);
 			expect(updateWorkspace).not.toHaveBeenCalled();
@@ -256,7 +273,10 @@ describe("WorkspaceStateMachine", () => {
 		it("prompts user when mode is 'none' and user picks 'Start'", async () => {
 			const { sm, progress, userInteraction } = setup("none");
 			userInteraction.setResponse(CONFIRM_MESSAGE, "Start");
-			const ws = createWorkspace({ latest_build: { status: "stopped" } });
+			const ws = createWorkspace({
+				template_use_classic_parameter_flow: true,
+				latest_build: { status: "stopped" },
+			});
 
 			expect(await sm.processWorkspace(ws, progress)).toBe(false);
 			expect(startWorkspace).toHaveBeenCalledOnce();
@@ -267,6 +287,7 @@ describe("WorkspaceStateMachine", () => {
 			const { sm, progress, userInteraction } = setup("none");
 			userInteraction.setResponse(CONFIRM_MESSAGE, "Update and Start");
 			const ws = createWorkspace({
+				template_use_classic_parameter_flow: true,
 				outdated: true,
 				latest_build: { status: "stopped" },
 			});
@@ -285,6 +306,7 @@ describe("WorkspaceStateMachine", () => {
 			const { sm, progress, userInteraction } = setup("none");
 			userInteraction.setResponse(CONFIRM_MESSAGE, "Start");
 			const ws = createWorkspace({
+				template_use_classic_parameter_flow: true,
 				outdated: false,
 				latest_build: { status: "stopped" },
 			});
@@ -299,7 +321,10 @@ describe("WorkspaceStateMachine", () => {
 		it("throws when user declines the prompt", async () => {
 			const { sm, progress, userInteraction } = setup("none");
 			userInteraction.setResponse(CONFIRM_MESSAGE, undefined);
-			const ws = createWorkspace({ latest_build: { status: "stopped" } });
+			const ws = createWorkspace({
+				template_use_classic_parameter_flow: true,
+				latest_build: { status: "stopped" },
+			});
 
 			await expect(sm.processWorkspace(ws, progress)).rejects.toThrow(
 				"Workspace start cancelled",
@@ -311,7 +336,10 @@ describe("WorkspaceStateMachine", () => {
 		for (const status of ["pending", "starting", "stopping"] as const) {
 			it(`returns false and streams build logs for '${status}'`, async () => {
 				const { sm, progress } = setup();
-				const ws = createWorkspace({ latest_build: { status } });
+				const ws = createWorkspace({
+					template_use_classic_parameter_flow: true,
+					latest_build: { status },
+				});
 
 				expect(await sm.processWorkspace(ws, progress)).toBe(false);
 				expect(streamBuildLogs).toHaveBeenCalledOnce();
@@ -328,7 +356,10 @@ describe("WorkspaceStateMachine", () => {
 		] as const) {
 			it(`throws for '${status}'`, async () => {
 				const { sm, progress } = setup();
-				const ws = createWorkspace({ latest_build: { status } });
+				const ws = createWorkspace({
+					template_use_classic_parameter_flow: true,
+					latest_build: { status },
+				});
 				await expect(sm.processWorkspace(ws, progress)).rejects.toThrow(status);
 			});
 		}
@@ -400,7 +431,10 @@ describe("WorkspaceStateMachine", () => {
 
 	describe("telemetry", () => {
 		const stoppedWorkspace = () =>
-			createWorkspace({ latest_build: { status: "stopped" } });
+			createWorkspace({
+				template_use_classic_parameter_flow: true,
+				latest_build: { status: "stopped" },
+			});
 
 		it.each<{
 			name: string;
@@ -453,6 +487,7 @@ describe("WorkspaceStateMachine", () => {
 			await sm.processWorkspace(runningWorkspace(), progress);
 
 			const wsNoAgents = createWorkspace({
+				template_use_classic_parameter_flow: true,
 				latest_build: { status: "running", resources: [] },
 			});
 			await expect(sm.processWorkspace(wsNoAgents, progress)).rejects.toThrow(
@@ -464,7 +499,10 @@ describe("WorkspaceStateMachine", () => {
 	describe("progress reporting", () => {
 		it("reports starting for stopped workspace", async () => {
 			const { sm, progress } = setup("start");
-			const ws = createWorkspace({ latest_build: { status: "stopped" } });
+			const ws = createWorkspace({
+				template_use_classic_parameter_flow: true,
+				latest_build: { status: "stopped" },
+			});
 			await sm.processWorkspace(ws, progress);
 
 			expect(progress.report).toHaveBeenCalledWith(
@@ -504,5 +542,68 @@ describe("WorkspaceStateMachine", () => {
 			const { sm } = setup();
 			expect(() => sm.dispose()).not.toThrow();
 		});
+	});
+});
+
+describe("dynamic update connection flow", () => {
+	function dynamicSetup(success: boolean) {
+		const updated = runningWorkspace();
+		const show = vi.fn().mockResolvedValue(success);
+		const client = { getWorkspace: vi.fn().mockResolvedValue(updated) } as Pick<
+			CoderApi,
+			"getWorkspace"
+		>;
+		const container = createMockServiceContainer();
+		const factory = new WorkspaceUpdatePanelFactory(
+			vscode.Uri.file("/ext"),
+			createMockLogger(),
+		);
+		vi.spyOn(factory, "show").mockImplementation(show);
+		container.getWorkspaceUpdatePanelFactory = () => factory;
+		const sm = new WorkspaceStateMachine(
+			DEFAULT_PARTS,
+			client as CoderApi,
+			"update",
+			"/usr/bin/coder",
+			{} as FeatureSet,
+			{
+				store: "cli",
+				url: "https://test.coder.com",
+				useKeyring: undefined,
+				allowRedirects: false,
+			},
+			container,
+		);
+		return { sm, show, client, updated };
+	}
+
+	it("uses the parameter editor and does not run a second CLI update", async () => {
+		vi.clearAllMocks();
+		const { sm, show } = dynamicSetup(true);
+		const ws = createWorkspace({
+			template_use_classic_parameter_flow: false,
+			latest_build: { status: "stopped" },
+		});
+		await sm.processWorkspace(ws, new MockProgress());
+		expect(show).toHaveBeenCalledOnce();
+		expect(collectUpdateParameters).not.toHaveBeenCalled();
+		expect(updateWorkspace).not.toHaveBeenCalled();
+		expect(startWorkspace).not.toHaveBeenCalled();
+		sm.dispose();
+	});
+
+	it("does not start the old template when the dynamic editor is canceled", async () => {
+		vi.clearAllMocks();
+		const { sm } = dynamicSetup(false);
+		const ws = createWorkspace({
+			template_use_classic_parameter_flow: false,
+			latest_build: { status: "stopped" },
+		});
+		await expect(sm.processWorkspace(ws, new MockProgress())).rejects.toThrow(
+			WorkspaceUpdateCancelledError,
+		);
+		expect(startWorkspace).not.toHaveBeenCalled();
+		expect(updateWorkspace).not.toHaveBeenCalled();
+		sm.dispose();
 	});
 });

@@ -99,6 +99,7 @@ function setup(options: { cliVersion?: string } = {}) {
 		getLoginCoordinator: () => ({}),
 		getDuplicateWorkspaceIpc: () => ({}),
 		getSpeedtestPanelFactory: () => ({}),
+		getWorkspaceUpdatePanelFactory: () => ({ show: vi.fn() }),
 		getNetcheckPanelFactory: () => ({}),
 	} as unknown as ServiceContainer;
 

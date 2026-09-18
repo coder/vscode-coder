@@ -19,6 +19,7 @@ function setup() {
 	const { sink, service } = createTelemetryHarness();
 	const mementoManager = new MementoManager(new InMemoryMemento());
 	const logger = createMockLogger();
+	const showUpdate = vi.fn().mockResolvedValue(false);
 	const container = {
 		getTelemetryService: () => service,
 		getLogger: () => logger,
@@ -29,6 +30,7 @@ function setup() {
 		getLoginCoordinator: () => ({}),
 		getDuplicateWorkspaceIpc: () => ({}),
 		getSpeedtestPanelFactory: () => ({}),
+		getWorkspaceUpdatePanelFactory: () => ({ show: showUpdate }),
 		getNetcheckPanelFactory: () => ({}),
 		getConnectionLogBuffer: () => ({ flush: () => {} }),
 	} as unknown as ServiceContainer;
@@ -37,9 +39,12 @@ function setup() {
 		{} as CoderApi,
 		{} as DeploymentManager,
 	);
-	commands.workspace = workspace({ outdated: true });
+	commands.workspace = workspace({
+		outdated: true,
+		template_use_classic_parameter_flow: true,
+	});
 	commands.remoteWorkspaceClient = {} as CoderApi;
-	return { commands, sink };
+	return { commands, sink, showUpdate };
 }
 
 describe("Commands.updateWorkspace", () => {
@@ -77,6 +82,36 @@ describe("Commands.updateWorkspace", () => {
 				result: "success",
 			},
 		});
+		expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+			"workbench.action.reloadWindow",
+		);
+	});
+});
+
+describe("dynamic workspace updates", () => {
+	beforeEach(() => vi.resetAllMocks());
+	it("opens the parameter editor without reloading or the classic confirmation", async () => {
+		const { commands, showUpdate } = setup();
+		commands.workspace = workspace({
+			outdated: true,
+			template_use_classic_parameter_flow: false,
+		});
+		await commands.updateWorkspace();
+		expect(showUpdate).toHaveBeenCalledWith(
+			commands.remoteWorkspaceClient,
+			commands.workspace,
+		);
+		expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+		expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+	});
+	it("reloads only after a successful dynamic update", async () => {
+		const { commands, showUpdate } = setup();
+		commands.workspace = workspace({
+			outdated: true,
+			template_use_classic_parameter_flow: false,
+		});
+		showUpdate.mockResolvedValue(true);
+		await commands.updateWorkspace();
 		expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
 			"workbench.action.reloadWindow",
 		);

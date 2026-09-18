@@ -38,6 +38,7 @@ function setup(options: { extensionBaseUrl?: string } = {}) {
 		getLoginCoordinator: () => ({}),
 		getDuplicateWorkspaceIpc: () => ({}),
 		getSpeedtestPanelFactory: () => ({}),
+		getWorkspaceUpdatePanelFactory: () => ({ show: vi.fn() }),
 		getNetcheckPanelFactory: () => ({}) as NetcheckPanelFactory,
 		getConnectionLogBuffer: () => ({ flush: () => {} }),
 	} as unknown as ServiceContainer;

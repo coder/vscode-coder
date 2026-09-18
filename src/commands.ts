@@ -90,6 +90,7 @@ import type { LoginCoordinator, LoginMethod } from "./login/loginCoordinator";
 import type { TelemetryService } from "./telemetry/service";
 import type { NetcheckPanelFactory } from "./webviews/netcheck/netcheckPanelFactory";
 import type { SpeedtestPanelFactory } from "./webviews/speedtest/speedtestPanelFactory";
+import type { WorkspaceUpdatePanelFactory } from "./webviews/workspaceUpdate/workspaceUpdatePanelFactory";
 import type {
 	DuplicateWorkspaceIpc,
 	PongMessage,
@@ -164,6 +165,7 @@ export class Commands {
 	private readonly loginCoordinator: LoginCoordinator;
 	private readonly duplicateWorkspaceIpc: DuplicateWorkspaceIpc;
 	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
+	private readonly workspaceUpdatePanelFactory: WorkspaceUpdatePanelFactory;
 	private readonly netcheckPanelFactory: NetcheckPanelFactory;
 	private readonly telemetryService: TelemetryService;
 	private readonly authTelemetry: AuthTelemetry;
@@ -203,6 +205,8 @@ export class Commands {
 		this.loginCoordinator = serviceContainer.getLoginCoordinator();
 		this.duplicateWorkspaceIpc = serviceContainer.getDuplicateWorkspaceIpc();
 		this.speedtestPanelFactory = serviceContainer.getSpeedtestPanelFactory();
+		this.workspaceUpdatePanelFactory =
+			serviceContainer.getWorkspaceUpdatePanelFactory();
 		this.netcheckPanelFactory = serviceContainer.getNetcheckPanelFactory();
 	}
 
@@ -1330,6 +1334,17 @@ export class Commands {
 
 		if (!this.workspace.outdated) {
 			showUpToDate();
+			return;
+		}
+		if (this.workspace.template_use_classic_parameter_flow === false) {
+			const updated = await this.workspaceUpdatePanelFactory.show(
+				this.remoteWorkspaceClient,
+				this.workspace,
+			);
+			if (updated) {
+				await this.mementoManager.setStartupMode("start");
+				await vscode.commands.executeCommand("workbench.action.reloadWindow");
+			}
 			return;
 		}
 		const workspaceName = createWorkspaceIdentifier(this.workspace);

@@ -1,6 +1,11 @@
 import "axios";
 
 declare module "axios" {
+	interface AxiosRequestConfig {
+		/** Suppress request/response bodies and server error details containing parameter values. */
+		sensitive?: boolean;
+	}
+
 	interface InternalAxiosRequestConfig {
 		/** Set once the OAuth-refresh or interactive re-auth path has run. */
 		_retryAttempted?: boolean;
