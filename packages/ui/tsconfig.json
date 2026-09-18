@@ -1,7 +1,9 @@
 {
 	"extends": "../tsconfig.packages.json",
 	"compilerOptions": {
-		"resolveJsonModule": true
+		"resolveJsonModule": true,
+		// Prevent relative imports escaping this package.
+		"rootDir": "."
 	},
 	"include": ["src", "storybook", "storybook.preview.ts"]
 }

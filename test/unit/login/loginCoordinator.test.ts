@@ -80,8 +80,7 @@ vi.mock("@/api/coderApi", async (importOriginal) => {
 	const original = await importOriginal<typeof import("@/api/coderApi")>();
 	return {
 		...original,
-		CoderApi: {
-			...original.CoderApi,
+		CoderApi: Object.assign({}, original.CoderApi, {
 			create: vi.fn(() => ({
 				getAxiosInstance: () => ({
 					defaults: { baseURL: "https://coder.example.com" },
@@ -90,7 +89,7 @@ vi.mock("@/api/coderApi", async (importOriginal) => {
 				getAuthenticatedUser: mockGetAuthenticatedUser,
 				dispose: vi.fn(),
 			})),
-		},
+		}),
 	};
 });
 

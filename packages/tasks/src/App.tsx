@@ -24,7 +24,7 @@ export default function App() {
 
 	return (
 		<>
-			{refreshing && <div className="refresh-bar" />}
+			{refreshing ? <div className="refresh-bar" /> : null}
 			<TasksPanel tasks={tasks} templates={templates} persisted={persisted} />
 		</>
 	);

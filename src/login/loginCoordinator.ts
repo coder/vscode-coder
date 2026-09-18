@@ -32,7 +32,11 @@ import type { Logger } from "../logging/logger";
 import type { OAuthCallback } from "../oauth/oauthCallback";
 
 export type LoginMethod =
-	"mtls" | "provided_token" | "stored_token" | "cli_token" | "oauth";
+	| "mtls"
+	| "provided_token"
+	| "stored_token"
+	| "cli_token"
+	| "oauth";
 
 type LoginAttemptResult =
 	| { success: false; reason: LoginPromptReason }
@@ -491,7 +495,8 @@ export class LoginCoordinator implements vscode.Disposable {
 		url: string,
 		prompt: { title: string; detail: string },
 		previousSession:
-			{ username: string | undefined; expired: boolean } | undefined,
+			| { username: string | undefined; expired: boolean }
+			| undefined,
 	): Promise<boolean> {
 		const previous = previousSession?.username
 			? ` for "${previousSession.username}"`

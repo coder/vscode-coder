@@ -5,7 +5,8 @@ export type KeybindingPlatform = "mac" | "win" | "linux";
  * fields as a `contributes.keybindings` entry.
  */
 export type Keybinding =
-	string | ({ key: string } & Partial<Record<KeybindingPlatform, string>>);
+	| string
+	| ({ key: string } & Partial<Record<KeybindingPlatform, string>>);
 
 const MODIFIER_ORDER = ["ctrl", "shift", "alt", "meta"] as const;
 

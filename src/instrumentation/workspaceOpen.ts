@@ -30,7 +30,9 @@ export type WorkspacePickerResult =
 	  };
 export type DevContainerMode = "dev_container" | "attached_container";
 export type WorkspaceOpenAbortStage =
-	"workspace_picker" | "agent_picker" | "recent_folder_picker";
+	| "workspace_picker"
+	| "agent_picker"
+	| "recent_folder_picker";
 
 export interface WorkspaceOpenSelection {
 	readonly workspace: Workspace;

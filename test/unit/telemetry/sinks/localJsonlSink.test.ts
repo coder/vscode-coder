@@ -308,7 +308,11 @@ describe("LocalJsonlSink", () => {
 		setup({ maxAgeDays: 365, maxTotalBytes: 4500 });
 
 		await vi.waitFor(() =>
-			expect(vol.readdirSync(BASE_DIR).toSorted()).toEqual([
+			expect(
+				(vol.readdirSync(BASE_DIR) as string[]).toSorted((a, b) =>
+					a.localeCompare(b),
+				),
+			).toEqual([
 				"telemetry-2026-04-02-b.jsonl",
 				"telemetry-2026-04-03-c.jsonl",
 			]),

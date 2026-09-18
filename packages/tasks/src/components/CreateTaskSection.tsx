@@ -56,7 +56,7 @@ export function CreateTaskSection({ templates }: CreateTaskSectionProps) {
 				actionLabel="Create task"
 				actionEnabled={canSubmit === true}
 			/>
-			{error && <div className="create-task-error">{error.message}</div>}
+			{error ? <div className="create-task-error">{error.message}</div> : null}
 			<div className="create-task-options">
 				<div className="option-row">
 					<span className="option-label">Template:</span>

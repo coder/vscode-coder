@@ -57,7 +57,8 @@ export function createStreamingFetchAdapter(
 		});
 
 		const castRequest = response.request as
-			{ res?: { responseUrl?: string } } | undefined;
+			| { res?: { responseUrl?: string } }
+			| undefined;
 
 		return {
 			body: {

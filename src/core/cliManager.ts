@@ -294,7 +294,8 @@ export class CliManager {
 		const progressLogPath = downloadBinPath + ".progress.log";
 
 		let lockResult:
-			{ release: () => Promise<void>; waited: boolean } | undefined;
+			| { release: () => Promise<void>; waited: boolean }
+			| undefined;
 		let latestVersion = parsedVersion;
 		try {
 			lockResult = await trace.lockWait(() =>
@@ -745,10 +746,9 @@ export class CliManager {
 			signal: controller.signal,
 			baseURL: baseUrl,
 			responseType: "stream",
-			headers: {
-				...headers,
+			headers: Object.assign({}, headers, {
 				"Accept-Encoding": "identity",
-			},
+			}),
 			decompress: false,
 			// Ignore all errors so we can catch a 404!
 			validateStatus: () => true,

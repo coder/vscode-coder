@@ -50,6 +50,25 @@ headless environments (CI, devcontainers) prefix with `xvfb-run -a`:
 xvfb-run -a pnpm test:integration
 ```
 
+## Linting and Formatting
+
+Linting runs in two stages via `pnpm lint`:
+
+1. **Oxlint** (`.oxlintrc.jsonc`): all JS/TS/TSX rules, including type-aware
+   rules via `oxlint-tsgolint`.
+2. **ESLint** (`eslint.config.mjs`): a small residual set Oxlint cannot do.
+   See [CONTRIBUTING.md](CONTRIBUTING.md#linting) for the exhaustive list.
+
+When editing `.oxlintrc.jsonc`:
+
+- `overrides[].files` does not support extglob alternatives like `@(ts|tsx)`.
+  They silently match nothing (oxc-project/oxc#21525). Use brace globs
+  (`{ts,tsx}`) or list extensions.
+- `settings` is not supported inside `overrides`, and `no-restricted-imports`
+  patterns only understand `**` and literal paths, not single `*`.
+
+`test/unit/oxlintConfig.test.ts` guards both regressions.
+
 ## Testing
 
 - Test observable behavior and outputs, not implementation details
@@ -107,7 +126,9 @@ Non-negotiables:
 ## Code Style
 
 - TypeScript with strict typing
-- Use Prettier for code formatting and ESLint for code linting
+- Use Oxlint for code linting (`.oxlintrc.jsonc`) and Oxfmt for formatting.
+  A residual ESLint config covers `import-x/order`, Markdown, and
+  `package.json`
 - Use ES6 features (arrow functions, destructuring, etc.)
 - Use `const` by default; `let` only when necessary
 - Never use `any` - use exact types when possible
@@ -119,7 +140,7 @@ Non-negotiables:
 - Unit test files must be named `*.test.ts` and use Vitest
 - Extension tests go in `./test/unit/<path in src>`
 - Webview tests go in `./test/webview/<package name>/`
-- Never disable ESLint rules without user approval
+- Never disable lint rules without user approval
 
 ### Naming and Comments
 

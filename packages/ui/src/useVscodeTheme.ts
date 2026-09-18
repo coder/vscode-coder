@@ -2,7 +2,10 @@ import { useSyncExternalStore } from "react";
 
 /** Theme kinds VS Code reports via the `data-vscode-theme-kind` body attribute. */
 export type VscodeThemeKind =
-	"light" | "dark" | "high-contrast" | "high-contrast-light";
+	| "light"
+	| "dark"
+	| "high-contrast"
+	| "high-contrast-light";
 
 const THEME_KIND_ATTRIBUTE = "data-vscode-theme-kind";
 const THEME_ID_ATTRIBUTE = "data-vscode-theme-id";
