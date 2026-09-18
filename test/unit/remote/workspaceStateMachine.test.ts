@@ -16,7 +16,6 @@ import { WorkspaceStateMachine } from "@/remote/workspaceStateMachine";
 
 import {
 	agent as createAgent,
-	resource as createResource,
 	workspace as createWorkspace,
 } from "@repo/mocks";
 
@@ -28,6 +27,7 @@ import {
 import {
 	createMockLogger,
 	createMockServiceContainer,
+	MockConfigurationProvider,
 	MockProgress,
 	MockTerminalOutputChannel,
 	MockUserInteraction,
@@ -40,18 +40,24 @@ import type {
 
 import type { CoderApi } from "@/api/coderApi";
 import type { StartupMode } from "@/core/mementoManager";
-import type { FeatureSet } from "@/featureSet";
+import type { CliFeatureSet } from "@/featureSet";
 import type { TelemetryService } from "@/telemetry/service";
 import type { AuthorityParts } from "@/util/authority";
 
 vi.mock("@/api/workspace", async (importActual) => {
 	const { LazyStream } = await importActual<typeof import("@/api/workspace")>();
+	const { MockEventStream } = await import("../../mocks/testHelpers");
+	const stream = () => Promise.resolve(new MockEventStream());
 	return {
 		LazyStream,
-		startWorkspace: vi.fn().mockResolvedValue({}),
-		updateWorkspace: vi.fn().mockResolvedValue({}),
-		streamBuildLogs: vi.fn().mockResolvedValue({}),
-		streamAgentLogs: vi.fn().mockResolvedValue({}),
+		startWorkspace: vi.fn((ctx: { workspace: Workspace }) =>
+			Promise.resolve(ctx.workspace),
+		),
+		updateWorkspace: vi.fn((ctx: { workspace: Workspace }) =>
+			Promise.resolve(ctx.workspace),
+		),
+		streamBuildLogs: vi.fn(stream),
+		streamAgentLogs: vi.fn(stream),
 	};
 });
 
@@ -59,12 +65,14 @@ vi.mock("@/api/updateParameters", async (importActual) => {
 	const actual = await importActual<typeof import("@/api/updateParameters")>();
 	return {
 		...actual,
-		collectUpdateParameters: vi.fn().mockResolvedValue([]),
+		collectUpdateParameters: vi.fn(() => Promise.resolve([])),
 	};
 });
 
 vi.mock("@/promptUtils", () => ({
-	maybeAskAgent: vi.fn(),
+	maybeAskAgent: vi.fn((agents: WorkspaceAgent[]) =>
+		Promise.resolve(agents.length > 0 ? agents[0] : undefined),
+	),
 }));
 
 vi.mock("@/remote/terminalOutputChannel", async () => {
@@ -84,15 +92,16 @@ const DEFAULT_PARTS: Readonly<AuthorityParts> = {
 // The message shown by confirmStartOrUpdate for our test workspace.
 const CONFIRM_MESSAGE =
 	"The workspace testuser/test-workspace is not running. How would you like to proceed?";
+// The message shown by confirmConnectToExisting.
+const UPDATE_FAILED_MESSAGE = "Failed to update testuser/test-workspace";
 
 function runningWorkspace(
 	agentOverrides: Partial<WorkspaceAgent> = {},
+	buildOverrides: Partial<Workspace["latest_build"]> = {},
 ): Workspace {
 	return createWorkspace({
-		latest_build: {
-			status: "running",
-			resources: [createResource({ agents: [createAgent(agentOverrides)] })],
-		},
+		agents: [createAgent(agentOverrides)],
+		latest_build: { status: "running", ...buildOverrides },
 	});
 }
 
@@ -108,7 +117,8 @@ function setup(
 		{} as CoderApi,
 		startupMode,
 		"/usr/bin/coder",
-		{} as FeatureSet,
+		{} as CliFeatureSet,
+		{ tasks: false, onSuccessBuild: true },
 		{
 			store: "cli",
 			url: "https://test.coder.com",
@@ -120,16 +130,36 @@ function setup(
 	return { sm, progress, userInteraction };
 }
 
+/** A workspace at the given build number, with the given build overrides. */
+function workspaceAtBuild(
+	buildNumber: number,
+	overrides: Partial<Workspace["latest_build"]>,
+): Workspace {
+	return runningWorkspace(
+		{},
+		{ id: `build-${buildNumber}`, build_number: buildNumber, ...overrides },
+	);
+}
+
+/** Update mode; the update resolves with build 2, a queued stop. */
+function setupUpdate() {
+	vi.mocked(updateWorkspace).mockResolvedValueOnce(
+		workspaceAtBuild(2, { status: "stopping", transition: "stop" }),
+	);
+	const { sm, progress } = setup("update");
+	return {
+		progress,
+		process: (status: Workspace["latest_build"]["status"], number: number) =>
+			sm.processWorkspace(workspaceAtBuild(number, { status }), progress),
+	};
+}
+
 describe("WorkspaceStateMachine", () => {
 	beforeEach(() => {
-		vi.clearAllMocks();
+		// `vi.mock` factories hold the default implementations.
+		vi.resetAllMocks();
+		new MockConfigurationProvider();
 		MockTerminalOutputChannel.lastInstance = undefined;
-		vi.mocked(updateWorkspace).mockImplementation((ctx) =>
-			Promise.resolve(ctx.workspace),
-		);
-		vi.mocked(maybeAskAgent).mockImplementation((agents) =>
-			Promise.resolve(agents.length > 0 ? agents[0] : undefined),
-		);
 	});
 
 	describe("running workspace", () => {
@@ -225,19 +255,32 @@ describe("WorkspaceStateMachine", () => {
 			expect(sm.getWorkspace()?.latest_build.status).toBe("running");
 		});
 
-		it("falls back to start and warns the user when the update fails", async () => {
+		it("starts the existing version when the update fails and the user accepts", async () => {
+			vi.mocked(updateWorkspace).mockRejectedValueOnce(
+				new Error("template not found"),
+			);
+			const { sm, progress, userInteraction } = setup("update");
+			userInteraction.setResponse(UPDATE_FAILED_MESSAGE, "Connect Anyway");
+			const ws = createWorkspace({ latest_build: { status: "stopped" } });
+
+			expect(await sm.processWorkspace(ws, progress)).toBe(false);
+			expect(startWorkspace).toHaveBeenCalledOnce();
+			expect(userInteraction.getMessageCalls()[0].options).toMatchObject({
+				detail: expect.stringContaining("template not found"),
+			});
+		});
+
+		it("rethrows when the update fails and the user dismisses the prompt", async () => {
 			vi.mocked(updateWorkspace).mockRejectedValueOnce(
 				new Error("template not found"),
 			);
 			const { sm, progress } = setup("update");
 			const ws = createWorkspace({ latest_build: { status: "stopped" } });
 
-			expect(await sm.processWorkspace(ws, progress)).toBe(false);
-			expect(updateWorkspace).toHaveBeenCalledOnce();
-			expect(startWorkspace).toHaveBeenCalledOnce();
-			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-				expect.stringMatching(/Workspace update failed:.*template not found/),
+			await expect(sm.processWorkspace(ws, progress)).rejects.toThrow(
+				"template not found",
 			);
+			expect(startWorkspace).not.toHaveBeenCalled();
 		});
 
 		it("falls back to start silently when the user cancels the update", async () => {
@@ -503,6 +546,39 @@ describe("WorkspaceStateMachine", () => {
 		it("can be disposed without errors", () => {
 			const { sm } = setup();
 			expect(() => sm.dispose()).not.toThrow();
+		});
+	});
+
+	describe("after an accepted update", () => {
+		it("waits for the server to run the queued start build", async () => {
+			const { progress, process } = setupUpdate();
+
+			// Queues the update.
+			expect(await process("running", 1)).toBe(false);
+			// A stale snapshot must not connect us.
+			expect(await process("running", 1)).toBe(false);
+			expect(maybeAskAgent).not.toHaveBeenCalled();
+			expect(await process("stopping", 2)).toBe(false);
+			// The server starts it after the stop.
+			expect(await process("stopped", 2)).toBe(false);
+			expect(progress.report).toHaveBeenCalledWith({
+				message: expect.stringContaining("waiting for the server"),
+			});
+			expect(await process("starting", 3)).toBe(false);
+			// One log stream per build.
+			expect(streamBuildLogs).toHaveBeenCalledTimes(2);
+
+			expect(await process("running", 3)).toBe(true);
+			expect(startWorkspace).not.toHaveBeenCalled();
+			expect(updateWorkspace).toHaveBeenCalledOnce();
+		});
+
+		it("throws instead of starting again when a build fails", async () => {
+			const { process } = setupUpdate();
+			await process("running", 1);
+
+			await expect(process("failed", 2)).rejects.toThrow("Update failed");
+			expect(startWorkspace).not.toHaveBeenCalled();
 		});
 	});
 });

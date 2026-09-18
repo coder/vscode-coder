@@ -21,6 +21,13 @@
   replay the buffered connection logs instead. Close codes never reached the
   reconnect logic, so these closes retried forever. Server-initiated normal
   closes (`1000`/`1001`) keep reconnecting.
+- Update a workspace in one build on Coder 2.36 and later. The connection's
+  own autostart could take the build slot between the update's stop and start,
+  so the workspace came back on the template version it already had.
+- Ask whether to connect to the existing version when an update fails, instead
+  of connecting to it with only a warning.
+- Hide the Tasks panel on deployments before 2.29, which do not serve
+  `/api/v2/tasks` and answered every poll with a 404.
 
 ## [v1.16.3](https://github.com/coder/vscode-coder/releases/tag/v1.16.3) 2026-09-14
 
