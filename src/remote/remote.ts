@@ -21,7 +21,12 @@ import {
 } from "../configWatcher";
 import { version as cliVersion } from "../core/cliExec";
 import { toError } from "../error/errorUtils";
-import { featureSetForVersion, type FeatureSet } from "../featureSet";
+import {
+	cliFeatureSet,
+	serverFeatureSet,
+	type CliFeatureSet,
+	type ServerFeatureSet,
+} from "../featureSet";
 import { Inbox } from "../inbox";
 import { AuthTelemetry } from "../instrumentation/auth";
 import {
@@ -304,7 +309,7 @@ export class Remote {
 				this.resolveRemoteBinary(workspaceClient),
 			);
 
-			const { featureSet, cliAuth } = await tracer.phase(
+			const { cliFeatures, serverFeatures, cliAuth } = await tracer.phase(
 				"compatibility_check",
 				() =>
 					this.checkCompatibility({
@@ -317,7 +322,7 @@ export class Remote {
 
 			// Reject deployments below our minimum supported version (v0.25.0)
 			// before configuring credentials, so they get a clear message.
-			if (!featureSet.cliLogin) {
+			if (!cliFeatures.cliLogin) {
 				tracer.markAborted("incompatible_server");
 				await vscodeProposed.window.showErrorMessage(
 					"Incompatible Server",
@@ -391,7 +396,8 @@ export class Remote {
 				workspaceClient,
 				args.startupMode,
 				binaryPath,
-				featureSet,
+				cliFeatures,
+				serverFeatures,
 				cliAuth,
 				this.serviceContainer,
 			);
@@ -416,7 +422,7 @@ export class Remote {
 			const inbox = await Inbox.create(workspace, workspaceClient, this.logger);
 			disposables.push(inbox);
 
-			const logDir = this.getLogDir(featureSet);
+			const logDir = this.getLogDir(cliFeatures);
 
 			const computedSshProperties = await tracer.phase("ssh_config_write", () =>
 				this.writeRemoteSshConfig(
@@ -424,7 +430,7 @@ export class Remote {
 					workspaceClient,
 					binaryPath,
 					logDir,
-					featureSet,
+					cliFeatures,
 					cliAuth,
 				),
 			);
@@ -518,11 +524,11 @@ export class Remote {
 					getValue: () => vscode.workspace.getConfiguration().get(setting),
 				})),
 			];
-			if (featureSet.proxyLogDirectory) {
+			if (cliFeatures.proxyLogDirectory) {
 				settingsToWatch.push({
 					setting: "coder.proxyLogDirectory",
 					title: "Proxy Log Directory",
-					getValue: () => this.getLogDir(featureSet),
+					getValue: () => this.getLogDir(cliFeatures),
 				});
 			}
 			disposables.push(this.watchSettings(settingsToWatch));
@@ -686,7 +692,7 @@ export class Remote {
 		workspaceClient: Api,
 		binaryPath: string,
 		logDir: string,
-		featureSet: FeatureSet,
+		cliFeatures: CliFeatureSet,
 		cliAuth: CliAuth,
 	): Promise<SshProperties> {
 		try {
@@ -696,7 +702,7 @@ export class Remote {
 				context.parts,
 				binaryPath,
 				logDir,
-				featureSet,
+				cliFeatures,
 				cliAuth,
 			);
 		} catch (error) {
@@ -760,7 +766,7 @@ export class Remote {
 	}
 
 	/**
-	 * Resolve the feature set and CLI auth, falling back to the server version
+	 * Resolve the feature sets and CLI auth, falling back to the server version
 	 * when the CLI version can't be read.
 	 */
 	private async checkCompatibility(options: {
@@ -768,26 +774,35 @@ export class Remote {
 		binaryPath: string;
 		baseUrl: string;
 		safeHostname: string;
-	}): Promise<{ featureSet: FeatureSet; cliAuth: CliAuth }> {
+	}): Promise<{
+		cliFeatures: CliFeatureSet;
+		serverFeatures: ServerFeatureSet;
+		cliAuth: CliAuth;
+	}> {
 		const { workspaceClient, binaryPath, baseUrl, safeHostname } = options;
 		const buildInfo = await workspaceClient.getBuildInfo();
+		const serverVersion = semver.parse(buildInfo.version);
 
 		let version: semver.SemVer | null;
 		try {
 			version = semver.parse(await cliVersion(binaryPath));
 		} catch {
-			version = semver.parse(buildInfo.version);
+			version = serverVersion;
 		}
 
-		const featureSet = featureSetForVersion(version);
+		const cliFeatures = cliFeatureSet(version);
 		const configDir = this.pathResolver.getGlobalConfigDir(safeHostname);
 		const cliAuth = resolveCliAuth(
 			vscode.workspace.getConfiguration(),
-			featureSet,
+			cliFeatures,
 			baseUrl,
 			configDir,
 		);
-		return { featureSet, cliAuth };
+		return {
+			cliFeatures,
+			serverFeatures: serverFeatureSet(serverVersion),
+			cliAuth,
+		};
 	}
 
 	private watchRemoteSessionAuth(
@@ -825,8 +840,8 @@ export class Remote {
 	 *
 	 * Value defined in the "coder.sshFlags" setting is not considered.
 	 */
-	private getLogDir(featureSet: FeatureSet): string {
-		if (!featureSet.proxyLogDirectory) {
+	private getLogDir(cliFeatures: CliFeatureSet): string {
+		if (!cliFeatures.proxyLogDirectory) {
 			return "";
 		}
 		return this.pathResolver.getProxyLogPath();
@@ -918,7 +933,7 @@ export class Remote {
 		parts: AuthorityParts,
 		binaryPath: string,
 		logDir: string,
-		featureSet: FeatureSet,
+		cliFeatures: CliFeatureSet,
 		cliAuth: CliAuth,
 	): Promise<SshProperties> {
 		// Taken from the authority, so a legacy host keeps working.
@@ -981,7 +996,7 @@ export class Remote {
 			safeHostname,
 			hostPrefix,
 			logDir,
-			featureSet.wildcardSSH,
+			cliFeatures.wildcardSSH,
 			cliAuth,
 		);
 

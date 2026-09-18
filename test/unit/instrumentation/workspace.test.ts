@@ -179,6 +179,30 @@ describe("WorkspaceOperationTelemetry", () => {
 			});
 		});
 	});
+
+	describe("traceFailurePrompt", () => {
+		interface FailurePromptCase {
+			connect: boolean;
+			properties: Record<string, string>;
+		}
+
+		it.each<FailurePromptCase>([
+			{ connect: true, properties: { action: "connect", result: "success" } },
+			{ connect: false, properties: { result: "aborted" } },
+		])(
+			"emits $properties.result when connect is $connect",
+			async ({ connect, properties }) => {
+				const { sink, instance: ops } = setup(newOps);
+
+				await expect(
+					ops.traceFailurePrompt(() => Promise.resolve(connect)),
+				).resolves.toBe(connect);
+				expect(sink.expectOne("workspace.update.prompted")).toMatchObject({
+					properties: { prompt: "failure", ...properties },
+				});
+			},
+		);
+	});
 });
 
 describe("recordWorkspaceState", () => {

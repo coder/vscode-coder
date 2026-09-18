@@ -25,6 +25,13 @@
   so connections stop failing with "Bad owner or permissions". Only you,
   SYSTEM, and Administrators keep access to them. The extension leaves your own
   SSH config untouched and needs no admin rights.
+- Update a workspace in one build on Coder 2.36 and later. The connection's
+  own autostart could take the build slot between the update's stop and start,
+  so the workspace came back on the template version it already had.
+- Ask whether to connect to the existing version when an update fails, instead
+  of connecting to it with only a warning.
+- Hide the Tasks panel on deployments before 2.29, which do not serve
+  `/api/v2/tasks` and answered every poll with a 404.
 
 ## [v1.16.3](https://github.com/coder/vscode-coder/releases/tag/v1.16.3) 2026-09-14
 

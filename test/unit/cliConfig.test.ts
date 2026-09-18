@@ -2,7 +2,7 @@ import * as os from "node:os";
 import * as semver from "semver";
 import { afterEach, beforeEach, it, expect, describe, vi } from "vitest";
 
-import { featureSetForVersion } from "@/featureSet";
+import { cliFeatureSet } from "@/featureSet";
 import {
 	type CliAuth,
 	getExpandedUserGlobalFlags,
@@ -318,7 +318,7 @@ describe("cliConfig", () => {
 
 	describe("resolveCliAuth", () => {
 		function resolve(config: MockConfigurationProvider, version: string) {
-			const featureSet = featureSetForVersion(semver.parse(version));
+			const featureSet = cliFeatureSet(semver.parse(version));
 			return resolveCliAuth(config, featureSet, URL, EXT_DIR);
 		}
 
