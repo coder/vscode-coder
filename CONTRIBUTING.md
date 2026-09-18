@@ -252,7 +252,7 @@ Oxlint equivalent lands, remove the corresponding entry from
 | `@eslint/markdown` (`markdown/no-missing-label-refs`, etc.) | Oxlint only lints source extensions; Markdown needs processors                 |
 | `eslint-plugin-package-json` (58 rules)                     | Oxlint only lints source extensions                                            |
 
-`eslint-plugin-oxlint` reads `.oxlintrc.json` and disables every rule Oxlint
+`eslint-plugin-oxlint` reads `.oxlintrc.jsonc` and disables every rule Oxlint
 already covers, so the two stages never overlap.
 
 ## TypeScript Version

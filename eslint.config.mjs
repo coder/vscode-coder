@@ -6,7 +6,7 @@ import packageJson from "eslint-plugin-package-json";
 import oxlint from "eslint-plugin-oxlint";
 import tseslint from "typescript-eslint";
 
-// Oxlint owns JS/TS/TSX linting (see `.oxlintrc.json`), including type-aware
+// Oxlint owns JS/TS/TSX linting (see `.oxlintrc.jsonc`), including type-aware
 // rules. ESLint only covers what Oxlint cannot:
 //
 //   - `import-x/order`: Oxlint omits it; Oxfmt's `sortImports` reorders
@@ -107,5 +107,5 @@ export default defineConfig(
 	},
 
 	// Turn off every rule Oxlint already covers. Must stay last so its disables win.
-	...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),
+	...oxlint.buildFromOxlintConfigFile("./.oxlintrc.jsonc"),
 );

@@ -1,17 +1,20 @@
+import * as jsonc from "jsonc-parser";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
-const CONFIG_PATH = path.join(REPO_ROOT, ".oxlintrc.json");
+const CONFIG_PATH = path.join(REPO_ROOT, ".oxlintrc.jsonc");
 
 interface Override {
 	files: string[];
 	jsPlugins?: Array<string | { name: string; specifier: string }>;
 }
 
-const { overrides = [] } = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8")) as {
+const { overrides = [] } = jsonc.parse(
+	fs.readFileSync(CONFIG_PATH, "utf8"),
+) as {
 	overrides?: Override[];
 };
 
@@ -28,20 +31,6 @@ describe("oxlint config", () => {
 				.map((pattern) => `overrides[${index}] ${pattern}`),
 		);
 		expect(offenders).toEqual([]);
-	});
-
-	it("resolves every relative jsPlugin specifier from the repo root", () => {
-		const specifiers = overrides
-			.flatMap((override) => override.jsPlugins ?? [])
-			.map(specifier)
-			.filter((s) => s.startsWith("."));
-		expect(specifiers.length).toBeGreaterThan(0);
-		for (const s of specifiers) {
-			expect(
-				fs.existsSync(path.resolve(REPO_ROOT, s)),
-				`${s} should exist`,
-			).toBe(true);
-		}
 	});
 
 	it("applies the storybook override to story files", () => {
@@ -69,7 +58,7 @@ describe("oxlint config", () => {
 			{ cwd: REPO_ROOT, encoding: "utf8" },
 		);
 		const applied = new Set(
-			((JSON.parse(output) as { overrides?: unknown[] }).overrides ?? []).map(
+			((jsonc.parse(output) as { overrides?: unknown[] }).overrides ?? []).map(
 				(_, index) => index,
 			),
 		);

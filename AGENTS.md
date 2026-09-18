@@ -54,12 +54,12 @@ xvfb-run -a pnpm test:integration
 
 Linting runs in two stages via `pnpm lint`:
 
-1. **Oxlint** (`.oxlintrc.json`): all JS/TS/TSX rules, including type-aware
+1. **Oxlint** (`.oxlintrc.jsonc`): all JS/TS/TSX rules, including type-aware
    rules via `oxlint-tsgolint`.
 2. **ESLint** (`eslint.config.mjs`): a small residual set Oxlint cannot do.
    See [CONTRIBUTING.md](CONTRIBUTING.md#linting) for the exhaustive list.
 
-When editing `.oxlintrc.json`:
+When editing `.oxlintrc.jsonc`:
 
 - `overrides[].files` does not support extglob alternatives like `@(ts|tsx)`.
   They silently match nothing (oxc-project/oxc#21525). Use brace globs
@@ -126,7 +126,7 @@ Non-negotiables:
 ## Code Style
 
 - TypeScript with strict typing
-- Use Oxlint for code linting (`.oxlintrc.json`) and Oxfmt for formatting.
+- Use Oxlint for code linting (`.oxlintrc.jsonc`) and Oxfmt for formatting.
   A residual ESLint config covers `import-x/order`, Markdown, and
   `package.json`
 - Use ES6 features (arrow functions, destructuring, etc.)

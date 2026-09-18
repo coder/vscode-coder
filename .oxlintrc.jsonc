@@ -1,6 +1,6 @@
 {
 	"$schema": "./node_modules/oxlint/configuration_schema.json",
-	"extends": [".oxlintrc.react.json"],
+	"extends": [".oxlintrc.react.jsonc"],
 	"plugins": ["unicorn"],
 	"categories": {
 		"correctness": "error"
