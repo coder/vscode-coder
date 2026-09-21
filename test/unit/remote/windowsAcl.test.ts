@@ -72,6 +72,26 @@ describe("WINDOWS_ACL", () => {
 		]);
 	});
 
+	it("ignores an entry that disappears between readdir and lstat", async () => {
+		readdir.mockResolvedValue(["file.conf", "file.conf.tmp"]);
+		lstat.mockImplementation((target) => {
+			if (target === DIRECTORY) {
+				return Promise.resolve(DIR);
+			}
+			if (target.endsWith(".tmp")) {
+				return Promise.reject(
+					Object.assign(new Error("no such file"), { code: "ENOENT" }),
+				);
+			}
+			return Promise.resolve(FILE_STAT);
+		});
+
+		await expect(
+			WINDOWS_ACL.prepareDirectory(DIRECTORY),
+		).resolves.toBeUndefined();
+		expect(ranIcacls()).toBe(true);
+	});
+
 	interface RejectCase {
 		name: string;
 		error: string;

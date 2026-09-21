@@ -36,7 +36,14 @@ async function prepareDirectory(target: string): Promise<void> {
 		}
 		// Inheritable grants reach children even without /T, so vet them first.
 		for (const entry of await readdir(directory)) {
-			await checkRegularFile(path.win32.join(directory, entry));
+			try {
+				await checkRegularFile(path.win32.join(directory, entry));
+			} catch (error) {
+				// Another window's temporary config can be renamed away mid-scan.
+				if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+					throw error;
+				}
+			}
 		}
 		const sid = await currentUserSid();
 		// /grant:r alone leaves other trustees' explicit grants and denies.
