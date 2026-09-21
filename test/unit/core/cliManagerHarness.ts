@@ -112,6 +112,32 @@ export function setupCliManager(basePath: string = BASE_PATH) {
 			createMockStream(partial, { error: new Error("connection reset") }),
 		);
 
+	/**
+	 * Serve a download whose fs write callbacks are held until close() is
+	 * called, like a real stream on a loaded runner.
+	 */
+	const withTrailingWriteFlush = () => {
+		vi.spyOn(fs, "createWriteStream").mockImplementation((writePath) => {
+			const pendingWrites: Array<() => void> = [];
+			const stream = new EventEmitter() as fs.WriteStream;
+			stream.write = ((chunk: Buffer, callback?: () => void) => {
+				memfs.appendFileSync(String(writePath), chunk);
+				if (callback) {
+					pendingWrites.push(callback);
+				}
+				return true;
+			}) as fs.WriteStream["write"];
+			stream.close = () => {
+				setImmediate(() => {
+					pendingWrites.splice(0).forEach((flush) => flush());
+					setImmediate(() => stream.emit("close"));
+				});
+			};
+			return stream;
+		});
+		withSuccessfulDownload();
+	};
+
 	/** Queue one HTTP response per signature source status. */
 	const withSignatureResponses = (statuses: number[]) => {
 		for (const status of statuses) {
@@ -134,7 +160,11 @@ export function setupCliManager(basePath: string = BASE_PATH) {
 				const stream = new EventEmitter();
 				(stream as unknown as fs.WriteStream).write = vi.fn();
 				(stream as unknown as fs.WriteStream).close = vi.fn();
-				setImmediate(() => stream.emit("error", new Error(message)));
+				setImmediate(() => {
+					stream.emit("error", new Error(message));
+					// A real fs stream with autoClose emits "close" after "error".
+					setImmediate(() => stream.emit("close"));
+				});
 				return stream as ReturnType<typeof memfs.createWriteStream>;
 			});
 			withHttpResponse(
@@ -183,6 +213,7 @@ export function setupCliManager(basePath: string = BASE_PATH) {
 		withSignatureResponses,
 		withInvalidSignature,
 		withStreamError,
+		withTrailingWriteFlush,
 		event,
 		noEvent,
 		expectProps,

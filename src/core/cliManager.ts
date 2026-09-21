@@ -805,50 +805,50 @@ export class CliManager {
 									: (buffer.byteLength / contentLength) * 100,
 							});
 							if (onProgress) {
-								progressWrite = onProgress(
-									written,
-									Number.isNaN(contentLength) ? null : contentLength,
-								).catch((error) => {
-									this.output.warn(
-										"Failed to write progress log:",
-										errToStr(error),
-									);
-								});
+								// Chain so awaiting the final progressWrite awaits every
+								// progress-log write, not just the last one.
+								progressWrite = progressWrite
+									.then(() =>
+										onProgress(
+											written,
+											Number.isNaN(contentLength) ? null : contentLength,
+										),
+									)
+									.catch((error) => {
+										this.output.warn(
+											"Failed to write progress log:",
+											errToStr(error),
+										);
+									});
 							}
 						});
 					});
 
 					// Wait for the stream to end or error.
 					return new Promise<boolean>((resolve, reject) => {
+						// fs emits "close" only after every pending write callback, so
+						// settling after it cannot race the trailing progress-log write.
+						const settle = (settleFn: () => void): void => {
+							writeStream.once("close", () => {
+								void progressWrite.then(settleFn);
+							});
+						};
+						const downloadError = (error: unknown): Error =>
+							new Error(
+								`Unable to download binary: ${errToStr(error, "no reason given")}`,
+							);
+
 						writeStream.on("error", (error) => {
 							readStream.destroy();
-							void progressWrite.then(() =>
-								reject(
-									new Error(
-										`Unable to download binary: ${errToStr(error, "no reason given")}`,
-									),
-								),
-							);
+							settle(() => reject(downloadError(error)));
 						});
 						readStream.on("error", (error) => {
 							writeStream.close();
-							void progressWrite.then(() =>
-								reject(
-									new Error(
-										`Unable to download binary: ${errToStr(error, "no reason given")}`,
-									),
-								),
-							);
+							settle(() => reject(downloadError(error)));
 						});
 						readStream.on("close", () => {
 							writeStream.close();
-							void progressWrite.then(() => {
-								if (cancelled) {
-									resolve(false);
-								} else {
-									resolve(true);
-								}
-							});
+							settle(() => resolve(!cancelled));
 						});
 					});
 				},

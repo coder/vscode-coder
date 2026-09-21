@@ -93,14 +93,12 @@ function setupManager(testDir: string): CliManager {
 }
 
 /**
- * Asserts the lock and progress files are removed. The lock directory can
- * briefly reappear while a peer re-acquires and releases it, so poll until gone.
+ * Asserts the lock and progress files are removed. fetchBinary settles only
+ * after trailing fs writes, so no polling is needed.
  */
 async function expectLockFilesRemoved(binaryPath: string): Promise<void> {
-	await vi.waitFor(async () => {
-		await expect(fs.access(binaryPath + ".lock")).rejects.toThrow();
-		await expect(fs.access(binaryPath + ".progress.log")).rejects.toThrow();
-	});
+	await expect(fs.access(binaryPath + ".lock")).rejects.toThrow();
+	await expect(fs.access(binaryPath + ".progress.log")).rejects.toThrow();
 }
 
 describe("CliManager Concurrent Downloads", () => {
