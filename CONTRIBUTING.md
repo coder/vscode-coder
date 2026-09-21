@@ -319,6 +319,7 @@ When updating the minimum Node.js version, update these files:
 - **tsconfig.json**: `extends` (the `@tsconfig/nodeXX` package), `lib` (match base ESNext version)
 - **esbuild.mjs**: `target`
 - **.github/workflows/ci.yaml**: `electron-version` and `vscode-version` matrices
+- **.github/workflows/publish-extension.yaml**, **.github/actions/setup/action.yml**: `runtime: node@XX`
 
 ## Dependencies
 
