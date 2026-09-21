@@ -1,6 +1,7 @@
 import {
 	mkdir,
 	readFile,
+	readdir,
 	rename,
 	stat,
 	unlink,
@@ -34,10 +35,20 @@ export interface SshValues {
 	SetEnv?: string;
 }
 
+/**
+ * Restricts the Coder-managed config directory and the files it generates.
+ * A config without one is not Coder-managed, so it is written untouched.
+ */
+export interface ManagedPermissions {
+	prepareDirectory(directory: string): Promise<void>;
+	secure(filePath: string): Promise<void>;
+}
+
 /** Injectable for tests. */
 export interface FileSystem {
 	mkdir: typeof mkdir;
 	readFile: typeof readFile;
+	readdir: typeof readdir;
 	rename: typeof rename;
 	stat: typeof stat;
 	unlink: typeof unlink;
@@ -47,6 +58,7 @@ export interface FileSystem {
 const defaultFileSystem: FileSystem = {
 	mkdir,
 	readFile,
+	readdir,
 	rename,
 	stat,
 	unlink,
@@ -299,15 +311,19 @@ export class SshConfig {
 	private readonly fileSystem: FileSystem;
 	private readonly logger: Logger;
 	private raw: string | undefined;
+	/** Marks this file as Coder-managed; absent for the user's own config. */
+	private readonly permissions: ManagedPermissions | undefined;
 
 	constructor(
 		filePath: string,
 		logger: Logger,
 		fileSystem: FileSystem = defaultFileSystem,
+		permissions?: ManagedPermissions,
 	) {
 		this.filePath = filePath;
 		this.logger = logger;
 		this.fileSystem = fileSystem;
+		this.permissions = permissions;
 	}
 
 	async load() {
@@ -442,39 +458,99 @@ export class SshConfig {
 
 	/** Atomically write raw via a temp file. */
 	private async save(): Promise<void> {
-		// Preserve the existing file mode.
-		const existingMode = await this.fileSystem
-			.stat(this.filePath)
-			.then((stat) => stat.mode)
-			.catch((ex: NodeJS.ErrnoException) => {
-				if (ex.code === "ENOENT") {
-					return 0o600;
-				}
-				throw ex;
-			});
-		await this.fileSystem.mkdir(path.dirname(this.filePath), {
+		const existingMode = await this.getFileMode();
+		const fileName = path.basename(this.filePath);
+		const dirName = path.dirname(this.filePath);
+		await this.fileSystem.mkdir(dirName, {
 			mode: 0o700,
 			recursive: true,
 		});
-		const fileName = path.basename(this.filePath);
-		const dirName = path.dirname(this.filePath);
+		// Must come before any file reset or temporary write in this directory.
+		await this.permissions?.prepareDirectory(dirName);
+		await this.repairIncludedFiles(dirName);
 		const tempPath = tempFilePath(
 			`${dirName}/.${fileName}`,
 			"vscode-coder-tmp",
 		);
+		await this.writeTemp(tempPath, existingMode);
+		await this.repairPermissions(tempPath);
+		await this.replaceWithTemp(tempPath);
+	}
+
+	/** Preserve the existing file mode, defaulting to owner-only access. */
+	private async getFileMode(): Promise<number> {
+		try {
+			return (await this.fileSystem.stat(this.filePath)).mode;
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+				return 0o600;
+			}
+			throw error;
+		}
+	}
+
+	/** Repair every direct Include match; one unsafe sibling blocks every host. */
+	private async repairIncludedFiles(dirName: string): Promise<void> {
+		if (!this.permissions) return;
+		const entries = await this.fileSystem
+			.readdir(dirName, { withFileTypes: true })
+			.catch((error: unknown) => {
+				this.logger.warn(
+					"Failed to enumerate Coder-managed SSH config files",
+					error,
+				);
+				return [];
+			});
+		for (const entry of entries) {
+			if (!entry.name.toLowerCase().endsWith(SSH_CONFIG_EXT)) continue;
+			const filePath = path.join(dirName, entry.name);
+			// On Windows, fopen fails on a directory, so OpenSSH aborts the whole
+			// Include. No ACL change fixes that, so report it instead.
+			if (!entry.isFile()) {
+				throw new Error(
+					`SSH config entry ${filePath} is not a regular file. Move or rename it so it no longer matches *.conf, then reconnect.`,
+				);
+			}
+			await this.repairPermissions(filePath);
+		}
+	}
+
+	/** Create the temporary file exclusively, leaving any preexisting path alone. */
+	private async writeTemp(tempPath: string, mode: number): Promise<void> {
 		try {
 			await this.fileSystem.writeFile(tempPath, this.getRaw(), {
-				mode: existingMode,
 				encoding: "utf-8",
+				flag: "wx",
+				mode,
 			});
 		} catch (err) {
+			// On EEXIST this write did not create the path, so it must not delete it.
+			if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
+				await this.discardTemp(tempPath);
+			}
 			throw new Error(
 				`Failed to write temporary SSH config file at ${tempPath}: ${err instanceof Error ? err.message : String(err)}. ` +
 					`Please check your disk space, permissions, and that the directory exists.`,
 				{ cause: err },
 			);
 		}
+	}
 
+	/** Log a repair failure without preventing an SSH connection attempt. */
+	private async repairPermissions(filePath: string): Promise<void> {
+		try {
+			await this.permissions?.secure(filePath);
+		} catch (error) {
+			this.logger.warn(
+				"Failed to repair SSH config permissions",
+				filePath,
+				error,
+			);
+		}
+	}
+
+	/** Replace the destination atomically, cleaning up if the rename fails. */
+	private async replaceWithTemp(tempPath: string): Promise<void> {
 		try {
 			await renameWithRetry(
 				(src, dest) => this.fileSystem.rename(src, dest),
@@ -493,6 +569,7 @@ export class SshConfig {
 		}
 	}
 
+	/** Attempt cleanup without hiding the original write or rename failure. */
 	private async discardTemp(tempPath: string): Promise<void> {
 		try {
 			await this.fileSystem.unlink(tempPath);

@@ -21,6 +21,10 @@
   replay the buffered connection logs instead. Close codes never reached the
   reconnect logic, so these closes retried forever. Server-initiated normal
   closes (`1000`/`1001`) keep reconnecting.
+- Repair permissions on the Windows SSH config files the extension generates,
+  so connections stop failing with "Bad owner or permissions". Only you,
+  SYSTEM, and Administrators keep access to them. The extension leaves your own
+  SSH config untouched and needs no admin rights.
 
 ## [v1.16.3](https://github.com/coder/vscode-coder/releases/tag/v1.16.3) 2026-09-14
 

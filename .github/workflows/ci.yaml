@@ -48,6 +48,11 @@ jobs:
               name: Windows,
               electron-version: "latest",
             }
+          - {
+              os: windows-11-arm,
+              name: Windows ARM64,
+              electron-version: "latest",
+            }
           - { os: macos-15, name: macOS, electron-version: "latest" }
 
     steps:
@@ -62,6 +67,7 @@ jobs:
         shell: bash
         env:
           CI: true
+          EXPECTED_ARCH: ${{ runner.arch }}
 
   test-integration:
     name: Integration Test (${{ matrix.name }}, VS Code ${{ matrix.vscode-version }})

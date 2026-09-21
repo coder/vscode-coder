@@ -12,6 +12,7 @@ const testTimeout = process.platform === "win32" ? 10_000 : 5_000;
 export default defineConfig({
 	test: {
 		testTimeout,
+		globalSetup: "./test/env-check.ts",
 		projects: [
 			{
 				extends: true,
