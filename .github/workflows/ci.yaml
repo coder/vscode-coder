@@ -23,6 +23,9 @@ jobs:
           persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
+        with:
+          # Only the default branch saves the store cache.
+          cache-save: ${{ github.ref == 'refs/heads/main' }}
 
       - run: pnpm typecheck
 
@@ -61,6 +64,8 @@ jobs:
           persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
+        with:
+          cache-save: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Run tests with Electron ${{ matrix.electron-version }}
         run: ./scripts/test-electron.sh ${{ matrix.electron-version }}
@@ -87,6 +92,8 @@ jobs:
           persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
+        with:
+          cache-save: ${{ github.ref == 'refs/heads/main' }}
 
       - run: pnpm build
 
@@ -106,6 +113,8 @@ jobs:
           persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
+        with:
+          cache-save: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Get Playwright version
         id: playwright-version
@@ -151,6 +160,8 @@ jobs:
           persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
+        with:
+          cache-save: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Get version from package.json
         id: version

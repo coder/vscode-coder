@@ -20,6 +20,8 @@ jobs:
 
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
+        with:
+          cache-save: true
 
       - name: Extract version from tag
         id: version
