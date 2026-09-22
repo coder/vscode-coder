@@ -87,6 +87,41 @@ command.
 Coder Remote periodically reads the `network-info-dir + "/" + matchingSSHPID`
 file to display network information.
 
+### Windows SSH config permissions
+
+Windows files inherit their permissions from the directory they live in, so a
+config the extension generates under `%APPDATA%\coder.coder-remote\ssh` can end
+up readable by other accounts. OpenSSH rejects such a file with "Bad owner or
+permissions" and skips the whole `Include`, which blocks every Coder host, not
+just the one it came from.
+
+Before each managed write, `src/remote/windowsAcl.ts` locks the directory down
+and lets its files inherit from it:
+
+| Step                                                     | Command                                              |
+| -------------------------------------------------------- | ---------------------------------------------------- |
+| Read the current user's SID                              | `whoami.exe /user /fo csv /nh`                       |
+| Clear the directory's own grants                         | `icacls.exe <dir> /reset`                            |
+| Grant that user, SYSTEM, and Administrators full control | `icacls.exe <dir> /inheritance:r /grant:r <trustee>` |
+| Clear each `*.conf` file so it inherits the directory    | `icacls.exe <file> /reset`                           |
+
+Resetting every `*.conf` file, not only the one being written, also repairs
+files left behind by other deployments and editors.
+
+Worth knowing:
+
+- Like VS Code, the code checks exit codes but never reads ACLs back. It needs
+  no script, native module, ownership change, or elevation, and it leaves the
+  user's own SSH config alone.
+- Links and non-files are rejected before the repair, because inheritable
+  grants reach children even without `/T`. That stops mistakes, not an attacker
+  racing the check.
+- The repair is not atomic: a failure after `/reset` can leave the directory
+  with its parent's grants.
+
+`windowsAcl.native.test.ts` drives the real `icacls.exe`, `whoami.exe`, and
+OpenSSH. Run it unelevated as well as in CI to catch privilege assumptions.
+
 ## Other features
 
 The extension provides several sidebar panels:
@@ -289,7 +324,8 @@ When updating the minimum Node.js version, update these files:
 
 Some dependencies are not directly used in the source but are required anyway.
 
-- `bufferutil` and `utf-8-validate` are peer dependencies of `ws`.
+- `bufferutil` and `utf-8-validate` are peer dependencies of `ws`. Their source
+  builds are off, so Windows on ARM64 uses their JavaScript fallback.
 - `ua-parser-js` and `dayjs` are used by the Coder API client.
 
 The coder client is vendored from coder/coder. Pin it to a release tag in

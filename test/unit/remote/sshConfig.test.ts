@@ -1,6 +1,7 @@
 import { vol } from "memfs";
 import * as fsPromises from "node:fs/promises";
 import * as os from "node:os";
+import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,13 +9,17 @@ import {
 	parseCoderSshOptions,
 	parseSshConfig,
 	SshConfig,
+	type ManagedPermissions,
 	type SshValues,
 	validateDeploymentSshOptions,
 } from "@/remote/sshConfig";
 
 import { createMockLogger } from "../../mocks/testHelpers";
 
-vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
+vi.mock("node:fs/promises", async () => {
+	const fs = (await import("memfs")).fs.promises;
+	return { ...fs, readdir: vi.fn(fs.readdir) };
+});
 vi.mock("node:os", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:os")>();
 	return { ...actual, homedir: vi.fn(() => "/Path/To/UserHomeDir") };
@@ -22,6 +27,10 @@ vi.mock("node:os", async (importOriginal) => {
 
 const homeDir = "/Path/To/UserHomeDir";
 const sshFilePath = "/Path/To/UserHomeDir/.sshConfigDir/sshConfigFile";
+const MANAGED_SSH_DIR = path.join(homeDir, ".sshConfigDir");
+const MANAGED_SSH_FILE_PATH = path.join(MANAGED_SSH_DIR, "deployment.conf");
+const TEMP_MARKER = "vscode-coder-tmp";
+const FAILURE = new Error("permission repair failed");
 const hostname = "dev.coder.com";
 const fileHeader = `# Coder workspace hosts. Do not edit; the Coder extension rewrites this file
 # on every connection. Override options with the "coder.sshConfig" setting.`;
@@ -83,6 +92,8 @@ const includeBlock = renderIncludeBlock(includeDir);
 const mockLogger = createMockLogger();
 
 const readConfig = () => fsPromises.readFile(sshFilePath, "utf-8");
+const tempFiles = () =>
+	Object.keys(vol.toJSON()).filter((file) => file.includes(TEMP_MARKER));
 
 async function loadSshConfig(
 	contents?: string,
@@ -116,6 +127,8 @@ async function updateInclude(
 
 beforeEach(() => {
 	vol.reset();
+	vi.clearAllMocks();
+	vi.mocked(fsPromises.readdir).mockReset();
 	vi.mocked(os.homedir).mockReturnValue(homeDir);
 });
 
@@ -378,6 +391,21 @@ describe("persistence", () => {
 		);
 	});
 
+	it("does not remove a preexisting exclusive temp path", async () => {
+		vi.spyOn(crypto, "randomUUID").mockReturnValue(
+			"00000000-0000-0000-0000-000000000000",
+		);
+		const tempPath =
+			"/Path/To/UserHomeDir/.sshConfigDir/.sshConfigFile.vscode-coder-tmp-00000000";
+		vol.fromJSON({ [tempPath]: "unrelated temp" });
+		const sshConfig = await loadSshConfig();
+
+		await expect(sshConfig.update(BASE_SSH_VALUES)).rejects.toThrow(
+			"Failed to write temporary SSH config file",
+		);
+		expect(await fsPromises.readFile(tempPath, "utf-8")).toBe("unrelated temp");
+	});
+
 	it("wraps rename failures and removes the temporary file", async () => {
 		const sshConfig = await loadSshConfig("Host initial");
 		const error = Object.assign(new Error("EXDEV"), { code: "EXDEV" });
@@ -407,6 +435,165 @@ describe("persistence", () => {
 		await sshConfig.updateInclude(includeDir, hostname);
 		expect(writeFileSpy).not.toHaveBeenCalled();
 		expect(renameSpy).not.toHaveBeenCalled();
+	});
+});
+
+describe("managed config permissions", () => {
+	const sibling = path.join(MANAGED_SSH_DIR, "sibling.conf");
+	const upperCase = path.join(MANAGED_SSH_DIR, "upper.CONF");
+	const siblings = { [sibling]: "Host sibling", [upperCase]: "Host upper" };
+	const existing = { [MANAGED_SSH_FILE_PATH]: "Host original" };
+	const anyTempFile = expect.stringContaining(TEMP_MARKER);
+
+	/** Repair that fails for the paths the test names. */
+	function permissions(...failures: readonly string[]): ManagedPermissions {
+		return {
+			prepareDirectory: vi.fn(() => Promise.resolve()),
+			secure: vi.fn((filePath: string) =>
+				failures.some((name) => filePath.includes(name))
+					? Promise.reject(FAILURE)
+					: Promise.resolve(),
+			),
+		};
+	}
+
+	function updateManaged(
+		acl: ManagedPermissions,
+		files: Record<string, string | null>,
+	) {
+		vol.fromJSON(files);
+		return new SshConfig(
+			MANAGED_SSH_FILE_PATH,
+			mockLogger,
+			fsPromises,
+			acl,
+		).update(BASE_SSH_VALUES);
+	}
+
+	const securedPaths = (acl: ManagedPermissions) =>
+		vi.mocked(acl.secure).mock.calls.flat();
+
+	interface RepairCase {
+		name: string;
+		files: Record<string, string>;
+		failures: readonly string[];
+		secured: unknown[];
+		warnings: number;
+	}
+	it.each<RepairCase>([
+		{
+			name: "rewriting an existing deployment",
+			files: { ...existing, ...siblings },
+			failures: [],
+			// The file being replaced is repaired too: the rename needs access to it.
+			secured: [MANAGED_SSH_FILE_PATH, sibling, upperCase, anyTempFile],
+			warnings: 0,
+		},
+		{
+			name: "adding the first file of a new deployment",
+			files: siblings,
+			failures: [],
+			secured: [sibling, upperCase, anyTempFile],
+			warnings: 0,
+		},
+		{
+			name: "a sibling and the temp file cannot be repaired",
+			files: { ...existing, ...siblings },
+			failures: ["sibling.conf", TEMP_MARKER],
+			secured: [MANAGED_SSH_FILE_PATH, sibling, upperCase, anyTempFile],
+			warnings: 2,
+		},
+	])(
+		"repairs every Include match and the temp file when $name",
+		async ({ files, failures, secured, warnings }) => {
+			const acl = permissions(...failures);
+
+			await updateManaged(acl, files);
+
+			expect(acl.prepareDirectory).toHaveBeenCalledWith(MANAGED_SSH_DIR);
+			expect(securedPaths(acl)).toEqual(secured);
+			expect(
+				await fsPromises.readFile(MANAGED_SSH_FILE_PATH, "utf-8"),
+			).toContain("ProxyCommand some-command-here");
+			expect(await fsPromises.readFile(sibling, "utf-8")).toBe("Host sibling");
+			expect(mockLogger.warn).toHaveBeenCalledTimes(warnings);
+			expect(tempFiles()).toEqual([]);
+		},
+	);
+
+	it("repairs the temp file before it replaces the config", async () => {
+		const acl = permissions();
+		let destinationDuringRepair: string | undefined;
+		vi.mocked(acl.secure).mockImplementation(async (filePath) => {
+			if (filePath.includes(TEMP_MARKER)) {
+				destinationDuringRepair = await fsPromises.readFile(
+					MANAGED_SSH_FILE_PATH,
+					"utf-8",
+				);
+			}
+		});
+
+		await updateManaged(acl, existing);
+
+		// Undefined would mean the temp file was never repaired at all.
+		expect(destinationDuringRepair).toBe("Host original");
+	});
+
+	it("writes and repairs nothing when directory preparation fails", async () => {
+		const acl = permissions();
+		vi.mocked(acl.prepareDirectory).mockRejectedValueOnce(FAILURE);
+
+		await expect(
+			updateManaged(acl, { ...existing, ...siblings }),
+		).rejects.toThrow(FAILURE);
+
+		expect(acl.secure).not.toHaveBeenCalled();
+		expect(await fsPromises.readFile(MANAGED_SSH_FILE_PATH, "utf8")).toBe(
+			"Host original",
+		);
+		expect(tempFiles()).toEqual([]);
+	});
+
+	it("preserves the config and reports a directory matching the Include", async () => {
+		const directory = path.join(MANAGED_SSH_DIR, "directory.conf");
+
+		await expect(
+			updateManaged(permissions(), { ...existing, [directory]: null }),
+		).rejects.toThrow(`SSH config entry ${directory} is not a regular file`);
+
+		expect(await fsPromises.readFile(MANAGED_SSH_FILE_PATH, "utf-8")).toBe(
+			"Host original",
+		);
+		expect(tempFiles()).toEqual([]);
+	});
+
+	it("warns and still writes the config when enumeration fails", async () => {
+		const error = new Error("cannot enumerate");
+		vi.mocked(fsPromises.readdir).mockRejectedValueOnce(error);
+
+		await updateManaged(permissions(), existing);
+
+		expect(await fsPromises.readFile(MANAGED_SSH_FILE_PATH, "utf-8")).toContain(
+			"ProxyCommand some-command-here",
+		);
+		expect(mockLogger.warn).toHaveBeenCalledWith(
+			"Failed to enumerate Coder-managed SSH config files",
+			error,
+		);
+	});
+
+	it("neither repairs nor enumerates without injected permissions", async () => {
+		vol.fromJSON(existing);
+
+		await new SshConfig(MANAGED_SSH_FILE_PATH, mockLogger, fsPromises).update(
+			BASE_SSH_VALUES,
+		);
+
+		expect(await fsPromises.readFile(MANAGED_SSH_FILE_PATH, "utf-8")).toContain(
+			"ProxyCommand some-command-here",
+		);
+		expect(fsPromises.readdir).not.toHaveBeenCalled();
+		expect(mockLogger.warn).not.toHaveBeenCalled();
 	});
 });
 
