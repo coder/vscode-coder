@@ -6,7 +6,6 @@ import { LazyStream, startWorkspace, updateWorkspace } from "@/api/workspace";
 
 import { workspace as createWorkspace } from "@repo/mocks";
 
-import type { Api } from "coder/site/src/api/api";
 import type {
 	CreateWorkspaceBuildRequest,
 	Workspace,
@@ -97,7 +96,7 @@ function createUpdateCtx(
 		}),
 	};
 	const ctx = {
-		restClient: restClient as unknown as Api,
+		restClient,
 		auth: {
 			store: "cli" as const,
 			url: "https://test.coder.com",

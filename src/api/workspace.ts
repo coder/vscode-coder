@@ -51,8 +51,18 @@ export class LazyStream<T> {
 	}
 }
 
+type BuildApi = Pick<
+	Api,
+	| "getTemplate"
+	| "getWorkspace"
+	| "postWorkspaceBuild"
+	| "startWorkspace"
+	| "stopWorkspace"
+	| "waitForBuild"
+>;
+
 interface CliContext {
-	restClient: Api;
+	restClient: BuildApi;
 	auth: CliAuth;
 	binPath: string;
 	workspace: Workspace;

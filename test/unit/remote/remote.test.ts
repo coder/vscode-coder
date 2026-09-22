@@ -5,7 +5,11 @@ import * as vscode from "vscode";
 import { MementoManager } from "@/core/mementoManager";
 import { PathResolver } from "@/core/pathResolver";
 import { SecretsManager } from "@/core/secretsManager";
-import { Remote, workspaceLabelSuffix } from "@/remote/remote";
+import {
+	buildSshProxyCommand,
+	Remote,
+	workspaceLabelSuffix,
+} from "@/remote/remote";
 
 import { createTestTelemetryService } from "../../mocks/telemetry";
 import {
@@ -51,7 +55,7 @@ const CLI_AUTH: CliAuth = {
 };
 
 function createRemote(logger: Logger = createMockLogger()) {
-	const config = new MockConfigurationProvider();
+	new MockConfigurationProvider();
 	const userInteraction = new MockUserInteraction();
 	const pathResolver = new PathResolver("/mock/global", "/mock/log");
 	vol.fromJSON({
@@ -88,7 +92,6 @@ function createRemote(logger: Logger = createMockLogger()) {
 			{} as Commands,
 			{} as vscode.ExtensionContext,
 		),
-		config,
 		ensureLoggedInWithDialog,
 		mementoManager,
 		secretsManager,
@@ -236,10 +239,6 @@ describe("Remote", () => {
 		});
 	});
 
-	interface RemoteInternals {
-		buildProxyCommand: Remote["buildProxyCommand"];
-	}
-
 	interface SshFlagsCase {
 		name: string;
 		flags?: string[];
@@ -263,22 +262,19 @@ describe("Remote", () => {
 				expected:
 					"ssh --wait=yes --stdio --usage-app=vscode --network-info-dir <dir> --ssh-host-prefix coder-vscode.coder.example.com-- %h",
 			},
-		])("$name", async ({ flags, expected }) => {
-			const { remote, config } = createRemote();
+		])("$name", ({ flags, expected }) => {
+			const config = new MockConfigurationProvider();
 			if (flags) {
 				config.set("coder.sshFlags", flags);
 			}
 
-			const proxyCommand = await (
-				remote as unknown as RemoteInternals
-			).buildProxyCommand(
-				"/mock/coder",
-				SAFE_HOSTNAME,
-				"coder-vscode.coder.example.com--",
-				"",
-				true,
-				CLI_AUTH,
-			);
+			const proxyCommand = buildSshProxyCommand({
+				pathResolver: new PathResolver("/mock/global", "/mock/log"),
+				binaryPath: "/mock/coder",
+				cliAuth: CLI_AUTH,
+				logArgs: [],
+				hostPrefix: "coder-vscode.coder.example.com--",
+			});
 
 			expect(elideNetworkInfoDir(proxyCommand)).toBe(
 				`/mock/coder --global-config /mock/global --url https://coder.example.com ${expected}`,
