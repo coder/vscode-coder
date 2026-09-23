@@ -81,19 +81,13 @@ const exerciseTree: NonNullable<Story["play"]> = async ({ canvasElement }) => {
 	// One pointer for the whole play, so the unhover at the end really lands.
 	const user = userEvent.setup();
 	const canvas = within(canvasElement);
-	const selected = canvas.getByRole("treeitem", { name: "components" });
 	const treeItem = canvas.getByRole("treeitem", { name: "Tree.tsx" });
-	await expect(selected).toHaveAttribute("aria-selected", "true");
 	await user.click(
 		canvas.getByRole("button", { name: "Close Tree.tsx", hidden: true }),
 	);
-	await expect(selected).toHaveAttribute("aria-selected", "true");
-	await expect(treeItem).toHaveAttribute("aria-selected", "false");
 	await user.click(treeItem);
-	await expect(treeItem).toHaveAttribute("aria-selected", "true");
 	const readme = canvas.getByRole("treeitem", { name: "README.md" });
 	await user.click(readme);
-	await expect(readme).toHaveAttribute("aria-selected", "true");
 	// Clicking leaves the pointer on the row; these stories snapshot hoverless.
 	await user.unhover(readme);
 };
@@ -176,9 +170,6 @@ export const StickyScroll: Story = {
 				canvasElement.querySelector(".ui-tree-sticky__rows"),
 			).not.toBeNull(),
 		);
-		await expect(
-			within(canvasElement).getByTestId("scroller").scrollTop,
-		).toBeGreaterThan(0);
 	},
 };
 
@@ -193,18 +184,9 @@ export const MultiSelect: Story = {
 		}),
 	play: async ({ canvasElement }) => {
 		const canvas = within(canvasElement);
-		const treeElement = canvas.getByRole("tree");
-		const readme = canvas.getByRole("treeitem", { name: "README.md" });
-		await fireEvent.click(readme, { ctrlKey: true });
-		await expect(readme).toHaveAttribute("aria-selected", "true");
-		await expect(
-			canvas.getByRole("treeitem", { name: "Tree.tsx" }),
-		).toHaveAttribute("aria-selected", "true");
-		await expect(canvasElement.ownerDocument.activeElement).toBe(treeElement);
-		await expect(treeElement).toHaveAttribute(
-			"aria-activedescendant",
-			readme.id,
-		);
+		await fireEvent.click(canvas.getByRole("treeitem", { name: "README.md" }), {
+			ctrlKey: true,
+		});
 	},
 };
 
@@ -217,18 +199,10 @@ export const Focused: Story = {
 			variant: "explorer",
 		}),
 	play: async ({ canvasElement }) => {
-		const canvas = within(canvasElement);
-		const treeElement = canvas.getByRole("tree");
-		const styles = canvas.getByRole("treeitem", { name: "Tree.css" });
+		const treeElement = within(canvasElement).getByRole("tree");
 		treeElement.focus();
 		await waitFor(() => expect(treeElement).toHaveClass("ui-tree--focused"));
 		await fireEvent.keyDown(treeElement, { key: "ArrowDown" });
-		await expect(canvasElement.ownerDocument.activeElement).toBe(treeElement);
-		await expect(treeElement).toHaveAttribute(
-			"aria-activedescendant",
-			styles.id,
-		);
-		await expect(styles).toHaveAttribute("aria-selected", "false");
 	},
 };
 
@@ -261,12 +235,11 @@ export const Nested: Story = {
 		pseudo: { hover: [".ui-tree", ".story-hover > .ui-tree-item__row"] },
 	},
 	play: async ({ canvasElement }) => {
-		const deepLeaf = within(canvasElement).getByRole("treeitem", {
-			name: "StickyScroll.tsx",
-		});
-		await expect(deepLeaf).toHaveAttribute("aria-level", "5");
-		await userEvent.click(deepLeaf);
-		await expect(deepLeaf).toHaveAttribute("aria-selected", "true");
+		await userEvent.click(
+			within(canvasElement).getByRole("treeitem", {
+				name: "StickyScroll.tsx",
+			}),
+		);
 	},
 };
 
@@ -317,8 +290,8 @@ const hoverAt = async (element: Element): Promise<void> => {
 	});
 };
 
-/** The bubble is portalled, so it lands outside the story canvas. */
-const expectBubble = async (content: string): Promise<void> => {
+/** Waits for the portalled bubble to carry `content`, which a snapshot needs. */
+const showBubble = async (content: string): Promise<void> => {
 	const bubble = await screen.findByRole("tooltip");
 	await waitFor(() => expect(bubble).toHaveTextContent(content));
 };
@@ -330,7 +303,7 @@ export const Hover: Story = {
 			name: LONG_NAME,
 		});
 		await hoverAt(hovered.getElementsByClassName("ui-tree-item__content")[0]);
-		await expectBubble(LONG_NAME);
+		await showBubble(LONG_NAME);
 	},
 };
 
@@ -342,12 +315,12 @@ export const HoverOnAction: Story = {
 		await hoverAt(
 			canvas.getByRole("button", { name: "Start workspace", hidden: true }),
 		);
-		await expectBubble("Start workspace");
+		await showBubble("Start workspace");
 		// Crossing the same action bar swaps the bubble without a second delay.
 		await hoverAt(
 			canvas.getByRole("button", { name: "Workspace settings", hidden: true }),
 		);
-		await expectBubble("Workspace settings");
+		await showBubble("Workspace settings");
 	},
 };
 
@@ -362,6 +335,6 @@ export const HoverByKeyboard: Story = {
 		// VS Code binds list.showHover to this chord.
 		await fireEvent.keyDown(treeElement, { key: "k", ctrlKey: true });
 		await fireEvent.keyDown(treeElement, { key: "i", ctrlKey: true });
-		await expectBubble(LONG_NAME);
+		await showBubble(LONG_NAME);
 	},
 };

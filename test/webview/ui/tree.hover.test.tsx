@@ -36,7 +36,7 @@ function renderHoverTree() {
 		/>,
 		{
 			wrapper: ({ children }) => (
-				<TooltipProvider delayDuration={DELAY_MS}>{children}</TooltipProvider>
+				<TooltipProvider delay={DELAY_MS}>{children}</TooltipProvider>
 			),
 		},
 	);

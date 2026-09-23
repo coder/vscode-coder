@@ -1,7 +1,7 @@
-import * as SelectPrimitive from "@radix-ui/react-select";
+import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { useId, type ComponentPropsWithRef, type ReactNode } from "react";
 
-import { cx } from "#cx";
+import { cx, type Styled } from "#cx";
 
 import "../control.css";
 import { Icon } from "../Icon/Icon";
@@ -9,60 +9,76 @@ import "../overlay.css";
 
 import "./Select.css";
 
-export const Select = SelectPrimitive.Root;
+export type SelectProps<Value> = Omit<
+	SelectPrimitive.Root.Props<Value>,
+	"items"
+> & {
+	/** The labels the trigger shows. */
+	items:
+		| Readonly<Record<string, ReactNode>>
+		| ReadonlyArray<{ readonly value: Value; readonly label: ReactNode }>;
+};
 
-/** Renders the selected item's text, or `placeholder` when empty. */
+export function Select<Value>(props: SelectProps<Value>): React.JSX.Element {
+	return <SelectPrimitive.Root {...props} />;
+}
+
 export const SelectValue = SelectPrimitive.Value;
 
-/** The closed control: current value and a chevron, styled like the
-    native dropdown. */
 export function SelectTrigger({
 	className,
 	children,
 	...props
-}: ComponentPropsWithRef<typeof SelectPrimitive.Trigger>): React.JSX.Element {
+}: Styled<
+	ComponentPropsWithRef<typeof SelectPrimitive.Trigger>
+>): React.JSX.Element {
 	return (
 		<SelectPrimitive.Trigger
 			{...props}
 			className={cx("ui-control", "ui-select__trigger", className)}
 		>
 			{children}
-			<SelectPrimitive.Icon asChild>
-				<Icon name="chevron-down" />
-			</SelectPrimitive.Icon>
+			<Icon name="chevron-down" />
 		</SelectPrimitive.Trigger>
 	);
 }
 
-/** The floating option list, portalled to `body` and sized to the trigger.
-    Like the native select dropdown it appears without animation. */
+/** `className` and `style` dress the panel; other props go to the listbox. */
 export function SelectContent({
 	className,
-	children,
+	style,
 	...props
-}: ComponentPropsWithRef<typeof SelectPrimitive.Content>): React.JSX.Element {
+}: Styled<
+	ComponentPropsWithRef<typeof SelectPrimitive.List>
+>): React.JSX.Element {
 	return (
 		<SelectPrimitive.Portal>
-			<SelectPrimitive.Content
-				position="popper"
+			<SelectPrimitive.Positioner
+				// Fixed gets its own layer, which keeps text antialiasing greyscale.
+				positionMethod="fixed"
+				alignItemWithTrigger={false}
+				align="start"
 				sideOffset={2}
-				{...props}
-				className={cx("ui-overlay", "ui-select__list", className)}
+				collisionPadding={10}
 			>
-				<SelectPrimitive.Viewport>{children}</SelectPrimitive.Viewport>
-			</SelectPrimitive.Content>
+				<SelectPrimitive.Popup
+					className={cx("ui-overlay", "ui-select__list", className)}
+					style={style}
+				>
+					<SelectPrimitive.List {...props} className="ui-select__viewport" />
+				</SelectPrimitive.Popup>
+			</SelectPrimitive.Positioner>
 		</SelectPrimitive.Portal>
 	);
 }
 
-export interface SelectItemProps extends ComponentPropsWithRef<
-	typeof SelectPrimitive.Item
-> {
+export type SelectItemProps = Styled<
+	ComponentPropsWithRef<typeof SelectPrimitive.Item>
+> & {
 	description?: ReactNode;
-}
+};
 
-/** One option row; the highlighted row marks selection, like the native
-    list. An optional description renders as a muted second line. */
+/** `description` renders as a muted second line. */
 export function SelectItem({
 	className,
 	children,
@@ -71,15 +87,20 @@ export function SelectItem({
 	...props
 }: SelectItemProps): React.JSX.Element {
 	const descriptionId = useId();
+	const labelId = useId();
 	return (
 		<SelectPrimitive.Item
+			// Name the row by its label alone, so the description is not read twice.
+			aria-labelledby={labelId}
 			{...props}
 			className={cx("ui-overlay__item", "ui-select__item", className)}
 			aria-describedby={
 				cx(describedBy, description !== undefined && descriptionId) || undefined
 			}
 		>
-			<SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+			<SelectPrimitive.ItemText id={labelId}>
+				{children}
+			</SelectPrimitive.ItemText>
 			{description !== undefined && (
 				<span id={descriptionId} className="ui-select__item-description">
 					{description}

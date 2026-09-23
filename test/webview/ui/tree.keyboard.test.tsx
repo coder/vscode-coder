@@ -183,7 +183,7 @@ describe("Tree keyboard navigation", () => {
 	it("opens the focused row's hover on the show-hover chord", async () => {
 		stubElementBoxes();
 		render(
-			<TooltipProvider delayDuration={0}>
+			<TooltipProvider delay={0}>
 				<Tree
 					aria-label="Chord"
 					nodes={[

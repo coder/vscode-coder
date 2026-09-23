@@ -4,7 +4,7 @@ import { cx } from "#cx";
 
 import "../control.css";
 import { Icon } from "../Icon/Icon";
-import { Tooltip, TooltipScope } from "../Tooltip/Tooltip";
+import { Tooltip } from "../Tooltip/Tooltip";
 
 import "./IconButton.css";
 
@@ -40,9 +40,5 @@ export function IconButton({
 		</button>
 	);
 	if (!tooltip) return button;
-	return (
-		<TooltipScope>
-			<Tooltip content={tooltip}>{button}</Tooltip>
-		</TooltipScope>
-	);
+	return <Tooltip content={tooltip}>{button}</Tooltip>;
 }

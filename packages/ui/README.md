@@ -157,7 +157,9 @@ styling.
 
 Labels hover with the node's text value, so truncated rows stay readable.
 Set `tooltip` for richer content or `null` to opt out. One bubble serves the
-whole tree, as in the native list: an invisible anchor moves to whatever the
+whole tree, as in the native list: every `Tooltip` inside the tree, including
+those of row actions, hands its target to that bubble instead of mounting its
+own, so a large tree stays cheap to render. The bubble moves to whatever the
 pointer reaches, taking its x from the cursor and its y from the target's box,
 the way a native hover placed at the mouse does. Each new target waits out the
 show delay, except within a row's action bar, where crossing between buttons is
@@ -166,39 +168,35 @@ row's hover with no delay at all, and moving the focus closes it.
 
 ## Overlays
 
-`Tooltip`, `ContextMenu`, and `DropdownMenu` wrap the Radix primitives,
-styled to match the native VS Code menu and hover widgets. Menus expose
-Radix's compound parts as flat named exports (`DropdownMenuTrigger`,
-`DropdownMenuItem`, `DropdownMenuCheckboxItem`, …): checkbox and radio
-items show a check in the icon gutter, `*Label` renders a group heading, and
-`*Keybinding` renders a shortcut hint. Pass `keys` the same `key`/`mac`/
+`Tooltip`, `ContextMenu`, and `DropdownMenu` wrap the Base UI primitives,
+styled to match the native VS Code menu and hover widgets. Both menus share
+flat named `Menu*` parts (`MenuItem`, `MenuCheckboxItem`, `MenuSub`, …)
+inside their own `*Trigger` and `*Content`: checkbox and radio items show a
+check in the icon gutter, `MenuLabel` inside a `MenuGroup` or
+`MenuRadioGroup` renders its heading and names it, and `MenuKeybinding`
+renders a shortcut hint. `*Content` takes `side`, `align`, and offsets for
+placement; every other prop, including `ref` and `aria-*`, lands on the menu
+element. Pass `keys` the same `key`/`mac`/
 `win`/`linux` fields as a keybindings contribution to get the current OS's
 binding in its native label style (`⇧⌘R` on macOS, `Ctrl+Shift+R`
 elsewhere); `formatKeybinding` does the same for other surfaces, such as
 tooltips.
 
-`Tooltip` is a single component taking a `content` prop, and requires a
-`TooltipProvider` ancestor. Mount one provider per app so that a pointer
+`Tooltip` is a single component taking a `content` prop. Mount one
+`TooltipProvider` per app so that a pointer
 moving between nearby triggers skips the show delay, like native hovers.
 The delay defaults to 500ms, matching VS Code's `workbench.hover.delay`,
-and tooltips stop growing at half the window height. Components that own
-their hovers fall back to a private provider when the app has none, so
-`Tree` rows and `IconButton` work unwrapped. A private provider keeps its own
-skip-delay, though, so an app with several of them makes every hover wait out
-the full delay; mount one provider and they share it. `IconButton` hints with
+and tooltips stop growing at half the window height. Without a provider,
+`Tree` rows and `IconButton` still work, but every hover waits out the full
+delay. `IconButton` hints with
 its label like a native action bar item; pass `tooltip` to say something else,
 or `null` for a button that stays quiet.
-
-`HoverDelegateScope` hands every `Tooltip` inside it to one shared bubble
-instead of a bubble each, the way a VS Code list serves its rows and their
-action bars from a single hover widget. `Tree` uses it, which is also what
-lets one place decide when a hover is instant rather than delayed.
 
 Overlay content is portalled to `body`, inherits webview typography from
 there, and shares the `.ui-overlay` base for stacking, border, shadow,
 scrolling, and highlighted rows. Menus default to the Modern UI motion:
 they scale and fade in from the trigger corner and fade out on close, with
-Radix holding unmount until the exit animation ends. High contrast, `forced-colors`, and
+Base UI holding unmount until the exit animation ends. High contrast, `forced-colors`, and
 `prefers-reduced-motion` are handled.
 
 ## Form controls
@@ -213,10 +211,12 @@ stacked `Checkbox` controls inside a `Field`.
 `Input` and `Textarea` are controlled with `value` and `onChange(next)`;
 `Checkbox` uses `checked` and `onChange(next)`. Native-element props and
 refs pass through to the control; `className` and `style` target the root.
-`Select` wraps `@radix-ui/react-select` and preserves its controlled
-(`value` / `onValueChange`) and uncontrolled (`defaultValue`) modes, with
-flat compound exports such as `SelectTrigger` and `SelectItem`, as the
-menus do.
+`Select` wraps the Base UI select for a single value and preserves its
+controlled (`value` / `onValueChange`) and uncontrolled (`defaultValue`)
+modes, with flat compound exports such as `SelectTrigger` and `SelectItem`,
+as the menus do. It requires `items`, the labels the trigger shows for each
+value. `SelectContent` props other than `className` and `style` land on the
+listbox.
 `Input` renders `children` after the control for trailing in-field
 actions; `PasswordInput` uses that slot for a reveal toggle styled like the
 find widget's option buttons.
@@ -249,7 +249,7 @@ without a generated source file or a runtime list in the public API.
 
 ESLint rejects `@repo/*` imports and relative cross-package imports in
 `packages/ui` TypeScript and TSX source. `react` remains a peer dependency;
-the only runtime dependencies are the Radix primitives and
+the only runtime dependencies are `@base-ui/react` and
 `@vscode/codicons`. Public consumers import from the package root or its
 declared CSS exports.
 

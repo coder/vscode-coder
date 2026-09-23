@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { type ComponentProps, createRef, useState } from "react";
+import userEvent from "@testing-library/user-event";
+import { createRef, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -13,6 +14,7 @@ import {
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
+	type SelectProps,
 	Textarea,
 } from "@repo/ui";
 
@@ -123,7 +125,7 @@ describe("root styling", () => {
 			name: "SelectTrigger",
 			root: ".ui-select__trigger",
 			ui: (
-				<Select>
+				<Select items={{ one: "One" }}>
 					<SelectTrigger aria-label="Region" {...ROOT_STYLING}>
 						<SelectValue />
 					</SelectTrigger>
@@ -248,10 +250,16 @@ describe("Field", () => {
 	});
 });
 
+const REGIONS: Readonly<Record<string, string>> = {
+	"us-pittsburgh": "US East",
+	"eu-helsinki": "EU North",
+	"ap-sydney": "Asia Pacific",
+};
+
 const RegionSelect = (
-	props: ComponentProps<typeof Select>,
+	props: Omit<SelectProps<string>, "items">,
 ): React.JSX.Element => (
-	<Select {...props}>
+	<Select items={REGIONS} {...props}>
 		<SelectTrigger aria-label="Region">
 			<SelectValue placeholder="Select a region" />
 		</SelectTrigger>
@@ -272,7 +280,7 @@ const RegionSelect = (
 );
 
 describe("Select", () => {
-	it("opens with the keyboard, marks disabled options, and reports the selected value", () => {
+	it("opens with the keyboard, marks disabled options, and reports the selected value", async () => {
 		const onValueChange = vi.fn();
 		const { rerender } = render(
 			<RegionSelect value="" onValueChange={onValueChange} />,
@@ -280,21 +288,22 @@ describe("Select", () => {
 		const trigger = screen.getByRole("combobox", { name: "Region" });
 		expect(trigger).toHaveTextContent("Select a region");
 
-		fireEvent.keyDown(trigger, { key: "Enter" });
-		expect(screen.getByRole("option", { name: "EU North" })).toHaveAttribute(
-			"aria-disabled",
-			"true",
+		trigger.focus();
+		await userEvent.keyboard("{Enter}");
+		expect(
+			await screen.findByRole("option", { name: "EU North" }),
+		).toHaveAttribute("aria-disabled", "true");
+		await userEvent.click(screen.getByRole("option", { name: "US East" }));
+		expect(onValueChange).toHaveBeenCalledWith(
+			"us-pittsburgh",
+			expect.anything(),
 		);
-		fireEvent.keyDown(screen.getByRole("option", { name: "US East" }), {
-			key: "Enter",
-		});
-		expect(onValueChange).toHaveBeenCalledWith("us-pittsburgh");
 
 		rerender(<RegionSelect value="ap-sydney" onValueChange={onValueChange} />);
-		expect(trigger).toHaveTextContent("Asia Pacific");
+		expect(trigger).toHaveTextContent(/^Asia Pacific$/);
 	});
 
-	it("describes options with their description text alongside consumer ids", () => {
+	it("describes options with their description text alongside consumer ids", async () => {
 		render(
 			<>
 				<span id="hint">Available now.</span>
@@ -302,7 +311,7 @@ describe("Select", () => {
 			</>,
 		);
 		expect(
-			screen.getByRole("option", { name: "US East" }),
+			await screen.findByRole("option", { name: "US East" }),
 		).toHaveAccessibleDescription("Available now. Lowest latency");
 		expect(
 			screen.getByRole("option", { name: "Asia Pacific" }),

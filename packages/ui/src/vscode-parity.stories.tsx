@@ -19,13 +19,15 @@ import { Checkbox } from "./components/Checkbox/Checkbox";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuKeybinding,
-	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "./components/DropdownMenu/DropdownMenu";
 import { IconButton } from "./components/IconButton/IconButton";
 import { Input } from "./components/Input/Input";
+import {
+	MenuItem,
+	MenuKeybinding,
+	MenuSeparator,
+} from "./components/Menu/Menu";
 import { ProgressBar } from "./components/ProgressBar/ProgressBar";
 import { SearchInput } from "./components/SearchInput/SearchInput";
 import {
@@ -42,12 +44,18 @@ import { PIXEL_ALL_THEMES } from "./storybook";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
+const REGIONS: Readonly<Record<string, string>> = {
+	"us-pittsburgh": "US East (Pittsburgh)",
+	"eu-helsinki": "EU North (Helsinki)",
+};
+
 /**
  * Renders every `@repo/ui` control next to its `@vscode-elements`
  * counterpart under identical theme variables. Pixel snapshots this
  * in all four themes, so any drift from VS Code's appearance shows up as
  * a visual diff.
  */
+
 const Row = ({
 	label,
 	ours,
@@ -181,13 +189,20 @@ const Parity = (): React.JSX.Element => (
 		<Row
 			label="Select"
 			ours={
-				<Select value="us-pittsburgh" onValueChange={() => undefined}>
+				<Select
+					items={REGIONS}
+					value="us-pittsburgh"
+					onValueChange={() => undefined}
+				>
 					<SelectTrigger aria-label="Region" style={{ width: "180px" }}>
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="us-pittsburgh">US East (Pittsburgh)</SelectItem>
-						<SelectItem value="eu-helsinki">EU North (Helsinki)</SelectItem>
+						{Object.entries(REGIONS).map(([value, label]) => (
+							<SelectItem key={value} value={value}>
+								{label}
+							</SelectItem>
+						))}
 					</SelectContent>
 				</Select>
 			}
@@ -265,29 +280,32 @@ const MenuParity = (): React.JSX.Element => (
 		}}
 	>
 		<DropdownMenu defaultOpen>
-			<DropdownMenuTrigger asChild aria-label="Menu">
-				{/* A zero-height button still anchors the popper, so the menu opens
-					    at the top of its grid column, level with the reference. */}
-				<button
-					type="button"
-					style={{
-						display: "block",
-						width: "100%",
-						height: 0,
-						padding: 0,
-						border: 0,
-						opacity: 0,
-					}}
-				/>
-			</DropdownMenuTrigger>
+			<DropdownMenuTrigger
+				aria-label="Menu"
+				/* A zero-height button still anchors the popup, so the menu opens
+				   at the top of its grid column, level with the reference. */
+				render={
+					<button
+						type="button"
+						style={{
+							display: "block",
+							width: "100%",
+							height: 0,
+							padding: 0,
+							border: 0,
+							opacity: 0,
+						}}
+					/>
+				}
+			/>
 			<DropdownMenuContent sideOffset={0}>
-				<DropdownMenuItem>Start workspace</DropdownMenuItem>
-				<DropdownMenuItem>Open logs</DropdownMenuItem>
-				<DropdownMenuSeparator />
-				<DropdownMenuItem>
+				<MenuItem>Start workspace</MenuItem>
+				<MenuItem>Open logs</MenuItem>
+				<MenuSeparator />
+				<MenuItem>
 					Rebuild
-					<DropdownMenuKeybinding keys="ctrl+shift+r" />
-				</DropdownMenuItem>
+					<MenuKeybinding keys="ctrl+shift+r" />
+				</MenuItem>
 			</DropdownMenuContent>
 		</DropdownMenu>
 		<VscodeContextMenu

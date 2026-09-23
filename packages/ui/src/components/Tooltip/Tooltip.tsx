@@ -1,15 +1,18 @@
-import { Slot } from "@radix-ui/react-slot";
-import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
+import { useRender } from "@base-ui/react/use-render";
 import {
 	createContext,
 	use,
+	useId,
+	useState,
 	type ComponentProps,
 	type ComponentPropsWithRef,
 	type PointerEvent,
+	type ReactElement,
 	type ReactNode,
 } from "react";
 
-import { cx } from "#cx";
+import { cx, type Styled } from "#cx";
 
 import "../overlay.css";
 
@@ -22,36 +25,22 @@ export type TooltipProviderProps = ComponentProps<
 /** VS Code's `workbench.hover.delay`. */
 const DEFAULT_DELAY_MS = 500;
 
-/**
- * App-level tooltip context; `Tooltip` throws without one. Sharing a single
- * provider lets a pointer moving between nearby triggers skip the show delay,
- * like native hovers.
- */
+/** Mount one per app so moving between nearby triggers skips the delay. */
 export function TooltipProvider({
-	delayDuration = DEFAULT_DELAY_MS,
+	delay = DEFAULT_DELAY_MS,
 	...props
 }: TooltipProviderProps): React.JSX.Element {
 	return (
-		<TooltipContext value={delayDuration}>
-			<TooltipPrimitive.Provider delayDuration={delayDuration} {...props} />
+		<TooltipContext value={delay}>
+			<TooltipPrimitive.Provider delay={delay} {...props} />
 		</TooltipContext>
 	);
 }
 
-const TooltipContext = createContext<number | null>(null);
+const TooltipContext = createContext(DEFAULT_DELAY_MS);
 
-/** Owns tooltips without forcing a provider on consumers; defers to any app-level one. */
-export function TooltipScope({ children }: { children: ReactNode }): ReactNode {
-	return use(TooltipContext) === null ? (
-		<TooltipProvider>{children}</TooltipProvider>
-	) : (
-		children
-	);
-}
-
-/** The surrounding provider's show delay, for surfaces that time their own. */
 export function useTooltipDelay(): number {
-	return use(TooltipContext) ?? DEFAULT_DELAY_MS;
+	return use(TooltipContext);
 }
 
 export interface HoverTarget {
@@ -65,76 +54,145 @@ export type HoverDelegate = (
 	immediate?: boolean,
 ) => void;
 
-const HoverDelegateContext = createContext<HoverDelegate | undefined>(
+/** Hands every `Tooltip` inside to one shared bubble. */
+export const HoverDelegateContext = createContext<HoverDelegate | undefined>(
 	undefined,
 );
 
-/**
- * Hands every `Tooltip` inside to one shared bubble, the way a VS Code list
- * serves its rows and their action bars from a single hover widget. Pass
- * `undefined` to hand them back.
- */
-export function HoverDelegateScope({
-	delegate,
-	children,
-}: {
-	delegate: HoverDelegate | undefined;
-	children: ReactNode;
-}): React.JSX.Element {
-	return (
-		<HoverDelegateContext value={delegate}>{children}</HoverDelegateContext>
-	);
-}
+type PositionerProps = ComponentPropsWithRef<
+	typeof TooltipPrimitive.Positioner
+>;
 
 export interface TooltipProps extends Omit<
-	ComponentPropsWithRef<typeof TooltipPrimitive.Content>,
-	"content"
+	Styled<ComponentPropsWithRef<typeof TooltipPrimitive.Popup>>,
+	"content" | "children"
 > {
 	content: ReactNode;
-	/** The trigger element; must accept a forwarded ref (asChild). */
-	children: ReactNode;
+	/** The trigger element; must accept a forwarded ref. */
+	children: ReactElement;
 	open?: boolean;
 	onOpenChange?: (open: boolean) => void;
 }
 
-/** Hover bubble matching the native hover widget; requires a `TooltipProvider` ancestor. */
+function DelegatedTooltip({
+	content,
+	children,
+	delegate,
+}: {
+	content: ReactNode;
+	children: ReactElement;
+	delegate: HoverDelegate;
+}): ReactNode {
+	return useRender({
+		render: children,
+		props: {
+			onPointerEnter: (event: PointerEvent<HTMLElement>) =>
+				delegate({ content, element: event.currentTarget }),
+			onPointerLeave: () => delegate(undefined),
+		},
+	});
+}
+
 export function Tooltip({
 	content,
 	children,
-	className,
+	...props
+}: TooltipProps): ReactNode {
+	const delegate = use(HoverDelegateContext);
+	if (delegate) {
+		return (
+			<DelegatedTooltip content={content} delegate={delegate}>
+				{children}
+			</DelegatedTooltip>
+		);
+	}
+	return (
+		<HoverBubble content={content} {...props}>
+			{children}
+		</HoverBubble>
+	);
+}
+
+function HoverBubble({
+	content,
+	children,
 	open,
 	onOpenChange,
 	...props
 }: TooltipProps): React.JSX.Element {
-	const delegate = use(HoverDelegateContext);
-	if (delegate) {
-		return (
-			<Slot
-				onPointerEnter={(event: PointerEvent<HTMLElement>) =>
-					delegate({ content, element: event.currentTarget })
-				}
-				onPointerLeave={() => delegate(undefined)}
-			>
-				{children}
-			</Slot>
-		);
-	}
+	const contentId = useId();
+	const delay = useTooltipDelay();
+	const [openedItself, setOpenedItself] = useState(false);
 	return (
-		<TooltipPrimitive.Root open={open} onOpenChange={onOpenChange}>
-			<TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
-			<TooltipPrimitive.Portal>
-				<TooltipPrimitive.Content
-					// Native sits a hover 2px into the bottom edge of its target.
-					side="bottom"
-					sideOffset={-2}
-					align="center"
-					collisionPadding={8}
+		<TooltipPrimitive.Root
+			open={open}
+			onOpenChange={(next) => {
+				setOpenedItself(next);
+				onOpenChange?.(next);
+			}}
+		>
+			<TooltipPrimitive.Trigger
+				render={children}
+				delay={delay}
+				aria-describedby={(open ?? openedItself) ? contentId : undefined}
+			/>
+			<HoverPopup id={contentId} content={content} {...props} />
+		</TooltipPrimitive.Root>
+	);
+}
+
+export type HoverAnchor = NonNullable<PositionerProps["anchor"]>;
+
+type HoverPopupProps = Omit<
+	TooltipProps,
+	"children" | "open" | "onOpenChange"
+> & {
+	anchor?: HoverAnchor;
+	align?: PositionerProps["align"];
+};
+
+/** An open bubble at `anchor`, for callers that time their own hovers. */
+export function AnchoredHover({
+	onOpenChange,
+	...props
+}: HoverPopupProps &
+	Pick<TooltipProps, "onOpenChange"> & {
+		anchor: HoverAnchor;
+	}): React.JSX.Element {
+	return (
+		<TooltipPrimitive.Root open onOpenChange={onOpenChange}>
+			<HoverPopup {...props} />
+		</TooltipPrimitive.Root>
+	);
+}
+
+function HoverPopup({
+	content,
+	className,
+	align = "center",
+	anchor,
+	...props
+}: HoverPopupProps): React.JSX.Element {
+	return (
+		<TooltipPrimitive.Portal>
+			<TooltipPrimitive.Positioner
+				// Fixed gets its own layer, which keeps text antialiasing greyscale.
+				positionMethod="fixed"
+				anchor={anchor}
+				// Native sits a hover 2px into the bottom edge of its target.
+				side="bottom"
+				sideOffset={-2}
+				align={align}
+				collisionPadding={8}
+			>
+				<TooltipPrimitive.Popup
+					role="tooltip"
 					{...props}
 					className={cx("ui-overlay ui-tooltip", className)}
 				>
 					{content}
-				</TooltipPrimitive.Content>
-			</TooltipPrimitive.Portal>
-		</TooltipPrimitive.Root>
+				</TooltipPrimitive.Popup>
+			</TooltipPrimitive.Positioner>
+		</TooltipPrimitive.Portal>
 	);
 }

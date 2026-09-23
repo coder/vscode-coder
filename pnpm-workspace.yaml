@@ -2,6 +2,7 @@ packages:
   - packages/*
 
 catalog:
+  "@base-ui/react": ^1.8.0
   "@rolldown/plugin-babel": ^0.2.4
   "@storybook/addon-a11y": ^10.6.0
   "@storybook/addon-docs": ^10.6.0

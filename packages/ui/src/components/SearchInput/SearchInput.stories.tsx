@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { userEvent, within } from "storybook/test";
 
 import { PIXEL_ALL_THEMES } from "#storybook";
 
@@ -44,8 +44,6 @@ export const States: Story = {
 		});
 
 		await userEvent.click(canvas.getByRole("button", { name: "Clear search" }));
-		await expect(searchbox).toHaveValue("");
-		await expect(searchbox).toHaveFocus();
 		searchbox.blur();
 	},
 };

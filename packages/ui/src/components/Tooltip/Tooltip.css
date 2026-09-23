@@ -2,12 +2,8 @@
 .ui-tooltip {
 	--ui-overlay-border: var(--ui-tooltip-border);
 	/* Native hovers stop growing at half the window height */
-	--ui-overlay-available-height: min(
-		50vh,
-		var(--radix-tooltip-content-available-height)
-	);
-
-	max-width: min(700px, var(--radix-tooltip-content-available-width));
+	max-height: min(50vh, var(--available-height));
+	max-width: min(700px, var(--available-width));
 	padding: 4px 8px;
 	color: var(--ui-tooltip-foreground);
 	background: var(--ui-tooltip-background);

@@ -3,8 +3,6 @@ import { type ComponentPropsWithRef, useId, useRef } from "react";
 import { cx } from "#cx";
 import { setForwardedRef } from "#ref";
 
-import { TooltipScope } from "../Tooltip/Tooltip";
-
 import { StickyScroll } from "./sticky/StickyScroll";
 import "./Tree.css";
 import { TreeHover, type TreeHoverControl } from "./TreeHover";
@@ -83,68 +81,66 @@ export function Tree({
 	});
 
 	return (
-		<TooltipScope>
-			<div
-				{...containerProps}
-				ref={(element) => {
-					treeRef.current = element;
-					setForwardedRef(ref, element);
-				}}
-				role="tree"
-				tabIndex={0}
-				aria-activedescendant={
-					adapter.focusedId ? `${treeDomId}-${adapter.focusedId}` : undefined
+		<div
+			{...containerProps}
+			ref={(element) => {
+				treeRef.current = element;
+				setForwardedRef(ref, element);
+			}}
+			role="tree"
+			tabIndex={0}
+			aria-activedescendant={
+				adapter.focusedId ? `${treeDomId}-${adapter.focusedId}` : undefined
+			}
+			aria-multiselectable={multiSelect ? true : undefined}
+			className={cx(
+				"ui-tree",
+				variant === "explorer" && "ui-tree--explorer",
+				adapter.hasDomFocus && "ui-tree--focused",
+				className,
+			)}
+			onFocus={(event) => {
+				onFocus?.(event);
+				if (
+					!event.defaultPrevented &&
+					ownsTarget(event.currentTarget, event.target)
+				) {
+					adapter.onFocusIn(event.target);
 				}
-				aria-multiselectable={multiSelect ? true : undefined}
-				className={cx(
-					"ui-tree",
-					variant === "explorer" && "ui-tree--explorer",
-					adapter.hasDomFocus && "ui-tree--focused",
-					className,
-				)}
-				onFocus={(event) => {
-					onFocus?.(event);
-					if (
-						!event.defaultPrevented &&
-						ownsTarget(event.currentTarget, event.target)
-					) {
-						adapter.onFocusIn(event.target);
-					}
-				}}
-				onBlur={(event) => {
-					onBlur?.(event);
-					if (
-						!event.defaultPrevented &&
-						!ownsTarget(event.currentTarget, event.relatedTarget)
-					) {
-						adapter.onBlurOut();
-					}
-				}}
-				onClick={adapter.onClick}
-				onKeyDown={adapter.onKeyDown}
-			>
-				<TreeHover treeRef={treeRef} controlRef={hoverRef}>
-					{stickyScroll ? (
-						<StickyScroll
-							maxCount={
-								stickyScroll === true ? DEFAULT_STICKY_COUNT : stickyScroll
-							}
-							adapter={adapter}
-							treeRef={treeRef}
-						/>
-					) : null}
-					{adapter.model.visibleRows.map((row) => (
-						<TreeRow
-							key={row.node.id}
-							id={`${treeDomId}-${row.node.id}`}
-							row={row}
-							focused={row.node.id === adapter.focusedId}
-							selected={adapter.selectedIds.has(row.node.id)}
-							guideFlags={adapter.guideFlags(row)}
-						/>
-					))}
-				</TreeHover>
-			</div>
-		</TooltipScope>
+			}}
+			onBlur={(event) => {
+				onBlur?.(event);
+				if (
+					!event.defaultPrevented &&
+					!ownsTarget(event.currentTarget, event.relatedTarget)
+				) {
+					adapter.onBlurOut();
+				}
+			}}
+			onClick={adapter.onClick}
+			onKeyDown={adapter.onKeyDown}
+		>
+			<TreeHover treeRef={treeRef} controlRef={hoverRef}>
+				{stickyScroll ? (
+					<StickyScroll
+						maxCount={
+							stickyScroll === true ? DEFAULT_STICKY_COUNT : stickyScroll
+						}
+						adapter={adapter}
+						treeRef={treeRef}
+					/>
+				) : null}
+				{adapter.model.visibleRows.map((row) => (
+					<TreeRow
+						key={row.node.id}
+						id={`${treeDomId}-${row.node.id}`}
+						row={row}
+						focused={row.node.id === adapter.focusedId}
+						selected={adapter.selectedIds.has(row.node.id)}
+						guideFlags={adapter.guideFlags(row)}
+					/>
+				))}
+			</TreeHover>
+		</div>
 	);
 }

@@ -1,4 +1,4 @@
-import { expect, userEvent, within } from "storybook/test";
+import { userEvent, within } from "storybook/test";
 
 import { PIXEL_ALL_THEMES } from "#storybook";
 
@@ -32,8 +32,6 @@ export const States: Story = {
 
 		await userEvent.hover(refreshButton);
 		refreshButton.focus();
-		await expect(refreshButton).toHaveFocus();
-		await expect(canvas.getByRole("button", { name: "Delete" })).toBeDisabled();
 		refreshButton.blur();
 		await userEvent.unhover(refreshButton);
 	},

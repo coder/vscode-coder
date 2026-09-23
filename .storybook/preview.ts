@@ -91,9 +91,7 @@ function fitRootToPortals(): void {
 	const origin = root.getBoundingClientRect();
 	let right = 0;
 	let bottom = 0;
-	for (const overlay of document.querySelectorAll(
-		"[data-radix-popper-content-wrapper]",
-	)) {
+	for (const overlay of document.querySelectorAll(".ui-overlay")) {
 		const rect = overlay.getBoundingClientRect();
 		right = Math.max(right, rect.right - origin.left);
 		bottom = Math.max(bottom, rect.bottom - origin.top);

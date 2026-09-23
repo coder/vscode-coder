@@ -29,24 +29,23 @@
 
 .ui-select__list {
 	--ui-overlay-border: var(--ui-dropdown-border);
-	--ui-overlay-available-height: var(--radix-select-content-available-height);
 	--ui-overlay-highlight-background: var(--ui-dropdown-list-focus-background);
 	--ui-overlay-highlight-foreground: var(--ui-dropdown-list-focus-foreground);
 	--ui-overlay-highlight-outline: var(--ui-list-selection-outline);
 
-	min-width: var(--radix-select-trigger-width);
+	display: flex;
+	flex-direction: column;
+	min-width: var(--anchor-width);
 	padding: 2px;
 	color: var(--ui-dropdown-foreground);
 	background: var(--ui-dropdown-list-background);
+	overflow: hidden;
 }
 
-/* Radix hides viewport scrollbars for its optional scroll buttons. */
-.ui-select__list [data-radix-select-viewport] {
-	scrollbar-width: auto;
-}
-
-.ui-select__list [data-radix-select-viewport]::-webkit-scrollbar {
-	display: block;
+/* The panel holds the padding and background; the rows scroll inside it. */
+.ui-select__viewport {
+	flex: 1;
+	overflow-y: auto;
 }
 
 .ui-select__item {

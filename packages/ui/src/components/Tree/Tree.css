@@ -213,10 +213,3 @@
 		border-color: CanvasText;
 	}
 }
-
-/* The shared hover anchors here instead of to each row's label. */
-.ui-tree-hover-anchor {
-	position: absolute;
-	pointer-events: none;
-	opacity: 0;
-}
