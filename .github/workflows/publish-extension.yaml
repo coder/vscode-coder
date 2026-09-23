@@ -34,9 +34,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          node-version: "22"
+          runtime: node@22
 
       - name: Construct package name
         id: package
@@ -77,9 +77,10 @@ jobs:
       contents: read
     if: ${{ needs.setup.outputs.hasVscePat == 'true' }}
     steps:
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          node-version: "22"
+          runtime: node@22
+          install: false
 
       - name: Install vsce
         env:
@@ -110,9 +111,10 @@ jobs:
       contents: read
     if: ${{ needs.setup.outputs.hasOvsxPat == 'true' }}
     steps:
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          node-version: "22"
+          runtime: node@22
+          install: false
 
       - name: Install ovsx
         run: npm install -g ovsx@1.2.0

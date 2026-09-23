@@ -29,6 +29,9 @@ jobs:
 
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
+        with:
+          # Release runs refresh the store cache.
+          cache-save: true
 
       - name: Extract version from tag
         id: version
