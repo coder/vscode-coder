@@ -707,6 +707,14 @@ describe("CliManager", () => {
 				}
 			},
 		);
+
+		it("waits for trailing fs writes before finishing, keeping the progress log cleaned up", async () => {
+			const { manager, mockApi, withTrailingWriteFlush } = setupCliManager();
+			withTrailingWriteFlush();
+			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
+			await flushPendingIO();
+			expect(memfs.existsSync(`${BINARY_PATH}.progress.log`)).toBe(false);
+		});
 	});
 
 	describe("Download Progress Tracking", () => {
