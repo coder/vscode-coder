@@ -5,7 +5,7 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
-## Unreleased
+## [v1.16.4](https://github.com/coder/vscode-coder/releases/tag/v1.16.4) 2026-09-23
 
 ### Added
 
@@ -32,6 +32,8 @@
   of connecting to it with only a warning.
 - Hide the Tasks panel on deployments before 2.29, which do not serve
   `/api/v2/tasks` and answered every poll with a 404.
+- Remove the CLI download's progress log once the download finishes. A write
+  still in flight could recreate the file after cleanup and leave it behind.
 
 ## [v1.16.3](https://github.com/coder/vscode-coder/releases/tag/v1.16.3) 2026-09-14
 
