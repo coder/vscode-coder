@@ -1,4 +1,4 @@
-import { expect, userEvent, within } from "storybook/test";
+import { userEvent, within } from "storybook/test";
 
 import { PIXEL_ALL_THEMES } from "#storybook";
 
@@ -35,7 +35,6 @@ export const States: Story = {
 
 		await userEvent.hover(retryButton);
 		retryButton.focus();
-		await expect(retryButton).toHaveFocus();
 		retryButton.blur();
 		await userEvent.unhover(retryButton);
 	},

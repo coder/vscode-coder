@@ -8,9 +8,10 @@ import {
 } from "react";
 
 import {
-	HoverDelegateScope,
-	Tooltip,
+	AnchoredHover,
+	HoverDelegateContext,
 	useTooltipDelay,
+	type HoverAnchor,
 	type HoverDelegate,
 	type HoverTarget,
 } from "../Tooltip/Tooltip";
@@ -30,18 +31,11 @@ const ROW = ".ui-tree-item";
 export type TreeHoverControl = RefObject<HoverDelegate | undefined>;
 
 interface Shown extends HoverTarget {
-	readonly top: number;
-	readonly left: number;
-	readonly width: number;
-	readonly height: number;
+	readonly anchor: HoverAnchor;
 	readonly align: "center" | "start";
 }
 
-/**
- * One hover for the whole tree, like the native list's shared widget: rows and
- * anything inside them report the element under the pointer, and an invisible
- * anchor moves to it.
- */
+/** One bubble for the whole tree, so rows only attach pointer handlers. */
 export function TreeHover({
 	children,
 	treeRef,
@@ -80,22 +74,33 @@ export function TreeHover({
 			return;
 		}
 		const cluster = target.element.closest(DENSE_CLUSTER);
-		const box = cluster
-			? target.element
-			: (target.element.closest(ROW) ?? target.element);
 		const bounds = tree.getBoundingClientRect();
-		const rect = cluster ? targetRect : box.getBoundingClientRect();
+		const rect = cluster
+			? targetRect
+			: (target.element.closest(ROW) ?? target.element).getBoundingClientRect();
 		const cursorX = cluster || !atPointer ? undefined : pointerXRef.current;
+		const top = rect.top - bounds.top;
+		const left =
+			(cursorX === undefined ? rect.left : cursorX + CURSOR_OFFSET_PX) -
+			bounds.left;
+		const width = cursorX === undefined ? rect.width : 0;
 		openRef.current = true;
 		clusterRef.current = cluster;
 		setShown({
 			...target,
-			top: rect.top - bounds.top,
-			left:
-				(cursorX === undefined ? rect.left : cursorX + CURSOR_OFFSET_PX) -
-				bounds.left,
-			width: cursorX === undefined ? rect.width : 0,
-			height: rect.height,
+			// Relative to the tree, so the bubble follows it when it scrolls.
+			anchor: {
+				contextElement: tree,
+				getBoundingClientRect: () => {
+					const now = tree.getBoundingClientRect();
+					return new DOMRect(
+						now.left + left,
+						now.top + top,
+						width,
+						rect.height,
+					);
+				},
+			},
 			align: cursorX === undefined ? "center" : "start",
 		});
 	};
@@ -131,46 +136,29 @@ export function TreeHover({
 			pointerXRef.current = event.clientX;
 		};
 		tree.addEventListener("pointermove", track, { passive: true });
-		return () => tree.removeEventListener("pointermove", track);
-	}, [treeRef]);
-
-	useEffect(() => {
-		const tree = treeRef.current;
-		if (!tree) return;
 		// Capture also dismisses hovers when an action stops propagation.
 		tree.addEventListener("pointerdown", hide, true);
-		return () => tree.removeEventListener("pointerdown", hide, true);
+		return () => {
+			tree.removeEventListener("pointermove", track);
+			tree.removeEventListener("pointerdown", hide, true);
+		};
 	}, [treeRef, hide]);
 
 	return (
-		<HoverDelegateScope delegate={setTarget}>
+		<HoverDelegateContext value={setTarget}>
 			{children}
-			{/* Outside the scope, or the bubble would delegate to itself. */}
-			<HoverDelegateScope delegate={undefined}>
-				{shown ? (
-					<Tooltip
-						content={shown.content}
-						align={shown.align}
-						open
-						onOpenChange={(open) => {
-							if (!open) hide();
-						}}
-						onPointerEnter={() => clearTimeout(timerRef.current)}
-						onPointerLeave={() => setTarget(undefined)}
-					>
-						<span
-							aria-hidden="true"
-							className="ui-tree-hover-anchor"
-							style={{
-								top: shown.top,
-								left: shown.left,
-								width: shown.width,
-								height: shown.height,
-							}}
-						/>
-					</Tooltip>
-				) : null}
-			</HoverDelegateScope>
-		</HoverDelegateScope>
+			{shown ? (
+				<AnchoredHover
+					content={shown.content}
+					anchor={shown.anchor}
+					align={shown.align}
+					onOpenChange={(open) => {
+						if (!open) hide();
+					}}
+					onPointerEnter={() => clearTimeout(timerRef.current)}
+					onPointerLeave={() => setTarget(undefined)}
+				/>
+			) : null}
+		</HoverDelegateContext>
 	);
 }

@@ -1,5 +1,3 @@
-import { expect, within } from "storybook/test";
-
 import { PIXEL_ALL_THEMES } from "#storybook";
 
 import { ProgressBar } from "./ProgressBar";
@@ -23,12 +21,4 @@ const meta: Meta<typeof ProgressStates> = {
 export default meta;
 type Story = StoryObj<typeof ProgressStates>;
 
-export const States: Story = {
-	play: async ({ canvasElement }) => {
-		const progress = within(canvasElement).getByRole("progressbar", {
-			name: "Custom range",
-		});
-		await expect(progress).toHaveAttribute("aria-valuemax", "5");
-		await expect(progress).toHaveAttribute("aria-valuenow", "3");
-	},
-};
+export const States: Story = {};

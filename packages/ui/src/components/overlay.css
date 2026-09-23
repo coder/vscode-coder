@@ -1,9 +1,9 @@
-/* Shared base for portalled overlays; each surface maps its border color
-   and its Radix available-height variable onto the --ui-overlay-* names. */
+/* Shared base for portalled overlays; each surface maps its border color onto
+   the --ui-overlay-* names. */
 .ui-overlay {
 	box-sizing: border-box;
-	/* Cap to the space Radix reports so oversized content scrolls */
-	max-height: var(--ui-overlay-available-height, none);
+	/* Cap to the space the positioner reports so oversized content scrolls */
+	max-height: var(--available-height);
 	overflow-y: auto;
 	border: var(--ui-stroke-thickness) solid var(--ui-overlay-border, transparent);
 	border-radius: var(--ui-radius-large);
@@ -23,7 +23,7 @@
 
 /* An open submenu keeps its parent row highlighted, like native; the
    selection border only resolves in high contrast. */
-.ui-overlay__item:is([data-highlighted], [data-state="open"]) {
+.ui-overlay__item:is([data-highlighted], [data-popup-open]) {
 	forced-color-adjust: none;
 	color: var(--ui-overlay-highlight-foreground);
 	background: var(--ui-overlay-highlight-background);
@@ -39,7 +39,7 @@
 		border-color: CanvasText;
 	}
 
-	.ui-overlay__item:is([data-highlighted], [data-state="open"]) {
+	.ui-overlay__item:is([data-highlighted], [data-popup-open]) {
 		color: HighlightText;
 		background: Highlight;
 	}

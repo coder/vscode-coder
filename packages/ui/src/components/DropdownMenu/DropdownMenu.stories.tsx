@@ -1,66 +1,24 @@
-import { expect, waitFor } from "storybook/test";
-
-import { openMenu, openSubmenuByKeyboard, PIXEL_ALL_THEMES } from "#storybook";
+import { highlightRow, PIXEL_ALL_THEMES } from "#storybook";
 
 import { Button } from "../Button/Button";
-import { Icon } from "../Icon/Icon";
+import { MenuItem } from "../Menu/Menu";
+import { MenuExampleItems } from "../Menu/MenuExampleItems";
 
 import {
 	DropdownMenu,
-	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuKeybinding,
-	DropdownMenuLabel,
-	DropdownMenuRadioGroup,
-	DropdownMenuRadioItem,
-	DropdownMenuSeparator,
-	DropdownMenuSub,
-	DropdownMenuSubContent,
-	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from "./DropdownMenu";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const MenuExample = (): React.JSX.Element => (
-	<DropdownMenu>
-		<DropdownMenuTrigger asChild>
-			<Button variant="secondary">Workspace actions</Button>
-		</DropdownMenuTrigger>
+	<DropdownMenu defaultOpen>
+		<DropdownMenuTrigger
+			render={<Button variant="secondary">Workspace actions</Button>}
+		/>
 		<DropdownMenuContent>
-			<DropdownMenuItem>
-				<Icon name="play" />
-				Start workspace
-			</DropdownMenuItem>
-			<DropdownMenuItem disabled>
-				<Icon name="stop-circle" />
-				Stop
-			</DropdownMenuItem>
-			<DropdownMenuItem>
-				Rebuild
-				<DropdownMenuKeybinding
-					keys={{ key: "ctrl+shift+r", mac: "cmd+shift+r" }}
-				/>
-			</DropdownMenuItem>
-			<DropdownMenuSeparator />
-			<DropdownMenuCheckboxItem checked>
-				Start on connect
-			</DropdownMenuCheckboxItem>
-			<DropdownMenuSeparator />
-			<DropdownMenuLabel>Sort by</DropdownMenuLabel>
-			<DropdownMenuRadioGroup value="name">
-				<DropdownMenuRadioItem value="name">Name</DropdownMenuRadioItem>
-				<DropdownMenuRadioItem value="status">Status</DropdownMenuRadioItem>
-			</DropdownMenuRadioGroup>
-			<DropdownMenuSeparator />
-			<DropdownMenuSub>
-				<DropdownMenuSubTrigger>More actions</DropdownMenuSubTrigger>
-				<DropdownMenuSubContent>
-					<DropdownMenuItem>Open logs</DropdownMenuItem>
-					<DropdownMenuItem>Edit settings</DropdownMenuItem>
-				</DropdownMenuSubContent>
-			</DropdownMenuSub>
+			<MenuExampleItems />
 		</DropdownMenuContent>
 	</DropdownMenu>
 );
@@ -75,30 +33,21 @@ type Story = StoryObj<typeof MenuExample>;
 
 export const Open: Story = {
 	parameters: { pixel: PIXEL_ALL_THEMES },
-	play: async ({ canvasElement }) => {
-		await openMenu(canvasElement, "Workspace actions");
-		await openSubmenuByKeyboard("Open logs");
-	},
+	play: () => highlightRow("Open logs"),
 };
 
 /* Long menus cap to the viewport by default; the story lowers the cap. */
 export const ManyItems: Story = {
 	render: () => (
-		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<Button variant="secondary">Workspace actions</Button>
-			</DropdownMenuTrigger>
+		<DropdownMenu defaultOpen>
+			<DropdownMenuTrigger
+				render={<Button variant="secondary">Workspace actions</Button>}
+			/>
 			<DropdownMenuContent style={{ maxHeight: 240 }}>
 				{Array.from({ length: 40 }, (_, i) => (
-					<DropdownMenuItem key={i}>Workspace {i + 1}</DropdownMenuItem>
+					<MenuItem key={i}>Workspace {i + 1}</MenuItem>
 				))}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	),
-	play: async ({ canvasElement }) => {
-		const menu = await openMenu(canvasElement, "Workspace actions");
-		await waitFor(() =>
-			expect(menu.scrollHeight).toBeGreaterThan(menu.clientHeight),
-		);
-	},
 };

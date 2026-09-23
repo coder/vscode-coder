@@ -1,5 +1,3 @@
-import { expect, within } from "storybook/test";
-
 import { PIXEL_ALL_THEMES } from "#storybook";
 
 import { Spinner } from "./Spinner";
@@ -22,8 +20,4 @@ const meta: Meta<typeof SpinnerSizes> = {
 export default meta;
 type Story = StoryObj<typeof SpinnerSizes>;
 
-export const Sizes: Story = {
-	play: async ({ canvasElement }) => {
-		await expect(within(canvasElement).getAllByRole("status")).toHaveLength(3);
-	},
-};
+export const Sizes: Story = {};

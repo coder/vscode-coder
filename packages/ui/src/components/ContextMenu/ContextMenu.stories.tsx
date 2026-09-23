@@ -1,22 +1,12 @@
 import { userEvent, within } from "storybook/test";
 
-import { openSubmenuByKeyboard, PIXEL_ALL_THEMES } from "#storybook";
+import { highlightRow, PIXEL_ALL_THEMES } from "#storybook";
 
-import { Icon } from "../Icon/Icon";
+import { MenuExampleItems } from "../Menu/MenuExampleItems";
 
 import {
 	ContextMenu,
-	ContextMenuCheckboxItem,
 	ContextMenuContent,
-	ContextMenuItem,
-	ContextMenuKeybinding,
-	ContextMenuLabel,
-	ContextMenuRadioGroup,
-	ContextMenuRadioItem,
-	ContextMenuSeparator,
-	ContextMenuSub,
-	ContextMenuSubContent,
-	ContextMenuSubTrigger,
 	ContextMenuTrigger,
 } from "./ContextMenu";
 
@@ -32,42 +22,11 @@ const TARGET_STYLE: React.CSSProperties = {
 
 const MenuExample = (): React.JSX.Element => (
 	<ContextMenu>
-		<ContextMenuTrigger asChild>
-			<div style={TARGET_STYLE}>Right-click here</div>
-		</ContextMenuTrigger>
+		<ContextMenuTrigger
+			render={<div style={TARGET_STYLE}>Right-click here</div>}
+		/>
 		<ContextMenuContent>
-			<ContextMenuItem>
-				<Icon name="play" />
-				Start workspace
-			</ContextMenuItem>
-			<ContextMenuItem disabled>
-				<Icon name="stop-circle" />
-				Stop
-			</ContextMenuItem>
-			<ContextMenuItem>
-				Rebuild
-				<ContextMenuKeybinding
-					keys={{ key: "ctrl+shift+r", mac: "cmd+shift+r" }}
-				/>
-			</ContextMenuItem>
-			<ContextMenuSeparator />
-			<ContextMenuCheckboxItem checked>
-				Start on connect
-			</ContextMenuCheckboxItem>
-			<ContextMenuSeparator />
-			<ContextMenuLabel>Sort by</ContextMenuLabel>
-			<ContextMenuRadioGroup value="name">
-				<ContextMenuRadioItem value="name">Name</ContextMenuRadioItem>
-				<ContextMenuRadioItem value="status">Status</ContextMenuRadioItem>
-			</ContextMenuRadioGroup>
-			<ContextMenuSeparator />
-			<ContextMenuSub>
-				<ContextMenuSubTrigger>More actions</ContextMenuSubTrigger>
-				<ContextMenuSubContent>
-					<ContextMenuItem>Open logs</ContextMenuItem>
-					<ContextMenuItem>Edit settings</ContextMenuItem>
-				</ContextMenuSubContent>
-			</ContextMenuSub>
+			<MenuExampleItems />
 		</ContextMenuContent>
 	</ContextMenu>
 );
@@ -95,6 +54,6 @@ export const Open: Story = {
 				clientY: rect.top + rect.height / 2,
 			},
 		});
-		await openSubmenuByKeyboard("Open logs");
+		await highlightRow("Open logs");
 	},
 };

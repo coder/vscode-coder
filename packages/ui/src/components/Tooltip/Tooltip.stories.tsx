@@ -1,10 +1,10 @@
-import { screen, userEvent } from "storybook/test";
+import { within } from "storybook/test";
 
 import { PIXEL_ALL_THEMES } from "#storybook";
 
 import { Button } from "../Button/Button";
 
-import { Tooltip, TooltipProvider } from "./Tooltip";
+import { Tooltip } from "./Tooltip";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
@@ -16,15 +16,8 @@ const LONG_TEXT =
 const meta: Meta<typeof Tooltip> = {
 	title: "UI/Tooltip",
 	component: Tooltip,
-	decorators: [
-		// Instant in stories; the provider default is 500ms
-		(Story) => (
-			<TooltipProvider delayDuration={0}>
-				<Story />
-			</TooltipProvider>
-		),
-	],
 	args: {
+		open: true,
 		content: "Stops the workspace",
 		children: <Button variant="secondary">Stop</Button>,
 	},
@@ -33,15 +26,14 @@ const meta: Meta<typeof Tooltip> = {
 export default meta;
 type Story = StoryObj<typeof Tooltip>;
 
-/* Focusing the trigger skips the pointer show delay. */
-async function openTooltipWithKeyboard(): Promise<void> {
-	await userEvent.tab();
-	await screen.findByRole("tooltip");
-}
+/* The trigger keeps its focus ring, the way a hover reached by keyboard looks. */
+const focusTrigger: Story["play"] = ({ canvasElement }) => {
+	within(canvasElement).getByRole("button", { name: "Stop" }).focus();
+};
 
 export const Open: Story = {
 	parameters: { pixel: PIXEL_ALL_THEMES },
-	play: openTooltipWithKeyboard,
+	play: focusTrigger,
 };
 
 /* Shows the wrap at the 700px width cap; maxHeight stands in for the real
@@ -51,5 +43,5 @@ export const Overflow: Story = {
 		content: Array.from({ length: 8 }, () => LONG_TEXT).join(" "),
 		style: { maxHeight: 160 },
 	},
-	play: openTooltipWithKeyboard,
+	play: focusTrigger,
 };

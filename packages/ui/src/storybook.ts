@@ -1,4 +1,4 @@
-import { expect, screen, userEvent, waitFor, within } from "storybook/test";
+import { screen } from "storybook/test";
 
 /**
  * Pixel matrix override (`parameters.pixel`) that snapshots a story in every
@@ -10,21 +10,7 @@ export const PIXEL_ALL_THEMES = {
 	},
 } as const;
 
-/* Clicks a menu trigger and returns its portalled surface. */
-export async function openMenu(
-	canvasElement: HTMLElement,
-	triggerName: string,
-): Promise<HTMLElement> {
-	await userEvent.click(
-		within(canvasElement).getByRole("button", { name: triggerName }),
-	);
-	return screen.findByRole("menu");
-}
-
-/* Opens the focused menu's submenu; keyboard skips the hover-open delay. */
-export async function openSubmenuByKeyboard(itemName: string): Promise<void> {
-	const menu = await screen.findByRole("menu");
-	await waitFor(() => expect(menu.contains(document.activeElement)).toBe(true));
-	await userEvent.keyboard("{End}{ArrowRight}");
-	await screen.findByRole("menuitem", { name: itemName });
+/* Highlights a portalled menu row, the way arrowing onto it would. */
+export async function highlightRow(name: string): Promise<void> {
+	(await screen.findByRole("menuitem", { name })).focus();
 }

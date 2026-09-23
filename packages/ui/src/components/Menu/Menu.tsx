@@ -1,16 +1,18 @@
-import { cx } from "#cx";
+import { Menu as MenuPrimitive } from "@base-ui/react/menu";
+
+import { cx, type Styled } from "#cx";
 
 import { formatKeybinding, type Keybinding } from "../../keybinding";
 import { Icon } from "../Icon/Icon";
+import "../overlay.css";
 
 import "./Menu.css";
 
-import type { ComponentPropsWithRef, ElementType, ReactNode } from "react";
+import type { ComponentPropsWithRef } from "react";
 
-/**
- * Keybinding hint inside a menu item; `keys` takes a keybindings
- * contribution's fields and renders the current OS's native label style.
- */
+const ITEM_CLASS = "ui-overlay__item ui-menu__item";
+
+/** Shortcut hint in the current OS's native label style. */
 export function MenuKeybinding({
 	keys,
 	className,
@@ -25,47 +27,137 @@ export function MenuKeybinding({
 	);
 }
 
-interface MenuPartOptions {
-	/** The primitive's `ItemIndicator`, which checks the item in the gutter. */
-	indicator?: ElementType;
-	/** Appends the trailing submenu chevron. */
-	chevron?: boolean;
+export const MenuSub = MenuPrimitive.SubmenuRoot;
+
+export const MenuGroup = MenuPrimitive.Group;
+
+export const MenuRadioGroup = MenuPrimitive.RadioGroup;
+
+/** A leading `Icon` sits in the gutter. */
+export function MenuItem({
+	className,
+	...props
+}: Styled<
+	ComponentPropsWithRef<typeof MenuPrimitive.Item>
+>): React.JSX.Element {
+	return (
+		<MenuPrimitive.Item {...props} className={cx(ITEM_CLASS, className)} />
+	);
 }
 
-/**
- * Applies a menu class to a Radix part. ContextMenu and DropdownMenu each own
- * a separate Radix scope, so both build their parts from their own primitives.
- */
-export function menuPart<T extends ElementType>(
-	Part: T,
-	base: string,
-	{ indicator: Indicator, chevron }: MenuPartOptions = {},
-): (props: ComponentPropsWithRef<T>) => React.JSX.Element {
-	const Component: ElementType = Part;
+/** Names the `MenuGroup` or `MenuRadioGroup` it sits in. */
+export function MenuLabel({
+	className,
+	...props
+}: Styled<
+	ComponentPropsWithRef<typeof MenuPrimitive.GroupLabel>
+>): React.JSX.Element {
+	return (
+		<MenuPrimitive.GroupLabel
+			{...props}
+			className={cx("ui-menu__label", className)}
+		/>
+	);
+}
 
-	function MenuPart({
-		className,
-		children,
-		...props
-	}: {
-		className?: string;
-		children?: ReactNode;
-	}): React.JSX.Element {
-		return (
-			<Component {...props} className={cx(base, className)}>
-				{Indicator ? (
-					<Indicator asChild>
-						<Icon name="check" />
-					</Indicator>
-				) : null}
-				{children}
-				{chevron ? (
-					<Icon name="chevron-right" className="ui-menu__submenu-indicator" />
-				) : null}
-			</Component>
-		);
-	}
-	MenuPart.displayName = base;
+export function MenuSeparator({
+	className,
+	...props
+}: Styled<
+	ComponentPropsWithRef<typeof MenuPrimitive.Separator>
+>): React.JSX.Element {
+	return (
+		<MenuPrimitive.Separator
+			{...props}
+			className={cx("ui-menu__separator", className)}
+		/>
+	);
+}
 
-	return MenuPart;
+export function MenuCheckboxItem({
+	className,
+	children,
+	...props
+}: Styled<
+	ComponentPropsWithRef<typeof MenuPrimitive.CheckboxItem>
+>): React.JSX.Element {
+	return (
+		<MenuPrimitive.CheckboxItem
+			{...props}
+			className={cx(ITEM_CLASS, className)}
+		>
+			<MenuPrimitive.CheckboxItemIndicator render={<Icon name="check" />} />
+			{children}
+		</MenuPrimitive.CheckboxItem>
+	);
+}
+
+export function MenuRadioItem({
+	className,
+	children,
+	...props
+}: Styled<
+	ComponentPropsWithRef<typeof MenuPrimitive.RadioItem>
+>): React.JSX.Element {
+	return (
+		<MenuPrimitive.RadioItem {...props} className={cx(ITEM_CLASS, className)}>
+			<MenuPrimitive.RadioItemIndicator render={<Icon name="check" />} />
+			{children}
+		</MenuPrimitive.RadioItem>
+	);
+}
+
+export function MenuSubTrigger({
+	className,
+	children,
+	...props
+}: Styled<
+	ComponentPropsWithRef<typeof MenuPrimitive.SubmenuTrigger>
+>): React.JSX.Element {
+	return (
+		<MenuPrimitive.SubmenuTrigger
+			{...props}
+			className={cx(ITEM_CLASS, className)}
+		>
+			{children}
+			<Icon name="chevron-right" className="ui-menu__submenu-indicator" />
+		</MenuPrimitive.SubmenuTrigger>
+	);
+}
+
+export type MenuContentProps = Styled<
+	ComponentPropsWithRef<typeof MenuPrimitive.Popup>
+> &
+	Pick<
+		ComponentPropsWithRef<typeof MenuPrimitive.Positioner>,
+		"side" | "align" | "sideOffset" | "alignOffset"
+	>;
+
+/** Also a submenu's surface. Placement props go to the positioner, the rest to the menu. */
+export function MenuContent({
+	side,
+	align,
+	sideOffset = 2,
+	alignOffset,
+	className,
+	...props
+}: MenuContentProps): React.JSX.Element {
+	return (
+		<MenuPrimitive.Portal>
+			<MenuPrimitive.Positioner
+				// Fixed gets its own layer, which keeps text antialiasing greyscale.
+				positionMethod="fixed"
+				side={side}
+				align={align}
+				sideOffset={sideOffset}
+				alignOffset={alignOffset}
+				collisionPadding={4}
+			>
+				<MenuPrimitive.Popup
+					{...props}
+					className={cx("ui-overlay ui-menu", className)}
+				/>
+			</MenuPrimitive.Positioner>
+		</MenuPrimitive.Portal>
+	);
 }

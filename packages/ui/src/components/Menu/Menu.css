@@ -2,11 +2,6 @@
 .ui-menu {
 	--ui-menu-gutter: 2em;
 	--ui-overlay-border: var(--ui-menu-border);
-	/* Radix names the available-height variable per primitive */
-	--ui-overlay-available-height: var(
-		--radix-dropdown-menu-content-available-height,
-		var(--radix-context-menu-content-available-height)
-	);
 	--ui-overlay-highlight-background: var(--ui-menu-highlight-background);
 	--ui-overlay-highlight-foreground: var(--ui-menu-highlight-foreground);
 	--ui-overlay-highlight-outline: var(--ui-menu-selection-border);
@@ -73,21 +68,18 @@
 	background: var(--ui-menu-separator);
 }
 
-/* Modern UI menu motion (contextview.ts). Radix supplies the anchor-corner
-   origin, and holds unmount until the closed-state animation ends. */
+/* Modern UI menu motion (contextview.ts). The positioner supplies the
+   anchor-corner origin, and holds unmount until the close animation ends. */
 @media (prefers-reduced-motion: no-preference) {
 	.ui-menu {
-		transform-origin: var(
-			--radix-dropdown-menu-content-transform-origin,
-			var(--radix-context-menu-content-transform-origin)
-		);
+		transform-origin: var(--transform-origin);
 	}
 
-	.ui-menu[data-state="open"] {
+	.ui-menu[data-open] {
 		animation: ui-menu-open 250ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 	}
 
-	.ui-menu[data-state="closed"] {
+	.ui-menu[data-closed] {
 		animation: ui-menu-close 150ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 	}
 }
@@ -109,11 +101,11 @@
 /* Stable-parity motion while the design settles; :where() keeps the rules
    at the modern block's specificity so source order alone decides. */
 @media (prefers-reduced-motion: no-preference) {
-	:where(:root[data-ui-style="stable"]) .ui-menu:not([data-state="closed"]) {
+	:where(:root[data-ui-style="stable"]) .ui-menu:not([data-closed]) {
 		animation: ui-menu-fade-in 83ms linear;
 	}
 
-	:where(:root[data-ui-style="stable"]) .ui-menu[data-state="closed"] {
+	:where(:root[data-ui-style="stable"]) .ui-menu[data-closed] {
 		animation: none;
 	}
 }
@@ -126,8 +118,8 @@
 
 /* data-pixel is set in .storybook/preview.ts via isPixel(). */
 @media (prefers-reduced-motion: no-preference) {
-	:where(:root[data-pixel]) .ui-menu[data-state="open"],
-	:where(:root[data-pixel]) .ui-menu[data-state="closed"] {
+	:where(:root[data-pixel]) .ui-menu[data-open],
+	:where(:root[data-pixel]) .ui-menu[data-closed] {
 		animation: none;
 	}
 }

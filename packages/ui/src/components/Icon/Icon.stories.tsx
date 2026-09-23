@@ -1,5 +1,3 @@
-import { expect, within } from "storybook/test";
-
 import { PIXEL_ALL_THEMES } from "#storybook";
 
 import { Icon } from "./Icon";
@@ -40,11 +38,6 @@ type Story = StoryObj<typeof IconStates>;
 
 export const States: Story = {
 	parameters: { pixel: PIXEL_ALL_THEMES },
-	play: async ({ canvasElement }) => {
-		await expect(
-			within(canvasElement).getByRole("img", { name: "Syncing" }),
-		).toHaveClass("ui-icon--spin");
-	},
 };
 
 export const Gallery: Story = {

@@ -24,9 +24,11 @@ describe("Icon", () => {
 		);
 	});
 
-	it("can be labelled when it conveys meaning", () => {
-		render(<Icon name="alert" aria-label="Warning" />);
-		expect(screen.getByRole("img", { name: "Warning" })).toBeInTheDocument();
+	it("can be labelled when it conveys meaning, and spin", () => {
+		render(<Icon name="loading" spin aria-label="Syncing" />);
+		expect(screen.getByRole("img", { name: "Syncing" })).toHaveClass(
+			"ui-icon--spin",
+		);
 	});
 
 	it("can be labelled by another element", () => {
@@ -52,7 +54,7 @@ describe("IconButton", () => {
 			tooltip?: string | null,
 		): Promise<string | undefined> => {
 			const view = render(
-				<TooltipProvider delayDuration={0}>
+				<TooltipProvider delay={0}>
 					<IconButton icon="refresh" label="Refresh" tooltip={tooltip} />
 				</TooltipProvider>,
 			);
@@ -77,12 +79,11 @@ describe("Spinner", () => {
 });
 
 describe("ProgressBar", () => {
-	it("exposes a clamped determinate value", () => {
-		render(<ProgressBar label="Build" value={120} />);
-		expect(screen.getByRole("progressbar", { name: "Build" })).toHaveAttribute(
-			"aria-valuenow",
-			"100",
-		);
+	it("clamps a determinate value to its range", () => {
+		render(<ProgressBar label="Build" value={7} max={5} />);
+		const progress = screen.getByRole("progressbar", { name: "Build" });
+		expect(progress).toHaveAttribute("aria-valuemax", "5");
+		expect(progress).toHaveAttribute("aria-valuenow", "5");
 	});
 
 	it("omits aria-valuenow when indeterminate", () => {
