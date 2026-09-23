@@ -2,21 +2,21 @@ import * as semver from "semver";
 import { describe, expect, it } from "vitest";
 
 import {
-	type FeatureSet,
-	featureSetForVersion,
-	tasksSupported,
+	type CliFeatureSet,
+	cliFeatureSet,
+	serverFeatureSet,
 } from "@/featureSet";
 
 function expectFlag(
-	flag: keyof FeatureSet,
+	flag: keyof CliFeatureSet,
 	below: string[],
 	atOrAbove: string[],
 ) {
 	for (const v of below) {
-		expect(featureSetForVersion(semver.parse(v))[flag]).toBeFalsy();
+		expect(cliFeatureSet(semver.parse(v))[flag]).toBeFalsy();
 	}
 	for (const v of atOrAbove) {
-		expect(featureSetForVersion(semver.parse(v))[flag]).toBeTruthy();
+		expect(cliFeatureSet(semver.parse(v))[flag]).toBeTruthy();
 	}
 }
 
@@ -77,20 +77,27 @@ describe("check version support", () => {
 			["v2.36.0", "v2.36.1", "v2.37.0", "v3.0.0"],
 		);
 	});
-	it("tasks panel only on deployments before deprecation", () => {
-		for (const v of ["v2.34.0", "v2.34.7+e491217", "v2.0.0"]) {
-			expect(tasksSupported(semver.parse(v)), v).toBe(true);
+	it("tasks panel from the stable API until the deprecation", () => {
+		for (const v of ["v2.29.0", "v2.34.0", "v2.34.7+e491217"]) {
+			expect(serverFeatureSet(semver.parse(v)).tasks, v).toBe(true);
 		}
-		for (const v of ["v2.35.0", "v2.36.1", "v3.0.0", "v2.36.0-devel+abc123"]) {
-			expect(tasksSupported(semver.parse(v)), v).toBe(false);
+		for (const v of ["v2.0.0", "v2.28.9", "v2.35.0", "v2.30.0-devel+abc123"]) {
+			expect(serverFeatureSet(semver.parse(v)).tasks, v).toBe(false);
 		}
-		expect(tasksSupported(null)).toBe(false);
+		expect(serverFeatureSet(null).tasks).toBe(false);
+	});
+
+	it("one-build restart from 2.36", () => {
+		for (const v of ["v2.35.9", "v2.0.0"]) {
+			expect(serverFeatureSet(semver.parse(v)).onSuccessBuild, v).toBe(false);
+		}
+		for (const v of ["v2.36.0", "v2.37.1", "v0.0.0-devel+abc123"]) {
+			expect(serverFeatureSet(semver.parse(v)).onSuccessBuild, v).toBe(true);
+		}
 	});
 
 	it("enables all features for development builds", () => {
-		const featureSet = featureSetForVersion(
-			semver.parse("v0.0.0-devel+abc123"),
-		);
+		const featureSet = cliFeatureSet(semver.parse("v0.0.0-devel+abc123"));
 
 		for (const [feature, enabled] of Object.entries(featureSet)) {
 			expect(enabled, feature).toBe(true);

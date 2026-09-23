@@ -1,6 +1,7 @@
 import type * as semver from "semver";
 
-export interface FeatureSet {
+/** Capabilities keyed to the Coder CLI version. */
+export interface CliFeatureSet {
 	cliLogin: boolean;
 	proxyLogDirectory: boolean;
 	wildcardSSH: boolean;
@@ -13,8 +14,14 @@ export interface FeatureSet {
 	allowRedirects: boolean;
 }
 
+/** Capabilities keyed to the Coder server (REST API) version. */
+export interface ServerFeatureSet {
+	tasks: boolean;
+	onSuccessBuild: boolean;
+}
+
 /**
- * True when the CLI version is at least `minVersion`, or is a dev build.
+ * True when the version is at least `minVersion`, or is a dev build.
  * Returns false for null (unknown) versions.
  */
 function versionAtLeast(
@@ -27,20 +34,8 @@ function versionAtLeast(
 	return version.compare(minVersion) >= 0 || version.prerelease[0] === "devel";
 }
 
-/**
- * True when the deployment predates the June 2026 Tasks deprecation
- * (2.34 and below). The deprecated Tasks panel is hidden everywhere else.
- */
-export function tasksSupported(version: semver.SemVer | null): boolean {
-	return version !== null && !versionAtLeast(version, "2.35.0");
-}
-
-/**
- * Builds and returns a FeatureSet object for a given coder version.
- */
-export function featureSetForVersion(
-	version: semver.SemVer | null,
-): FeatureSet {
+/** Capabilities of the given CLI version. */
+export function cliFeatureSet(version: semver.SemVer | null): CliFeatureSet {
 	return {
 		// `coder login --use-token-as-session` to write a token (file or keyring).
 		// The extension relies on this, so 0.25.0 is the minimum supported version.
@@ -63,5 +58,18 @@ export function featureSetForVersion(
 		supportBundleWorkspaceFiles: versionAtLeast(version, "2.36.0"),
 		// --allow-redirects; from 2.38 the CLI otherwise errors on a redirected URL.
 		allowRedirects: versionAtLeast(version, "2.38.0"),
+	};
+}
+
+/** Capabilities of the given deployment version. */
+export function serverFeatureSet(
+	version: semver.SemVer | null,
+): ServerFeatureSet {
+	return {
+		// `/api/v2/tasks`, stable from 2.29 until the 2.35 deprecation
+		tasks:
+			versionAtLeast(version, "2.29.0") && !versionAtLeast(version, "2.35.0"),
+		// `on_success` on a stop build, which queues the start in one request
+		onSuccessBuild: versionAtLeast(version, "2.36.0"),
 	};
 }

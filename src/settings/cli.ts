@@ -6,7 +6,7 @@ import { getHeaderArgs } from "./headers";
 
 import type { WorkspaceConfiguration } from "vscode";
 
-import type { FeatureSet } from "../featureSet";
+import type { CliFeatureSet } from "../featureSet";
 
 /** The CLI's own store (its config directory or the keyring, shared with the terminal), or a directory private to the extension. */
 export type CliAuth = {
@@ -127,7 +127,7 @@ export function mayUseCliStore(
 /** Uses the CLI's own store when the keyring is on or the user set a config directory. */
 export function resolveCliAuth(
 	configs: Pick<WorkspaceConfiguration, "get">,
-	featureSet: FeatureSet,
+	featureSet: CliFeatureSet,
 	url: string,
 	configDir: string,
 ): CliAuth {

@@ -5,7 +5,11 @@ import * as vscode from "vscode";
 import { MementoManager } from "@/core/mementoManager";
 import { PathResolver } from "@/core/pathResolver";
 import { SecretsManager } from "@/core/secretsManager";
-import { Remote, workspaceLabelSuffix } from "@/remote/remote";
+import {
+	buildSshProxyCommand,
+	Remote,
+	workspaceLabelSuffix,
+} from "@/remote/remote";
 
 import { createTestTelemetryService } from "../../mocks/telemetry";
 import {
@@ -22,6 +26,7 @@ import {
 import type { Commands } from "@/commands";
 import type { CliManager } from "@/core/cliManager";
 import type { Logger } from "@/logging/logger";
+import type { CliAuth } from "@/settings/cli";
 
 const mockWorkspace = vscode.workspace as typeof vscode.workspace & {
 	workspaceFile: vscode.Uri | undefined;
@@ -41,6 +46,13 @@ const REMOTE_SSH_EXTENSION_ID = "anysphere.remote-ssh";
 const MISMATCHED_URL =
 	"https://cursor.example.com/private?token=sensitive-url-token";
 const SESSION_TOKEN = "sensitive-session-token";
+const CLI_AUTH: CliAuth = {
+	store: "extension",
+	url: "https://coder.example.com",
+	configDir: "/mock/global",
+	useKeyring: undefined,
+	allowRedirects: false,
+};
 
 function createRemote(logger: Logger = createMockLogger()) {
 	new MockConfigurationProvider();
@@ -224,6 +236,49 @@ describe("Remote", () => {
 					`Session auth hostname mismatch: expected "${SAFE_HOSTNAME}", got "cursor.example.com"`,
 				),
 			],
+		});
+	});
+
+	interface SshFlagsCase {
+		name: string;
+		flags?: string[];
+		expected: string;
+	}
+
+	/** Drops the platform-specific network info path. */
+	const elideNetworkInfoDir = (command: string) =>
+		command.replace(/--network-info-dir \S+/, "--network-info-dir <dir>");
+
+	describe("ProxyCommand", () => {
+		it.each<SshFlagsCase>([
+			{
+				name: "disables autostart by default",
+				expected:
+					"ssh --disable-autostart --stdio --usage-app=vscode --network-info-dir <dir> --ssh-host-prefix coder-vscode.coder.example.com-- %h",
+			},
+			{
+				name: "passes the user's flags ahead of the managed ones",
+				flags: ["--wait=yes"],
+				expected:
+					"ssh --wait=yes --stdio --usage-app=vscode --network-info-dir <dir> --ssh-host-prefix coder-vscode.coder.example.com-- %h",
+			},
+		])("$name", ({ flags, expected }) => {
+			const config = new MockConfigurationProvider();
+			if (flags) {
+				config.set("coder.sshFlags", flags);
+			}
+
+			const proxyCommand = buildSshProxyCommand({
+				pathResolver: new PathResolver("/mock/global", "/mock/log"),
+				binaryPath: "/mock/coder",
+				cliAuth: CLI_AUTH,
+				logArgs: [],
+				hostPrefix: "coder-vscode.coder.example.com--",
+			});
+
+			expect(elideNetworkInfoDir(proxyCommand)).toBe(
+				`/mock/coder --global-config /mock/global --url https://coder.example.com ${expected}`,
+			);
 		});
 	});
 });

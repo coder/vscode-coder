@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import * as semver from "semver";
 
 import { isAbortError } from "../error/errorUtils";
-import { featureSetForVersion, type FeatureSet } from "../featureSet";
+import { cliFeatureSet, type CliFeatureSet } from "../featureSet";
 import {
 	categorizeCredentialError,
 	CredentialCliError,
@@ -36,7 +36,7 @@ const EXEC_LOG_INTERVAL_MS = 5_000;
 
 interface ResolvedCli {
 	binPath: string;
-	featureSet: FeatureSet;
+	featureSet: CliFeatureSet;
 	auth: CliAuth;
 	flags: string[];
 }
@@ -218,9 +218,7 @@ export class CliCredentialManager {
 		if (!binPath) {
 			return undefined;
 		}
-		const featureSet = featureSetForVersion(
-			semver.parse(await version(binPath)),
-		);
+		const featureSet = cliFeatureSet(semver.parse(await version(binPath)));
 		const configDir = this.pathResolver.getGlobalConfigDir(toSafeHost(url));
 		const auth = resolveCliAuth(configs, featureSet, url, configDir);
 		return { binPath, featureSet, auth, flags: getGlobalFlags(configs, auth) };

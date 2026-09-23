@@ -16,7 +16,7 @@ import { ServiceContainer } from "./core/container";
 import { DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
 import { getErrorDetail, toError } from "./error/errorUtils";
-import { tasksSupported } from "./featureSet";
+import { serverFeatureSet } from "./featureSet";
 import {
 	ActivationTelemetry,
 	type ActivationTracer,
@@ -209,7 +209,7 @@ async function doActivate(
 		if (deploymentManager.session.current.kind === "signedIn") {
 			try {
 				const buildInfo = await client.getBuildInfo();
-				supported = tasksSupported(semver.parse(buildInfo.version));
+				supported = serverFeatureSet(semver.parse(buildInfo.version)).tasks;
 			} catch (error) {
 				output.warn(
 					"Unable to fetch deployment version for Tasks panel",
