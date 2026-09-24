@@ -13,11 +13,9 @@ import {
 } from "@/api/workspace";
 import { maybeAskAgent } from "@/promptUtils";
 import { WorkspaceStateMachine } from "@/remote/workspaceStateMachine";
+import { WorkspaceUpdatePanelFactory } from "@/webviews/workspaceUpdate/workspaceUpdatePanelFactory";
 
-import {
-	agent as createAgent,
-	workspace as createWorkspace,
-} from "@repo/mocks";
+import { agent as createAgent, workspace as mockWorkspace } from "@repo/mocks";
 
 import {
 	createTestTelemetryService,
@@ -95,6 +93,16 @@ const CONFIRM_MESSAGE =
 // The message shown by confirmConnectToExisting.
 const UPDATE_FAILED_MESSAGE = "Failed to update testuser/test-workspace";
 
+/** Classic parameters unless overridden. */
+function createWorkspace(
+	overrides: Parameters<typeof mockWorkspace>[0] = {},
+): Workspace {
+	return mockWorkspace({
+		template_use_classic_parameter_flow: true,
+		...overrides,
+	});
+}
+
 function runningWorkspace(
 	agentOverrides: Partial<WorkspaceAgent> = {},
 	buildOverrides: Partial<Workspace["latest_build"]> = {},
@@ -112,6 +120,10 @@ function setup(
 	enableLocalTelemetry();
 	const progress = new MockProgress<{ message?: string }>();
 	const userInteraction = new MockUserInteraction();
+	const container = createMockServiceContainer({
+		telemetry,
+		logger: createMockLogger(),
+	});
 	const sm = new WorkspaceStateMachine(
 		DEFAULT_PARTS,
 		{} as CoderApi,
@@ -125,9 +137,9 @@ function setup(
 			useKeyring: undefined,
 			allowRedirects: false,
 		},
-		createMockServiceContainer({ telemetry, logger: createMockLogger() }),
+		container,
 	);
-	return { sm, progress, userInteraction };
+	return { sm, progress, userInteraction, container };
 }
 
 /** A workspace at the given build number, with the given build overrides. */
@@ -579,6 +591,50 @@ describe("WorkspaceStateMachine", () => {
 
 			await expect(process("failed", 2)).rejects.toThrow("Update failed");
 			expect(startWorkspace).not.toHaveBeenCalled();
+		});
+	});
+	describe("dynamic parameter templates", () => {
+		function setupDynamic() {
+			const { sm, progress, container } = setup("update");
+			const factory = new WorkspaceUpdatePanelFactory(
+				vscode.Uri.file("/ext"),
+				createMockLogger(),
+			);
+			container.getWorkspaceUpdatePanelFactory = () => factory;
+			const ws = createWorkspace({
+				template_use_classic_parameter_flow: false,
+				latest_build: { status: "stopped" },
+			});
+			return {
+				collectParameters: vi.spyOn(factory, "collectParameters"),
+				process: () => sm.processWorkspace(ws, progress),
+			};
+		}
+
+		it("updates with the parameters from the form", async () => {
+			const { collectParameters, process } = setupDynamic();
+			const parameters = [{ name: "region", value: "eu" }];
+			collectParameters.mockResolvedValueOnce(parameters);
+
+			await process();
+
+			expect(collectUpdateParameters).not.toHaveBeenCalled();
+			expect(updateWorkspace).toHaveBeenCalledWith(
+				expect.anything(),
+				parameters,
+			);
+		});
+
+		it("starts the existing version when the form is closed", async () => {
+			const { collectParameters, process } = setupDynamic();
+			collectParameters.mockRejectedValueOnce(
+				new WorkspaceUpdateCancelledError(),
+			);
+
+			await process();
+
+			expect(updateWorkspace).not.toHaveBeenCalled();
+			expect(startWorkspace).toHaveBeenCalledOnce();
 		});
 	});
 });

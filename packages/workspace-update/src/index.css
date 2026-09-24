@@ -1,0 +1,76 @@
+@import "@repo/ui/tokens.css";
+@import "@repo/ui/codicon.css";
+
+.workspace-update {
+	--workspace-update-separator: var(
+		--vscode-settings-headerBorder,
+		var(--vscode-panel-border, var(--ui-border))
+	);
+
+	display: flex;
+	flex-direction: column;
+	gap: var(--ui-spacing-240);
+	max-width: 720px;
+	margin: 0 auto;
+	/* VS Code already pads the webview body horizontally. */
+	padding-top: var(--ui-spacing-240);
+}
+
+@media (max-width: 480px) {
+	.workspace-update {
+		gap: var(--ui-spacing-160);
+		padding-top: var(--ui-spacing-160);
+	}
+
+	.workspace-update__header h1 {
+		font-size: 20px;
+	}
+}
+
+.workspace-update__progress {
+	position: fixed;
+	inset: 0 0 auto;
+}
+
+.workspace-update__header {
+	padding-bottom: var(--ui-spacing-160);
+	border-bottom: 1px solid var(--workspace-update-separator);
+}
+
+.workspace-update__header h1 {
+	margin: 0;
+	font-size: 26px;
+	font-weight: var(--ui-font-weight-regular);
+	overflow-wrap: anywhere;
+}
+
+.workspace-update__header p {
+	margin: var(--ui-spacing-60) 0 0;
+	color: var(--ui-description-foreground);
+}
+
+.workspace-update__footer {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--ui-spacing-60) var(--ui-spacing-120);
+	padding: var(--ui-spacing-120) 0 var(--ui-spacing-240);
+	border-top: 1px solid var(--workspace-update-separator);
+}
+
+.parameter-options {
+	display: flex;
+	flex-direction: column;
+	gap: var(--ui-spacing-60);
+}
+
+.parameter-label {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--ui-spacing-60);
+}
+
+.parameter-label__required {
+	color: var(--ui-status-danger-accent);
+}

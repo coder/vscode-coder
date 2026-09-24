@@ -60,7 +60,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		private readonly cliFeatures: CliFeatureSet,
 		private readonly serverFeatures: ServerFeatureSet,
 		private readonly cliAuth: CliAuth,
-		container: ServiceContainer,
+		private readonly container: ServiceContainer,
 	) {
 		this.logger = container.getLogger();
 		this.terminal = new TerminalOutputChannel("Coder: Workspace Build");
@@ -325,7 +325,13 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		});
 		try {
 			const parameters = await this.operationTelemetry.traceParametersPrompt(
-				() => collectUpdateParameters(this.workspaceClient, workspace),
+				() =>
+					// Older servers omit the flag and lack dynamic parameters.
+					workspace.template_use_classic_parameter_flow === false
+						? this.container
+								.getWorkspaceUpdatePanelFactory()
+								.collectParameters(this.workspaceClient, workspace)
+						: collectUpdateParameters(this.workspaceClient, workspace),
 			);
 			const updated = await this.operationTelemetry.traceUpdate(() =>
 				updateWorkspace(this.buildCliContext(workspace), parameters),
