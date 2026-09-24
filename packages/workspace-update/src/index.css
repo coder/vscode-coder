@@ -49,20 +49,6 @@
 	color: var(--ui-description-foreground);
 }
 
-.workspace-update__notice {
-	padding: var(--ui-spacing-60) var(--ui-spacing-120);
-	border-left: 2px solid var(--ui-status-info-accent);
-	background: var(--ui-surface-background);
-}
-
-.workspace-update__notice--warning {
-	border-left-color: var(--ui-status-warning-accent);
-}
-
-.workspace-update__notice--error {
-	border-left-color: var(--ui-status-danger-accent);
-}
-
 .workspace-update__footer {
 	display: flex;
 	flex-wrap: wrap;
@@ -87,8 +73,4 @@
 
 .parameter-label__required {
 	color: var(--ui-status-danger-accent);
-}
-
-.diagnostic--warning {
-	color: var(--ui-status-warning-accent);
 }

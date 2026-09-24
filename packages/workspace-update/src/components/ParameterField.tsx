@@ -10,10 +10,14 @@ import {
 	SelectValue,
 	StatusPill,
 	Textarea,
+	ValidationMessage,
 } from "@repo/ui";
 import { useId } from "react";
 
-import type { PreviewParameter } from "coder/site/src/api/typesGenerated";
+import type {
+	FriendlyDiagnostic,
+	PreviewParameter,
+} from "coder/site/src/api/typesGenerated";
 
 interface ParameterFieldProps {
 	parameter: PreviewParameter;
@@ -29,19 +33,11 @@ interface ParameterControlProps extends ParameterFieldProps {
 	invalid: boolean;
 }
 
-export function DiagnosticText({
+export function formatDiagnostic({
 	summary,
 	detail,
-}: {
-	summary: string;
-	detail?: React.ReactNode;
-}): React.JSX.Element {
-	return (
-		<>
-			<strong>{summary}</strong>
-			{detail ? <div>{detail}</div> : null}
-		</>
-	);
+}: Pick<FriendlyDiagnostic, "summary" | "detail">): string {
+	return detail ? `${summary}: ${detail}` : summary;
 }
 
 /** Like the dashboard's `DynamicParameter`. */
@@ -98,12 +94,12 @@ export function ParameterField(props: ParameterFieldProps): React.JSX.Element {
 				diagnostics.length > 0 ? (
 					<>
 						{diagnostics.map((d) => (
-							<div
+							<ValidationMessage
 								key={`${d.summary}:${d.detail}`}
-								className={`diagnostic diagnostic--${d.severity}`}
+								severity={d.severity}
 							>
-								<DiagnosticText summary={d.summary} detail={d.detail} />
-							</div>
+								{formatDiagnostic(d)}
+							</ValidationMessage>
 						))}
 					</>
 				) : undefined

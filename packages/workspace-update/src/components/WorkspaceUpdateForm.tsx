@@ -3,7 +3,13 @@ import {
 	type ParameterValues,
 	type WorkspaceUpdateInit,
 } from "@repo/shared";
-import { Button, ErrorState, LoadingState, ProgressBar } from "@repo/ui";
+import {
+	Button,
+	ErrorState,
+	LoadingState,
+	ProgressBar,
+	ValidationMessage,
+} from "@repo/ui";
 import { useVsCodeState } from "@repo/webview-shared/react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -11,12 +17,9 @@ import { useState } from "react";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useWorkspaceUpdateApi } from "../hooks/useWorkspaceUpdateApi";
 
-import { DiagnosticText, ParameterField } from "./ParameterField";
+import { formatDiagnostic, ParameterField } from "./ParameterField";
 
-import type {
-	FriendlyDiagnostic,
-	PreviewParameter,
-} from "coder/site/src/api/typesGenerated";
+import type { PreviewParameter } from "coder/site/src/api/typesGenerated";
 
 /** Like the dashboard, only typing is debounced. */
 const TYPING_DEBOUNCE_MS = 500;
@@ -90,22 +93,24 @@ export function WorkspaceUpdateForm({
 				<p>The latest template version needs new parameter values.</p>
 			</header>
 			{blocked && (
-				<Notice severity="error" summary="Workspace update blocked">
-					Immutable values conflict with the new version. Contact your template
-					administrator.
-				</Notice>
+				<ValidationMessage role="alert" severity="error">
+					Workspace update blocked: immutable values conflict with the new
+					version. Contact your template administrator.
+				</ValidationMessage>
 			)}
 			{diagnostics.map((d) => (
-				<Notice
+				<ValidationMessage
 					key={`${d.summary}:${d.detail}`}
+					role={d.severity === "error" ? "alert" : "status"}
 					severity={d.severity}
-					summary={d.summary}
 				>
-					{d.detail}
-				</Notice>
+					{formatDiagnostic(d)}
+				</ValidationMessage>
 			))}
 			{evaluation.isError && (
-				<Notice severity="error" summary={evaluation.error.message} />
+				<ValidationMessage role="alert" severity="error">
+					{evaluation.error.message}
+				</ValidationMessage>
 			)}
 			{parameters.map((parameter) => (
 				<ParameterField
@@ -133,24 +138,5 @@ export function WorkspaceUpdateForm({
 				</Button>
 			</footer>
 		</form>
-	);
-}
-
-function Notice({
-	severity,
-	summary,
-	children,
-}: {
-	severity: FriendlyDiagnostic["severity"];
-	summary: string;
-	children?: React.ReactNode;
-}): React.JSX.Element {
-	return (
-		<div
-			role={severity === "error" ? "alert" : "status"}
-			className={`workspace-update__notice workspace-update__notice--${severity}`}
-		>
-			<DiagnosticText summary={summary} detail={children} />
-		</div>
 	);
 }
