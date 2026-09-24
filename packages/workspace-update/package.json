@@ -1,0 +1,30 @@
+{
+	"name": "@repo/workspace-update",
+	"version": "1.0.0",
+	"description": "Coder workspace update parameter form webview",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "vite build",
+		"dev": "vite build --watch",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@repo/shared": "workspace:*",
+		"@repo/ui": "workspace:*",
+		"@repo/webview-shared": "workspace:*",
+		"@tanstack/react-query": "catalog:",
+		"react": "catalog:",
+		"react-dom": "catalog:"
+	},
+	"devDependencies": {
+		"@repo/storybook-utils": "workspace:*",
+		"@rolldown/plugin-babel": "catalog:",
+		"@types/react": "catalog:",
+		"@types/react-dom": "catalog:",
+		"@vitejs/plugin-react": "catalog:",
+		"babel-plugin-react-compiler": "catalog:",
+		"typescript": "catalog:",
+		"vite": "catalog:"
+	}
+}
