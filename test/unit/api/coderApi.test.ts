@@ -628,19 +628,6 @@ describe("CoderApi", () => {
 			expect(EventSource).not.toHaveBeenCalled();
 		});
 
-		it("falls back to SSE when WebSocket creation fails with 404", async () => {
-			// Only 404 errors trigger SSE fallback - other errors are thrown
-			vi.mocked(Ws).mockImplementation(function () {
-				throw new HandshakeError(HttpStatusCode.NOT_FOUND);
-			});
-
-			const connection = await api.watchAgentMetadata(AGENT_ID);
-
-			// Returns ReconnectingWebSocket (which wraps SSE internally)
-			expect(connection).toBeInstanceOf(ReconnectingWebSocket);
-			expect(EventSource).toHaveBeenCalled();
-		});
-
 		it("falls back to SSE on 404 error from WebSocket open", async () => {
 			const mockWs = createMockWebSocket(
 				`wss://${CODER_URL.replace("https://", "")}/api/v2/test`,
@@ -720,7 +707,7 @@ describe("CoderApi", () => {
 		});
 
 		describe("reconnection after fallback", () => {
-			beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+			beforeEach(() => vi.useFakeTimers());
 			afterEach(() => vi.useRealTimers());
 
 			it("reconnects after SSE fallback and retries WS on each reconnect", async () => {
@@ -743,15 +730,19 @@ describe("CoderApi", () => {
 					return es as unknown as EventSource;
 				});
 
-				const connection = await api.watchAgentMetadata(AGENT_ID);
+				const pendingConnection = api.watchAgentMetadata(AGENT_ID);
+				await vi.runAllTimersAsync();
+				const connection = await pendingConnection;
 				expect(wsAttempts).toBe(1);
 				expect(EventSource).toHaveBeenCalledTimes(1);
 
 				mockEventSources[0].fireError();
-				await vi.advanceTimersByTimeAsync(300);
+				await vi.runAllTimersAsync();
 
 				expect(wsAttempts).toBe(2);
 				expect(EventSource).toHaveBeenCalledTimes(2);
+				expect(mockEventSources[1].close).not.toHaveBeenCalled();
+				expect(vi.getTimerCount()).toBe(0);
 
 				connection.close();
 			});

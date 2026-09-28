@@ -113,30 +113,26 @@ describe("ReconnectingWebSocket", () => {
 			},
 		);
 
-		it.each(FLUSHING_HTTP_CODES)(
+		it.each([HttpStatusCode.UNAUTHORIZED, ...FLUSHING_HTTP_CODES])(
 			"does not reconnect on an unrecoverable handshake failure during creation: %i",
 			async (statusCode) => {
-				let socketCreationAttempts = 0;
-				const factory = vi.fn(() => {
-					socketCreationAttempts++;
-					// Simulate an HTTP error during the handshake.
-					return Promise.reject(new HandshakeError(statusCode));
-				});
-
-				// create() returns a disconnected instance instead of throwing
+				const factory = vi
+					.fn<SocketFactory<unknown>>()
+					.mockRejectedValue(new HandshakeError(statusCode));
 				const onConnectionFailure = vi.fn();
 				const ws = await fromFactory(factory, { onConnectionFailure });
 
-				// Should be disconnected after unrecoverable HTTP error
 				expect(ws.state).toBe(ConnectionState.DISCONNECTED);
-
-				// Should not retry after unrecoverable HTTP error
-				await vi.advanceTimersByTimeAsync(10000);
-				expect(socketCreationAttempts).toBe(1);
-				expect(onConnectionFailure).toHaveBeenCalledWith(
-					"unrecoverable_http",
-					"/api/v2/test",
-				);
+				expect(vi.getTimerCount()).toBe(0);
+				expect(factory).toHaveBeenCalledOnce();
+				if (statusCode === HttpStatusCode.UNAUTHORIZED) {
+					expect(onConnectionFailure).not.toHaveBeenCalled();
+				} else {
+					expect(onConnectionFailure).toHaveBeenCalledExactlyOnceWith(
+						"unrecoverable_http",
+						"/api/v2/test",
+					);
+				}
 
 				ws.close();
 			},
@@ -145,9 +141,9 @@ describe("ReconnectingWebSocket", () => {
 		it.each([HttpStatusCode.UNAUTHORIZED, ...FLUSHING_HTTP_CODES])(
 			"does not reconnect on unrecoverable HTTP error via error event: %i",
 			async (statusCode) => {
-				// HTTP errors during handshake fire 'error' event, then 'close' with 1006
-				const { ws, sockets } = await createReconnectingWebSocket();
-
+				const { ws, sockets, onConnectionFailure } =
+					await createReconnectingWebSocket();
+				sockets[0].fireOpen();
 				sockets[0].fireError(new HandshakeError(statusCode));
 				expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 
@@ -156,37 +152,15 @@ describe("ReconnectingWebSocket", () => {
 					reason: "Connection failed",
 				});
 
-				// Should not reconnect - unrecoverable HTTP error
-				await vi.advanceTimersByTimeAsync(10000);
-				expect(sockets).toHaveLength(1);
-
-				ws.close();
-			},
-		);
-
-		it("does not flush on an unrecoverable 401 (a 401 explains itself, and with OAuth a refresh reconnects the same socket)", async () => {
-			const { ws, sockets, onConnectionFailure } =
-				await createReconnectingWebSocket();
-
-			sockets[0].fireError(new HandshakeError(HttpStatusCode.UNAUTHORIZED));
-
-			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
-			expect(onConnectionFailure).not.toHaveBeenCalled();
-			ws.close();
-		});
-
-		it.each(FLUSHING_HTTP_CODES)(
-			"flushes with the route on an unrecoverable HTTP failure: %i",
-			async (statusCode) => {
-				const { ws, sockets, onConnectionFailure } =
-					await createReconnectingWebSocket();
-
-				sockets[0].fireError(new HandshakeError(statusCode));
-
-				expect(onConnectionFailure).toHaveBeenCalledWith(
-					"unrecoverable_http",
-					expect.any(String),
-				);
+				expect(vi.getTimerCount()).toBe(0);
+				if (statusCode === HttpStatusCode.UNAUTHORIZED) {
+					expect(onConnectionFailure).not.toHaveBeenCalled();
+				} else {
+					expect(onConnectionFailure).toHaveBeenCalledExactlyOnceWith(
+						"unrecoverable_http",
+						"/api/test",
+					);
+				}
 				ws.close();
 			},
 		);
@@ -202,13 +176,15 @@ describe("ReconnectingWebSocket", () => {
 			const ws = await fromFactory(factory, { onConnectionFailure });
 
 			expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
-			await vi.advanceTimersByTimeAsync(300);
+			expect(vi.getTimerCount()).toBe(1);
+			await vi.advanceTimersToNextTimerAsync();
 			expect(factory).toHaveBeenCalledTimes(2);
 
 			socket.fireOpen();
 			socket.fireError(new HandshakeError(503));
 			expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
-			await vi.advanceTimersByTimeAsync(300);
+			expect(vi.getTimerCount()).toBe(1);
+			await vi.advanceTimersToNextTimerAsync();
 			expect(factory).toHaveBeenCalledTimes(3);
 			expect(onConnectionFailure).not.toHaveBeenCalled();
 			ws.close();

@@ -345,11 +345,9 @@ export class ReconnectingWebSocket<
 		try {
 			if (this.#currentSocket) {
 				this.#telemetry.dropped("replaced", WebSocketCloseCode.NORMAL);
-				this.#currentSocket.close(
-					WebSocketCloseCode.NORMAL,
-					"Replacing connection",
-				);
+				const previousSocket = this.#currentSocket;
 				this.#currentSocket = null;
+				previousSocket.close(WebSocketCloseCode.NORMAL, "Replacing connection");
 			}
 
 			const socket = await this.#socketFactory();
