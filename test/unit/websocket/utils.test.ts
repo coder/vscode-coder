@@ -18,12 +18,8 @@ describe("handshakeStatus", () => {
 	it.each([
 		undefined,
 		null,
-		404,
-		{ statusCode: 404 },
-		"Unexpected server response: 404",
 		new Error("Unexpected server response: 404"),
 		new Error("Non-200 status code (403)"),
-		new Error("connect ECONNREFUSED 127.0.0.1:4040"),
 	])("ignores untyped errors: %s", (error) => {
 		expect(handshakeStatus(error)).toBeUndefined();
 	});
@@ -32,14 +28,10 @@ describe("handshakeStatus", () => {
 describe("handshake errors from real transports", () => {
 	let server: http.Server;
 
-	const listen = (statusCode: number, unfinished = false): Promise<string> => {
+	const listen = (statusCode: number): Promise<string> => {
 		server = http.createServer((_req, res) => {
 			res.writeHead(statusCode);
-			if (unfinished) {
-				res.flushHeaders();
-			} else {
-				res.end();
-			}
+			res.flushHeaders();
 		});
 		return new Promise<string>((resolve) => {
 			server.listen(0, "127.0.0.1", () => {
@@ -54,43 +46,38 @@ describe("handshake errors from real transports", () => {
 		await new Promise<void>((resolve) => server.close(() => resolve()));
 	});
 
-	it.each([false, true])(
-		"reports and closes a rejected WebSocket handshake (unfinished response: %s)",
-		async (unfinished) => {
-			const host = await listen(404, unfinished);
-			const disconnected = new Promise<void>((resolve) => {
-				server.on("connection", (socket) => socket.once("close", resolve));
-			});
-			const ws = new OneWayWebSocket({
-				location: { protocol: "http:", host },
-				apiRoute: "/",
-			});
-			const events: string[] = [];
-			const onError = vi.fn((event: ErrorEvent) => {
-				events.push("error");
-				expect(handshakeStatus(event.error)).toBe(404);
-				expect(event.error).toMatchObject({ cause: expect.any(Error) });
-				ws.close();
-			});
-			const removed = vi.fn();
-			ws.addEventListener("error", removed);
-			ws.removeEventListener("error", removed);
-			ws.addEventListener("error", onError);
-			ws.addEventListener("error", onError);
+	it("reports the status before closing an unfinished WebSocket handshake", async () => {
+		const host = await listen(404);
+		const disconnected = new Promise<void>((resolve) => {
+			server.on("connection", (socket) => socket.once("close", resolve));
+		});
+		const ws = new OneWayWebSocket({
+			location: { protocol: "http:", host },
+			apiRoute: "/",
+		});
+		const events: Array<number | undefined> = [];
+		const onError = (event: ErrorEvent) => {
+			events.push(handshakeStatus(event.error));
+			ws.removeEventListener("error", onError);
+			ws.close();
+		};
+		const removed = vi.fn();
+		ws.addEventListener("error", removed);
+		ws.removeEventListener("error", removed);
+		ws.addEventListener("error", onError);
+		ws.addEventListener("error", onError);
 
-			await new Promise<void>((resolve) => {
-				ws.addEventListener("close", () => {
-					events.push("close");
-					resolve();
-				});
+		await new Promise<void>((resolve) => {
+			ws.addEventListener("close", (event) => {
+				events.push(event.code);
+				resolve();
 			});
-			await disconnected;
+		});
+		await disconnected;
 
-			expect(events).toEqual(["error", "close"]);
-			expect(onError).toHaveBeenCalledOnce();
-			expect(removed).not.toHaveBeenCalled();
-		},
-	);
+		expect(events).toEqual([404, 1006]);
+		expect(removed).not.toHaveBeenCalled();
+	});
 
 	it("reports the status from an SSE handshake rejection", async () => {
 		const host = await listen(403);

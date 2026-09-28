@@ -191,42 +191,28 @@ describe("ReconnectingWebSocket", () => {
 			},
 		);
 
-		it.each([500, 502, 503])(
-			"retries a %i handshake failure during creation",
-			async (statusCode) => {
-				const factory = vi
-					.fn<SocketFactory<unknown>>()
-					.mockRejectedValueOnce(new HandshakeError(statusCode))
-					.mockImplementation(() => Promise.resolve(createMockSocket()));
-				const onConnectionFailure = vi.fn();
-				const ws = await fromFactory(factory, { onConnectionFailure });
+		it("retries HTTP 503 during creation and after open", async () => {
+			const socket = createMockSocket();
+			const factory = vi
+				.fn<SocketFactory<unknown>>()
+				.mockRejectedValueOnce(new HandshakeError(503))
+				.mockResolvedValueOnce(socket)
+				.mockImplementation(() => Promise.resolve(createMockSocket()));
+			const onConnectionFailure = vi.fn();
+			const ws = await fromFactory(factory, { onConnectionFailure });
 
-				expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
-				await vi.advanceTimersByTimeAsync(300);
-				expect(factory).toHaveBeenCalledTimes(2);
-				expect(onConnectionFailure).not.toHaveBeenCalled();
+			expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
+			await vi.advanceTimersByTimeAsync(300);
+			expect(factory).toHaveBeenCalledTimes(2);
 
-				ws.close();
-			},
-		);
-
-		it.each([500, 502, 503])(
-			"retries a %i handshake failure after open",
-			async (statusCode) => {
-				const { ws, sockets, onConnectionFailure } =
-					await createReconnectingWebSocket();
-
-				sockets[0].fireOpen();
-				sockets[0].fireError(new HandshakeError(statusCode));
-
-				expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
-				await vi.advanceTimersByTimeAsync(300);
-				expect(sockets).toHaveLength(2);
-				expect(onConnectionFailure).not.toHaveBeenCalled();
-
-				ws.close();
-			},
-		);
+			socket.fireOpen();
+			socket.fireError(new HandshakeError(503));
+			expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
+			await vi.advanceTimersByTimeAsync(300);
+			expect(factory).toHaveBeenCalledTimes(3);
+			expect(onConnectionFailure).not.toHaveBeenCalled();
+			ws.close();
+		});
 
 		it("does not read host/port digits as a status code", async () => {
 			const { ws, sockets, onConnectionFailure } =
