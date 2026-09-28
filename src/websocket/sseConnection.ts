@@ -1,14 +1,14 @@
 import { type AxiosInstance } from "axios";
 import { type ServerSentEvent } from "coder/site/src/api/typesGenerated";
 import { type WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
-import { EventSource } from "eventsource";
+import { EventSource, type ErrorEvent } from "eventsource";
 
 import { createStreamingFetchAdapter } from "../api/streamingFetchAdapter";
 import { toError } from "../error/errorUtils";
 import { type Logger } from "../logging/logger";
 
 import { WebSocketCloseCode } from "./codes";
-import { getQueryString } from "./utils";
+import { getQueryString, HandshakeError } from "./utils";
 
 import type {
 	UnidirectionalStream,
@@ -105,13 +105,17 @@ export class SseConnection implements UnidirectionalStream<ServerSentEvent> {
 	}
 
 	private createErrorEvent(event: Event | ErrorEvent): WsErrorEvent {
-		// Check for properties instead of instanceof to avoid browser-only ErrorEvent global
-		const eventWithMessage = event as { message?: string; error?: unknown };
+		const eventWithMessage = event as Partial<ErrorEvent> & { error?: unknown };
 		const errorMessage = eventWithMessage.message || "SSE connection error";
 		const error = eventWithMessage.error;
 
 		return {
-			error: error,
+			error:
+				eventWithMessage.code === undefined
+					? error
+					: new HandshakeError(eventWithMessage.code, errorMessage, {
+							cause: error,
+						}),
 			message: errorMessage,
 		};
 	}

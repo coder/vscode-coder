@@ -37,8 +37,9 @@ import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
 } from "@/telemetry/reporter";
-import { WebSocketCloseCode } from "@/websocket/codes";
+import { HttpStatusCode, WebSocketCloseCode } from "@/websocket/codes";
 import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
+import { HandshakeError } from "@/websocket/utils";
 
 import {
 	createMockLogger,
@@ -630,7 +631,7 @@ describe("CoderApi", () => {
 		it("falls back to SSE when WebSocket creation fails with 404", async () => {
 			// Only 404 errors trigger SSE fallback - other errors are thrown
 			vi.mocked(Ws).mockImplementation(function () {
-				throw new Error("Unexpected server response: 404");
+				throw new HandshakeError(HttpStatusCode.NOT_FOUND);
 			});
 
 			const connection = await api.watchAgentMetadata(AGENT_ID);
@@ -645,8 +646,7 @@ describe("CoderApi", () => {
 				`wss://${CODER_URL.replace("https://", "")}/api/v2/test`,
 				{
 					connectError: {
-						error: new Error("Unexpected server response: 404"),
-						message: "Unexpected server response: 404",
+						error: new HandshakeError(HttpStatusCode.NOT_FOUND),
 					},
 				},
 			);
@@ -673,6 +673,52 @@ describe("CoderApi", () => {
 			connection.close();
 		});
 
+		it("does not fall back to SSE on a non-404 HTTP handshake failure", async () => {
+			setupWebSocketMock(
+				createMockWebSocket("wss://test", {
+					connectError: { error: new HandshakeError(500) },
+				}),
+			);
+
+			const connection = await api.watchAgentMetadata(AGENT_ID);
+			expect(EventSource).not.toHaveBeenCalled();
+
+			connection.close();
+		});
+
+		it("treats an HTTP failure of the SSE fallback as unrecoverable", async () => {
+			const onConnectionFailure = vi.fn();
+			api = createApi(
+				CODER_URL,
+				AXIOS_TOKEN,
+				NOOP_TELEMETRY_REPORTER,
+				onConnectionFailure,
+			);
+			setupWebSocketMock(
+				createMockWebSocket("wss://test", {
+					connectError: {
+						error: new HandshakeError(HttpStatusCode.NOT_FOUND),
+					},
+				}),
+			);
+			setupEventSourceMock(
+				createMockEventSource(`${CODER_URL}/api/v2/test`, {
+					connectError: Object.assign(new Event("error"), {
+						code: HttpStatusCode.FORBIDDEN,
+						message: "Access denied",
+					}),
+				}),
+			);
+
+			const connection = await api.watchAgentMetadata(AGENT_ID);
+
+			expect(onConnectionFailure).toHaveBeenCalledWith(
+				"unrecoverable_http",
+				`/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
+			);
+			connection.close();
+		});
+
 		describe("reconnection after fallback", () => {
 			beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
 			afterEach(() => vi.useRealTimers());
@@ -685,7 +731,7 @@ describe("CoderApi", () => {
 					wsAttempts++;
 					const mockWs = createMockWebSocket("wss://test", {
 						connectError: {
-							error: new Error("Unexpected server response: 404"),
+							error: new HandshakeError(HttpStatusCode.NOT_FOUND),
 						},
 					});
 					return mockWs as Ws;
@@ -1237,15 +1283,25 @@ type MockEventSource = Partial<EventSource> & {
 	fireError: () => void;
 };
 
-function createMockEventSource(url: string): MockEventSource {
+function createMockEventSource(
+	url: string,
+	options: { connectError?: Event } = {},
+): MockEventSource {
+	const { connectError } = options;
 	const handlers: Record<string, ((e: Event) => void) | undefined> = {};
 	const mock: MockEventSource = {
 		url,
 		readyState: EventSource.CONNECTING,
 		addEventListener: vi.fn((event: string, handler: (e: Event) => void) => {
 			handlers[event] = handler;
-			if (event === "open") {
+			if (event === "open" && !connectError) {
 				setImmediate(() => handler(new Event("open")));
+			}
+			if (event === "error" && connectError) {
+				setImmediate(() => {
+					mock.readyState = EventSource.CLOSED;
+					handler(connectError);
+				});
 			}
 		}),
 		removeEventListener: vi.fn(),

@@ -12,6 +12,7 @@ import {
 	type ErrorEvent,
 } from "@/websocket/eventStreamConnection";
 import { SseConnection } from "@/websocket/sseConnection";
+import { handshakeStatus } from "@/websocket/utils";
 
 import { createMockLogger } from "../../mocks/testHelpers";
 
@@ -118,11 +119,12 @@ describe("SseConnection", () => {
 			]);
 		});
 
-		it("fires error event when connection fails", async () => {
+		it.each([undefined, 403])("preserves status %s", async (code) => {
 			const mockES = createMockEventSource({
 				addEventListener: vi.fn((event, handler) => {
 					if (event === "error") {
 						const error = {
+							code,
 							message: "Connection failed",
 							error: new Error("Network error"),
 						};
@@ -145,6 +147,7 @@ describe("SseConnection", () => {
 					message: "Connection failed",
 				},
 			]);
+			expect(handshakeStatus(events[0].error)).toBe(code);
 		});
 
 		it("fires close event when connection closes on error", async () => {
