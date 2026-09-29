@@ -2,14 +2,15 @@
 export const AUTH_GRANT_TYPE = "authorization_code";
 export const REFRESH_GRANT_TYPE = "refresh_token";
 
-// Minimal scopes required by the VS Code extension
+// Minimal scopes required by the VS Code extension and the CLI it runs
 export const DEFAULT_OAUTH_SCOPES = [
-	"workspace:read",
-	"workspace:update",
-	"workspace:start",
-	"workspace:ssh",
-	"workspace:application_connect",
-	"template:read",
+	// Composites also grant organization_member:read, needed for shared workspaces
+	"coder:workspaces.operate",
+	"coder:workspaces.access",
+	// `coder start` dry-runs a build when the workspace must update first
+	"workspace:create",
+	// `/users/me` and workspace owner lookups
+	"user:read",
 	"user:read_personal",
 ].join(" ");
 
