@@ -1,11 +1,18 @@
 import {
 	type ServerSentEvent,
 	type Workspace,
+	type WorkspaceAgent,
+	type WorkspaceAgentLog,
+	type WorkspaceAgentLogSource,
 } from "coder/site/src/api/typesGenerated";
 import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
 
-import { createWorkspaceIdentifier, errToStr } from "../api/api-helper";
+import {
+	createWorkspaceIdentifier,
+	errToStr,
+	extractAgents,
+} from "../api/api-helper";
 import {
 	recordAgentState,
 	recordWorkspaceState,
@@ -51,7 +58,9 @@ export class WorkspaceMonitor implements vscode.Disposable {
 	private notifiedDeletion = false;
 	private notifiedOutdated = false;
 	private notifiedNotRunning = false;
+	private notifiedStartupFailure = false;
 	private completedInitialSetup = false;
+	private connectedAgentId: string | undefined;
 
 	readonly onChange = new vscode.EventEmitter<Workspace>();
 	private readonly statusBarItem: vscode.StatusBarItem;
@@ -129,7 +138,8 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		return monitor;
 	}
 
-	public markInitialSetupComplete(): void {
+	public markInitialSetupComplete(connectedAgentId: string): void {
+		this.connectedAgentId = connectedAgentId;
 		this.completedInitialSetup = true;
 		this.maybeNotify(this.latestWorkspace);
 	}
@@ -199,6 +209,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 			this.maybeNotifyOutdated(workspace, cfg);
 			this.maybeNotifyDeletion(workspace);
 			this.maybeNotifyNotRunning(workspace);
+			this.maybeNotifyStartupFailure(workspace);
 		}
 	}
 
@@ -258,6 +269,89 @@ export class WorkspaceMonitor implements vscode.Disposable {
 					vscode.commands.executeCommand("workbench.action.reloadWindow");
 				});
 		}
+	}
+
+	private maybeNotifyStartupFailure(workspace: Workspace) {
+		if (this.notifiedStartupFailure) {
+			return;
+		}
+		const agent = extractAgents(workspace.latest_build.resources).find(
+			(a) => a.id === this.connectedAgentId,
+		);
+		if (
+			agent?.lifecycle_state !== "start_error" &&
+			agent?.lifecycle_state !== "start_timeout"
+		) {
+			return;
+		}
+		this.notifiedStartupFailure = true;
+		vscode.window
+			.showWarningMessage(
+				this.startupFailureMessage(agent),
+				"Show Logs",
+				"Open in Dashboard",
+			)
+			.then((action) => {
+				if (action === "Show Logs") {
+					void this.showStartupLogs(agent);
+				} else if (action === "Open in Dashboard") {
+					vscode.commands.executeCommand("coder.navigateToWorkspace");
+				}
+			});
+	}
+
+	private startupFailureMessage(agent: WorkspaceAgent): string {
+		const where = `agent ${agent.name} in ${this.name}`;
+		if (agent.lifecycle_state === "start_timeout") {
+			return `Startup scripts on ${where} are taking longer than expected and might still be running.`;
+		}
+		const failed = agent.scripts
+			.filter((s) => s.run_on_start && s.status && s.status !== "ok")
+			.map((s) =>
+				s.exit_code
+					? `"${s.display_name}" (exit code ${s.exit_code})`
+					: `"${s.display_name}"`,
+			);
+		if (failed.length === 0) {
+			return `Startup scripts failed on ${where}.`;
+		}
+		const noun = failed.length === 1 ? "script" : "scripts";
+		return `Startup ${noun} ${failed.join(", ")} failed on ${where}.`;
+	}
+
+	private async showStartupLogs(agent: WorkspaceAgent) {
+		try {
+			const logs = await this.client.getWorkspaceAgentLogs(agent.id);
+			const writeEmitter = new vscode.EventEmitter<string>();
+			const terminal = vscode.window.createTerminal({
+				name: `Startup Logs (${agent.name})`,
+				pty: {
+					onDidWrite: writeEmitter.event,
+					open: () =>
+						writeEmitter.fire(this.formatAgentLogs(logs, agent.log_sources)),
+					close: () => writeEmitter.dispose(),
+				},
+			});
+			terminal.show();
+		} catch (error) {
+			const message = errToStr(error, "no further details");
+			this.logger.warn("Failed to show agent startup logs", error);
+			vscode.window.showErrorMessage(`Failed to show startup logs: ${message}`);
+		}
+	}
+
+	private formatAgentLogs(
+		logs: readonly WorkspaceAgentLog[],
+		sources: readonly WorkspaceAgentLogSource[],
+	): string {
+		const names = new Map(sources.map((s) => [s.id, s.display_name]));
+		return logs
+			.map((log) => {
+				const name = names.get(log.source_id);
+				const output = log.output.replace(/\r?\n/g, "\r\n");
+				return name ? `[${name}] ${output}` : output;
+			})
+			.join("\r\n");
 	}
 
 	private isImpending(target: string, notifyTime: number): boolean {

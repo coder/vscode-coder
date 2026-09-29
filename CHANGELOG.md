@@ -5,6 +5,14 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Added
+
+- Warn when the connected agent's startup scripts fail or time out, with
+  **Show Logs** and **Open in Dashboard** actions. These failures used to appear
+  only in the Coder output channel.
+
 ## [v1.16.4](https://github.com/coder/vscode-coder/releases/tag/v1.16.4) 2026-09-23
 
 ### Added

@@ -26,6 +26,7 @@ import {
 import type {
 	ServerSentEvent,
 	Workspace,
+	WorkspaceAgentScript,
 } from "coder/site/src/api/typesGenerated";
 
 import type { CoderApi } from "@/api/coderApi";
@@ -321,7 +322,7 @@ describe("WorkspaceMonitor", () => {
 
 		it("shows deletion notification when deletion is impending", async () => {
 			const { monitor, stream } = await setup();
-			monitor.markInitialSetupComplete();
+			monitor.markInitialSetupComplete("agent-1");
 
 			stream.pushMessage(
 				workspaceEvent({ deleting_at: minutesFromNow(12 * 60) }),
@@ -334,7 +335,7 @@ describe("WorkspaceMonitor", () => {
 
 		it("shows not-running notification after initial setup", async () => {
 			const { monitor, stream } = await setup();
-			monitor.markInitialSetupComplete();
+			monitor.markInitialSetupComplete("agent-1");
 
 			stream.pushMessage(
 				workspaceEvent({ latest_build: { status: "stopped" } }),
@@ -363,7 +364,7 @@ describe("WorkspaceMonitor", () => {
 
 		it("fetches template details for outdated notification", async () => {
 			const { monitor, stream } = await setup();
-			monitor.markInitialSetupComplete();
+			monitor.markInitialSetupComplete("agent-1");
 
 			stream.pushMessage(workspaceEvent({ outdated: true }));
 
@@ -381,7 +382,7 @@ describe("WorkspaceMonitor", () => {
 			stream.pushMessage(workspaceEvent({ outdated: true }));
 			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
 
-			monitor.markInitialSetupComplete();
+			monitor.markInitialSetupComplete("agent-1");
 
 			await vi.waitFor(() => {
 				expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
@@ -407,10 +408,98 @@ describe("WorkspaceMonitor", () => {
 		});
 	});
 
+	describe("startup script failures", () => {
+		it("warns once, only for the connected agent", async () => {
+			const { monitor, stream } = await setup();
+			monitor.markInitialSetupComplete("agent-1");
+			const failed = (id: string) =>
+				workspaceEvent(
+					workspaceWith("running", [
+						createAgent({ id, lifecycle_state: "start_error" }),
+					]),
+				);
+
+			stream.pushMessage(failed("agent-2"));
+			stream.pushMessage(failed("agent-1"));
+			stream.pushMessage(failed("agent-1"));
+
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledOnce();
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+				"Startup scripts failed on agent main in testuser/test-workspace.",
+				"Show Logs",
+				"Open in Dashboard",
+			);
+		});
+
+		const script: WorkspaceAgentScript = {
+			id: "script-1",
+			log_source_id: "source-1",
+			log_path: "",
+			script: "",
+			cron: "",
+			run_on_start: true,
+			run_on_stop: false,
+			start_blocks_login: false,
+			timeout: 0,
+			display_name: "Install deps",
+		};
+
+		interface Case {
+			name: string;
+			agent: Parameters<typeof createAgent>[0];
+			message: string;
+		}
+		it.each<Case>([
+			{
+				name: "names the failed script and exit code",
+				agent: {
+					scripts: [
+						{ ...script, status: "exit_failure", exit_code: 1 },
+						{ ...script, display_name: "Dotfiles", status: "ok" },
+					],
+				},
+				message: `Startup script "Install deps" (exit code 1) failed on agent main in testuser/test-workspace.`,
+			},
+			{
+				name: "pluralizes several failed scripts",
+				agent: {
+					scripts: [
+						{ ...script, status: "exit_failure", exit_code: 2 },
+						{ ...script, display_name: "Dotfiles", status: "timed_out" },
+					],
+				},
+				message: `Startup scripts "Install deps" (exit code 2), "Dotfiles" failed on agent main in testuser/test-workspace.`,
+			},
+			{
+				name: "says timed out scripts might still be running",
+				agent: { lifecycle_state: "start_timeout" },
+				message:
+					"Startup scripts on agent main in testuser/test-workspace are taking longer than expected and might still be running.",
+			},
+		])("$name", async ({ agent, message }) => {
+			const { monitor, stream } = await setup();
+			monitor.markInitialSetupComplete("agent-1");
+
+			stream.pushMessage(
+				workspaceEvent(
+					workspaceWith("running", [
+						createAgent({ lifecycle_state: "start_error", ...agent }),
+					]),
+				),
+			);
+
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+				message,
+				"Show Logs",
+				"Open in Dashboard",
+			);
+		});
+	});
+
 	describe("disableUpdateNotifications", () => {
 		it("suppresses outdated notification but allows other types", async () => {
 			const { monitor, stream, config } = await setup();
-			monitor.markInitialSetupComplete();
+			monitor.markInitialSetupComplete("agent-1");
 			config.set("coder.disableUpdateNotifications", true);
 
 			stream.pushMessage(workspaceEvent({ outdated: true }));
@@ -431,7 +520,7 @@ describe("WorkspaceMonitor", () => {
 
 		it("shows outdated notification after re-enabling", async () => {
 			const { monitor, stream, config } = await setup();
-			monitor.markInitialSetupComplete();
+			monitor.markInitialSetupComplete("agent-1");
 			config.set("coder.disableUpdateNotifications", true);
 
 			stream.pushMessage(workspaceEvent({ outdated: true }));
@@ -452,7 +541,7 @@ describe("WorkspaceMonitor", () => {
 		it("suppresses all notification types", async () => {
 			const { monitor, stream, config } = await setup();
 			config.set("coder.disableNotifications", true);
-			monitor.markInitialSetupComplete();
+			monitor.markInitialSetupComplete("agent-1");
 
 			stream.pushMessage(workspaceEvent({ outdated: true }));
 			stream.pushMessage(
@@ -469,8 +558,16 @@ describe("WorkspaceMonitor", () => {
 			stream.pushMessage(
 				workspaceEvent({ latest_build: { status: "stopped" } }),
 			);
+			stream.pushMessage(
+				workspaceEvent(
+					workspaceWith("running", [
+						createAgent({ lifecycle_state: "start_error" }),
+					]),
+				),
+			);
 
 			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+			expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
 		});
 
 		it("still updates context and status bar", async () => {

@@ -411,12 +411,12 @@ export class Remote {
 				stateMachine.dispose();
 			}
 
-			// Mark initial setup as complete so the monitor can start notifying about state changes
-			monitor.markInitialSetupComplete();
-
 			const agent = await tracer.phase("agent_resolve", () =>
 				this.resolveAgent(context, workspace, stateMachine),
 			);
+
+			// Lets the monitor start notifying about state changes.
+			monitor.markInitialSetupComplete(agent.id);
 
 			// Watch coder inbox for messages
 			const inbox = await Inbox.create(workspace, workspaceClient, this.logger);
