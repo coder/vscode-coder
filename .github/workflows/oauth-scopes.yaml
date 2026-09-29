@@ -1,0 +1,33 @@
+name: OAuth Scopes
+
+# Nightly runs track coder/coder main, catching server-side scope changes early.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - src/oauth/constants.ts
+      - test/scopes/**
+      - .github/workflows/oauth-scopes.yaml
+  pull_request:
+    paths: *paths
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-server:
+    name: Live Server Test (coder-preview)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: docker compose -f test/scopes/compose.yaml up -d --wait
+      - run: pnpm test:scopes
+        env:
+          CODER_URL: http://localhost:7080
