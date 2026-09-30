@@ -14,6 +14,7 @@ export interface FieldProps extends ComponentProps<"div"> {
 	description?: ReactNode;
 	/** ID for the description; associate it with the control via aria-describedby. */
 	descriptionId?: string;
+	/** Usually one or more `ValidationMessage`s. */
 	error?: ReactNode;
 	/** ID for the error; the consumer owns aria-describedby and aria-invalid. */
 	errorId?: string;
@@ -22,7 +23,7 @@ export interface FieldProps extends ComponentProps<"div"> {
 }
 
 /* Lays out a labelled control like a settings-editor entry: semibold label,
-   control, then muted description or error text. */
+   muted description, control, then validation messages flush below it. */
 export function Field({
 	label,
 	htmlFor,
@@ -37,12 +38,12 @@ export function Field({
 	return (
 		<div {...props} className={cx("ui-field", className)}>
 			{label !== undefined && <Label htmlFor={htmlFor}>{label}</Label>}
-			{children}
 			{description !== undefined && (
 				<div id={descriptionId} className="ui-field__description">
 					{description}
 				</div>
 			)}
+			{children}
 			{error !== undefined && (
 				<div id={errorId} className="ui-field__error">
 					{error}

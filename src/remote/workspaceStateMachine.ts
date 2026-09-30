@@ -1,16 +1,24 @@
+import {
+	collectDynamicParameters,
+	rejectedParameters,
+	reviseRejectedParameters,
+	usesDynamicParameters,
+	type ShowUpdateForm,
+} from "../api/dynamicParameters";
 import { extractAgents, createWorkspaceIdentifier } from "../api/models";
 import {
 	collectUpdateParameters,
 	WorkspaceUpdateCancelledError,
 } from "../api/updateParameters";
 import {
+	getLatestVersionMessage,
 	LazyStream,
 	startWorkspace,
 	updateWorkspace,
 	streamAgentLogs,
 	streamBuildLogs,
 } from "../api/workspace";
-import { errToStr } from "../error/normalize";
+import { describeError } from "../error/normalize";
 import { WorkspaceOperationTelemetry } from "../instrumentation/workspace";
 import { maybeAskAgent } from "../ui/prompts";
 import { vscodeProposed } from "../vscode/proposed";
@@ -30,6 +38,7 @@ import type { CliFeatureSet, ServerFeatureSet } from "../featureSet";
 import type { Logger } from "../logging/logger";
 import type { CliAuth } from "../settings/cli";
 import type { StartupMode } from "../storage/mementoManager";
+import type { WorkspaceUpdatePanelFactory } from "../webviews/workspaceUpdate/workspaceUpdatePanelFactory";
 
 import type { AuthorityParts } from "./authority";
 
@@ -49,6 +58,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 	private queuedStopBuild: string | undefined;
 
 	private readonly logger: Logger;
+	private readonly workspaceUpdatePanel: WorkspaceUpdatePanelFactory;
 
 	constructor(
 		private readonly parts: AuthorityParts,
@@ -61,6 +71,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		container: ServiceContainer,
 	) {
 		this.logger = container.getLogger();
+		this.workspaceUpdatePanel = container.getWorkspaceUpdatePanelFactory();
 		this.terminal = new TerminalOutputChannel("Coder: Workspace Build");
 		const telemetry = container.getTelemetryService();
 		const workspaceName = `${parts.username}/${parts.workspace}`;
@@ -123,8 +134,8 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 
 				if (this.startupMode === "none") {
 					const choice = await this.confirmStartOrUpdate(
+						workspace,
 						workspaceName,
-						workspace.outdated,
 					);
 					if (!choice) {
 						throw new Error(`Workspace start cancelled`);
@@ -322,12 +333,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			status: workspace.latest_build.status,
 		});
 		try {
-			const parameters = await this.operationTelemetry.traceParametersPrompt(
-				() => collectUpdateParameters(this.workspaceClient, workspace),
-			);
-			const updated = await this.operationTelemetry.traceUpdate(() =>
-				updateWorkspace(this.buildCliContext(workspace), parameters),
-			);
+			const updated = await this.updateToLatest(workspace);
 			this.workspace = updated;
 			// Only the one-build update returns a stop; the server starts it after.
 			if (updated.latest_build.transition === "stop") {
@@ -342,7 +348,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				);
 				return undefined;
 			}
-			const reason = errToStr(error);
+			const reason = describeError(error);
 			this.logger.warn(`Update failed for ${workspaceName}: ${reason}`);
 			const connect = await this.operationTelemetry.traceFailurePrompt(() =>
 				this.confirmConnectToExisting(workspaceName, reason),
@@ -352,6 +358,42 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			}
 			this.logger.info(`Connecting to the existing ${workspaceName} version`);
 			return undefined;
+		}
+	}
+
+	/** Reopens the form once if the build rejects dynamic parameters. */
+	private async updateToLatest(workspace: Workspace): Promise<Workspace> {
+		const dynamic = usesDynamicParameters(workspace, this.serverFeatures);
+		const showForm: ShowUpdateForm = (init, evaluate) =>
+			this.workspaceUpdatePanel.show(init, evaluate);
+		const parameters = await this.operationTelemetry.traceParametersPrompt(() =>
+			dynamic
+				? collectDynamicParameters(this.workspaceClient, workspace, showForm)
+				: collectUpdateParameters(this.workspaceClient, workspace),
+		);
+		try {
+			return await this.operationTelemetry.traceUpdate(() =>
+				updateWorkspace(this.buildCliContext(workspace), parameters),
+			);
+		} catch (error) {
+			const validations = rejectedParameters(error);
+			if (!dynamic || !validations) {
+				throw error;
+			}
+			// Some update paths stop the workspace before the start is rejected.
+			const current = await this.workspaceClient.getWorkspace(workspace.id);
+			const revised = await this.operationTelemetry.traceParametersPrompt(() =>
+				reviseRejectedParameters(
+					this.workspaceClient,
+					current,
+					parameters,
+					validations,
+					showForm,
+				),
+			);
+			return this.operationTelemetry.traceUpdate(() =>
+				updateWorkspace(this.buildCliContext(current), revised),
+			);
 		}
 	}
 
@@ -374,9 +416,13 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 	}
 
 	private async confirmStartOrUpdate(
+		workspace: Workspace,
 		workspaceName: string,
-		outdated: boolean,
 	): Promise<"start" | "update" | undefined> {
+		const { outdated } = workspace;
+		const versionMessage = outdated
+			? await getLatestVersionMessage(this.workspaceClient, workspace)
+			: "";
 		return this.operationTelemetry.traceStartPrompt(outdated, async () => {
 			const buttons = outdated
 				? (["Start", "Update and Start"] as const)
@@ -386,6 +432,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 				{
 					useCustom: true,
 					modal: true,
+					detail: versionMessage || undefined,
 				},
 				...buttons,
 			);
