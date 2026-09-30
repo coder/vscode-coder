@@ -114,6 +114,15 @@ export type SocketFactory<TData> = () => Promise<UnidirectionalStream<TData>>;
 /** Default failure callback for callers that do not observe connection failures. */
 const NOOP_CONNECTION_FAILURE = (): void => undefined;
 
+/**
+ * Consecutive failed reconnect attempts before the buffer is flushed once and
+ * the server is treated as unreachable. With the default backoff (250ms
+ * doubling to a 30s cap) the 6th attempt lands after ~15s of retrying: past a
+ * transient blip of one or two retries, before the 30s cap, and before a user
+ * reproducing a "hangs on connecting" issue would typically give up.
+ */
+const MAX_RECONNECT_FAILURES_BEFORE_FLUSH = 6;
+
 export interface ReconnectingWebSocketOptions {
 	initialBackoffMs?: number;
 	maxBackoffMs?: number;
@@ -152,6 +161,9 @@ export class ReconnectingWebSocket<
 	#lastRoute: string;
 	#backoffMs: number;
 	#reconnectTimeoutId: NodeJS.Timeout | null = null;
+	// Consecutive failed connect attempts in the current outage. Reset on a
+	// successful open, so it only grows while the server stays unreachable.
+	#consecutiveConnectFailures = 0;
 	#state: ConnectionState = ConnectionState.IDLE;
 	#certRefreshAttempted = false; // Tracks if cert refresh was already attempted this connection cycle
 	readonly #onDispose?: () => void;
@@ -275,6 +287,7 @@ export class ReconnectingWebSocket<
 		if (this.#state === ConnectionState.DISCONNECTED) {
 			this.#backoffMs = this.#options.initialBackoffMs;
 			this.#certRefreshAttempted = false; // User-initiated reconnect, allow retry
+			this.#consecutiveConnectFailures = 0;
 		}
 
 		if (this.#reconnectTimeoutId !== null) {
@@ -375,6 +388,7 @@ export class ReconnectingWebSocket<
 				// Reset backoff on successful connection
 				this.#backoffMs = this.#options.initialBackoffMs;
 				this.#certRefreshAttempted = false;
+				this.#consecutiveConnectFailures = 0;
 				this.executeHandlers("open", event);
 			});
 
@@ -449,6 +463,24 @@ export class ReconnectingWebSocket<
 	): void {
 		if (!this.#dispatch({ type: "SCHEDULE_RETRY" }, reason)) {
 			return;
+		}
+
+		// Each scheduled retry is one failed attempt. Once the loop has failed
+		// enough times against an unreachable server it never reaches a terminal
+		// reason, so flush the buffer once here; the `=== N` check keeps it to one
+		// flush per outage, and a successful open resets the counter.
+		this.#consecutiveConnectFailures += 1;
+		if (
+			this.#consecutiveConnectFailures === MAX_RECONNECT_FAILURES_BEFORE_FLUSH
+		) {
+			this.#logger.warn(
+				`Server unreachable after ${this.#consecutiveConnectFailures} reconnect attempts for ${this.#route}`,
+			);
+			this.#telemetry.unreachable(
+				this.#route,
+				this.#consecutiveConnectFailures,
+			);
+			this.#options.onConnectionFailure("unreachable", this.#route);
 		}
 		const jitter =
 			this.#backoffMs * this.#options.jitterFactor * (Math.random() * 2 - 1);

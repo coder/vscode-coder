@@ -5,6 +5,15 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Added
+
+- Flush the buffered connection logs into the Coder output channel after several
+  consecutive failed reconnect attempts, so the detail leading up to a "hangs on
+  connecting" problem is captured even when the server is simply unreachable and
+  the socket never reaches a terminal failure.
+
 ## [v1.16.4](https://github.com/coder/vscode-coder/releases/tag/v1.16.4) 2026-09-23
 
 ### Added
