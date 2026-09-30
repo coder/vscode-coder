@@ -4,15 +4,18 @@
 }
 
 .ui-field {
+	--ui-field-gap: 4px;
+
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: var(--ui-field-gap);
 }
 
 .ui-field__description {
 	color: var(--ui-description-foreground);
 }
 
+/* Attaches to the control above, like VS Code's input validation. */
 .ui-field__error {
-	color: var(--ui-error-foreground);
+	margin-top: calc(-1 * var(--ui-field-gap));
 }

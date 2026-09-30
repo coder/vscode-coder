@@ -5,6 +5,20 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Added
+
+- Updating a workspace whose template uses dynamic parameters works like the
+  dashboard: the update goes ahead when the current values are still valid, and
+  a form asks only for missing or invalid ones.
+- The update prompts show the new template version's message.
+
+### Fixed
+
+- A failed workspace update shows the server's error detail instead of the HTTP
+  status.
+
 ## [v1.18.0](https://github.com/coder/vscode-coder/releases/tag/v1.18.0) 2026-11-13
 
 ### Security
