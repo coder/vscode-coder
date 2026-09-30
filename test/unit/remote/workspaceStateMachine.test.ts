@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { reviseRejectedParameters } from "@/api/dynamicParameters";
 import {
 	collectUpdateParameters,
 	WorkspaceUpdateCancelledError,
 } from "@/api/updateParameters";
 import {
+	getLatestVersionMessage,
 	startWorkspace,
 	updateWorkspace,
 	streamBuildLogs,
@@ -25,6 +27,7 @@ import {
 	TestSink,
 } from "../../mocks/telemetry";
 import {
+	createAxiosError,
 	createMockLogger,
 	createMockServiceContainer,
 	MockConfigurationProvider,
@@ -50,6 +53,7 @@ vi.mock("@/api/workspace", async (importActual) => {
 	const stream = () => Promise.resolve(new MockEventStream());
 	return {
 		LazyStream,
+		getLatestVersionMessage: vi.fn(() => Promise.resolve("")),
 		startWorkspace: vi.fn((ctx: { workspace: Workspace }) =>
 			Promise.resolve(ctx.workspace),
 		),
@@ -67,6 +71,11 @@ vi.mock("@/api/updateParameters", async (importActual) => {
 		...actual,
 		collectUpdateParameters: vi.fn(() => Promise.resolve([])),
 	};
+});
+
+vi.mock("@/api/dynamicParameters", async (importActual) => {
+	const actual = await importActual<typeof import("@/api/dynamicParameters")>();
+	return { ...actual, reviseRejectedParameters: vi.fn() };
 });
 
 vi.mock("@/promptUtils", () => ({
@@ -95,6 +104,18 @@ const CONFIRM_MESSAGE =
 // The message shown by confirmConnectToExisting.
 const UPDATE_FAILED_MESSAGE = "Failed to update testuser/test-workspace";
 
+/** The 400 a build returns when the server rejects its parameters. */
+function parameterRejection(detail: string) {
+	const error = createAxiosError(400, "Request failed with status code 400");
+	if (error.response) {
+		error.response.data = {
+			message: "Unable to validate parameters",
+			validations: [{ field: "region", detail }],
+		};
+	}
+	return error;
+}
+
 function runningWorkspace(
 	agentOverrides: Partial<WorkspaceAgent> = {},
 	buildOverrides: Partial<Workspace["latest_build"]> = {},
@@ -108,17 +129,18 @@ function runningWorkspace(
 function setup(
 	startupMode: StartupMode = "start",
 	telemetry?: TelemetryService,
+	client: Partial<CoderApi> = {},
 ) {
 	enableLocalTelemetry();
 	const progress = new MockProgress<{ message?: string }>();
 	const userInteraction = new MockUserInteraction();
 	const sm = new WorkspaceStateMachine(
 		DEFAULT_PARTS,
-		{} as CoderApi,
+		client as CoderApi,
 		startupMode,
 		"/usr/bin/coder",
 		{} as CliFeatureSet,
-		{ tasks: false, onSuccessBuild: true },
+		{ tasks: false, onSuccessBuild: true, dynamicParameters: true },
 		{
 			store: "cli",
 			url: "https://test.coder.com",
@@ -270,6 +292,54 @@ describe("WorkspaceStateMachine", () => {
 			});
 		});
 
+		it("shows the server's reasons when the build rejects the parameters", async () => {
+			vi.mocked(updateWorkspace).mockRejectedValueOnce(
+				parameterRejection("Unknown region"),
+			);
+			const { sm, progress, userInteraction } = setup("update");
+			userInteraction.setResponse(UPDATE_FAILED_MESSAGE, "Connect Anyway");
+			const ws = createWorkspace({
+				template_use_classic_parameter_flow: true,
+				latest_build: { status: "stopped" },
+			});
+
+			await sm.processWorkspace(ws, progress);
+
+			expect(userInteraction.getMessageCalls()[0].options).toMatchObject({
+				detail: "Unable to validate parameters\nregion: Unknown region",
+			});
+			expect(reviseRejectedParameters).not.toHaveBeenCalled();
+		});
+
+		it("reopens the form when the build rejects dynamic parameters", async () => {
+			const rejection = parameterRejection("Unknown region");
+			vi.mocked(updateWorkspace).mockRejectedValueOnce(rejection);
+			const revised = [{ name: "region", value: "us" }];
+			vi.mocked(reviseRejectedParameters).mockResolvedValueOnce(revised);
+			const ws = createWorkspace({
+				template_use_classic_parameter_flow: false,
+				latest_build: { status: "stopped" },
+			});
+			const { sm, progress } = setup("update", undefined, {
+				getWorkspace: vi.fn().mockResolvedValue(ws),
+			});
+
+			await sm.processWorkspace(ws, progress);
+
+			expect(reviseRejectedParameters).toHaveBeenCalledWith(
+				expect.anything(),
+				ws,
+				[],
+				[{ field: "region", detail: "Unknown region" }],
+				expect.any(Function),
+			);
+			expect(updateWorkspace).toHaveBeenLastCalledWith(
+				expect.anything(),
+				revised,
+			);
+			expect(startWorkspace).not.toHaveBeenCalled();
+		});
+
 		it("rethrows when the update fails and the user dismisses the prompt", async () => {
 			vi.mocked(updateWorkspace).mockRejectedValueOnce(
 				new Error("template not found"),
@@ -322,6 +392,24 @@ describe("WorkspaceStateMachine", () => {
 
 			expect(updateWorkspace).toHaveBeenCalledOnce();
 			expect(startWorkspace).not.toHaveBeenCalled();
+		});
+
+		it("shows the latest version's message when offering the update", async () => {
+			vi.mocked(getLatestVersionMessage).mockResolvedValueOnce(
+				"Adds a GPU option.",
+			);
+			const { sm, progress, userInteraction } = setup("none");
+			userInteraction.setResponse(CONFIRM_MESSAGE, "Start");
+			const ws = createWorkspace({
+				outdated: true,
+				latest_build: { status: "stopped" },
+			});
+
+			await sm.processWorkspace(ws, progress);
+
+			expect(userInteraction.getMessageCalls()[0].options).toMatchObject({
+				detail: "Adds a GPU option.",
+			});
 		});
 
 		it("does not offer 'Update and Start' when workspace is not outdated", async () => {

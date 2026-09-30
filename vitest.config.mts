@@ -56,6 +56,10 @@ export default defineConfig({
 							import.meta.dirname,
 							"packages/workspaces/src",
 						),
+						"@repo/workspace-update": path.resolve(
+							import.meta.dirname,
+							"packages/workspace-update/src",
+						),
 						"@repo/netcheck": path.resolve(
 							import.meta.dirname,
 							"packages/netcheck/src",
