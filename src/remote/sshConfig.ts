@@ -431,7 +431,8 @@ export class SshConfig {
 				"SSH include path must not contain CR, LF, NUL, %, or double-quote characters.",
 			);
 		}
-		return argument.replaceAll("\\", "/").replace(/[*?[\]]/g, "\\$&");
+		// Bracket classes, since OpenSSH for Windows can't backslash-escape.
+		return argument.replaceAll("\\", "/").replace(/[*?[]/g, "[$&]");
 	}
 
 	private mergeInclude(
