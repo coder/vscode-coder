@@ -130,6 +130,21 @@ export async function startWorkspace(ctx: CliContext): Promise<Workspace> {
 	return ctx.restClient.getWorkspace(ctx.workspace.id);
 }
 
+/** The latest template version's message, or empty if it can't be loaded. */
+export async function getLatestVersionMessage(
+	restClient: Pick<Api, "getTemplateVersion">,
+	workspace: Workspace,
+): Promise<string> {
+	try {
+		const version = await restClient.getTemplateVersion(
+			workspace.template_active_version_id,
+		);
+		return version.message;
+	} catch {
+		return "";
+	}
+}
+
 /**
  * Update a workspace to the latest template version. Callers must collect
  * any newly-required parameters via `collectUpdateParameters` first; this

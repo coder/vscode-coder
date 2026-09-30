@@ -1,0 +1,30 @@
+/* Matches VS Code's .monaco-inputbox-message. */
+.ui-validation-message {
+	box-sizing: border-box;
+	margin-top: -1px;
+	padding: 0.4em;
+	color: var(--ui-validation-foreground);
+	background: var(--ui-validation-background);
+	border: 1px solid var(--ui-validation-border);
+	font-size: 12px;
+	line-height: 17px;
+	overflow-wrap: break-word;
+}
+
+.ui-validation-message--info {
+	--ui-validation-foreground: var(--ui-input-validation-info-foreground);
+	--ui-validation-background: var(--ui-input-validation-info-background);
+	--ui-validation-border: var(--ui-input-validation-info-border);
+}
+
+.ui-validation-message--warning {
+	--ui-validation-foreground: var(--ui-input-validation-warning-foreground);
+	--ui-validation-background: var(--ui-input-validation-warning-background);
+	--ui-validation-border: var(--ui-input-validation-warning-border);
+}
+
+.ui-validation-message--error {
+	--ui-validation-foreground: var(--ui-input-validation-error-foreground);
+	--ui-validation-background: var(--ui-input-validation-error-background);
+	--ui-validation-border: var(--ui-input-validation-error-border);
+}

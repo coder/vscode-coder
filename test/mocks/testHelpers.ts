@@ -14,6 +14,7 @@ import {
 	type SessionData,
 	type SignedInSession,
 } from "@/deployment/sessionStore";
+import { WorkspaceUpdatePanelFactory } from "@/webviews/workspaceUpdate/workspaceUpdatePanelFactory";
 
 import {
 	resource as createResource,
@@ -54,6 +55,8 @@ import type {
 	ParsedMessageEvent,
 	UnidirectionalStream,
 } from "@/websocket/eventStreamConnection";
+
+import type { RequestDef } from "@repo/shared";
 /**
  * Subset of `ContextManager`'s public API that mocks (e.g. `MockContextManager`)
  * implement. Used by `createMockServiceContainer` so tests can pass either the
@@ -683,6 +686,8 @@ export function createMockServiceContainer(
 			require("contextManager", overrides.contextManager) as ContextManager,
 		getLoginCoordinator: () =>
 			require("loginCoordinator", overrides.loginCoordinator) as LoginCoordinator,
+		getWorkspaceUpdatePanelFactory: () =>
+			new WorkspaceUpdatePanelFactory(vscode.Uri.file("/ext"), logger),
 	} as ServiceContainer;
 }
 
@@ -740,6 +745,28 @@ function createMockWebview(options: vscode.WebviewOptions) {
 		asWebviewUri: (uri: vscode.Uri) => uri,
 	};
 	return { webview, messageEmitter, postedMessages };
+}
+
+/** Sends a request as the webview and resolves with the extension's response. */
+export function sendWebviewRequest<P, R>(
+	hooks: Pick<WebviewPanelTestHooks, "sendFromWebview" | "postedMessages">,
+	def: RequestDef<P, R>,
+	...args: P extends void ? [] : [params: P]
+): Promise<{ success: boolean; data?: R; error?: string }> {
+	const requestId = crypto.randomUUID();
+	hooks.sendFromWebview({ requestId, method: def.method, params: args[0] });
+	return vi.waitFor(
+		() => {
+			const response = hooks.postedMessages.find(
+				(m) => (m as { requestId?: string }).requestId === requestId,
+			);
+			if (!response) {
+				throw new Error(`No response to ${def.method} yet`);
+			}
+			return response as { success: boolean; data?: R; error?: string };
+		},
+		{ timeout: 1000 },
+	);
 }
 
 /** Hooks to drive lifecycle and inspect messages on a mocked WebviewPanel. */

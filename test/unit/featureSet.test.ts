@@ -108,6 +108,17 @@ describe("check version support", () => {
 		expect(serverFeatureSet(parsed).customSessionAppNames).toBe(expected);
 	});
 
+	it("dynamic parameter evaluation from 2.24", () => {
+		for (const v of ["v2.23.5", "v2.0.0"]) {
+			expect(serverFeatureSet(semver.parse(v)).dynamicParameters, v).toBe(
+				false,
+			);
+		}
+		for (const v of ["v2.24.0", "v2.36.1", "v0.0.0-devel+abc123"]) {
+			expect(serverFeatureSet(semver.parse(v)).dynamicParameters, v).toBe(true);
+		}
+	});
+
 	it("enables all features for development builds", () => {
 		const featureSet = cliFeatureSet(semver.parse("v0.0.0-devel+abc123"));
 

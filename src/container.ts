@@ -24,6 +24,7 @@ import { CommandManager } from "./vscode/commandManager";
 import { ContextManager } from "./vscode/contextManager";
 import { NetcheckPanelFactory } from "./webviews/netcheck/netcheckPanelFactory";
 import { SpeedtestPanelFactory } from "./webviews/speedtest/speedtestPanelFactory";
+import { WorkspaceUpdatePanelFactory } from "./webviews/workspaceUpdate/workspaceUpdatePanelFactory";
 import { DuplicateWorkspaceIpc } from "./workspace/duplicateWorkspaceIpc";
 
 import type { Logger } from "./logging/logger";
@@ -46,6 +47,7 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly duplicateWorkspaceIpc: DuplicateWorkspaceIpc;
 	private readonly oauthCallback: OAuthCallback;
 	private readonly speedtestPanelFactory: SpeedtestPanelFactory;
+	private readonly workspaceUpdatePanelFactory: WorkspaceUpdatePanelFactory;
 	private readonly netcheckPanelFactory: NetcheckPanelFactory;
 	private readonly telemetryService: TelemetryService;
 	private readonly commandManager: CommandManager;
@@ -142,6 +144,10 @@ export class ServiceContainer implements vscode.Disposable {
 			context.extensionUri,
 			this.logger,
 		);
+		this.workspaceUpdatePanelFactory = new WorkspaceUpdatePanelFactory(
+			context.extensionUri,
+			this.logger,
+		);
 		this.netcheckPanelFactory = new NetcheckPanelFactory(
 			context.extensionUri,
 			this.logger,
@@ -192,6 +198,10 @@ export class ServiceContainer implements vscode.Disposable {
 
 	getSpeedtestPanelFactory(): SpeedtestPanelFactory {
 		return this.speedtestPanelFactory;
+	}
+
+	getWorkspaceUpdatePanelFactory(): WorkspaceUpdatePanelFactory {
+		return this.workspaceUpdatePanelFactory;
 	}
 
 	getNetcheckPanelFactory(): NetcheckPanelFactory {
