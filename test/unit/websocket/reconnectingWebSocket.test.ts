@@ -923,7 +923,7 @@ describe("ReconnectingWebSocket", () => {
 			// the first failed attempt; each advance is the next.
 			const startOutage = (): void => {
 				failing = true;
-				sockets[sockets.length - 1].fireClose({
+				sockets.at(-1)?.fireClose({
 					code: WebSocketCloseCode.ABNORMAL,
 					reason: "Connection lost",
 				});
@@ -934,7 +934,7 @@ describe("ReconnectingWebSocket", () => {
 			const recover = async (): Promise<void> => {
 				failing = false;
 				await vi.advanceTimersByTimeAsync(100);
-				sockets[sockets.length - 1].fireOpen();
+				sockets.at(-1)?.fireOpen();
 			};
 			return {
 				ws,
