@@ -306,7 +306,7 @@ describe("SshConfig.updateInclude", () => {
 	it.each<IncludePathEscapeCase>([
 		{
 			dir: "~/.ssh/we[i]rd/*?[dir]",
-			escaped: "~/.ssh/we\\[i\\]rd/\\*\\?\\[dir\\]",
+			escaped: "~/.ssh/we[[]i]rd/[*][?][[]dir]",
 		},
 		{
 			dir: "C:\\Users\\Jane Doe\\ssh",
