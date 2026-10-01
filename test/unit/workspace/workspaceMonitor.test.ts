@@ -26,6 +26,7 @@ import {
 import type {
 	ServerSentEvent,
 	Workspace,
+	WorkspaceAgentLog,
 	WorkspaceAgentScript,
 } from "coder/site/src/api/typesGenerated";
 
@@ -64,6 +65,7 @@ describe("WorkspaceMonitor", () => {
 			getTemplateVersion: vi.fn().mockResolvedValue({
 				message: "template v2",
 			}),
+			getWorkspaceAgentLogs: vi.fn(),
 		} as unknown as CoderApi;
 		const monitor = await WorkspaceMonitor.create(
 			initialWorkspace,
@@ -409,27 +411,7 @@ describe("WorkspaceMonitor", () => {
 	});
 
 	describe("startup script failures", () => {
-		it("warns once, only for the connected agent", async () => {
-			const { monitor, stream } = await setup();
-			monitor.markInitialSetupComplete("agent-1");
-			const failed = (id: string) =>
-				workspaceEvent(
-					workspaceWith("running", [
-						createAgent({ id, lifecycle_state: "start_error" }),
-					]),
-				);
-
-			stream.pushMessage(failed("agent-2"));
-			stream.pushMessage(failed("agent-1"));
-			stream.pushMessage(failed("agent-1"));
-
-			expect(vscode.window.showWarningMessage).toHaveBeenCalledOnce();
-			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-				"Startup scripts failed on agent main in testuser/test-workspace.",
-				"Show Logs",
-				"Open in Dashboard",
-			);
-		});
+		type AgentOverrides = Parameters<typeof createAgent>[0];
 
 		const script: WorkspaceAgentScript = {
 			id: "script-1",
@@ -444,55 +426,133 @@ describe("WorkspaceMonitor", () => {
 			display_name: "Install deps",
 		};
 
-		interface Case {
-			name: string;
-			agent: Parameters<typeof createAgent>[0];
-			message: string;
+		async function pushConnectedAgent(
+			agent: AgentOverrides,
+			logs: WorkspaceAgentLog[] = [],
+		) {
+			const { monitor, client, stream } = await setup();
+			vi.mocked(client.getWorkspaceAgentLogs).mockResolvedValue(logs);
+			monitor.markInitialSetupComplete("agent-1");
+			stream.pushMessage(
+				workspaceEvent(workspaceWith("running", [createAgent(agent)])),
+			);
 		}
-		it.each<Case>([
+
+		it("warns once for the connected agent after startup settles", async () => {
+			const { monitor, stream } = await setup();
+			monitor.markInitialSetupComplete("agent-1");
+			const push = (agent: AgentOverrides) =>
+				stream.pushMessage(
+					workspaceEvent(workspaceWith("running", [createAgent(agent)])),
+				);
+
+			push({
+				lifecycle_state: "starting",
+				scripts: [{ ...script, status: "exit_failure" }],
+			});
+			push({ id: "agent-2", name: "other", lifecycle_state: "start_error" });
+			push({ lifecycle_state: "start_error" });
+			push({ lifecycle_state: "start_error" });
+
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledOnce();
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+				"Startup scripts failed on agent main in testuser/test-workspace.",
+				"Show Logs",
+				"Open in Dashboard",
+			);
+		});
+
+		it.each<{ name: string; agent: AgentOverrides; message: string }>([
 			{
-				name: "names the failed script and exit code",
+				name: "lists only failed and timed out scripts",
 				agent: {
-					scripts: [
-						{ ...script, status: "exit_failure", exit_code: 1 },
-						{ ...script, display_name: "Dotfiles", status: "ok" },
-					],
-				},
-				message: `Startup script "Install deps" (exit code 1) failed on agent main in testuser/test-workspace.`,
-			},
-			{
-				name: "pluralizes several failed scripts",
-				agent: {
+					lifecycle_state: "start_timeout",
 					scripts: [
 						{ ...script, status: "exit_failure", exit_code: 2 },
 						{ ...script, display_name: "Dotfiles", status: "timed_out" },
+						{ ...script, display_name: "Ok", status: "ok" },
+						{ ...script, display_name: "Pipes", status: "pipes_left_open" },
 					],
 				},
-				message: `Startup scripts "Install deps" (exit code 2), "Dotfiles" failed on agent main in testuser/test-workspace.`,
+				message: `Startup scripts failed on agent main in testuser/test-workspace: "Install deps" (exit code 2), "Dotfiles" (timed out).`,
 			},
 			{
-				name: "says timed out scripts might still be running",
+				name: "warns on a failed script when the agent is ready",
+				agent: {
+					lifecycle_state: "ready",
+					scripts: [{ ...script, status: "exit_failure" }],
+				},
+				message: `Startup script failed on agent main in testuser/test-workspace: "Install deps" (failed).`,
+			},
+			{
+				name: "falls back to the lifecycle state for timeouts",
 				agent: { lifecycle_state: "start_timeout" },
 				message:
 					"Startup scripts on agent main in testuser/test-workspace are taking longer than expected and might still be running.",
 			},
 		])("$name", async ({ agent, message }) => {
-			const { monitor, stream } = await setup();
-			monitor.markInitialSetupComplete("agent-1");
-
-			stream.pushMessage(
-				workspaceEvent(
-					workspaceWith("running", [
-						createAgent({ lifecycle_state: "start_error", ...agent }),
-					]),
-				),
-			);
+			await pushConnectedAgent(agent);
 
 			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
 				message,
 				"Show Logs",
 				"Open in Dashboard",
 			);
+		});
+
+		it("opens a terminal with the logs of each failed script", async () => {
+			const writes = new Map<string, string[]>();
+			vi.mocked(vscode.window.createTerminal).mockImplementation(
+				(opts: vscode.ExtensionTerminalOptions) => {
+					const output: string[] = [];
+					writes.set(opts.name, output);
+					opts.pty.onDidWrite((s) => output.push(s));
+					opts.pty.open?.(undefined);
+					return { show: vi.fn() } as never;
+				},
+			);
+			vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(
+				"Show Logs" as never,
+			);
+			const source = (id: string, display_name: string) => ({
+				workspace_agent_id: "agent-1",
+				id,
+				created_at: "",
+				display_name,
+				icon: "",
+			});
+			const log = (source_id: string, output: string): WorkspaceAgentLog => ({
+				id: 0,
+				created_at: "",
+				level: "info",
+				source_id,
+				output,
+			});
+
+			await pushConnectedAgent(
+				{
+					lifecycle_state: "start_error",
+					log_sources: [
+						source("source-1", "Install deps"),
+						source("source-2", "Dotfiles"),
+					],
+					scripts: [
+						{ ...script, status: "exit_failure", exit_code: 1 },
+						{ ...script, log_source_id: "source-2", status: "ok" },
+					],
+				},
+				[
+					log("source-1", "installing"),
+					log("source-2", "dotfiles ok"),
+					log("source-1", "npm ERR!"),
+				],
+			);
+
+			await vi.waitFor(() => {
+				expect(Object.fromEntries(writes)).toEqual({
+					"Startup Logs: Install deps": ["installing\r\nnpm ERR!"],
+				});
+			});
 		});
 	});
 

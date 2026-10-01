@@ -2,8 +2,9 @@ import {
 	type ServerSentEvent,
 	type Workspace,
 	type WorkspaceAgent,
+	type WorkspaceAgentLifecycle,
 	type WorkspaceAgentLog,
-	type WorkspaceAgentLogSource,
+	type WorkspaceAgentScript,
 } from "coder/site/src/api/typesGenerated";
 import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
@@ -39,6 +40,19 @@ import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
 
 const stateVerb = (from: string | undefined) =>
 	from === undefined ? "state observed" : "state changed";
+
+const STARTUP_SETTLED_STATES: ReadonlySet<WorkspaceAgentLifecycle> = new Set([
+	"ready",
+	"start_error",
+	"start_timeout",
+]);
+
+const describeScriptFailure = ({ status, exit_code }: WorkspaceAgentScript) => {
+	if (status === "timed_out") {
+		return "timed out";
+	}
+	return exit_code ? `exit code ${exit_code}` : "failed";
+};
 
 /**
  * Monitor a single workspace using a WebSocket for events like shutdown and deletion.
@@ -278,61 +292,76 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		const agent = extractAgents(workspace.latest_build.resources).find(
 			(a) => a.id === this.connectedAgentId,
 		);
-		if (
-			agent?.lifecycle_state !== "start_error" &&
-			agent?.lifecycle_state !== "start_timeout"
-		) {
+		if (!agent || !STARTUP_SETTLED_STATES.has(agent.lifecycle_state)) {
+			return;
+		}
+		const failed = agent.scripts.filter(
+			(s) =>
+				s.run_on_start &&
+				(s.status === "exit_failure" || s.status === "timed_out"),
+		);
+		const message = this.startupFailureMessage(agent, failed);
+		if (!message) {
 			return;
 		}
 		this.notifiedStartupFailure = true;
 		vscode.window
-			.showWarningMessage(
-				this.startupFailureMessage(agent),
-				"Show Logs",
-				"Open in Dashboard",
-			)
+			.showWarningMessage(message, "Show Logs", "Open in Dashboard")
 			.then((action) => {
 				if (action === "Show Logs") {
-					void this.showStartupLogs(agent);
+					void this.showStartupLogs(agent, failed);
 				} else if (action === "Open in Dashboard") {
 					vscode.commands.executeCommand("coder.navigateToWorkspace");
 				}
 			});
 	}
 
-	private startupFailureMessage(agent: WorkspaceAgent): string {
+	private startupFailureMessage(
+		agent: WorkspaceAgent,
+		failed: readonly WorkspaceAgentScript[],
+	): string | undefined {
 		const where = `agent ${agent.name} in ${this.name}`;
+		if (failed.length > 0) {
+			const noun = failed.length === 1 ? "script" : "scripts";
+			const list = failed
+				.map((s) => `"${s.display_name}" (${describeScriptFailure(s)})`)
+				.join(", ");
+			return `Startup ${noun} failed on ${where}: ${list}.`;
+		}
+		// Older servers report only the lifecycle state, not per-script statuses.
 		if (agent.lifecycle_state === "start_timeout") {
 			return `Startup scripts on ${where} are taking longer than expected and might still be running.`;
 		}
-		const failed = agent.scripts
-			.filter((s) => s.run_on_start && s.status && s.status !== "ok")
-			.map((s) =>
-				s.exit_code
-					? `"${s.display_name}" (exit code ${s.exit_code})`
-					: `"${s.display_name}"`,
-			);
-		if (failed.length === 0) {
+		if (agent.lifecycle_state === "start_error") {
 			return `Startup scripts failed on ${where}.`;
 		}
-		const noun = failed.length === 1 ? "script" : "scripts";
-		return `Startup ${noun} ${failed.join(", ")} failed on ${where}.`;
+		return undefined;
 	}
 
-	private async showStartupLogs(agent: WorkspaceAgent) {
+	private async showStartupLogs(
+		agent: WorkspaceAgent,
+		failed: readonly WorkspaceAgentScript[],
+	) {
 		try {
 			const logs = await this.client.getWorkspaceAgentLogs(agent.id);
-			const writeEmitter = new vscode.EventEmitter<string>();
-			const terminal = vscode.window.createTerminal({
-				name: `Startup Logs (${agent.name})`,
-				pty: {
-					onDidWrite: writeEmitter.event,
-					open: () =>
-						writeEmitter.fire(this.formatAgentLogs(logs, agent.log_sources)),
-					close: () => writeEmitter.dispose(),
-				},
-			});
-			terminal.show();
+			const logsBySource = Map.groupBy(logs, (log) => log.source_id);
+			const failedIds = new Set(failed.map((s) => s.log_source_id));
+			const sources = agent.log_sources.filter((s) =>
+				failedIds.size > 0 ? failedIds.has(s.id) : logsBySource.has(s.id),
+			);
+			if (sources.length === 0) {
+				vscode.window.showInformationMessage(
+					`No startup logs found for agent ${agent.name}.`,
+				);
+				return;
+			}
+			const terminals = sources.map((s) =>
+				this.createLogTerminal(
+					`Startup Logs: ${s.display_name}`,
+					logsBySource.get(s.id) ?? [],
+				),
+			);
+			terminals[0].show();
 		} catch (error) {
 			const message = errToStr(error, "no further details");
 			this.logger.warn("Failed to show agent startup logs", error);
@@ -340,18 +369,22 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		}
 	}
 
-	private formatAgentLogs(
+	private createLogTerminal(
+		name: string,
 		logs: readonly WorkspaceAgentLog[],
-		sources: readonly WorkspaceAgentLogSource[],
-	): string {
-		const names = new Map(sources.map((s) => [s.id, s.display_name]));
-		return logs
-			.map((log) => {
-				const name = names.get(log.source_id);
-				const output = log.output.replace(/\r?\n/g, "\r\n");
-				return name ? `[${name}] ${output}` : output;
-			})
+	): vscode.Terminal {
+		const writeEmitter = new vscode.EventEmitter<string>();
+		const output = logs
+			.map((log) => log.output.replace(/\r?\n/g, "\r\n"))
 			.join("\r\n");
+		return vscode.window.createTerminal({
+			name,
+			pty: {
+				onDidWrite: writeEmitter.event,
+				open: () => writeEmitter.fire(output),
+				close: () => writeEmitter.dispose(),
+			},
+		});
 	}
 
 	private isImpending(target: string, notifyTime: number): boolean {
