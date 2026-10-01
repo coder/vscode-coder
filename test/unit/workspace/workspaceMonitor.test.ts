@@ -26,6 +26,8 @@ import {
 import type {
 	ServerSentEvent,
 	Workspace,
+	WorkspaceAgentLog,
+	WorkspaceAgentScript,
 } from "coder/site/src/api/typesGenerated";
 
 import type { CoderApi } from "@/api/coderApi";
@@ -63,6 +65,7 @@ describe("WorkspaceMonitor", () => {
 			getTemplateVersion: vi.fn().mockResolvedValue({
 				message: "template v2",
 			}),
+			getWorkspaceAgentLogs: vi.fn(),
 		} as unknown as CoderApi;
 		const monitor = await WorkspaceMonitor.create(
 			initialWorkspace,
@@ -321,7 +324,7 @@ describe("WorkspaceMonitor", () => {
 
 		it("shows deletion notification when deletion is impending", async () => {
 			const { monitor, stream } = await setup();
-			monitor.markInitialSetupComplete();
+			monitor.markInitialSetupComplete("agent-1");
 
 			stream.pushMessage(
 				workspaceEvent({ deleting_at: minutesFromNow(12 * 60) }),
@@ -334,7 +337,7 @@ describe("WorkspaceMonitor", () => {
 
 		it("shows not-running notification after initial setup", async () => {
 			const { monitor, stream } = await setup();
-			monitor.markInitialSetupComplete();
+			monitor.markInitialSetupComplete("agent-1");
 
 			stream.pushMessage(
 				workspaceEvent({ latest_build: { status: "stopped" } }),
@@ -363,7 +366,7 @@ describe("WorkspaceMonitor", () => {
 
 		it("fetches template details for outdated notification", async () => {
 			const { monitor, stream } = await setup();
-			monitor.markInitialSetupComplete();
+			monitor.markInitialSetupComplete("agent-1");
 
 			stream.pushMessage(workspaceEvent({ outdated: true }));
 
@@ -381,7 +384,7 @@ describe("WorkspaceMonitor", () => {
 			stream.pushMessage(workspaceEvent({ outdated: true }));
 			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
 
-			monitor.markInitialSetupComplete();
+			monitor.markInitialSetupComplete("agent-1");
 
 			await vi.waitFor(() => {
 				expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
@@ -407,10 +410,156 @@ describe("WorkspaceMonitor", () => {
 		});
 	});
 
+	describe("startup script failures", () => {
+		type AgentOverrides = Parameters<typeof createAgent>[0];
+
+		const script: WorkspaceAgentScript = {
+			id: "script-1",
+			log_source_id: "source-1",
+			log_path: "",
+			script: "",
+			cron: "",
+			run_on_start: true,
+			run_on_stop: false,
+			start_blocks_login: false,
+			timeout: 0,
+			display_name: "Install deps",
+		};
+
+		async function pushConnectedAgent(
+			agent: AgentOverrides,
+			logs: WorkspaceAgentLog[] = [],
+		) {
+			const { monitor, client, stream } = await setup();
+			vi.mocked(client.getWorkspaceAgentLogs).mockResolvedValue(logs);
+			monitor.markInitialSetupComplete("agent-1");
+			stream.pushMessage(
+				workspaceEvent(workspaceWith("running", [createAgent(agent)])),
+			);
+		}
+
+		it("warns once for the connected agent after startup settles", async () => {
+			const { monitor, stream } = await setup();
+			monitor.markInitialSetupComplete("agent-1");
+			const push = (agent: AgentOverrides) =>
+				stream.pushMessage(
+					workspaceEvent(workspaceWith("running", [createAgent(agent)])),
+				);
+
+			push({
+				lifecycle_state: "starting",
+				scripts: [{ ...script, status: "exit_failure" }],
+			});
+			push({ id: "agent-2", name: "other", lifecycle_state: "start_error" });
+			push({ lifecycle_state: "start_error" });
+			push({ lifecycle_state: "start_error" });
+
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledOnce();
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+				"Startup scripts failed on agent main in testuser/test-workspace.",
+				"Show Logs",
+				"Open in Dashboard",
+			);
+		});
+
+		it.each<{ name: string; agent: AgentOverrides; message: string }>([
+			{
+				name: "lists only failed and timed out scripts",
+				agent: {
+					lifecycle_state: "start_timeout",
+					scripts: [
+						{ ...script, status: "exit_failure", exit_code: 2 },
+						{ ...script, display_name: "Dotfiles", status: "timed_out" },
+						{ ...script, display_name: "Ok", status: "ok" },
+						{ ...script, display_name: "Pipes", status: "pipes_left_open" },
+					],
+				},
+				message: `Startup scripts failed on agent main in testuser/test-workspace: "Install deps" (exit code 2), "Dotfiles" (timed out).`,
+			},
+			{
+				name: "warns on a failed script when the agent is ready",
+				agent: {
+					lifecycle_state: "ready",
+					scripts: [{ ...script, status: "exit_failure" }],
+				},
+				message: `Startup script failed on agent main in testuser/test-workspace: "Install deps" (failed).`,
+			},
+			{
+				name: "falls back to the lifecycle state for timeouts",
+				agent: { lifecycle_state: "start_timeout" },
+				message:
+					"Startup scripts on agent main in testuser/test-workspace are taking longer than expected and might still be running.",
+			},
+		])("$name", async ({ agent, message }) => {
+			await pushConnectedAgent(agent);
+
+			expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+				message,
+				"Show Logs",
+				"Open in Dashboard",
+			);
+		});
+
+		it("opens a terminal with the logs of each failed script", async () => {
+			const writes = new Map<string, string[]>();
+			vi.mocked(vscode.window.createTerminal).mockImplementation(
+				(opts: vscode.ExtensionTerminalOptions) => {
+					const output: string[] = [];
+					writes.set(opts.name, output);
+					opts.pty.onDidWrite((s) => output.push(s));
+					opts.pty.open?.(undefined);
+					return { show: vi.fn() } as never;
+				},
+			);
+			vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(
+				"Show Logs" as never,
+			);
+			const source = (id: string, display_name: string) => ({
+				workspace_agent_id: "agent-1",
+				id,
+				created_at: "",
+				display_name,
+				icon: "",
+			});
+			const log = (source_id: string, output: string): WorkspaceAgentLog => ({
+				id: 0,
+				created_at: "",
+				level: "info",
+				source_id,
+				output,
+			});
+
+			await pushConnectedAgent(
+				{
+					lifecycle_state: "start_error",
+					log_sources: [
+						source("source-1", "Install deps"),
+						source("source-2", "Dotfiles"),
+					],
+					scripts: [
+						{ ...script, status: "exit_failure", exit_code: 1 },
+						{ ...script, log_source_id: "source-2", status: "ok" },
+					],
+				},
+				[
+					log("source-1", "installing"),
+					log("source-2", "dotfiles ok"),
+					log("source-1", "npm ERR!"),
+				],
+			);
+
+			await vi.waitFor(() => {
+				expect(Object.fromEntries(writes)).toEqual({
+					"Startup Logs: Install deps": ["installing\r\nnpm ERR!"],
+				});
+			});
+		});
+	});
+
 	describe("disableUpdateNotifications", () => {
 		it("suppresses outdated notification but allows other types", async () => {
 			const { monitor, stream, config } = await setup();
-			monitor.markInitialSetupComplete();
+			monitor.markInitialSetupComplete("agent-1");
 			config.set("coder.disableUpdateNotifications", true);
 
 			stream.pushMessage(workspaceEvent({ outdated: true }));
@@ -431,7 +580,7 @@ describe("WorkspaceMonitor", () => {
 
 		it("shows outdated notification after re-enabling", async () => {
 			const { monitor, stream, config } = await setup();
-			monitor.markInitialSetupComplete();
+			monitor.markInitialSetupComplete("agent-1");
 			config.set("coder.disableUpdateNotifications", true);
 
 			stream.pushMessage(workspaceEvent({ outdated: true }));
@@ -452,7 +601,7 @@ describe("WorkspaceMonitor", () => {
 		it("suppresses all notification types", async () => {
 			const { monitor, stream, config } = await setup();
 			config.set("coder.disableNotifications", true);
-			monitor.markInitialSetupComplete();
+			monitor.markInitialSetupComplete("agent-1");
 
 			stream.pushMessage(workspaceEvent({ outdated: true }));
 			stream.pushMessage(
@@ -469,8 +618,16 @@ describe("WorkspaceMonitor", () => {
 			stream.pushMessage(
 				workspaceEvent({ latest_build: { status: "stopped" } }),
 			);
+			stream.pushMessage(
+				workspaceEvent(
+					workspaceWith("running", [
+						createAgent({ lifecycle_state: "start_error" }),
+					]),
+				),
+			);
 
 			expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+			expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
 		});
 
 		it("still updates context and status bar", async () => {

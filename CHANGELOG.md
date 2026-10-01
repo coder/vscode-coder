@@ -9,6 +9,9 @@
 
 ### Added
 
+- Warn when the connected agent's startup scripts fail or time out, with
+  **Show Logs** and **Open in Dashboard** actions. These failures used to appear
+  only in the Coder output channel.
 - Flush the buffered connection logs into the Coder output channel after several
   consecutive failed reconnect attempts, so the detail leading up to a "hangs on
   connecting" problem is captured even when the server is simply unreachable and
