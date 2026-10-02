@@ -1,5 +1,14 @@
 name: Setup
+
 description: Install pnpm, Node.js, and project dependencies.
+
+inputs:
+  cache-save:
+    description: >-
+      Save the pnpm store cache after the job. Restores always run; only the
+      default branch saves, so PR runs cannot race one shared key or evict
+      each other's stores from the cache quota.
+    default: "false"
 
 runs:
   using: composite
@@ -9,17 +18,38 @@ runs:
       # Needed for git-based deps (e.g. github:coder/coder) so pnpm can clone without SSH.
       run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
-    - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+    - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
       with:
-        # Caches the pnpm store, keyed by lockfile hash with a prefix fallback,
-        # so a dependency bump reuses the rest of the store. setup-node's own
-        # pnpm cache restores on an exact hash only.
-        cache: true
+        runtime: node@22
+        # The store cache is handled by the actions/cache steps below, which
+        # unlike this action's `cache: true` can save only on the default
+        # branch (pnpm/setup#56 tracks a restore-only mode).
+        cache: false
+        require-lockfile: true
 
-    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-      with:
-        node-version: "22"
-
-    - name: Install dependencies
+    - name: Get pnpm store path
+      id: pnpm-store
       shell: bash
-      run: pnpm install --frozen-lockfile
+      run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+
+    # Restores on every branch; saves only where cache-save is set (the
+    # default branch). Same policy as the Chromium cache in ci.yaml.
+    - name: Restore pnpm store cache
+      id: store-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: pnpm-store-${{ runner.os }}-${{ runner.arch }}-
+
+    - name: Prune unreferenced store packages
+      if: inputs.cache-save == 'true'
+      shell: bash
+      run: pnpm store prune
+
+    - name: Save pnpm store cache
+      if: inputs.cache-save == 'true' && steps.store-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: ${{ steps.store-cache.outputs.cache-primary-key }}
