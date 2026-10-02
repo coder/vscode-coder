@@ -1,0 +1,27 @@
+# A throwaway deployment for `pnpm test:scopes`; see CONTRIBUTING.md.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: coder
+      POSTGRES_PASSWORD: coder
+      POSTGRES_DB: coder
+    healthcheck:
+      test: pg_isready -U coder
+      interval: 2s
+      retries: 30
+
+  coder:
+    image: ghcr.io/coder/coder-preview:latest
+    ports: ["7080:7080"]
+    environment:
+      CODER_PG_CONNECTION_URL: postgres://coder:coder@postgres:5432/coder?sslmode=disable
+      CODER_HTTP_ADDRESS: 0.0.0.0:7080
+      CODER_ACCESS_URL: http://localhost:7080
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: curl -fs http://localhost:7080/healthz
+      interval: 2s
+      retries: 60

@@ -242,6 +242,18 @@ pnpm test:integration
 - Requires closing VS Code or running in a clean environment
 - Test files in `test/integration/` are compiled to `out/` before running
 
+### OAuth Scope Tests
+
+`test/scopes/` calls every Coder API method the extension uses with a token
+limited to `DEFAULT_OAUTH_SCOPES`, against a live server. It needs Docker and a
+fresh deployment, since it creates users and workspaces:
+
+```bash
+docker compose -f test/scopes/compose.yaml up -d --wait
+CODER_URL=http://localhost:7080 pnpm test:scopes
+docker compose -f test/scopes/compose.yaml down -v  # before the next run
+```
+
 ## Development
 
 > [!IMPORTANT]

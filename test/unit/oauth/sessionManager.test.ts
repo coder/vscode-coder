@@ -531,8 +531,9 @@ describe("OAuthSessionManager", () => {
 				oauth: {
 					refresh_token: "refresh-token",
 					expiry_timestamp: Date.now() + ONE_HOUR_MS,
-					// workspace:* covers workspace:read, workspace:update, etc.
-					scope: "workspace:* template:read user:read_personal",
+					// workspace:* and user:* cover the low-level scopes
+					scope:
+						"coder:workspaces.operate coder:workspaces.access workspace:* user:*",
 				},
 			});
 
