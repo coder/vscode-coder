@@ -25,13 +25,6 @@ import type { ConnectionStateReason } from "@/instrumentation/websocket";
 import type { UnidirectionalStream } from "@/websocket/eventStreamConnection";
 
 describe("ReconnectingWebSocket", () => {
-	const FLUSHING_HTTP_CODES = [
-		HttpStatusCode.FORBIDDEN,
-		HttpStatusCode.NOT_FOUND,
-		HttpStatusCode.GONE,
-		HttpStatusCode.UPGRADE_REQUIRED,
-	];
-
 	beforeEach(() => {
 		vi.useFakeTimers();
 	});
@@ -113,7 +106,7 @@ describe("ReconnectingWebSocket", () => {
 			},
 		);
 
-		it.each([HttpStatusCode.UNAUTHORIZED, ...FLUSHING_HTTP_CODES])(
+		it.each(Object.values(HttpStatusCode))(
 			"does not reconnect on an unrecoverable handshake failure during creation: %i",
 			async (statusCode) => {
 				const factory = vi
@@ -138,7 +131,7 @@ describe("ReconnectingWebSocket", () => {
 			},
 		);
 
-		it.each([HttpStatusCode.UNAUTHORIZED, ...FLUSHING_HTTP_CODES])(
+		it.each(Object.values(HttpStatusCode))(
 			"does not reconnect on unrecoverable HTTP error via error event: %i",
 			async (statusCode) => {
 				const { ws, sockets, onConnectionFailure } =
