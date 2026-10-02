@@ -1,5 +1,12 @@
 import * as vscode from "vscode";
 
+import { parseMultiSelectValue } from "@repo/shared";
+
+import {
+	collectDynamicParameters,
+	type ShowUpdateForm,
+} from "./dynamicParameters";
+
 import type { Api } from "coder/site/src/api/api";
 import type {
 	TemplateVersionParameter,
@@ -28,9 +35,22 @@ export class WorkspaceUpdateCancelledError extends Error {
 /**
  * Prompts the user for any template parameters that the new version needs
  * answered, and returns the collected `{ name, value }` pairs. Throws
- * `WorkspaceUpdateCancelledError` if the user dismisses a prompt.
+ * `WorkspaceUpdateCancelledError` if the user dismisses a prompt. Without
+ * `showForm`, dynamic-parameter templates also get the classic prompts.
  */
-export async function collectUpdateParameters(
+export function collectUpdateParameters(
+	restClient: Api,
+	workspace: Workspace,
+	showForm?: ShowUpdateForm,
+): Promise<WorkspaceBuildParameter[]> {
+	// Older servers omit the flag.
+	if (showForm && workspace.template_use_classic_parameter_flow === false) {
+		return collectDynamicParameters(restClient, workspace, showForm);
+	}
+	return collectClassicParameters(restClient, workspace);
+}
+
+async function collectClassicParameters(
 	restClient: Api,
 	workspace: Workspace,
 ): Promise<WorkspaceBuildParameter[]> {
@@ -100,18 +120,6 @@ function promptSpec(
 			? "No previous value was set."
 			: `Previous value ${formatValue(storedValue)} is no longer available.`;
 	return { driftNote };
-}
-
-/** Multi-select values are stored as a JSON-encoded string array. */
-function parseMultiSelectValue(raw: string): string[] | null {
-	try {
-		const parsed: unknown = JSON.parse(raw);
-		return Array.isArray(parsed) && parsed.every((v) => typeof v === "string")
-			? parsed
-			: null;
-	} catch {
-		return null;
-	}
 }
 
 /** Truncates and JSON-quotes a value for safe display in a placeholder. */

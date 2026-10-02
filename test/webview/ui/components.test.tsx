@@ -11,6 +11,7 @@ import {
 	Spinner,
 	StatusPill,
 	TooltipProvider,
+	ValidationMessage,
 } from "@repo/ui";
 
 import { qs } from "../helpers";
@@ -107,6 +108,20 @@ describe("StatusPill", () => {
 			</StatusPill>,
 		);
 		expect(qs(container, ".codicon-check")).toBeInTheDocument();
+	});
+});
+
+describe("ValidationMessage", () => {
+	it("applies the severity and forwards props", () => {
+		render(
+			<ValidationMessage severity="warning" role="status">
+				Check this value.
+			</ValidationMessage>,
+		);
+		expect(screen.getByRole("status")).toHaveTextContent("Check this value.");
+		expect(screen.getByRole("status")).toHaveClass(
+			"ui-validation-message--warning",
+		);
 	});
 });
 

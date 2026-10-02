@@ -26,6 +26,7 @@ import {
 	createMockWebviewView,
 	MockConfigurationProvider,
 	MockUserInteraction,
+	sendWebviewRequest,
 } from "../../../mocks/testHelpers";
 
 import type {
@@ -143,31 +144,10 @@ function createHarness(): Harness {
 		client,
 		ui,
 		messages: () => [...hooks.postedMessages],
-		request: async <P, R>(
+		request: <P, R>(
 			def: RequestDef<P, R>,
 			...args: P extends void ? [] : [params: P]
-		) => {
-			const params = args[0];
-			const requestId = `req-${Date.now()}-${Math.random()}`;
-			hooks.sendFromWebview({ requestId, method: def.method, params });
-
-			await vi.waitFor(
-				() => {
-					if (
-						!hooks.postedMessages.some(
-							(m) => (m as { requestId?: string }).requestId === requestId,
-						)
-					) {
-						throw new Error("waiting");
-					}
-				},
-				{ timeout: 1000 },
-			);
-
-			return hooks.postedMessages.find(
-				(m) => (m as { requestId?: string }).requestId === requestId,
-			) as { success: boolean; data?: R; error?: string };
-		},
+		) => sendWebviewRequest(hooks, def, ...args),
 		command: async <P>(
 			def: CommandDef<P>,
 			...args: P extends void ? [] : [params: P]

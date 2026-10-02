@@ -18,6 +18,7 @@ export interface CliFeatureSet {
 export interface ServerFeatureSet {
 	tasks: boolean;
 	onSuccessBuild: boolean;
+	dynamicParameters: boolean;
 }
 
 /**
@@ -71,5 +72,7 @@ export function serverFeatureSet(
 			versionAtLeast(version, "2.29.0") && !versionAtLeast(version, "2.35.0"),
 		// `on_success` on a stop build, which queues the start in one request
 		onSuccessBuild: versionAtLeast(version, "2.36.0"),
+		// `POST .../dynamic-parameters/evaluate`; 2.23 sends the template flag without it
+		dynamicParameters: versionAtLeast(version, "2.24.0"),
 	};
 }

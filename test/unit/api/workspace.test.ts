@@ -110,6 +110,7 @@ function createUpdateCtx(
 		serverFeatures: {
 			tasks: false,
 			onSuccessBuild: false,
+			dynamicParameters: false,
 			...overrides.serverFeatures,
 		},
 	};
