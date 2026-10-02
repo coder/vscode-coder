@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import * as vscode from "vscode";
 
 import { streamAgentLogs, streamBuildLogs } from "@/api/workspace";
+import { HttpStatusCode } from "@/util/httpStatusCode";
 import { TasksPanelProvider } from "@/webviews/tasks/tasksPanelProvider";
 
 import {
@@ -204,7 +205,9 @@ describe("TasksPanelProvider", () => {
 
 		it("returns null on 404", async () => {
 			const h = createHarness();
-			h.client.getTasks.mockRejectedValue(createAxiosError(404, "Not found"));
+			h.client.getTasks.mockRejectedValue(
+				createAxiosError(HttpStatusCode.NOT_FOUND, "Not found"),
+			);
 
 			const res = await h.request(TasksApi.getTasks);
 
@@ -265,7 +268,7 @@ describe("TasksPanelProvider", () => {
 		it("returns null on 404", async () => {
 			const h = createHarness();
 			h.client.getTemplates.mockRejectedValue(
-				createAxiosError(404, "Not found"),
+				createAxiosError(HttpStatusCode.NOT_FOUND, "Not found"),
 			);
 
 			const res = await h.request(TasksApi.getTemplates);
@@ -323,7 +326,9 @@ describe("TasksPanelProvider", () => {
 		it("returns logsStatus not_available on 409", async () => {
 			const h = createHarness();
 			h.client.getTask.mockResolvedValue(task());
-			h.client.getTaskLogs.mockRejectedValue(createAxiosError(409, "Conflict"));
+			h.client.getTaskLogs.mockRejectedValue(
+				createAxiosError(HttpStatusCode.CONFLICT, "Conflict"),
+			);
 
 			const res = await h.request(TasksApi.getTaskDetails, {
 				taskId: "task-1",
@@ -455,7 +460,9 @@ describe("TasksPanelProvider", () => {
 
 		it("pauseTask falls back to stopWorkspace on 404", async () => {
 			const h = createHarness();
-			h.client.pauseTask.mockRejectedValue(createAxiosError(404, "Not found"));
+			h.client.pauseTask.mockRejectedValue(
+				createAxiosError(HttpStatusCode.NOT_FOUND, "Not found"),
+			);
 			h.client.getTask.mockResolvedValue(task({ workspace_id: "ws-1" }));
 
 			const res = await h.request(TasksApi.pauseTask, {
@@ -469,7 +476,9 @@ describe("TasksPanelProvider", () => {
 
 		it("resumeTask falls back to startWorkspace on 404", async () => {
 			const h = createHarness();
-			h.client.resumeTask.mockRejectedValue(createAxiosError(404, "Not found"));
+			h.client.resumeTask.mockRejectedValue(
+				createAxiosError(HttpStatusCode.NOT_FOUND, "Not found"),
+			);
 			h.client.getTask.mockResolvedValue(
 				task({ workspace_id: "ws-1", template_version_id: "tv-1" }),
 			);
@@ -485,7 +494,9 @@ describe("TasksPanelProvider", () => {
 
 		it("caches legacy fallback after first 404", async () => {
 			const h = createHarness();
-			h.client.pauseTask.mockRejectedValue(createAxiosError(404, "Not found"));
+			h.client.pauseTask.mockRejectedValue(
+				createAxiosError(HttpStatusCode.NOT_FOUND, "Not found"),
+			);
 			h.client.getTask.mockResolvedValue(task({ workspace_id: "ws-1" }));
 
 			await h.request(TasksApi.pauseTask, {
@@ -506,7 +517,10 @@ describe("TasksPanelProvider", () => {
 		it("propagates non-404 errors without fallback", async () => {
 			const h = createHarness();
 			h.client.pauseTask.mockRejectedValue(
-				createAxiosError(500, "Internal server error"),
+				createAxiosError(
+					HttpStatusCode.INTERNAL_SERVER_ERROR,
+					"Internal server error",
+				),
 			);
 
 			const res = await h.request(TasksApi.pauseTask, {
@@ -520,7 +534,9 @@ describe("TasksPanelProvider", () => {
 
 		it("legacy pause fails when task has no workspace", async () => {
 			const h = createHarness();
-			h.client.pauseTask.mockRejectedValue(createAxiosError(404, "Not found"));
+			h.client.pauseTask.mockRejectedValue(
+				createAxiosError(HttpStatusCode.NOT_FOUND, "Not found"),
+			);
 			h.client.getTask.mockResolvedValue(task({ workspace_id: null }));
 
 			const res = await h.request(TasksApi.pauseTask, {
@@ -581,13 +597,13 @@ describe("TasksPanelProvider", () => {
 			{
 				name: "409 conflict (task pending/paused)",
 				taskOverrides: { status: "active", current_state: taskState("idle") },
-				sendError: createAxiosError(409, "Conflict"),
+				sendError: createAxiosError(HttpStatusCode.CONFLICT, "Conflict"),
 				expectedError: "Agent is not ready for messages",
 			},
 			{
 				name: "400 bad request (task error/unknown)",
 				taskOverrides: { status: "active", current_state: taskState("idle") },
-				sendError: createAxiosError(400, "Bad Request"),
+				sendError: createAxiosError(HttpStatusCode.BAD_REQUEST, "Bad Request"),
 				expectedError: "Agent is not ready for messages",
 			},
 		])(
@@ -751,7 +767,10 @@ describe("TasksPanelProvider", () => {
 		it("propagates server errors instead of masking them", async () => {
 			const h = createHarness();
 			h.client.getTaskLogs.mockRejectedValue(
-				createAxiosError(500, "Internal server error"),
+				createAxiosError(
+					HttpStatusCode.INTERNAL_SERVER_ERROR,
+					"Internal server error",
+				),
 			);
 
 			const res = await h.request(TasksApi.downloadLogs, {

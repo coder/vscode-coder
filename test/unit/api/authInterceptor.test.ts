@@ -7,6 +7,7 @@ import {
 } from "@/api/authInterceptor";
 import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
+import { HttpStatusCode } from "@/util/httpStatusCode";
 
 import {
 	createTestTelemetryService,
@@ -225,7 +226,10 @@ describe("AuthInterceptor", () => {
 
 			createInterceptor();
 
-			const error = createAxiosError(401, "Unauthorized");
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+			);
 			const result = await axiosInstance.triggerResponseError(error);
 
 			expect(mockCoderApi.getSessionToken()).toBe("new-access-token");
@@ -243,9 +247,13 @@ describe("AuthInterceptor", () => {
 			await setupOAuthTokens();
 			createInterceptor();
 
-			const error = createAxiosError(401, "Unauthorized", {
-				_retryAttempted: true,
-			});
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+				{
+					_retryAttempted: true,
+				},
+			);
 
 			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow();
 			expect(mockOAuthManager.refreshToken).not.toHaveBeenCalled();
@@ -267,7 +275,10 @@ describe("AuthInterceptor", () => {
 			const onAuthRequired = vi.fn().mockResolvedValue(false);
 			createInterceptor(onAuthRequired);
 
-			const error = createAxiosError(401, "Unauthorized");
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+			);
 
 			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow(
 				"Unauthorized",
@@ -283,7 +294,10 @@ describe("AuthInterceptor", () => {
 			const onAuthRequired = vi.fn().mockResolvedValue(false);
 			createInterceptor(onAuthRequired);
 
-			const error = createAxiosError(401, "Unauthorized");
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+			);
 
 			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow();
 			expect(onAuthRequired).toHaveBeenCalledWith(TEST_HOSTNAME);
@@ -305,7 +319,10 @@ describe("AuthInterceptor", () => {
 			const onAuthRequired = vi.fn().mockResolvedValue(true);
 			createInterceptor(onAuthRequired);
 
-			const error = createAxiosError(401, "Unauthorized");
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+			);
 			const result = await axiosInstance.triggerResponseError(error);
 
 			expect(onAuthRequired).toHaveBeenCalledWith(TEST_HOSTNAME);
@@ -325,7 +342,10 @@ describe("AuthInterceptor", () => {
 			const onAuthRequired = vi.fn().mockResolvedValue(true);
 			createInterceptor(onAuthRequired);
 
-			const error = createAxiosError(401, "Unauthorized");
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+			);
 			const result = await axiosInstance.triggerResponseError(error);
 
 			expect(onAuthRequired).toHaveBeenCalledWith(TEST_HOSTNAME);
@@ -338,7 +358,10 @@ describe("AuthInterceptor", () => {
 			const onAuthRequired = vi.fn().mockResolvedValue(false);
 			createInterceptor(onAuthRequired);
 
-			const error = createAxiosError(401, "Unauthorized");
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+			);
 
 			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow(
 				"Unauthorized",
@@ -350,7 +373,10 @@ describe("AuthInterceptor", () => {
 
 			createInterceptor(); // No callback
 
-			const error = createAxiosError(401, "Unauthorized");
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+			);
 
 			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow(
 				"Unauthorized",
@@ -371,7 +397,10 @@ describe("AuthInterceptor", () => {
 			const onAuthRequired = vi.fn().mockResolvedValue(false);
 			createInterceptor(onAuthRequired);
 
-			const error = createAxiosError(401, "Unauthorized");
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+			);
 
 			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow();
 			expect(onAuthRequired).not.toHaveBeenCalled();
@@ -382,7 +411,10 @@ describe("AuthInterceptor", () => {
 		it.each<{ name: string; error: Error }>([
 			{
 				name: "non-401 axios error",
-				error: createAxiosError(500, "Server Error"),
+				error: createAxiosError(
+					HttpStatusCode.INTERNAL_SERVER_ERROR,
+					"Server Error",
+				),
 			},
 			{ name: "non-axios error", error: new Error("Network failure") },
 		])("ignores $name", async ({ error }) => {
@@ -407,9 +439,13 @@ describe("AuthInterceptor", () => {
 			const onAuthRequired = vi.fn().mockResolvedValue(false);
 			createInterceptor(onAuthRequired);
 
-			const error = createAxiosError(401, "Unauthorized", {
-				authConfigVersion: 0,
-			});
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+				{
+					authConfigVersion: 0,
+				},
+			);
 			(
 				mockCoderApi as unknown as {
 					setAuthConfigVersion: (version: number) => void;
@@ -439,10 +475,14 @@ describe("AuthInterceptor", () => {
 				}
 			).setAuthConfigVersion(1);
 
-			const error = createAxiosError(401, "Unauthorized", {
-				authConfigVersion: 0,
-				_authConfigRetryAttempted: true,
-			});
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+				{
+					authConfigVersion: 0,
+					_authConfigRetryAttempted: true,
+				},
+			);
 
 			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow();
 			expect(axiosInstance.request).not.toHaveBeenCalled();
@@ -462,10 +502,14 @@ describe("AuthInterceptor", () => {
 				}
 			).setAuthConfigVersion(1);
 
-			const error = createAxiosError(401, "Unauthorized", {
-				authConfigVersion: 0,
-				_retryAttempted: true,
-			});
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+				{
+					authConfigVersion: 0,
+					_retryAttempted: true,
+				},
+			);
 
 			const result = await axiosInstance.triggerResponseError(error);
 			expect(result).toBe(retryResponse);
@@ -487,11 +531,15 @@ describe("AuthInterceptor", () => {
 				}
 			).setAuthConfigVersion(1);
 
-			const error = createAxiosError(401, "Unauthorized", {
-				authConfigVersion: 0,
-				_retryAttempted: true,
-				_authConfigRetryAttempted: true,
-			});
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+				{
+					authConfigVersion: 0,
+					_retryAttempted: true,
+					_authConfigRetryAttempted: true,
+				},
+			);
 
 			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow();
 			expect(axiosInstance.request).not.toHaveBeenCalled();
@@ -522,7 +570,10 @@ describe("AuthInterceptor", () => {
 			const onAuthRequired = vi.fn().mockResolvedValue(false);
 			createInterceptor(onAuthRequired);
 
-			const error = createAxiosError(401, "Unauthorized");
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+			);
 
 			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow();
 
@@ -638,7 +689,7 @@ describe("AuthInterceptor", () => {
 				ctx.createInterceptor(onAuthRequired, createTestTelemetryService(sink));
 
 				const trigger = ctx.axiosInstance.triggerResponseError(
-					createAxiosError(401, "Unauthorized"),
+					createAxiosError(HttpStatusCode.UNAUTHORIZED, "Unauthorized"),
 				);
 				if (expectThrow) {
 					await expect(trigger).rejects.toThrow();
@@ -665,7 +716,7 @@ describe("AuthInterceptor", () => {
 			ctx.createInterceptor(undefined, createTestTelemetryService(sink));
 
 			await ctx.axiosInstance.triggerResponseError(
-				createAxiosError(401, "Unauthorized"),
+				createAxiosError(HttpStatusCode.UNAUTHORIZED, "Unauthorized"),
 			);
 
 			expect(
@@ -686,7 +737,7 @@ describe("AuthInterceptor", () => {
 			ctx.createInterceptor(undefined, createTestTelemetryService(sink));
 
 			await ctx.axiosInstance.triggerResponseError(
-				createAxiosError(401, "Unauthorized"),
+				createAxiosError(HttpStatusCode.UNAUTHORIZED, "Unauthorized"),
 			);
 
 			const received = sink.expectOne("auth.unauthorized_intercepted.received");

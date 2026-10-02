@@ -10,6 +10,7 @@ import { buildOAuthTokenData } from "../oauth/utils";
 import { withCancellableProgress } from "../progress";
 import { maybeAskAuthMethod, maybeAskUrl } from "../promptUtils";
 import { showStoreCredentialsError } from "../util/credentials";
+import { HttpStatusCode } from "../util/httpStatusCode";
 import { isSameOrigin, openInBrowser } from "../util/uri";
 import { vscodeProposed } from "../vscodeProposed";
 
@@ -542,7 +543,10 @@ export class LoginCoordinator implements vscode.Disposable {
 			const user = await client.getAuthenticatedUser();
 			return { success: true, token, user };
 		} catch (err) {
-			if (isAxiosError(err) && err.response?.status === 401) {
+			if (
+				isAxiosError(err) &&
+				err.response?.status === HttpStatusCode.UNAUTHORIZED
+			) {
 				return "unauthorized";
 			}
 			this.showAuthError(err, isAutoLogin);

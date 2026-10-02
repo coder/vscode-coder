@@ -2,6 +2,7 @@ import { type AxiosError, isAxiosError } from "axios";
 
 import { AuthTelemetry } from "../instrumentation/auth";
 import { OAuthError } from "../oauth/errors";
+import { HttpStatusCode } from "../util/httpStatusCode";
 import { toSafeHost } from "../util/uri";
 
 import type * as vscode from "vscode";
@@ -57,7 +58,7 @@ export class AuthInterceptor implements vscode.Disposable {
 			throw error;
 		}
 
-		if (error.response?.status !== 401) {
+		if (error.response?.status !== HttpStatusCode.UNAUTHORIZED) {
 			throw error;
 		}
 

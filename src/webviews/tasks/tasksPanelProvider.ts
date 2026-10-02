@@ -25,6 +25,7 @@ import {
 	streamBuildLogs,
 } from "../../api/workspace";
 import { type Logger } from "../../logging/logger";
+import { HttpStatusCode } from "../../util/httpStatusCode";
 import { openInBrowser } from "../../util/uri";
 import { vscodeProposed } from "../../vscodeProposed";
 import { dispatchWebviewMessage, notifyWebview } from "../dispatch";
@@ -250,7 +251,10 @@ export class TasksPanelProvider
 			await taskApiCall();
 			await this.refreshAndNotifyTask(taskId);
 		} catch (err) {
-			if (isAxiosError(err) && err.response?.status === 404) {
+			if (
+				isAxiosError(err) &&
+				err.response?.status === HttpStatusCode.NOT_FOUND
+			) {
 				this.useLegacyPauseResume = true;
 				return this.legacyPauseOrResume(taskId, legacyCall);
 			}
@@ -286,7 +290,8 @@ export class TasksPanelProvider
 		} catch (err) {
 			if (
 				isAxiosError(err) &&
-				(err.response?.status === 409 || err.response?.status === 400)
+				(err.response?.status === HttpStatusCode.CONFLICT ||
+					err.response?.status === HttpStatusCode.BAD_REQUEST)
 			) {
 				throw new Error(`Agent is not ready for messages (${errToStr(err)})`, {
 					cause: err,
@@ -405,7 +410,10 @@ export class TasksPanelProvider
 		try {
 			return await this.client.getTasks({ owner: "me" });
 		} catch (err) {
-			if (isAxiosError(err) && err.response?.status === 404) {
+			if (
+				isAxiosError(err) &&
+				err.response?.status === HttpStatusCode.NOT_FOUND
+			) {
 				return null;
 			}
 			throw err;
@@ -469,7 +477,10 @@ export class TasksPanelProvider
 				}),
 			);
 		} catch (err) {
-			if (isAxiosError(err) && err.response?.status === 404) {
+			if (
+				isAxiosError(err) &&
+				err.response?.status === HttpStatusCode.NOT_FOUND
+			) {
 				return null;
 			}
 			throw err;
@@ -507,7 +518,10 @@ export class TasksPanelProvider
 				snapshotAt: response.snapshot_at,
 			};
 		} catch (err) {
-			if (isAxiosError(err) && err.response?.status === 409) {
+			if (
+				isAxiosError(err) &&
+				err.response?.status === HttpStatusCode.CONFLICT
+			) {
 				return { status: "not_available" };
 			}
 			this.logger.warn("Failed to fetch task logs", err);

@@ -1,6 +1,7 @@
 import { isAxiosError } from "axios";
 
 import { isOwner } from "../api/api-helper";
+import { HttpStatusCode } from "../util/httpStatusCode";
 
 import type { WorkspaceFilter } from "@repo/shared";
 
@@ -65,5 +66,7 @@ export function availableFilters(
 
 /** True when the deployment cannot run a filter's query. */
 export function isQueryRejected(error: unknown): boolean {
-	return isAxiosError(error) && error.response?.status === 400;
+	return (
+		isAxiosError(error) && error.response?.status === HttpStatusCode.BAD_REQUEST
+	);
 }

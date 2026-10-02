@@ -37,7 +37,8 @@ import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
 } from "@/telemetry/reporter";
-import { HttpStatusCode, WebSocketCloseCode } from "@/websocket/codes";
+import { HttpStatusCode } from "@/util/httpStatusCode";
+import { WebSocketCloseCode } from "@/websocket/codes";
 import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
 import { HandshakeError } from "@/websocket/utils";
 

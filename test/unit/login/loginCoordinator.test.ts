@@ -9,6 +9,7 @@ import { AuthTelemetry } from "@/instrumentation/auth";
 import { LoginCoordinator, type LoginMethod } from "@/login/loginCoordinator";
 import { OAuthCallback } from "@/oauth/oauthCallback";
 import { maybeAskAuthMethod, maybeAskUrl } from "@/promptUtils";
+import { HttpStatusCode } from "@/util/httpStatusCode";
 
 import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {
@@ -158,8 +159,12 @@ function createTestContext(telemetry?: TelemetryService) {
 	};
 
 	const mockAuthFailure = (message = "Unauthorized") => {
-		mockAdapter.mockRejectedValue(createAxiosError(401, message));
-		mockGetAuthenticatedUser.mockRejectedValue(createAxiosError(401, message));
+		mockAdapter.mockRejectedValue(
+			createAxiosError(HttpStatusCode.UNAUTHORIZED, message),
+		);
+		mockGetAuthenticatedUser.mockRejectedValue(
+			createAxiosError(HttpStatusCode.UNAUTHORIZED, message),
+		);
 	};
 
 	return {
@@ -191,7 +196,7 @@ function createSignInTestContext(
 			for (const result of results) {
 				if (result === "unauthorized") {
 					mockGetAuthenticatedUser.mockRejectedValueOnce(
-						createAxiosError(401, "Unauthorized"),
+						createAxiosError(HttpStatusCode.UNAUTHORIZED, "Unauthorized"),
 					);
 				} else {
 					mockGetAuthenticatedUser.mockResolvedValueOnce(result);
