@@ -50,6 +50,7 @@ import {
 	parseRemoteAuthority,
 	sshHostOf,
 } from "../util/authority";
+import { HttpStatusCode } from "../util/httpStatusCode";
 import { createStatusBarItem } from "../util/statusBar";
 import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
@@ -582,7 +583,7 @@ export class Remote {
 				throw error;
 			}
 			switch (error.response?.status) {
-				case 404: {
+				case HttpStatusCode.NOT_FOUND: {
 					const result = await vscodeProposed.window.showInformationMessage(
 						`That workspace doesn't exist!`,
 						{
@@ -910,7 +911,7 @@ export class Remote {
 				throw error;
 			}
 			switch (error.response?.status) {
-				case 404: {
+				case HttpStatusCode.NOT_FOUND: {
 					// Deployment does not support overriding ssh config yet. Likely an
 					// older version, just use the default.
 					break;

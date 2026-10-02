@@ -5,10 +5,10 @@ import {
 	type ConnectionDropCause,
 	type ConnectionStateReason,
 } from "../instrumentation/websocket";
+import { HttpStatusCode } from "../util/httpStatusCode";
 
 import {
 	WebSocketCloseCode,
-	HttpStatusCode,
 	UNRECOVERABLE_WS_CLOSE_CODES,
 	UNRECOVERABLE_HTTP_CODES,
 } from "./codes";
