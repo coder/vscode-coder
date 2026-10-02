@@ -858,6 +858,163 @@ describe("ReconnectingWebSocket", () => {
 			ws.close();
 		});
 	});
+
+	describe("Unreachable server", () => {
+		// Mirrors MAX_RECONNECT_FAILURES_BEFORE_FLUSH in the implementation.
+		const FAILURES_BEFORE_FLUSH = 6;
+		// Pathname of the mock socket's URL, which becomes the logged route.
+		const ROUTE = "/api/test";
+
+		async function setupUnreachable(
+			options: { telemetry?: TelemetryReporter } = {},
+		) {
+			const sockets: MockSocket[] = [];
+			let failing = false;
+			const factory = vi.fn(() => {
+				if (failing) {
+					return Promise.reject(new Error("connect ECONNREFUSED"));
+				}
+				const socket = createMockSocket();
+				sockets.push(socket);
+				return Promise.resolve(socket);
+			});
+			const onConnectionFailure =
+				vi.fn<(reason: ConnectionStateReason, route: string) => void>();
+			// Constant backoff and no jitter, so each timer advance is exactly one
+			// failed attempt.
+			const ws = await ReconnectingWebSocket.create(
+				factory,
+				createMockLogger(),
+				{
+					telemetry: options.telemetry ?? NOOP_TELEMETRY_REPORTER,
+					route: "/api/v2/test",
+					onCertificateRefreshNeeded: () => Promise.resolve(false),
+					onConnectionFailure,
+					initialBackoffMs: 100,
+					maxBackoffMs: 100,
+					jitterFactor: 0,
+				},
+			);
+			sockets[0].fireOpen();
+
+			// Drop the healthy socket and make every reconnect fail. The close is
+			// the first failed attempt; each advance is the next.
+			const startOutage = (): void => {
+				failing = true;
+				sockets.at(-1)?.fireClose({
+					code: WebSocketCloseCode.ABNORMAL,
+					reason: "Connection lost",
+				});
+			};
+			const failNextAttempt = async (): Promise<void> => {
+				await vi.advanceTimersByTimeAsync(100);
+			};
+			const recover = async (): Promise<void> => {
+				failing = false;
+				await vi.advanceTimersByTimeAsync(100);
+				sockets.at(-1)?.fireOpen();
+			};
+			return {
+				ws,
+				sockets,
+				onConnectionFailure,
+				startOutage,
+				failNextAttempt,
+				recover,
+			};
+		}
+
+		it("flushes once with the unreachable reason after N failed attempts", async () => {
+			const { ws, onConnectionFailure, startOutage, failNextAttempt } =
+				await setupUnreachable();
+
+			startOutage(); // attempt 1
+			for (let i = 0; i < FAILURES_BEFORE_FLUSH - 2; i++) {
+				await failNextAttempt(); // through attempt N-1
+			}
+			expect(onConnectionFailure).not.toHaveBeenCalled();
+
+			await failNextAttempt(); // attempt N
+			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
+			expect(onConnectionFailure).toHaveBeenCalledWith("unreachable", ROUTE);
+
+			ws.close();
+		});
+
+		it("does not flush again while the server stays unreachable", async () => {
+			const { ws, onConnectionFailure, startOutage, failNextAttempt } =
+				await setupUnreachable();
+
+			startOutage();
+			for (let i = 0; i < FAILURES_BEFORE_FLUSH - 1; i++) {
+				await failNextAttempt();
+			}
+			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
+
+			for (let i = 0; i < 5; i++) {
+				await failNextAttempt();
+			}
+			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
+
+			ws.close();
+		});
+
+		it("flushes again after a successful open resets the counter", async () => {
+			const { ws, onConnectionFailure, startOutage, failNextAttempt, recover } =
+				await setupUnreachable();
+
+			startOutage();
+			for (let i = 0; i < FAILURES_BEFORE_FLUSH - 1; i++) {
+				await failNextAttempt();
+			}
+			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
+
+			await recover();
+
+			startOutage();
+			for (let i = 0; i < FAILURES_BEFORE_FLUSH - 1; i++) {
+				await failNextAttempt();
+			}
+			expect(onConnectionFailure).toHaveBeenCalledTimes(2);
+
+			ws.close();
+		});
+
+		it("does not flush a transient outage that recovers before N", async () => {
+			const { ws, onConnectionFailure, startOutage, failNextAttempt, recover } =
+				await setupUnreachable();
+
+			startOutage();
+			await failNextAttempt();
+			await failNextAttempt();
+			await recover();
+
+			expect(onConnectionFailure).not.toHaveBeenCalled();
+			ws.close();
+		});
+
+		it("emits connection.unreachable once at the flush", async () => {
+			enableLocalTelemetry();
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
+			const { ws, startOutage, failNextAttempt } = await setupUnreachable({
+				telemetry,
+			});
+
+			startOutage();
+			for (let i = 0; i < FAILURES_BEFORE_FLUSH - 1; i++) {
+				await failNextAttempt();
+			}
+
+			expect(sink.eventsNamed("connection.unreachable")).toMatchObject([
+				{
+					properties: { route: ROUTE },
+					measurements: { attempts: FAILURES_BEFORE_FLUSH },
+				},
+			]);
+			ws.close();
+		});
+	});
 });
 
 type MockSocket = UnidirectionalStream<unknown> & {
