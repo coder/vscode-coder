@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { WebSocketTelemetry } from "@/instrumentation/websocket";
+import { WebSocketCloseCode } from "@/websocket/codes";
 import { ConnectionState } from "@/websocket/reconnectingWebSocket";
 
 import { createTelemetryHarness } from "../../mocks/telemetry";
@@ -78,7 +79,7 @@ describe("WebSocketTelemetry", () => {
 			const { ws, sink } = setup();
 
 			ws.opened("/api/test");
-			ws.dropped("unexpected_close", 1006);
+			ws.dropped("unexpected_close", WebSocketCloseCode.ABNORMAL);
 
 			const [event] = sink.eventsNamed("connection.dropped");
 			expect(event.properties).toMatchObject({
@@ -94,7 +95,7 @@ describe("WebSocketTelemetry", () => {
 			const { ws, sink } = setup();
 
 			ws.opened("/api/test");
-			ws.dropped("error", 1006, new Error("boom"));
+			ws.dropped("error", WebSocketCloseCode.ABNORMAL, new Error("boom"));
 
 			const [event] = sink.eventsNamed("connection.dropped");
 			expect(event.error).toMatchObject({ message: "boom" });
@@ -210,7 +211,7 @@ describe("WebSocketTelemetry", () => {
 				"unexpected_close",
 				{
 					cause: "unexpected_close",
-					code: 1006,
+					code: WebSocketCloseCode.ABNORMAL,
 				},
 				250,
 			);

@@ -1,5 +1,6 @@
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 
+import { WebSocketCloseCode } from "@/websocket/codes";
 import { AgentMetadataTracker } from "@/workspace/agentMetadataTracker";
 
 import {
@@ -23,7 +24,11 @@ const failed = (cause: string): AgentMetadataState => ({
 	error: `Failed to query metadata: ${cause}`,
 });
 
-const died = { code: 1006, reason: "", wasClean: false };
+const died = {
+	code: WebSocketCloseCode.ABNORMAL,
+	reason: "",
+	wasClean: false,
+};
 
 /** A tracker watching `agents`, on fake timers, spying on the sockets it opens. */
 async function setup(...agents: string[]) {

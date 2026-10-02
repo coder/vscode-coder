@@ -769,7 +769,7 @@ describe("CoderApi", () => {
 			await new Promise((resolve) => setImmediate(resolve));
 
 			expect(sockets[0].close).toHaveBeenCalledWith(
-				1000,
+				WebSocketCloseCode.NORMAL,
 				"Replacing connection",
 			);
 			expect(sockets).toHaveLength(2);
@@ -786,7 +786,7 @@ describe("CoderApi", () => {
 			await new Promise((resolve) => setImmediate(resolve));
 
 			expect(sockets[0].close).toHaveBeenCalledWith(
-				1000,
+				WebSocketCloseCode.NORMAL,
 				"Replacing connection",
 			);
 			expect(sockets).toHaveLength(2);
@@ -816,7 +816,10 @@ describe("CoderApi", () => {
 			api.setHost("");
 			await new Promise((resolve) => setImmediate(resolve));
 
-			expect(sockets[0].close).toHaveBeenCalledWith(1000, "Host cleared");
+			expect(sockets[0].close).toHaveBeenCalledWith(
+				WebSocketCloseCode.NORMAL,
+				"Host cleared",
+			);
 			expect(sockets).toHaveLength(1);
 		});
 
@@ -831,7 +834,10 @@ describe("CoderApi", () => {
 
 			// Should only have the initial socket - no reconnection after token change
 			expect(sockets).toHaveLength(1);
-			expect(sockets[0].close).toHaveBeenCalledWith(1000, "Host cleared");
+			expect(sockets[0].close).toHaveBeenCalledWith(
+				WebSocketCloseCode.NORMAL,
+				"Host cleared",
+			);
 		});
 
 		it("setCredentials sets both host and token together", async () => {
@@ -856,7 +862,10 @@ describe("CoderApi", () => {
 			await new Promise((resolve) => setImmediate(resolve));
 
 			expect(sockets).toHaveLength(1);
-			expect(sockets[0].close).toHaveBeenCalledWith(1000, "Host cleared");
+			expect(sockets[0].close).toHaveBeenCalledWith(
+				WebSocketCloseCode.NORMAL,
+				"Host cleared",
+			);
 		});
 	});
 
@@ -1154,7 +1163,10 @@ describe("CoderApi", () => {
 			await api.watchAgentMetadata(AGENT_ID);
 
 			// Trigger close with abnormal code to put socket in AWAITING_RETRY
-			sockets.at(-1)?.fireClose({ code: 1006, reason: "Abnormal closure" });
+			sockets.at(-1)?.fireClose({
+				code: WebSocketCloseCode.ABNORMAL,
+				reason: "Abnormal closure",
+			});
 			await tick();
 
 			mockConfig.set("coder.insecure", true);
@@ -1177,7 +1189,10 @@ describe("CoderApi", () => {
 				await tick();
 
 				// Trigger close with unrecoverable code to put socket in DISCONNECTED
-				sockets.at(-1)?.fireClose({ code: 1002, reason: "Protocol error" });
+				sockets.at(-1)?.fireClose({
+					code: WebSocketCloseCode.PROTOCOL_ERROR,
+					reason: "Protocol error",
+				});
 				await tick();
 
 				mockConfig.set(setting, after);
