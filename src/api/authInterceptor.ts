@@ -2,8 +2,9 @@ import { type AxiosError, isAxiosError } from "axios";
 
 import { AuthTelemetry } from "../instrumentation/auth";
 import { OAuthError } from "../oauth/errors";
-import { HttpStatusCode } from "../util/httpStatusCode";
 import { toSafeHost } from "../util/uri";
+
+import { HttpStatusCode } from "./httpStatusCode";
 
 import type * as vscode from "vscode";
 

@@ -22,6 +22,7 @@ import {
 	refreshCertificates,
 } from "@/api/certificateRefresh";
 import { CoderApi, DEFAULT_REQUEST_TIMEOUT_MS } from "@/api/coderApi";
+import { HttpStatusCode } from "@/api/httpStatusCode";
 import {
 	InvalidApiResponseError,
 	VALIDATED_RESPONSES,
@@ -37,7 +38,6 @@ import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
 } from "@/telemetry/reporter";
-import { HttpStatusCode } from "@/util/httpStatusCode";
 import { WebSocketCloseCode } from "@/websocket/codes";
 import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
 import { HandshakeError } from "@/websocket/utils";

@@ -2,6 +2,7 @@ import axios, { type CreateAxiosDefaults } from "axios";
 import { describe, expect, it, vi, type Mock } from "vitest";
 import * as vscode from "vscode";
 
+import { HttpStatusCode } from "@/api/httpStatusCode";
 import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
 import { getHeaders } from "@/headers";
@@ -9,7 +10,6 @@ import { AuthTelemetry } from "@/instrumentation/auth";
 import { LoginCoordinator, type LoginMethod } from "@/login/loginCoordinator";
 import { OAuthCallback } from "@/oauth/oauthCallback";
 import { maybeAskAuthMethod, maybeAskUrl } from "@/promptUtils";
-import { HttpStatusCode } from "@/util/httpStatusCode";
 
 import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {

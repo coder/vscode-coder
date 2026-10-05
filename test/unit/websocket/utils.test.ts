@@ -3,7 +3,7 @@ import http from "node:http";
 import { type AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { HttpStatusCode } from "@/util/httpStatusCode";
+import { HttpStatusCode } from "@/api/httpStatusCode";
 import { WebSocketCloseCode } from "@/websocket/codes";
 import { type ErrorEvent } from "@/websocket/eventStreamConnection";
 import { OneWayWebSocket } from "@/websocket/oneWayWebSocket";

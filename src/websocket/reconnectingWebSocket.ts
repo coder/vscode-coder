@@ -1,3 +1,4 @@
+import { HttpStatusCode } from "../api/httpStatusCode";
 import { ClientCertificateError } from "../error/clientCertificateError";
 import { toError } from "../error/errorUtils";
 import {
@@ -5,7 +6,6 @@ import {
 	type ConnectionDropCause,
 	type ConnectionStateReason,
 } from "../instrumentation/websocket";
-import { HttpStatusCode } from "../util/httpStatusCode";
 
 import {
 	WebSocketCloseCode,

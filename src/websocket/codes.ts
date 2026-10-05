@@ -1,4 +1,4 @@
-import { HttpStatusCode } from "../util/httpStatusCode";
+import { HttpStatusCode } from "../api/httpStatusCode";
 
 /**
  * WebSocket close codes (RFC 6455) and the HTTP handshake statuses that end

@@ -19,13 +19,13 @@ import {
 
 import { errToStr } from "../../api/api-helper";
 import { type CoderApi } from "../../api/coderApi";
+import { HttpStatusCode } from "../../api/httpStatusCode";
 import {
 	LazyStream,
 	streamAgentLogs,
 	streamBuildLogs,
 } from "../../api/workspace";
 import { type Logger } from "../../logging/logger";
-import { HttpStatusCode } from "../../util/httpStatusCode";
 import { openInBrowser } from "../../util/uri";
 import { vscodeProposed } from "../../vscodeProposed";
 import { dispatchWebviewMessage, notifyWebview } from "../dispatch";

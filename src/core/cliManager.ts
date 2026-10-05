@@ -10,6 +10,7 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
+import { HttpStatusCode } from "../api/httpStatusCode";
 import {
 	CliDownloadsDisabledError,
 	CliFallbackDeclinedError,
@@ -24,7 +25,6 @@ import * as pgp from "../pgp";
 import { withCancellableProgress, withOptionalProgress } from "../progress";
 import { showStoreCredentialsError } from "../util/credentials";
 import { tempFilePath } from "../util/fs";
-import { HttpStatusCode } from "../util/httpStatusCode";
 import { toSafeHost } from "../util/uri";
 import { vscodeProposed } from "../vscodeProposed";
 

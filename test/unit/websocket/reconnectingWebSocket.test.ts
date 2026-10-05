@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+import { HttpStatusCode } from "@/api/httpStatusCode";
 import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
 } from "@/telemetry/reporter";
-import { HttpStatusCode } from "@/util/httpStatusCode";
 import {
 	UNRECOVERABLE_HTTP_CODES,
 	WebSocketCloseCode,

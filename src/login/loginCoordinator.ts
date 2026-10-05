@@ -3,6 +3,7 @@ import { getErrorMessage } from "coder/site/src/api/errors";
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
+import { HttpStatusCode } from "../api/httpStatusCode";
 import { needToken } from "../api/utils";
 import { CertificateError } from "../error/certificateError";
 import { OAuthAuthorizer } from "../oauth/authorizer";
@@ -10,7 +11,6 @@ import { buildOAuthTokenData } from "../oauth/utils";
 import { withCancellableProgress } from "../progress";
 import { maybeAskAuthMethod, maybeAskUrl } from "../promptUtils";
 import { showStoreCredentialsError } from "../util/credentials";
-import { HttpStatusCode } from "../util/httpStatusCode";
 import { isSameOrigin, openInBrowser } from "../util/uri";
 import { vscodeProposed } from "../vscodeProposed";
 

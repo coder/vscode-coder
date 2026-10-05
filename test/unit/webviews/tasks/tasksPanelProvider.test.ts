@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import * as vscode from "vscode";
 
+import { HttpStatusCode } from "@/api/httpStatusCode";
 import { streamAgentLogs, streamBuildLogs } from "@/api/workspace";
-import { HttpStatusCode } from "@/util/httpStatusCode";
 import { TasksPanelProvider } from "@/webviews/tasks/tasksPanelProvider";
 
 import {

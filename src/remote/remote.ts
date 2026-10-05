@@ -14,6 +14,7 @@ import {
 import { extractAgents } from "../api/api-helper";
 import { AuthInterceptor } from "../api/authInterceptor";
 import { CoderApi } from "../api/coderApi";
+import { HttpStatusCode } from "../api/httpStatusCode";
 import { needToken } from "../api/utils";
 import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
@@ -50,7 +51,6 @@ import {
 	parseRemoteAuthority,
 	sshHostOf,
 } from "../util/authority";
-import { HttpStatusCode } from "../util/httpStatusCode";
 import { createStatusBarItem } from "../util/statusBar";
 import { vscodeProposed } from "../vscodeProposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";

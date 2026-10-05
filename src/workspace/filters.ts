@@ -1,7 +1,7 @@
 import { isAxiosError } from "axios";
 
 import { isOwner } from "../api/api-helper";
-import { HttpStatusCode } from "../util/httpStatusCode";
+import { HttpStatusCode } from "../api/httpStatusCode";
 
 import type { WorkspaceFilter } from "@repo/shared";
 

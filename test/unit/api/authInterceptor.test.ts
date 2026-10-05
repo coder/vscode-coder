@@ -5,9 +5,9 @@ import {
 	type AuthRequiredHandler,
 	AuthInterceptor,
 } from "@/api/authInterceptor";
+import { HttpStatusCode } from "@/api/httpStatusCode";
 import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
-import { HttpStatusCode } from "@/util/httpStatusCode";
 
 import {
 	createTestTelemetryService,
