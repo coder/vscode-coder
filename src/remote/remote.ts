@@ -14,6 +14,7 @@ import {
 import { extractAgents } from "../api/api-helper";
 import { AuthInterceptor } from "../api/authInterceptor";
 import { CoderApi } from "../api/coderApi";
+import { HttpStatusCode } from "../api/httpStatusCode";
 import { needToken } from "../api/utils";
 import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
@@ -582,7 +583,7 @@ export class Remote {
 				throw error;
 			}
 			switch (error.response?.status) {
-				case 404: {
+				case HttpStatusCode.NOT_FOUND: {
 					const result = await vscodeProposed.window.showInformationMessage(
 						`That workspace doesn't exist!`,
 						{
@@ -910,7 +911,7 @@ export class Remote {
 				throw error;
 			}
 			switch (error.response?.status) {
-				case 404: {
+				case HttpStatusCode.NOT_FOUND: {
 					// Deployment does not support overriding ssh config yet. Likely an
 					// older version, just use the default.
 					break;

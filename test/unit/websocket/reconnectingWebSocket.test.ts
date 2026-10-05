@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+import { HttpStatusCode } from "@/api/httpStatusCode";
 import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
 } from "@/telemetry/reporter";
-import { WebSocketCloseCode, HttpStatusCode } from "@/websocket/codes";
+import {
+	UNRECOVERABLE_HTTP_CODES,
+	WebSocketCloseCode,
+} from "@/websocket/codes";
 import {
 	ConnectionState,
 	ReconnectingWebSocket,
@@ -106,7 +110,7 @@ describe("ReconnectingWebSocket", () => {
 			},
 		);
 
-		it.each(Object.values(HttpStatusCode))(
+		it.each([...UNRECOVERABLE_HTTP_CODES])(
 			"does not reconnect on an unrecoverable handshake failure during creation: %i",
 			async (statusCode) => {
 				const factory = vi
@@ -131,7 +135,7 @@ describe("ReconnectingWebSocket", () => {
 			},
 		);
 
-		it.each(Object.values(HttpStatusCode))(
+		it.each([...UNRECOVERABLE_HTTP_CODES])(
 			"does not reconnect on unrecoverable HTTP error via error event: %i",
 			async (statusCode) => {
 				const { ws, sockets, onConnectionFailure } =

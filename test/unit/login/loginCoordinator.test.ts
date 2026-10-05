@@ -2,6 +2,7 @@ import axios, { type CreateAxiosDefaults } from "axios";
 import { describe, expect, it, vi, type Mock } from "vitest";
 import * as vscode from "vscode";
 
+import { HttpStatusCode } from "@/api/httpStatusCode";
 import { MementoManager } from "@/core/mementoManager";
 import { SecretsManager } from "@/core/secretsManager";
 import { getHeaders } from "@/headers";
@@ -158,8 +159,12 @@ function createTestContext(telemetry?: TelemetryService) {
 	};
 
 	const mockAuthFailure = (message = "Unauthorized") => {
-		mockAdapter.mockRejectedValue(createAxiosError(401, message));
-		mockGetAuthenticatedUser.mockRejectedValue(createAxiosError(401, message));
+		mockAdapter.mockRejectedValue(
+			createAxiosError(HttpStatusCode.UNAUTHORIZED, message),
+		);
+		mockGetAuthenticatedUser.mockRejectedValue(
+			createAxiosError(HttpStatusCode.UNAUTHORIZED, message),
+		);
 	};
 
 	return {
@@ -191,7 +196,7 @@ function createSignInTestContext(
 			for (const result of results) {
 				if (result === "unauthorized") {
 					mockGetAuthenticatedUser.mockRejectedValueOnce(
-						createAxiosError(401, "Unauthorized"),
+						createAxiosError(HttpStatusCode.UNAUTHORIZED, "Unauthorized"),
 					);
 				} else {
 					mockGetAuthenticatedUser.mockResolvedValueOnce(result);

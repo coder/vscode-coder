@@ -10,6 +10,7 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { errToStr } from "../api/api-helper";
+import { HttpStatusCode } from "../api/httpStatusCode";
 import {
 	CliDownloadsDisabledError,
 	CliFallbackDeclinedError,
@@ -628,7 +629,7 @@ export class CliManager {
 			);
 
 			switch (status) {
-				case 200: {
+				case HttpStatusCode.OK: {
 					await downloadProgress.writeProgress(progressLogPath, {
 						bytesDownloaded: 0,
 						totalBytes: null,
@@ -668,11 +669,11 @@ export class CliManager {
 
 					return binPath;
 				}
-				case 304: {
+				case HttpStatusCode.NOT_MODIFIED: {
 					this.output.info("Using existing binary since server returned a 304");
 					return binPath;
 				}
-				case 404: {
+				case HttpStatusCode.NOT_FOUND: {
 					vscode.window
 						.showErrorMessage(
 							"Coder isn't supported for your platform. Please open an issue, we'd love to support it!",
@@ -755,7 +756,7 @@ export class CliManager {
 		});
 		this.output.info("Got status code", resp.status);
 
-		if (resp.status === 200) {
+		if (resp.status === HttpStatusCode.OK) {
 			let written = 0;
 			const rawContentLength = (resp.headers["content-length"] ??
 				resp.headers["x-original-content-length"]) as unknown;
@@ -911,14 +912,14 @@ export class CliManager {
 			}
 			options.push("Run without verification");
 			const action = await vscodeProposed.window.showWarningMessage(
-				result.status === 404
+				result.status === HttpStatusCode.NOT_FOUND
 					? "Signature not found"
 					: "Failed to download signature",
 				{
 					useCustom: true,
 					modal: true,
 					detail:
-						result.status === 404
+						result.status === HttpStatusCode.NOT_FOUND
 							? `No binary signature was found at ${source}.${nextPrompt}`
 							: `Received ${result.status} trying to download binary signature from ${source}.${nextPrompt}`,
 				},
@@ -957,7 +958,7 @@ export class CliManager {
 		const signaturePath = path.join(cliPath + ".asc");
 		const writeStream = createWriteStream(signaturePath);
 		const status = await this.download(client, source, writeStream);
-		if (status !== 200) {
+		if (status !== HttpStatusCode.OK) {
 			return { kind: "sig_unavailable", status };
 		}
 		try {

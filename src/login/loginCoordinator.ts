@@ -3,6 +3,7 @@ import { getErrorMessage } from "coder/site/src/api/errors";
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
+import { HttpStatusCode } from "../api/httpStatusCode";
 import { needToken } from "../api/utils";
 import { CertificateError } from "../error/certificateError";
 import { OAuthAuthorizer } from "../oauth/authorizer";
@@ -542,7 +543,10 @@ export class LoginCoordinator implements vscode.Disposable {
 			const user = await client.getAuthenticatedUser();
 			return { success: true, token, user };
 		} catch (err) {
-			if (isAxiosError(err) && err.response?.status === 401) {
+			if (
+				isAxiosError(err) &&
+				err.response?.status === HttpStatusCode.UNAUTHORIZED
+			) {
 				return "unauthorized";
 			}
 			this.showAuthError(err, isAutoLogin);

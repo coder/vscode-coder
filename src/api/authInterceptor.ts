@@ -4,6 +4,8 @@ import { AuthTelemetry } from "../instrumentation/auth";
 import { OAuthError } from "../oauth/errors";
 import { toSafeHost } from "../util/uri";
 
+import { HttpStatusCode } from "./httpStatusCode";
+
 import type * as vscode from "vscode";
 
 import type { ServiceContainer } from "../core/container";
@@ -57,7 +59,7 @@ export class AuthInterceptor implements vscode.Disposable {
 			throw error;
 		}
 
-		if (error.response?.status !== 401) {
+		if (error.response?.status !== HttpStatusCode.UNAUTHORIZED) {
 			throw error;
 		}
 

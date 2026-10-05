@@ -1,3 +1,4 @@
+import { HttpStatusCode } from "../api/httpStatusCode";
 import { ClientCertificateError } from "../error/clientCertificateError";
 import { toError } from "../error/errorUtils";
 import {
@@ -8,7 +9,6 @@ import {
 
 import {
 	WebSocketCloseCode,
-	HttpStatusCode,
 	UNRECOVERABLE_WS_CLOSE_CODES,
 	UNRECOVERABLE_HTTP_CODES,
 } from "./codes";

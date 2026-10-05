@@ -4,8 +4,9 @@ import { type WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import { EventSource } from "eventsource";
 import { describe, it, expect, vi } from "vitest";
 
+import { HttpStatusCode } from "@/api/httpStatusCode";
 import { type Logger } from "@/logging/logger";
-import { HttpStatusCode, WebSocketCloseCode } from "@/websocket/codes";
+import { WebSocketCloseCode } from "@/websocket/codes";
 import {
 	type ParsedMessageEvent,
 	type CloseEvent,
