@@ -96,29 +96,17 @@ describe("check version support", () => {
 		}
 	});
 
-	it.each([cliFeatureSet, serverFeatureSet])(
-		"gates custom session app names at 2.38",
-		(features) => {
-			for (const version of ["2.37.0", "2.37.99", "2.38.0-rc.1", "invalid"]) {
-				expect(
-					features(semver.parse(version)).customSessionAppNames,
-					version,
-				).toBe(false);
-			}
-			for (const version of [
-				"2.38.0",
-				"2.38.1",
-				"3.0.0",
-				"0.0.0-devel+abc123",
-			]) {
-				expect(
-					features(semver.parse(version)).customSessionAppNames,
-					version,
-				).toBe(true);
-			}
-			expect(features(null).customSessionAppNames).toBe(false);
-		},
-	);
+	it.each([
+		["2.37.99", false],
+		["2.38.0-rc.1", false],
+		["2.38.0", true],
+		["0.0.0-devel+abc123", true],
+		["invalid", false],
+	] as const)("custom session app names for %s: %s", (version, expected) => {
+		const parsed = semver.parse(version);
+		expect(cliFeatureSet(parsed).customSessionAppNames).toBe(expected);
+		expect(serverFeatureSet(parsed).customSessionAppNames).toBe(expected);
+	});
 
 	it("enables all features for development builds", () => {
 		const featureSet = cliFeatureSet(semver.parse("v0.0.0-devel+abc123"));

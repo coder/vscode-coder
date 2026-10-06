@@ -115,6 +115,16 @@ interface RemoteSetupContext {
 	disposables: vscode.Disposable[];
 }
 
+interface SshConfigOptions {
+	workspaceClient: Api;
+	parts: AuthorityParts;
+	binaryPath: string;
+	logDir: string;
+	cliFeatures: CliFeatureSet;
+	cliAuth: CliAuth;
+	sessionApp: string;
+}
+
 /**
  * What Open Recent shows after the path. VS Code splits the label on the
  * separator, so "/" would display "/home/kyle [Coder: kyle/workspace]" as
@@ -425,15 +435,15 @@ export class Remote {
 			const logDir = this.getLogDir(cliFeatures);
 
 			const computedSshProperties = await tracer.phase("ssh_config_write", () =>
-				this.writeRemoteSshConfig(
-					context,
+				this.writeRemoteSshConfig({
+					parts: context.parts,
 					workspaceClient,
 					binaryPath,
 					logDir,
 					cliFeatures,
 					cliAuth,
 					sessionApp,
-				),
+				}),
 			);
 			const remoteCommand = computedSshProperties.remotecommand;
 
@@ -689,25 +699,11 @@ export class Remote {
 	}
 
 	private async writeRemoteSshConfig(
-		context: RemoteSetupContext,
-		workspaceClient: Api,
-		binaryPath: string,
-		logDir: string,
-		cliFeatures: CliFeatureSet,
-		cliAuth: CliAuth,
-		sessionApp: string,
+		options: SshConfigOptions,
 	): Promise<SshProperties> {
 		try {
 			this.logger.info("Updating SSH config...");
-			return await this.updateSSHConfig(
-				workspaceClient,
-				context.parts,
-				binaryPath,
-				logDir,
-				cliFeatures,
-				cliAuth,
-				sessionApp,
-			);
+			return await this.updateSSHConfig(options);
 		} catch (error) {
 			this.logger.warn("Failed to configure SSH", error);
 			throw error;
@@ -879,15 +875,15 @@ export class Remote {
 
 	// updateSSHConfig updates the SSH configuration with a wildcard that handles
 	// all Coder entries.
-	private async updateSSHConfig(
-		restClient: Api,
-		parts: AuthorityParts,
-		binaryPath: string,
-		logDir: string,
-		cliFeatures: CliFeatureSet,
-		cliAuth: CliAuth,
-		sessionApp: string,
-	): Promise<SshProperties> {
+	private async updateSSHConfig({
+		workspaceClient,
+		parts,
+		binaryPath,
+		logDir,
+		cliFeatures,
+		cliAuth,
+		sessionApp,
+	}: SshConfigOptions): Promise<SshProperties> {
 		// Taken from the authority, so a legacy host keeps working.
 		const { hostPrefix, safeHostname, sshHost } = parts;
 		// One file per (host prefix, deployment); the user's config gains one shared include.
@@ -913,7 +909,7 @@ export class Remote {
 
 		let deploymentSshConfig = {};
 		try {
-			const deploymentConfig = await restClient.getDeploymentSSHConfig();
+			const deploymentConfig = await workspaceClient.getDeploymentSSHConfig();
 			deploymentSshConfig = validateDeploymentSshOptions(
 				deploymentConfig.ssh_config_options,
 				{ ...configSshOptions, ...userConfig },
