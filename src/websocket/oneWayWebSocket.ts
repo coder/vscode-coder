@@ -161,7 +161,7 @@ export class OneWayWebSocket<
 	}
 }
 
-function rawDataToString(data: RawData): string {
+export function rawDataToString(data: RawData): string {
 	if (Buffer.isBuffer(data)) {
 		return data.toString("utf8");
 	} else if (data instanceof ArrayBuffer) {

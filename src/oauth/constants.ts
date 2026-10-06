@@ -5,6 +5,7 @@ export const REFRESH_GRANT_TYPE = "refresh_token";
 /**
  * Scopes the extension and the CLI need. Stored sessions must have all of
  * them, so adding one signs out users of servers that enforce scopes.
+ * `scopeConsumers` in test/scopes/probes.ts names what needs each scope.
  */
 export const DEFAULT_OAUTH_SCOPES = [
 	"coder:workspaces.operate",

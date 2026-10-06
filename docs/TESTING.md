@@ -50,6 +50,7 @@ test/
 ├── unit/           # Extension unit tests (mirrors src/)
 ├── webview/        # Webview unit tests (mirrors packages/<pkg>/src/, jsdom)
 ├── integration/    # Integration tests (real VS Code, Mocha)
+├── scopes/         # OAuth scopes against a live server
 ├── utils/          # Test utilities that are also tested
 └── mocks/          # Shared test mocks
 ```
@@ -71,6 +72,22 @@ command with `xvfb-run -a`.
 - The first run downloads each VS Code version into `.vscode-test/`. Tests
   run in that copy with its own user data directory, so an open VS Code
   doesn't interfere.
+
+## OAuth Scope Tests
+
+`test/scopes/` signs in through the extension's OAuth flow against a live
+server and runs the probes in `test/scopes/probes.ts` with the token. It needs
+Docker and a fresh deployment, since it creates users and workspaces, and
+`pnpm test` leaves it out:
+
+```bash
+docker compose -f test/scopes/compose.yaml up -d --wait
+CODER_SCOPES_TEST_URL=http://localhost:7080 pnpm test:scopes
+docker compose -f test/scopes/compose.yaml down -v  # before the next run
+```
+
+Pull requests run against the coder-preview image pinned in `compose.yaml`;
+the nightly run uses `latest`. Set `CODER_IMAGE` to test another image.
 
 ## Testing the open flow by hand
 
