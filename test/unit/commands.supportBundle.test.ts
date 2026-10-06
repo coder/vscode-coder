@@ -12,6 +12,7 @@ import {
 
 import { agent, resource, workspace } from "@repo/mocks";
 
+import { createTestCoderApi } from "../mocks/coderApi";
 import { createTelemetryHarness } from "../mocks/telemetry";
 import {
 	config,
@@ -102,10 +103,10 @@ function setup(options: { cliVersion?: string } = {}) {
 		getNetcheckPanelFactory: () => ({}),
 	} as unknown as ServiceContainer;
 
-	const client = {
-		getAxiosInstance: () => ({ defaults: { baseURL: "https://coder.test" } }),
-		getSessionToken: () => "token",
-	} as unknown as CoderApi;
+	const client = createTestCoderApi({
+		baseUrl: "https://coder.test",
+		token: "token",
+	});
 
 	const commands = new Commands(
 		serviceContainer,
