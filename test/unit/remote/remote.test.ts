@@ -40,6 +40,9 @@ const mockWorkspace = vscode.workspace as typeof vscode.workspace & {
 };
 
 vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
+vi.mock("@/remote/windowsAcl", () => ({
+	createManagedPermissions: () => undefined,
+}));
 vi.mock(import("@/core/cliExec"), async (importOriginal) => ({
 	...(await importOriginal()),
 	version: vi.fn(),
