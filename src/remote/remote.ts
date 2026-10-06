@@ -310,16 +310,15 @@ export class Remote {
 				this.resolveRemoteBinary(workspaceClient),
 			);
 
-			const { cliFeatures, serverFeatures, cliAuth } = await tracer.phase(
-				"compatibility_check",
-				() =>
+			const { cliFeatures, serverFeatures, cliAuth, sessionApp } =
+				await tracer.phase("compatibility_check", () =>
 					this.checkCompatibility({
 						workspaceClient,
 						binaryPath,
 						baseUrl,
 						safeHostname: parts.safeHostname,
 					}),
-			);
+				);
 
 			// Reject deployments below our minimum supported version (v0.25.0)
 			// before configuring credentials, so they get a clear message.
@@ -433,6 +432,7 @@ export class Remote {
 					logDir,
 					cliFeatures,
 					cliAuth,
+					sessionApp,
 				),
 			);
 			const remoteCommand = computedSshProperties.remotecommand;
@@ -695,6 +695,7 @@ export class Remote {
 		logDir: string,
 		cliFeatures: CliFeatureSet,
 		cliAuth: CliAuth,
+		sessionApp: string,
 	): Promise<SshProperties> {
 		try {
 			this.logger.info("Updating SSH config...");
@@ -705,6 +706,7 @@ export class Remote {
 				logDir,
 				cliFeatures,
 				cliAuth,
+				sessionApp,
 			);
 		} catch (error) {
 			this.logger.warn("Failed to configure SSH", error);
@@ -779,19 +781,27 @@ export class Remote {
 		cliFeatures: CliFeatureSet;
 		serverFeatures: ServerFeatureSet;
 		cliAuth: CliAuth;
+		sessionApp: string;
 	}> {
 		const { workspaceClient, binaryPath, baseUrl, safeHostname } = options;
 		const buildInfo = await workspaceClient.getBuildInfo();
 		const serverVersion = semver.parse(buildInfo.version);
 
-		let version: semver.SemVer | null;
+		let cliFeatures: CliFeatureSet;
 		try {
-			version = semver.parse(await cliVersion(binaryPath));
+			cliFeatures = cliFeatureSet(semver.parse(await cliVersion(binaryPath)));
 		} catch {
-			version = serverVersion;
+			cliFeatures = {
+				...cliFeatureSet(serverVersion),
+				customSessionAppNames: false,
+			};
 		}
-
-		const cliFeatures = cliFeatureSet(version);
+		const serverFeatures = serverFeatureSet(serverVersion);
+		// Report schemes verbatim; normalization and editor families belong to the server.
+		const sessionApp =
+			cliFeatures.customSessionAppNames && serverFeatures.customSessionAppNames
+				? vscode.env.uriScheme || "vscode"
+				: "vscode";
 		const configDir = this.pathResolver.getGlobalConfigDir(safeHostname);
 		const cliAuth = resolveCliAuth(
 			vscode.workspace.getConfiguration(),
@@ -801,8 +811,9 @@ export class Remote {
 		);
 		return {
 			cliFeatures,
-			serverFeatures: serverFeatureSet(serverVersion),
+			serverFeatures,
 			cliAuth,
+			sessionApp,
 		};
 	}
 
@@ -875,6 +886,7 @@ export class Remote {
 		logDir: string,
 		cliFeatures: CliFeatureSet,
 		cliAuth: CliAuth,
+		sessionApp: string,
 	): Promise<SshProperties> {
 		// Taken from the authority, so a legacy host keeps working.
 		const { hostPrefix, safeHostname, sshHost } = parts;
@@ -936,6 +948,7 @@ export class Remote {
 			binaryPath,
 			cliAuth,
 			logArgs: await this.getLogArgs(logDir),
+			sessionApp,
 		};
 		const proxyCommand = cliFeatures.wildcardSSH
 			? buildSshProxyCommand({ ...proxyOptions, hostPrefix })
@@ -952,9 +965,7 @@ export class Remote {
 			ServerAliveCountMax: "3",
 		};
 		if (sshSupportsSetEnv()) {
-			// This allows for tracking the number of extension
-			// users connected to workspaces!
-			sshValues.SetEnv = "CODER_SSH_SESSION_TYPE=vscode";
+			sshValues.SetEnv = `CODER_SSH_SESSION_TYPE=${sessionApp}`;
 		}
 
 		// Write our file before including it, so the include never dangles.
@@ -1095,6 +1106,7 @@ interface ProxyCommandOptions {
 	binaryPath: string;
 	cliAuth: CliAuth;
 	logArgs: string[];
+	sessionApp: string;
 }
 
 function coderCommand(
@@ -1116,7 +1128,7 @@ export function buildSshProxyCommand(
 	// Make sure to update the `coder.sshFlags` description if we add more internal flags here!
 	const internalFlags = [
 		"--stdio",
-		"--usage-app=vscode",
+		`--usage-app=${escapeCommandArg(options.sessionApp)}`,
 		"--network-info-dir",
 		escapeCommandArg(options.pathResolver.getNetworkInfoPath()),
 		...options.logArgs,

@@ -118,7 +118,7 @@ function setup(
 		startupMode,
 		"/usr/bin/coder",
 		{} as CliFeatureSet,
-		{ tasks: false, onSuccessBuild: true },
+		{ tasks: false, onSuccessBuild: true, customSessionAppNames: true },
 		{
 			store: "cli",
 			url: "https://test.coder.com",

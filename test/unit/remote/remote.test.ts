@@ -1,7 +1,9 @@
+import { Api } from "coder/site/src/api/api";
 import { vol } from "memfs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { version as cliVersion } from "@/core/cliExec";
 import { MementoManager } from "@/core/mementoManager";
 import { PathResolver } from "@/core/pathResolver";
 import { SecretsManager } from "@/core/secretsManager";
@@ -10,6 +12,8 @@ import {
 	Remote,
 	workspaceLabelSuffix,
 } from "@/remote/remote";
+import { sshSupportsSetEnv } from "@/remote/sshSupport";
+import { parseRemoteAuthority } from "@/util/authority";
 
 import { createTestTelemetryService } from "../../mocks/telemetry";
 import {
@@ -34,6 +38,14 @@ const mockWorkspace = vscode.workspace as typeof vscode.workspace & {
 };
 
 vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
+vi.mock(import("@/core/cliExec"), async (importOriginal) => ({
+	...(await importOriginal()),
+	version: vi.fn(),
+}));
+vi.mock(import("@/remote/sshSupport"), async (importOriginal) => ({
+	...(await importOriginal()),
+	sshSupportsSetEnv: vi.fn(),
+}));
 
 const SAFE_HOSTNAME = "coder.example.com";
 const REMOTE_AUTHORITY =
@@ -249,6 +261,112 @@ describe("Remote", () => {
 	const elideNetworkInfoDir = (command: string) =>
 		command.replace(/--network-info-dir \S+/, "--network-info-dir <dir>");
 
+	interface SessionAppCase {
+		name: string;
+		scheme?: string;
+		cli?: string | Error;
+		server?: string;
+		app: string;
+		legacy?: boolean;
+		setEnv?: boolean;
+	}
+
+	it.each<SessionAppCase>([
+		...[
+			"vscode",
+			"cursor",
+			"devin",
+			"windsurf",
+			"vscode-insiders",
+			"devin-next",
+			"vscodium-insiders",
+			"future-editor",
+		].map((scheme) => ({ name: scheme, scheme, app: scheme })),
+		{ name: "empty scheme", scheme: "", app: "vscode" },
+		{ name: "old CLI", cli: "2.37.99", app: "vscode" },
+		{ name: "old server", server: "2.37.99", app: "vscode" },
+		{ name: "both old", cli: "2.37.0", server: "2.37.0", app: "vscode" },
+		{ name: "invalid server", server: "invalid", app: "vscode" },
+		{ name: "unreadable CLI", cli: new Error("unavailable"), app: "vscode" },
+		{ name: "invalid CLI", cli: "invalid", legacy: true, app: "vscode" },
+		{ name: "legacy CLI", cli: "2.18.0", legacy: true, app: "vscode" },
+		{ name: "SSH without SetEnv", setEnv: false, app: "cursor" },
+	])(
+		"reports the session app for $name",
+		async ({
+			scheme = "cursor",
+			cli = "2.38.0",
+			server = "2.38.0",
+			app,
+			legacy = false,
+			setEnv = true,
+		}) => {
+			const { remote } = createRemote();
+			useEditor(scheme);
+			if (cli instanceof Error) {
+				vi.mocked(cliVersion).mockRejectedValue(cli);
+			} else {
+				vi.mocked(cliVersion).mockResolvedValue(cli);
+			}
+			vi.mocked(sshSupportsSetEnv).mockReturnValue(setEnv);
+			const client = new Api();
+			vi.spyOn(client, "getBuildInfo").mockResolvedValue({
+				version: server,
+				external_url: "",
+				dashboard_url: CLI_AUTH.url,
+				telemetry: false,
+				workspace_proxy: false,
+				agent_api_version: "2.11",
+				provisioner_api_version: "",
+				upgrade_message: "",
+				deployment_id: "",
+			});
+			vi.spyOn(client, "getDeploymentSSHConfig").mockResolvedValue({
+				hostname_prefix: "coder-",
+				hostname_suffix: "",
+				ssh_config_options: {},
+			});
+			const compatibilityMethod = "checkCompatibility";
+			const { cliFeatures, cliAuth, sessionApp } = await remote[
+				compatibilityMethod
+			]({
+				workspaceClient: client,
+				binaryPath: "/mock/coder",
+				baseUrl: CLI_AUTH.url,
+				safeHostname: SAFE_HOSTNAME,
+			});
+			expect(sessionApp).toBe(app);
+			if (cli instanceof Error) {
+				expect(cliFeatures.customSessionAppNames).toBe(false);
+				expect(cliFeatures.allowRedirects).toBe(true);
+			}
+			// Host identity requires a non-empty scheme, independently of session reporting.
+			useEditor(scheme || "vscode");
+			const configMethod = "updateSSHConfig";
+			const properties = await remote[configMethod](
+				client,
+				parseRemoteAuthority(REMOTE_AUTHORITY)!,
+				"/mock/coder",
+				"",
+				cliFeatures,
+				cliAuth,
+				sessionApp,
+			);
+			expect(properties.setenv).toBe(
+				setEnv ? `CODER_SSH_SESSION_TYPE=${app}` : undefined,
+			);
+			if (legacy) {
+				expect(properties.proxycommand).toContain(" vscodessh ");
+				expect(properties.proxycommand).not.toContain("--usage-app");
+			} else {
+				expect(properties.proxycommand).toContain(`--usage-app=${app} `);
+				expect(properties.proxycommand).toContain(
+					"--ssh-host-prefix coder-vscode.",
+				);
+			}
+		},
+	);
+
 	describe("ProxyCommand", () => {
 		it.each<SshFlagsCase>([
 			{
@@ -273,6 +391,7 @@ describe("Remote", () => {
 				binaryPath: "/mock/coder",
 				cliAuth: CLI_AUTH,
 				logArgs: [],
+				sessionApp: "vscode",
 				hostPrefix: "coder-vscode.coder.example.com--",
 			});
 
