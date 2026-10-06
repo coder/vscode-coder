@@ -8,6 +8,7 @@ import {
 	workspace as createWorkspace,
 } from "@repo/mocks";
 
+import { createTestCoderApi } from "../../mocks/coderApi";
 import {
 	createTestTelemetryService,
 	enableLocalTelemetry,
@@ -30,7 +31,6 @@ import type {
 	WorkspaceAgentScript,
 } from "coder/site/src/api/typesGenerated";
 
-import type { CoderApi } from "@/api/coderApi";
 import type { TelemetryService } from "@/telemetry/service";
 
 function workspaceEvent(
@@ -57,16 +57,18 @@ describe("WorkspaceMonitor", () => {
 		const statusBar = new MockStatusBarItem();
 		const contextManager = new MockContextManager();
 		const logger = createMockLogger();
-		const client = {
-			watchWorkspace: vi.fn().mockResolvedValue(stream),
-			getTemplate: vi.fn().mockResolvedValue({
-				active_version_id: "version-2",
-			}),
-			getTemplateVersion: vi.fn().mockResolvedValue({
-				message: "template v2",
-			}),
-			getWorkspaceAgentLogs: vi.fn(),
-		} as unknown as CoderApi;
+		const client = createTestCoderApi({
+			overrides: {
+				watchWorkspace: vi.fn().mockResolvedValue(stream),
+				getTemplate: vi.fn().mockResolvedValue({
+					active_version_id: "version-2",
+				}),
+				getTemplateVersion: vi.fn().mockResolvedValue({
+					message: "template v2",
+				}),
+				getWorkspaceAgentLogs: vi.fn(),
+			},
+		});
 		const monitor = await WorkspaceMonitor.create(
 			initialWorkspace,
 			client,

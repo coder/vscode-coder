@@ -41,6 +41,9 @@ export default defineConfig({
 					include: ["test/webview/**/*.test.{ts,tsx}"],
 					exclude: ["**/node_modules/**", "**/out/**", "**/*.d.ts"],
 					environment: "jsdom",
+					// Much faster for jsdom. Not used for the extension project: Node
+					// built-ins return cross-realm values that break `instanceof Error`.
+					pool: "vmForks",
 					globals: true,
 					setupFiles: ["test/webview/setup.ts"],
 				},

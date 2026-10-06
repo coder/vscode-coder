@@ -3,11 +3,8 @@ import * as vscode from "vscode";
 
 import { PathResolver } from "@/core/pathResolver";
 
-import {
-	createTestCommands,
-	MockConfigurationProvider,
-	useEditor,
-} from "../mocks/testHelpers";
+import { createTestCommands } from "../mocks/commands";
+import { MockConfigurationProvider, useEditor } from "../mocks/testHelpers";
 
 const pathResolver = new PathResolver("/data", "/logs");
 const configPath = (editorId: string) =>

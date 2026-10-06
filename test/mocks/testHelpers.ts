@@ -9,7 +9,6 @@ import * as fs from "node:fs/promises";
 import { onTestFinished, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { Commands } from "@/commands";
 import {
 	SessionStore,
 	type SessionData,
@@ -44,7 +43,6 @@ import type { ContextManager } from "@/core/contextManager";
 import type { MementoManager } from "@/core/mementoManager";
 import type { PathResolver } from "@/core/pathResolver";
 import type { SecretsManager } from "@/core/secretsManager";
-import type { DeploymentManager } from "@/deployment/deploymentManager";
 import type { Deployment } from "@/deployment/types";
 import type { ConnectionLogBuffer } from "@/logging/logBuffer";
 import type { Logger } from "@/logging/logger";
@@ -662,35 +660,6 @@ export function createMockServiceContainer(
 		getLoginCoordinator: () =>
 			require("loginCoordinator", overrides.loginCoordinator) as LoginCoordinator,
 	} as ServiceContainer;
-}
-
-/** Build `Commands`; services left unnamed stand in as empty objects. */
-export function createTestCommands(
-	options: {
-		services?: Record<string, unknown>;
-		baseUrl?: string;
-		client?: Partial<CoderApi>;
-	} = {},
-): Commands {
-	const services: Record<string, unknown> = {
-		getTelemetryService: createTestTelemetryService(),
-		getLogger: createMockLogger(),
-		getMementoManager: { setStartupMode: vi.fn() },
-		getDuplicateWorkspaceIpc: {
-			sendPing: vi.fn().mockResolvedValue(undefined),
-		},
-		...options.services,
-	};
-	return new Commands(
-		new Proxy({} as ServiceContainer, {
-			get: (_, name: string) => () => services[name] ?? {},
-		}),
-		{
-			getAxiosInstance: () => ({ defaults: { baseURL: options.baseUrl } }),
-			...options.client,
-		} as unknown as CoderApi,
-		{} as DeploymentManager,
-	);
 }
 
 /** Recently opened entries on one path; a multi-root file has no folder URI. */

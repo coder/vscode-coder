@@ -21,6 +21,7 @@ import {
 	type TaskIdParams,
 } from "@repo/shared";
 
+import { createTestCoderApi } from "../../../mocks/coderApi";
 import {
 	createAxiosError,
 	createMockLogger,
@@ -85,23 +86,28 @@ type TasksPanelClient = Pick<
 
 type MockClient = { [K in keyof TasksPanelClient]: Mock<TasksPanelClient[K]> };
 
-function createClient(baseUrl = "https://coder.example.com"): MockClient {
-	return {
-		getTasks: vi.fn().mockResolvedValue([]),
-		getTask: vi.fn(),
-		getTaskLogs: vi.fn().mockResolvedValue({ logs: [] }),
-		createTask: vi.fn(),
-		deleteTask: vi.fn().mockResolvedValue(undefined),
-		getTemplates: vi.fn().mockResolvedValue([]),
-		getTemplateVersionPresets: vi.fn().mockResolvedValue([]),
-		startWorkspace: vi.fn().mockResolvedValue(undefined),
-		stopWorkspace: vi.fn().mockResolvedValue(undefined),
-		pauseTask: vi.fn().mockResolvedValue(undefined),
-		resumeTask: vi.fn().mockResolvedValue(undefined),
-		sendTaskInput: vi.fn().mockResolvedValue(undefined),
-		getHost: vi.fn().mockReturnValue(baseUrl),
-		getWorkspace: vi.fn().mockResolvedValue(workspace()),
-	};
+function createClient(
+	baseUrl = "https://coder.example.com",
+): CoderApi & MockClient {
+	return createTestCoderApi<MockClient>({
+		baseUrl,
+		overrides: {
+			getTasks: vi.fn().mockResolvedValue([]),
+			getTask: vi.fn(),
+			getTaskLogs: vi.fn().mockResolvedValue({ logs: [] }),
+			createTask: vi.fn(),
+			deleteTask: vi.fn().mockResolvedValue(undefined),
+			getTemplates: vi.fn().mockResolvedValue([]),
+			getTemplateVersionPresets: vi.fn().mockResolvedValue([]),
+			startWorkspace: vi.fn().mockResolvedValue(undefined),
+			stopWorkspace: vi.fn().mockResolvedValue(undefined),
+			pauseTask: vi.fn().mockResolvedValue(undefined),
+			resumeTask: vi.fn().mockResolvedValue(undefined),
+			sendTaskInput: vi.fn().mockResolvedValue(undefined),
+			getHost: vi.fn().mockReturnValue(baseUrl),
+			getWorkspace: vi.fn().mockResolvedValue(workspace()),
+		},
+	});
 }
 
 interface Harness {
@@ -126,8 +132,7 @@ function createHarness(): Harness {
 	const client = createClient();
 	const panel = new TasksPanelProvider(
 		vscode.Uri.file("/test/extension"),
-		// Cast needed: mock only implements the subset of CoderApi methods used by TasksPanelProvider
-		client as unknown as CoderApi,
+		client,
 		createMockLogger(),
 	);
 
