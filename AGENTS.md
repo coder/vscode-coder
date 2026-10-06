@@ -42,6 +42,8 @@ Before changing anything under `packages/` or `test/webview/`, read
 - Unit tests: `pnpm test`, or `pnpm test:extension` / `pnpm test:webview`
   with an optional file path
 - Integration tests: `pnpm test:integration`
+- OAuth scope tests: `pnpm test:scopes`, against a live server
+  ([docs/TESTING.md](docs/TESTING.md#oauth-scope-tests))
 - Storybook: `pnpm storybook`; theme snapshots: `pnpm sync:vscode-themes`
 
 Integration tests and the theme sync launch VS Code; on headless machines

@@ -1,0 +1,60 @@
+name: OAuth Scopes
+
+# PRs use the release pinned in compose.yaml; nightly runs use the latest
+# preview to catch server changes before they ship.
+on:
+  pull_request:
+    # Code the probes run or import
+    paths:
+      - src/**
+      - test/mocks/**
+      - test/scopes/**
+      - package.json
+      - pnpm-lock.yaml
+      - vitest.config.mts
+      - .github/workflows/oauth-scopes.yaml
+  schedule:
+    # Off the hour, when GitHub delays or drops fewer scheduled runs
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+cache-mode: read
+
+jobs:
+  live-server:
+    name: Live Server Test (coder-preview)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup pnpm, Node.js, and dependencies
+        uses: ./.github/actions/pnpm-setup
+      - run: docker compose -f test/scopes/compose.yaml up -d --wait
+        env:
+          CODER_IMAGE: ${{ github.event_name == 'schedule' && 'ghcr.io/coder/coder-preview:latest' || '' }}
+      - run: pnpm test:scopes
+        env:
+          CODER_SCOPES_TEST_URL: http://localhost:7080
+      # A failed scheduled run notifies only one person, so track it in an issue.
+      - name: Report nightly failure
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Nightly OAuth scope test failed"
+          issue=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body "Failed again: $RUN_URL"
+          else
+            gh issue create --title "$title" --body "The scope test failed against \`coder-preview:latest\`: $RUN_URL"
+          fi
