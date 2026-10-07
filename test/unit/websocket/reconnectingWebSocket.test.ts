@@ -963,8 +963,8 @@ describe("ReconnectingWebSocket", () => {
 			ws.close();
 		});
 
-		it("does not flush again while the server stays unreachable", async () => {
-			const { ws, onConnectionFailure, startOutage, failNextAttempt } =
+		it("keeps retrying through a long outage without flushing again, then recovers", async () => {
+			const { ws, onConnectionFailure, startOutage, failNextAttempt, recover } =
 				await setupUnreachable();
 
 			startOutage();
@@ -973,9 +973,13 @@ describe("ReconnectingWebSocket", () => {
 			}
 			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
 
-			for (let i = 0; i < 5; i++) {
-				await failNextAttempt();
-			}
+			// A long outage (sleep, network loss) never gives up or re-flushes.
+			await vi.advanceTimersByTimeAsync(5 * 60_000);
+			expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
+			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
+
+			await recover();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
 			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
 
 			ws.close();

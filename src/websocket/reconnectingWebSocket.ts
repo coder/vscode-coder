@@ -132,7 +132,10 @@ export interface ReconnectingWebSocketOptions {
 	route: string;
 	/** Callback invoked when a refreshable certificate error is detected. Returns true if refresh succeeded. */
 	onCertificateRefreshNeeded: () => Promise<boolean>;
-	/** Callback invoked when the connection fails terminally (not a transient drop). */
+	/**
+	 * Callback invoked on a terminal failure, or once per outage when the server
+	 * stays unreachable. Retrying continues in the unreachable case.
+	 */
 	onConnectionFailure?: (reason: ConnectionStateReason, route: string) => void;
 }
 
@@ -474,7 +477,7 @@ export class ReconnectingWebSocket<
 			this.#consecutiveConnectFailures === MAX_RECONNECT_FAILURES_BEFORE_FLUSH
 		) {
 			this.#logger.warn(
-				`Server unreachable after ${this.#consecutiveConnectFailures} reconnect attempts for ${this.#route}`,
+				`Server unreachable after ${this.#consecutiveConnectFailures} reconnect attempts for ${this.#route}, still retrying`,
 			);
 			this.#telemetry.unreachable(
 				this.#route,

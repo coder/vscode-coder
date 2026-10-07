@@ -474,8 +474,8 @@ success or termination).
 #### `connection.unreachable`
 
 Emitted once when the reconnect loop has failed enough consecutive times to
-treat the server as unreachable. The counter resets on a successful open, so a
-later outage emits again.
+treat the server as unreachable. The socket keeps retrying, and the counter
+resets on a successful open, so a later outage emits again.
 
 | Attribute                | Values                      |
 | ------------------------ | --------------------------- |
