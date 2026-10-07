@@ -461,10 +461,6 @@ export class ReconnectingWebSocket<
 			return;
 		}
 
-		// Each scheduled retry is one failed attempt. Once the loop has failed
-		// enough times against an unreachable server it never reaches a terminal
-		// reason, so flush the buffer once here; the `=== N` check keeps it to one
-		// flush per outage, and a successful open resets the counter.
 		this.#consecutiveConnectFailures += 1;
 		if (
 			this.#consecutiveConnectFailures === MAX_RECONNECT_FAILURES_BEFORE_FLUSH
