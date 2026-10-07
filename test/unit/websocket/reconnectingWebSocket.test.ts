@@ -916,6 +916,13 @@ describe("ReconnectingWebSocket", () => {
 			const failNextAttempt = async (): Promise<void> => {
 				await vi.advanceTimersByTimeAsync(BACKOFF_MS);
 			};
+			// Fail exactly enough attempts to reach the flush.
+			const failUntilFlush = async (): Promise<void> => {
+				startOutage();
+				for (let i = 0; i < FAILURES_BEFORE_FLUSH - 1; i++) {
+					await failNextAttempt();
+				}
+			};
 			const recover = async (): Promise<void> => {
 				setFactoryError(null);
 				await vi.advanceTimersByTimeAsync(BACKOFF_MS);
@@ -927,6 +934,7 @@ describe("ReconnectingWebSocket", () => {
 				onConnectionFailure,
 				startOutage,
 				failNextAttempt,
+				failUntilFlush,
 				recover,
 			};
 		}
@@ -949,13 +957,10 @@ describe("ReconnectingWebSocket", () => {
 		});
 
 		it("keeps retrying through a long outage without flushing again, then recovers", async () => {
-			const { ws, onConnectionFailure, startOutage, failNextAttempt, recover } =
+			const { ws, onConnectionFailure, failUntilFlush, recover } =
 				await setupUnreachable();
 
-			startOutage();
-			for (let i = 0; i < FAILURES_BEFORE_FLUSH - 1; i++) {
-				await failNextAttempt();
-			}
+			await failUntilFlush();
 			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
 
 			// A long outage (sleep, network loss) never gives up or re-flushes.
@@ -971,21 +976,15 @@ describe("ReconnectingWebSocket", () => {
 		});
 
 		it("flushes again after a successful open resets the counter", async () => {
-			const { ws, onConnectionFailure, startOutage, failNextAttempt, recover } =
+			const { ws, onConnectionFailure, failUntilFlush, recover } =
 				await setupUnreachable();
 
-			startOutage();
-			for (let i = 0; i < FAILURES_BEFORE_FLUSH - 1; i++) {
-				await failNextAttempt();
-			}
+			await failUntilFlush();
 			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
 
 			await recover();
 
-			startOutage();
-			for (let i = 0; i < FAILURES_BEFORE_FLUSH - 1; i++) {
-				await failNextAttempt();
-			}
+			await failUntilFlush();
 			expect(onConnectionFailure).toHaveBeenCalledTimes(2);
 
 			ws.close();
@@ -1008,14 +1007,11 @@ describe("ReconnectingWebSocket", () => {
 			enableLocalTelemetry();
 			const sink = new TestSink();
 			const telemetry = createTestTelemetryService(sink);
-			const { ws, startOutage, failNextAttempt } = await setupUnreachable({
+			const { ws, failUntilFlush } = await setupUnreachable({
 				telemetry,
 			});
 
-			startOutage();
-			for (let i = 0; i < FAILURES_BEFORE_FLUSH - 1; i++) {
-				await failNextAttempt();
-			}
+			await failUntilFlush();
 
 			expect(sink.eventsNamed("connection.unreachable")).toMatchObject([
 				{
