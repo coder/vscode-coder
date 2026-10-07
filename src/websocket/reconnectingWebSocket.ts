@@ -111,10 +111,10 @@ function reduceState(
 
 export type SocketFactory<TData> = () => Promise<UnidirectionalStream<TData>>;
 
-export type ConnectionFailureReason = ConnectionStateReason | "unreachable";
+export type ConnectionProblemReason = ConnectionStateReason | "unreachable";
 
-/** Default failure callback for callers that do not observe connection failures. */
-const NOOP_CONNECTION_FAILURE = (): void => undefined;
+/** Default for callers that do not observe connection problems. */
+const NOOP_CONNECTION_PROBLEM = (): void => undefined;
 
 /**
  * Consecutive failed reconnect attempts before the buffer is flushed once and
@@ -135,8 +135,8 @@ export interface ReconnectingWebSocketOptions {
 	 * Callback invoked on a terminal failure, or once per outage when the server
 	 * stays unreachable. Retrying continues in the unreachable case.
 	 */
-	onConnectionFailure?: (
-		reason: ConnectionFailureReason,
+	onConnectionProblem?: (
+		reason: ConnectionProblemReason,
 		route: string,
 	) => void;
 }
@@ -206,8 +206,8 @@ export class ReconnectingWebSocket<
 			maxBackoffMs: options.maxBackoffMs ?? 30000,
 			jitterFactor: options.jitterFactor ?? 0.1,
 			onCertificateRefreshNeeded: options.onCertificateRefreshNeeded,
-			onConnectionFailure:
-				options.onConnectionFailure ?? NOOP_CONNECTION_FAILURE,
+			onConnectionProblem:
+				options.onConnectionProblem ?? NOOP_CONNECTION_PROBLEM,
 		};
 		this.#lastRoute = options.route;
 		this.#backoffMs = this.#options.initialBackoffMs;
@@ -332,7 +332,7 @@ export class ReconnectingWebSocket<
 		});
 		this.clearCurrentSocket(options.code, options.closeReason);
 		if (options.failure) {
-			this.#options.onConnectionFailure(reason, this.#route);
+			this.#options.onConnectionProblem(reason, this.#route);
 		}
 	}
 
@@ -477,7 +477,7 @@ export class ReconnectingWebSocket<
 				this.#route,
 				this.#consecutiveConnectFailures,
 			);
-			this.#options.onConnectionFailure("unreachable", this.#route);
+			this.#options.onConnectionProblem("unreachable", this.#route);
 		}
 		const jitter =
 			this.#backoffMs * this.#options.jitterFactor * (Math.random() * 2 - 1);

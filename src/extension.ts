@@ -141,7 +141,7 @@ async function doActivate(
 		deploymentSessionAuth?.token,
 		output,
 		telemetryService,
-		serviceContainer.getConnectionLogBuffer().onConnectionFailure,
+		serviceContainer.getConnectionLogBuffer().flushForConnectionProblem,
 	);
 	ctx.subscriptions.push(client);
 

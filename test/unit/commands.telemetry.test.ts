@@ -123,7 +123,7 @@ function setup(options: SetupOptions = {}) {
 		getNetcheckPanelFactory: () => ({}) as NetcheckPanelFactory,
 		getConnectionLogBuffer: (): ConnectionLogBuffer => ({
 			flush: () => {},
-			onConnectionFailure: () => {},
+			flushForConnectionProblem: () => {},
 		}),
 	} as ServiceContainer;
 

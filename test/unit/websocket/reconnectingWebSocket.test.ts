@@ -12,7 +12,7 @@ import {
 import {
 	ConnectionState,
 	ReconnectingWebSocket,
-	type ConnectionFailureReason,
+	type ConnectionProblemReason,
 	type SocketFactory,
 } from "@/websocket/reconnectingWebSocket";
 import { HandshakeError } from "@/websocket/utils";
@@ -40,7 +40,7 @@ describe("ReconnectingWebSocket", () => {
 
 	describe("Reconnection Logic", () => {
 		it("automatically reconnects on abnormal closure (1006)", async () => {
-			const { ws, sockets, onConnectionFailure } =
+			const { ws, sockets, onConnectionProblem } =
 				await createReconnectingWebSocket();
 
 			sockets[0].fireOpen();
@@ -58,7 +58,7 @@ describe("ReconnectingWebSocket", () => {
 			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			// A transient drop that reconnects is not a terminal failure.
-			expect(onConnectionFailure).not.toHaveBeenCalled();
+			expect(onConnectionProblem).not.toHaveBeenCalled();
 			ws.close();
 		});
 
@@ -68,7 +68,7 @@ describe("ReconnectingWebSocket", () => {
 		])(
 			"reconnects on a server-initiated normal closure: $name ($code)",
 			async ({ code }) => {
-				const { ws, sockets, onConnectionFailure } =
+				const { ws, sockets, onConnectionProblem } =
 					await createReconnectingWebSocket();
 
 				sockets[0].fireOpen();
@@ -78,7 +78,7 @@ describe("ReconnectingWebSocket", () => {
 				await vi.advanceTimersByTimeAsync(300);
 				expect(sockets).toHaveLength(2);
 				// A server-initiated close is not a terminal failure.
-				expect(onConnectionFailure).not.toHaveBeenCalled();
+				expect(onConnectionProblem).not.toHaveBeenCalled();
 
 				ws.close();
 			},
@@ -90,7 +90,7 @@ describe("ReconnectingWebSocket", () => {
 		])(
 			"does not reconnect on unrecoverable WebSocket close code: %i",
 			async (code) => {
-				const { ws, sockets, onConnectionFailure } =
+				const { ws, sockets, onConnectionProblem } =
 					await createReconnectingWebSocket();
 
 				sockets[0].fireOpen();
@@ -101,7 +101,7 @@ describe("ReconnectingWebSocket", () => {
 
 				await vi.advanceTimersByTimeAsync(10000);
 				expect(sockets).toHaveLength(1);
-				expect(onConnectionFailure).toHaveBeenCalledWith(
+				expect(onConnectionProblem).toHaveBeenCalledWith(
 					"unrecoverable_close",
 					expect.any(String),
 				);
@@ -116,16 +116,16 @@ describe("ReconnectingWebSocket", () => {
 				const factory = vi
 					.fn<SocketFactory<unknown>>()
 					.mockRejectedValue(new HandshakeError(statusCode));
-				const onConnectionFailure = vi.fn();
-				const ws = await fromFactory(factory, { onConnectionFailure });
+				const onConnectionProblem = vi.fn();
+				const ws = await fromFactory(factory, { onConnectionProblem });
 
 				expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 				expect(vi.getTimerCount()).toBe(0);
 				expect(factory).toHaveBeenCalledOnce();
 				if (statusCode === HttpStatusCode.UNAUTHORIZED) {
-					expect(onConnectionFailure).not.toHaveBeenCalled();
+					expect(onConnectionProblem).not.toHaveBeenCalled();
 				} else {
-					expect(onConnectionFailure).toHaveBeenCalledExactlyOnceWith(
+					expect(onConnectionProblem).toHaveBeenCalledExactlyOnceWith(
 						"unrecoverable_http",
 						"/api/v2/test",
 					);
@@ -138,7 +138,7 @@ describe("ReconnectingWebSocket", () => {
 		it.each([...UNRECOVERABLE_HTTP_CODES])(
 			"does not reconnect on unrecoverable HTTP error via error event: %i",
 			async (statusCode) => {
-				const { ws, sockets, onConnectionFailure } =
+				const { ws, sockets, onConnectionProblem } =
 					await createReconnectingWebSocket();
 				sockets[0].fireOpen();
 				sockets[0].fireError(new HandshakeError(statusCode));
@@ -151,9 +151,9 @@ describe("ReconnectingWebSocket", () => {
 
 				expect(vi.getTimerCount()).toBe(0);
 				if (statusCode === HttpStatusCode.UNAUTHORIZED) {
-					expect(onConnectionFailure).not.toHaveBeenCalled();
+					expect(onConnectionProblem).not.toHaveBeenCalled();
 				} else {
-					expect(onConnectionFailure).toHaveBeenCalledExactlyOnceWith(
+					expect(onConnectionProblem).toHaveBeenCalledExactlyOnceWith(
 						"unrecoverable_http",
 						"/api/test",
 					);
@@ -169,8 +169,8 @@ describe("ReconnectingWebSocket", () => {
 				.mockRejectedValueOnce(new HandshakeError(503))
 				.mockResolvedValueOnce(socket)
 				.mockImplementation(() => Promise.resolve(createMockSocket()));
-			const onConnectionFailure = vi.fn();
-			const ws = await fromFactory(factory, { onConnectionFailure });
+			const onConnectionProblem = vi.fn();
+			const ws = await fromFactory(factory, { onConnectionProblem });
 
 			expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
 			expect(vi.getTimerCount()).toBe(1);
@@ -183,18 +183,18 @@ describe("ReconnectingWebSocket", () => {
 			expect(vi.getTimerCount()).toBe(1);
 			await vi.advanceTimersToNextTimerAsync();
 			expect(factory).toHaveBeenCalledTimes(3);
-			expect(onConnectionFailure).not.toHaveBeenCalled();
+			expect(onConnectionProblem).not.toHaveBeenCalled();
 			ws.close();
 		});
 
 		it("does not read host/port digits as a status code", async () => {
-			const { ws, sockets, onConnectionFailure } =
+			const { ws, sockets, onConnectionProblem } =
 				await createReconnectingWebSocket();
 
 			// A port ending in 404x must not be treated as HTTP 404.
 			sockets[0].fireError(new Error("connect ECONNREFUSED 127.0.0.1:4040"));
 
-			expect(onConnectionFailure).not.toHaveBeenCalled();
+			expect(onConnectionProblem).not.toHaveBeenCalled();
 			// Generic connection errors retry rather than terminate.
 			await vi.advanceTimersByTimeAsync(1000);
 			expect(sockets.length).toBeGreaterThan(1);
@@ -755,7 +755,7 @@ describe("ReconnectingWebSocket", () => {
 		const setupRefreshTest = async (onRefresh: () => Promise<boolean>) => {
 			const sockets: MockSocket[] = [];
 			const refreshCallback = vi.fn().mockImplementation(onRefresh);
-			const onConnectionFailure = vi.fn();
+			const onConnectionProblem = vi.fn();
 			const factory = vi.fn(() => {
 				const socket = createMockSocket();
 				sockets.push(socket);
@@ -763,10 +763,10 @@ describe("ReconnectingWebSocket", () => {
 			});
 			const ws = await fromFactory(factory, {
 				onCertificateRefreshNeeded: refreshCallback,
-				onConnectionFailure,
+				onConnectionProblem,
 			});
 			sockets[0].fireOpen();
-			return { ws, sockets, refreshCallback, onConnectionFailure };
+			return { ws, sockets, refreshCallback, onConnectionProblem };
 		};
 
 		it("reconnects after successful refresh", async () => {
@@ -784,7 +784,7 @@ describe("ReconnectingWebSocket", () => {
 		});
 
 		it("disconnects when refresh fails", async () => {
-			const { ws, sockets, onConnectionFailure } = await setupRefreshTest(() =>
+			const { ws, sockets, onConnectionProblem } = await setupRefreshTest(() =>
 				Promise.resolve(false),
 			);
 
@@ -794,7 +794,7 @@ describe("ReconnectingWebSocket", () => {
 			);
 
 			expect(sockets).toHaveLength(1);
-			expect(onConnectionFailure).toHaveBeenCalledWith(
+			expect(onConnectionProblem).toHaveBeenCalledWith(
 				"certificate_error",
 				expect.any(String),
 			);
@@ -850,15 +850,15 @@ describe("ReconnectingWebSocket", () => {
 		});
 	});
 
-	describe("Connection failure callback", () => {
-		it("does not fire onConnectionFailure on a manual disconnect", async () => {
-			const { ws, sockets, onConnectionFailure } =
+	describe("Connection problem callback", () => {
+		it("does not fire onConnectionProblem on a manual disconnect", async () => {
+			const { ws, sockets, onConnectionProblem } =
 				await createReconnectingWebSocket();
 
 			sockets[0].fireOpen();
 			ws.disconnect();
 
-			expect(onConnectionFailure).not.toHaveBeenCalled();
+			expect(onConnectionProblem).not.toHaveBeenCalled();
 			ws.close();
 		});
 	});
@@ -874,12 +874,12 @@ describe("ReconnectingWebSocket", () => {
 		async function setupUnreachable(
 			options: { telemetry?: TelemetryReporter } = {},
 		) {
-			const onConnectionFailure =
-				vi.fn<(reason: ConnectionFailureReason, route: string) => void>();
+			const onConnectionProblem =
+				vi.fn<(reason: ConnectionProblemReason, route: string) => void>();
 			const { ws, sockets, setFactoryError } =
 				await createReconnectingWebSocketWithErrorControl({
 					...options,
-					onConnectionFailure,
+					onConnectionProblem,
 					initialBackoffMs: BACKOFF_MS,
 					maxBackoffMs: BACKOFF_MS,
 					jitterFactor: 0,
@@ -913,7 +913,7 @@ describe("ReconnectingWebSocket", () => {
 			return {
 				ws,
 				sockets,
-				onConnectionFailure,
+				onConnectionProblem,
 				startOutage,
 				failNextAttempt,
 				failUntilFlush,
@@ -922,58 +922,58 @@ describe("ReconnectingWebSocket", () => {
 		}
 
 		it("flushes once with the unreachable reason after N failed attempts", async () => {
-			const { ws, onConnectionFailure, startOutage, failNextAttempt } =
+			const { ws, onConnectionProblem, startOutage, failNextAttempt } =
 				await setupUnreachable();
 
 			startOutage(); // attempt 1
 			for (let i = 0; i < FAILURES_BEFORE_FLUSH - 2; i++) {
 				await failNextAttempt(); // through attempt N-1
 			}
-			expect(onConnectionFailure).not.toHaveBeenCalled();
+			expect(onConnectionProblem).not.toHaveBeenCalled();
 
 			await failNextAttempt(); // attempt N
-			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
-			expect(onConnectionFailure).toHaveBeenCalledWith("unreachable", ROUTE);
+			expect(onConnectionProblem).toHaveBeenCalledTimes(1);
+			expect(onConnectionProblem).toHaveBeenCalledWith("unreachable", ROUTE);
 
 			ws.close();
 		});
 
 		it("keeps retrying through a long outage without flushing again, then recovers", async () => {
-			const { ws, onConnectionFailure, failUntilFlush, recover } =
+			const { ws, onConnectionProblem, failUntilFlush, recover } =
 				await setupUnreachable();
 
 			await failUntilFlush();
-			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
+			expect(onConnectionProblem).toHaveBeenCalledTimes(1);
 
 			// A long outage (sleep, network loss) never gives up or re-flushes.
 			await vi.advanceTimersByTimeAsync(5 * 60_000);
 			expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
-			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
+			expect(onConnectionProblem).toHaveBeenCalledTimes(1);
 
 			await recover();
 			expect(ws.state).toBe(ConnectionState.CONNECTED);
-			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
+			expect(onConnectionProblem).toHaveBeenCalledTimes(1);
 
 			ws.close();
 		});
 
 		it("flushes again after a successful open resets the counter", async () => {
-			const { ws, onConnectionFailure, failUntilFlush, recover } =
+			const { ws, onConnectionProblem, failUntilFlush, recover } =
 				await setupUnreachable();
 
 			await failUntilFlush();
-			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
+			expect(onConnectionProblem).toHaveBeenCalledTimes(1);
 
 			await recover();
 
 			await failUntilFlush();
-			expect(onConnectionFailure).toHaveBeenCalledTimes(2);
+			expect(onConnectionProblem).toHaveBeenCalledTimes(2);
 
 			ws.close();
 		});
 
 		it("does not flush a transient outage that recovers before N", async () => {
-			const { ws, onConnectionFailure, startOutage, failNextAttempt, recover } =
+			const { ws, onConnectionProblem, startOutage, failNextAttempt, recover } =
 				await setupUnreachable();
 
 			startOutage();
@@ -981,7 +981,7 @@ describe("ReconnectingWebSocket", () => {
 			await failNextAttempt();
 			await recover();
 
-			expect(onConnectionFailure).not.toHaveBeenCalled();
+			expect(onConnectionProblem).not.toHaveBeenCalled();
 			ws.close();
 		});
 
@@ -1069,15 +1069,15 @@ function createMockSocket(): MockSocket {
 	};
 }
 
-type ConnectionFailureSpy = ReturnType<
-	typeof vi.fn<(reason: ConnectionFailureReason, route: string) => void>
+type ConnectionProblemSpy = ReturnType<
+	typeof vi.fn<(reason: ConnectionProblemReason, route: string) => void>
 >;
 
 interface FactoryOptions {
 	onDispose?: () => void;
 	onCertificateRefreshNeeded?: () => Promise<boolean>;
-	onConnectionFailure?: (
-		reason: ConnectionFailureReason,
+	onConnectionProblem?: (
+		reason: ConnectionProblemReason,
 		route: string,
 	) => void;
 	route?: string;
@@ -1092,19 +1092,19 @@ async function createReconnectingWebSocket(
 ): Promise<{
 	ws: ReconnectingWebSocket;
 	sockets: MockSocket[];
-	onConnectionFailure: ConnectionFailureSpy;
+	onConnectionProblem: ConnectionProblemSpy;
 }> {
 	const sockets: MockSocket[] = [];
-	const onConnectionFailure =
-		vi.fn<(reason: ConnectionFailureReason, route: string) => void>();
+	const onConnectionProblem =
+		vi.fn<(reason: ConnectionProblemReason, route: string) => void>();
 	const factory = vi.fn(() => {
 		const socket = createMockSocket();
 		sockets.push(socket);
 		return Promise.resolve(socket);
 	});
-	const ws = await fromFactory(factory, { ...options, onConnectionFailure });
+	const ws = await fromFactory(factory, { ...options, onConnectionProblem });
 	expect(sockets).toHaveLength(1);
-	return { ws, sockets, onConnectionFailure };
+	return { ws, sockets, onConnectionProblem };
 }
 
 async function createReconnectingWebSocketWithErrorControl(
@@ -1150,7 +1150,7 @@ async function fromFactory<T>(
 			route: options.route ?? "/api/v2/test",
 			onCertificateRefreshNeeded:
 				options.onCertificateRefreshNeeded ?? (() => Promise.resolve(false)),
-			onConnectionFailure: options.onConnectionFailure ?? vi.fn(),
+			onConnectionProblem: options.onConnectionProblem ?? vi.fn(),
 			initialBackoffMs: options.initialBackoffMs,
 			maxBackoffMs: options.maxBackoffMs,
 			jitterFactor: options.jitterFactor,

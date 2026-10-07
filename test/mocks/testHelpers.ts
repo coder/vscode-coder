@@ -645,7 +645,7 @@ export function createMockServiceContainer(
 		getLogger: () => logger,
 		getConnectionLogBuffer: (): ConnectionLogBuffer => ({
 			flush: () => {},
-			onConnectionFailure: () => {},
+			flushForConnectionProblem: () => {},
 		}),
 		getSecretsManager: () =>
 			require("secretsManager", overrides.secretsManager),

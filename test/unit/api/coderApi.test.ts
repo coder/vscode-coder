@@ -117,14 +117,14 @@ describe("CoderApi", () => {
 		url = CODER_URL,
 		token = AXIOS_TOKEN,
 		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
-		onConnectionFailure?: (reason: string) => void,
+		onConnectionProblem?: (reason: string) => void,
 	) => {
 		return CoderApi.create(
 			url,
 			token,
 			mockLogger,
 			telemetry,
-			onConnectionFailure,
+			onConnectionProblem,
 		);
 	};
 
@@ -577,14 +577,14 @@ describe("CoderApi", () => {
 		});
 	});
 
-	describe("connection failure callback", () => {
-		it("invokes onConnectionFailure on a terminal socket failure", async () => {
-			const onConnectionFailure = vi.fn();
+	describe("connection problem callback", () => {
+		it("invokes onConnectionProblem on a terminal socket failure", async () => {
+			const onConnectionProblem = vi.fn();
 			const failingApi = createApi(
 				CODER_URL,
 				AXIOS_TOKEN,
 				NOOP_TELEMETRY_REPORTER,
-				onConnectionFailure,
+				onConnectionProblem,
 			);
 			const mockWs = createMockWebSocket(
 				`wss://${CODER_URL.replace("https://", "")}/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
@@ -600,7 +600,7 @@ describe("CoderApi", () => {
 				wasClean: false,
 			});
 
-			expect(onConnectionFailure).toHaveBeenCalledWith(
+			expect(onConnectionProblem).toHaveBeenCalledWith(
 				"unrecoverable_close",
 				`/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
 			);
@@ -675,12 +675,12 @@ describe("CoderApi", () => {
 		});
 
 		it("treats an HTTP failure of the SSE fallback as unrecoverable", async () => {
-			const onConnectionFailure = vi.fn();
+			const onConnectionProblem = vi.fn();
 			api = createApi(
 				CODER_URL,
 				AXIOS_TOKEN,
 				NOOP_TELEMETRY_REPORTER,
-				onConnectionFailure,
+				onConnectionProblem,
 			);
 			setupWebSocketMock(
 				createMockWebSocket("wss://test", {
@@ -700,7 +700,7 @@ describe("CoderApi", () => {
 
 			const connection = await api.watchAgentMetadata(AGENT_ID);
 
-			expect(onConnectionFailure).toHaveBeenCalledWith(
+			expect(onConnectionProblem).toHaveBeenCalledWith(
 				"unrecoverable_http",
 				`/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
 			);

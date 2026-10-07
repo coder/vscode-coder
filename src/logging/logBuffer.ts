@@ -29,10 +29,10 @@ const MAX_BUFFERED_CHARS = 2_000_000;
 /** Entries replayed per channel call, so a flush is not one RPC per entry. */
 const REPLAY_CHUNK = 100;
 
-/** Replays buffered below-level log entries on a connection failure. */
+/** Replays buffered below-level log entries on a connection problem. */
 export interface ConnectionLogBuffer {
 	flush(reason: string, options?: { readonly retain?: boolean }): void;
-	readonly onConnectionFailure: (reason: string, route: string) => void;
+	readonly flushForConnectionProblem: (reason: string, route: string) => void;
 }
 
 interface LogEntry {
@@ -63,11 +63,11 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 	public readonly error = this.wrap("error");
 
 	/**
-	 * Flush the buffer on a terminal socket failure, keyed by the
+	 * Flush the buffer for a socket's connection problem, keyed by the
 	 * `<reason> <route>` string Support greps for. Arrow property so it can be
-	 * passed by value as the socket's failure callback.
+	 * passed by value as the socket's `onConnectionProblem`.
 	 */
-	public readonly onConnectionFailure = (
+	public readonly flushForConnectionProblem = (
 		reason: string,
 		route: string,
 	): void => {
