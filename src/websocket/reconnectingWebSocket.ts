@@ -116,10 +116,7 @@ const NOOP_CONNECTION_FAILURE = (): void => undefined;
 
 /**
  * Consecutive failed reconnect attempts before the buffer is flushed once and
- * the server is treated as unreachable. With the default backoff (250ms
- * doubling to a 30s cap) the 6th attempt lands after ~15s of retrying: past a
- * transient blip of one or two retries, before the 30s cap, and before a user
- * reproducing a "hangs on connecting" issue would typically give up.
+ * the server is treated as unreachable.
  */
 const MAX_RECONNECT_FAILURES_BEFORE_FLUSH = 6;
 
@@ -164,8 +161,6 @@ export class ReconnectingWebSocket<
 	#lastRoute: string;
 	#backoffMs: number;
 	#reconnectTimeoutId: NodeJS.Timeout | null = null;
-	// Consecutive failed connect attempts in the current outage. Reset on a
-	// successful open, so it only grows while the server stays unreachable.
 	#consecutiveConnectFailures = 0;
 	#state: ConnectionState = ConnectionState.IDLE;
 	#certRefreshAttempted = false; // Tracks if cert refresh was already attempted this connection cycle
