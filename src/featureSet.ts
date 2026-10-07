@@ -12,12 +12,14 @@ export interface CliFeatureSet {
 	supportBundle: boolean;
 	supportBundleWorkspaceFiles: boolean;
 	allowRedirects: boolean;
+	customSessionAppNames: boolean;
 }
 
 /** Capabilities keyed to the Coder server (REST API) version. */
 export interface ServerFeatureSet {
 	tasks: boolean;
 	onSuccessBuild: boolean;
+	customSessionAppNames: boolean;
 }
 
 /**
@@ -58,6 +60,7 @@ export function cliFeatureSet(version: semver.SemVer | null): CliFeatureSet {
 		supportBundleWorkspaceFiles: versionAtLeast(version, "2.36.0"),
 		// --allow-redirects; from 2.38 the CLI otherwise errors on a redirected URL.
 		allowRedirects: versionAtLeast(version, "2.38.0"),
+		customSessionAppNames: versionAtLeast(version, "2.38.0"),
 	};
 }
 
@@ -71,5 +74,6 @@ export function serverFeatureSet(
 			versionAtLeast(version, "2.29.0") && !versionAtLeast(version, "2.35.0"),
 		// `on_success` on a stop build, which queues the start in one request
 		onSuccessBuild: versionAtLeast(version, "2.36.0"),
+		customSessionAppNames: versionAtLeast(version, "2.38.0"),
 	};
 }

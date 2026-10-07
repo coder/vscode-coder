@@ -32,6 +32,7 @@ const CLI_FEATURES: CliFeatureSet = {
 	supportBundle: true,
 	supportBundleWorkspaceFiles: true,
 	allowRedirects: true,
+	customSessionAppNames: true,
 };
 
 function mockStream(): UnidirectionalStream<unknown> {
@@ -110,6 +111,7 @@ function createUpdateCtx(
 		serverFeatures: {
 			tasks: false,
 			onSuccessBuild: false,
+			customSessionAppNames: false,
 			...overrides.serverFeatures,
 		},
 	};
