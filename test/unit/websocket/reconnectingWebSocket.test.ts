@@ -886,6 +886,8 @@ describe("ReconnectingWebSocket", () => {
 		const FAILURES_BEFORE_FLUSH = 6;
 		// Pathname of the mock socket's URL, which becomes the logged route.
 		const ROUTE = "/api/test";
+		// Constant backoff, so advancing by it is exactly one failed attempt.
+		const BACKOFF_MS = 100;
 
 		async function setupUnreachable(
 			options: { telemetry?: TelemetryReporter } = {},
@@ -902,8 +904,6 @@ describe("ReconnectingWebSocket", () => {
 			});
 			const onConnectionFailure =
 				vi.fn<(reason: ConnectionStateReason, route: string) => void>();
-			// Constant backoff and no jitter, so each timer advance is exactly one
-			// failed attempt.
 			const ws = await ReconnectingWebSocket.create(
 				factory,
 				createMockLogger(),
@@ -912,8 +912,8 @@ describe("ReconnectingWebSocket", () => {
 					route: "/api/v2/test",
 					onCertificateRefreshNeeded: () => Promise.resolve(false),
 					onConnectionFailure,
-					initialBackoffMs: 100,
-					maxBackoffMs: 100,
+					initialBackoffMs: BACKOFF_MS,
+					maxBackoffMs: BACKOFF_MS,
 					jitterFactor: 0,
 				},
 			);
@@ -929,11 +929,11 @@ describe("ReconnectingWebSocket", () => {
 				});
 			};
 			const failNextAttempt = async (): Promise<void> => {
-				await vi.advanceTimersByTimeAsync(100);
+				await vi.advanceTimersByTimeAsync(BACKOFF_MS);
 			};
 			const recover = async (): Promise<void> => {
 				failing = false;
-				await vi.advanceTimersByTimeAsync(100);
+				await vi.advanceTimersByTimeAsync(BACKOFF_MS);
 				sockets.at(-1)?.fireOpen();
 			};
 			return {
