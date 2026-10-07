@@ -16,8 +16,7 @@ export type ConnectionStateReason =
 	| "unrecoverable_http"
 	| "certificate_error"
 	| "connection_error"
-	| "unexpected_close"
-	| "unreachable";
+	| "unexpected_close";
 
 export type ConnectionDropCause =
 	| "manual_disconnect"

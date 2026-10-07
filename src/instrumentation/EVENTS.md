@@ -428,7 +428,7 @@ Emitted by `WebSocketTelemetry`.
 These events share one value set, **ConnectionStateReason**: `initial_connect`,
 `manual_reconnect`, `certificate_refresh`, `scheduled_reconnect`, `open`,
 `disconnect`, `dispose`, `unrecoverable_close`, `unrecoverable_http`,
-`certificate_error`, `connection_error`, `unexpected_close`, `unreachable`.
+`certificate_error`, `connection_error`, `unexpected_close`.
 
 ### Logs
 

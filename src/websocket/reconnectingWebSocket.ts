@@ -111,6 +111,8 @@ function reduceState(
 
 export type SocketFactory<TData> = () => Promise<UnidirectionalStream<TData>>;
 
+export type ConnectionFailureReason = ConnectionStateReason | "unreachable";
+
 /** Default failure callback for callers that do not observe connection failures. */
 const NOOP_CONNECTION_FAILURE = (): void => undefined;
 
@@ -133,7 +135,10 @@ export interface ReconnectingWebSocketOptions {
 	 * Callback invoked on a terminal failure, or once per outage when the server
 	 * stays unreachable. Retrying continues in the unreachable case.
 	 */
-	onConnectionFailure?: (reason: ConnectionStateReason, route: string) => void;
+	onConnectionFailure?: (
+		reason: ConnectionFailureReason,
+		route: string,
+	) => void;
 }
 
 export class ReconnectingWebSocket<

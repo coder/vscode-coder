@@ -12,6 +12,7 @@ import {
 import {
 	ConnectionState,
 	ReconnectingWebSocket,
+	type ConnectionFailureReason,
 	type SocketFactory,
 } from "@/websocket/reconnectingWebSocket";
 import { HandshakeError } from "@/websocket/utils";
@@ -25,7 +26,6 @@ import { createMockLogger } from "../../mocks/testHelpers";
 
 import type { CloseEvent, Event as WsEvent } from "ws";
 
-import type { ConnectionStateReason } from "@/instrumentation/websocket";
 import type { UnidirectionalStream } from "@/websocket/eventStreamConnection";
 
 describe("ReconnectingWebSocket", () => {
@@ -875,7 +875,7 @@ describe("ReconnectingWebSocket", () => {
 			options: { telemetry?: TelemetryReporter } = {},
 		) {
 			const onConnectionFailure =
-				vi.fn<(reason: ConnectionStateReason, route: string) => void>();
+				vi.fn<(reason: ConnectionFailureReason, route: string) => void>();
 			const { ws, sockets, setFactoryError } =
 				await createReconnectingWebSocketWithErrorControl({
 					...options,
@@ -1070,13 +1070,16 @@ function createMockSocket(): MockSocket {
 }
 
 type ConnectionFailureSpy = ReturnType<
-	typeof vi.fn<(reason: ConnectionStateReason, route: string) => void>
+	typeof vi.fn<(reason: ConnectionFailureReason, route: string) => void>
 >;
 
 interface FactoryOptions {
 	onDispose?: () => void;
 	onCertificateRefreshNeeded?: () => Promise<boolean>;
-	onConnectionFailure?: (reason: ConnectionStateReason, route: string) => void;
+	onConnectionFailure?: (
+		reason: ConnectionFailureReason,
+		route: string,
+	) => void;
 	route?: string;
 	telemetry?: TelemetryReporter;
 	initialBackoffMs?: number;
@@ -1093,7 +1096,7 @@ async function createReconnectingWebSocket(
 }> {
 	const sockets: MockSocket[] = [];
 	const onConnectionFailure =
-		vi.fn<(reason: ConnectionStateReason, route: string) => void>();
+		vi.fn<(reason: ConnectionFailureReason, route: string) => void>();
 	const factory = vi.fn(() => {
 		const socket = createMockSocket();
 		sockets.push(socket);
