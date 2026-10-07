@@ -474,13 +474,13 @@ success or termination).
 #### `connection.unreachable`
 
 Emitted once when the reconnect loop has failed enough consecutive times to
-treat the server as unreachable (also flushes the connection log buffer). The
-counter resets on a successful open, so a later outage emits again.
+treat the server as unreachable. The counter resets on a successful open, so a
+later outage emits again.
 
-| Attribute                | Values                                   |
-| ------------------------ | ---------------------------------------- |
-| `route`                  | normalized route                         |
-| `attempts` (measurement) | consecutive failed attempts at the flush |
+| Attribute                | Values                      |
+| ------------------------ | --------------------------- |
+| `route`                  | normalized route            |
+| `attempts` (measurement) | consecutive failed attempts |
 
 ## Workspace
 
