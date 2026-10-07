@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createTestCommands } from "../mocks/commands";
 import {
-	createTestCommands,
 	MockConfigurationProvider,
 	mockRecentlyOpened,
 	openedAuthority,

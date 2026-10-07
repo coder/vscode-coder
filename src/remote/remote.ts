@@ -14,6 +14,7 @@ import {
 import { extractAgents } from "../api/api-helper";
 import { AuthInterceptor } from "../api/authInterceptor";
 import { CoderApi } from "../api/coderApi";
+import { HttpStatusCode } from "../api/httpStatusCode";
 import { needToken } from "../api/utils";
 import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
@@ -112,6 +113,16 @@ interface RemoteSetupContext {
 	baseUrl: string;
 	token: string | undefined;
 	disposables: vscode.Disposable[];
+}
+
+interface SshConfigOptions {
+	workspaceClient: Api;
+	parts: AuthorityParts;
+	binaryPath: string;
+	logDir: string;
+	cliFeatures: CliFeatureSet;
+	cliAuth: CliAuth;
+	sessionApp: string;
 }
 
 /**
@@ -309,16 +320,15 @@ export class Remote {
 				this.resolveRemoteBinary(workspaceClient),
 			);
 
-			const { cliFeatures, serverFeatures, cliAuth } = await tracer.phase(
-				"compatibility_check",
-				() =>
+			const { cliFeatures, serverFeatures, cliAuth, sessionApp } =
+				await tracer.phase("compatibility_check", () =>
 					this.checkCompatibility({
 						workspaceClient,
 						binaryPath,
 						baseUrl,
 						safeHostname: parts.safeHostname,
 					}),
-			);
+				);
 
 			// Reject deployments below our minimum supported version (v0.25.0)
 			// before configuring credentials, so they get a clear message.
@@ -425,14 +435,15 @@ export class Remote {
 			const logDir = this.getLogDir(cliFeatures);
 
 			const computedSshProperties = await tracer.phase("ssh_config_write", () =>
-				this.writeRemoteSshConfig(
-					context,
+				this.writeRemoteSshConfig({
+					parts: context.parts,
 					workspaceClient,
 					binaryPath,
 					logDir,
 					cliFeatures,
 					cliAuth,
-				),
+					sessionApp,
+				}),
 			);
 			const remoteCommand = computedSshProperties.remotecommand;
 
@@ -582,7 +593,7 @@ export class Remote {
 				throw error;
 			}
 			switch (error.response?.status) {
-				case 404: {
+				case HttpStatusCode.NOT_FOUND: {
 					const result = await vscodeProposed.window.showInformationMessage(
 						`That workspace doesn't exist!`,
 						{
@@ -688,23 +699,11 @@ export class Remote {
 	}
 
 	private async writeRemoteSshConfig(
-		context: RemoteSetupContext,
-		workspaceClient: Api,
-		binaryPath: string,
-		logDir: string,
-		cliFeatures: CliFeatureSet,
-		cliAuth: CliAuth,
+		options: SshConfigOptions,
 	): Promise<SshProperties> {
 		try {
 			this.logger.info("Updating SSH config...");
-			return await this.updateSSHConfig(
-				workspaceClient,
-				context.parts,
-				binaryPath,
-				logDir,
-				cliFeatures,
-				cliAuth,
-			);
+			return await this.updateSSHConfig(options);
 		} catch (error) {
 			this.logger.warn("Failed to configure SSH", error);
 			throw error;
@@ -778,19 +777,27 @@ export class Remote {
 		cliFeatures: CliFeatureSet;
 		serverFeatures: ServerFeatureSet;
 		cliAuth: CliAuth;
+		sessionApp: string;
 	}> {
 		const { workspaceClient, binaryPath, baseUrl, safeHostname } = options;
 		const buildInfo = await workspaceClient.getBuildInfo();
 		const serverVersion = semver.parse(buildInfo.version);
 
-		let version: semver.SemVer | null;
+		let cliFeatures: CliFeatureSet;
 		try {
-			version = semver.parse(await cliVersion(binaryPath));
+			cliFeatures = cliFeatureSet(semver.parse(await cliVersion(binaryPath)));
 		} catch {
-			version = serverVersion;
+			cliFeatures = {
+				...cliFeatureSet(serverVersion),
+				customSessionAppNames: false,
+			};
 		}
-
-		const cliFeatures = cliFeatureSet(version);
+		const serverFeatures = serverFeatureSet(serverVersion);
+		// Report schemes verbatim; normalization and editor families belong to the server.
+		const sessionApp =
+			cliFeatures.customSessionAppNames && serverFeatures.customSessionAppNames
+				? vscode.env.uriScheme || "vscode"
+				: "vscode";
 		const configDir = this.pathResolver.getGlobalConfigDir(safeHostname);
 		const cliAuth = resolveCliAuth(
 			vscode.workspace.getConfiguration(),
@@ -800,8 +807,9 @@ export class Remote {
 		);
 		return {
 			cliFeatures,
-			serverFeatures: serverFeatureSet(serverVersion),
+			serverFeatures,
 			cliAuth,
+			sessionApp,
 		};
 	}
 
@@ -867,14 +875,15 @@ export class Remote {
 
 	// updateSSHConfig updates the SSH configuration with a wildcard that handles
 	// all Coder entries.
-	private async updateSSHConfig(
-		restClient: Api,
-		parts: AuthorityParts,
-		binaryPath: string,
-		logDir: string,
-		cliFeatures: CliFeatureSet,
-		cliAuth: CliAuth,
-	): Promise<SshProperties> {
+	private async updateSSHConfig({
+		workspaceClient,
+		parts,
+		binaryPath,
+		logDir,
+		cliFeatures,
+		cliAuth,
+		sessionApp,
+	}: SshConfigOptions): Promise<SshProperties> {
 		// Taken from the authority, so a legacy host keeps working.
 		const { hostPrefix, safeHostname, sshHost } = parts;
 		// One file per (host prefix, deployment); the user's config gains one shared include.
@@ -900,7 +909,7 @@ export class Remote {
 
 		let deploymentSshConfig = {};
 		try {
-			const deploymentConfig = await restClient.getDeploymentSSHConfig();
+			const deploymentConfig = await workspaceClient.getDeploymentSSHConfig();
 			deploymentSshConfig = validateDeploymentSshOptions(
 				deploymentConfig.ssh_config_options,
 				{ ...configSshOptions, ...userConfig },
@@ -910,7 +919,7 @@ export class Remote {
 				throw error;
 			}
 			switch (error.response?.status) {
-				case 404: {
+				case HttpStatusCode.NOT_FOUND: {
 					// Deployment does not support overriding ssh config yet. Likely an
 					// older version, just use the default.
 					break;
@@ -935,6 +944,7 @@ export class Remote {
 			binaryPath,
 			cliAuth,
 			logArgs: await this.getLogArgs(logDir),
+			sessionApp,
 		};
 		const proxyCommand = cliFeatures.wildcardSSH
 			? buildSshProxyCommand({ ...proxyOptions, hostPrefix })
@@ -951,9 +961,7 @@ export class Remote {
 			ServerAliveCountMax: "3",
 		};
 		if (sshSupportsSetEnv()) {
-			// This allows for tracking the number of extension
-			// users connected to workspaces!
-			sshValues.SetEnv = "CODER_SSH_SESSION_TYPE=vscode";
+			sshValues.SetEnv = `CODER_SSH_SESSION_TYPE=${sessionApp}`;
 		}
 
 		// Write our file before including it, so the include never dangles.
@@ -1094,6 +1102,7 @@ interface ProxyCommandOptions {
 	binaryPath: string;
 	cliAuth: CliAuth;
 	logArgs: string[];
+	sessionApp: string;
 }
 
 function coderCommand(
@@ -1115,7 +1124,7 @@ export function buildSshProxyCommand(
 	// Make sure to update the `coder.sshFlags` description if we add more internal flags here!
 	const internalFlags = [
 		"--stdio",
-		"--usage-app=vscode",
+		`--usage-app=${escapeCommandArg(options.sessionApp)}`,
 		"--network-info-dir",
 		escapeCommandArg(options.pathResolver.getNetworkInfoPath()),
 		...options.logArgs,

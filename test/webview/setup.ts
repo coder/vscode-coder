@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { vi } from "vitest";
+import { afterAll, vi } from "vitest";
 
 // Lit's dev build emits warnings we can't avoid (resolve.conditions is
 // additive so we can't force the production bundle). Filter them out.
@@ -49,13 +49,18 @@ HTMLCanvasElement.prototype.getContext = ((type: string) =>
 
 // VscodeSingleSelect fires internal slot-change events that read properties
 // jsdom doesn't support (e.g. textContent of slotted elements). Suppress
-// these uncaught errors from the third-party web component.
-process.on("uncaughtException", (err: Error) => {
+// these uncaught errors from the third-party web component. Removed per file
+// because vmForks shares `process` across files.
+function ignoreWebComponentErrors(err: Error): void {
 	const msg = err?.message ?? "";
 	if (msg.includes("reading 'trim'") || msg.includes("reading 'unobserve'")) {
 		return;
 	}
 	throw err;
+}
+process.on("uncaughtException", ignoreWebComponentErrors);
+afterAll(() => {
+	process.off("uncaughtException", ignoreWebComponentErrors);
 });
 
 // Form controls call setFormValue/setValidity which jsdom doesn't provide.

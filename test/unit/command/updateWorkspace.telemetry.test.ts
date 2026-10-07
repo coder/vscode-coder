@@ -3,8 +3,8 @@ import * as vscode from "vscode";
 
 import { workspace } from "@repo/mocks";
 
+import { createTestCommands } from "../../mocks/commands";
 import { createTelemetryHarness } from "../../mocks/telemetry";
-import { createTestCommands } from "../../mocks/testHelpers";
 
 import type { CoderApi } from "@/api/coderApi";
 

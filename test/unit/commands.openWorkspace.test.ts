@@ -7,8 +7,8 @@ import {
 	workspace as createWorkspace,
 } from "@repo/mocks";
 
+import { createTestCommands } from "../mocks/commands";
 import {
-	createTestCommands,
 	MockConfigurationProvider,
 	mockRecentlyOpened,
 	openedAuthority,

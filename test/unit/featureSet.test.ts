@@ -96,6 +96,18 @@ describe("check version support", () => {
 		}
 	});
 
+	it.each([
+		["2.37.99", false],
+		["2.38.0-rc.1", false],
+		["2.38.0", true],
+		["0.0.0-devel+abc123", true],
+		["invalid", false],
+	] as const)("custom session app names for %s: %s", (version, expected) => {
+		const parsed = semver.parse(version);
+		expect(cliFeatureSet(parsed).customSessionAppNames).toBe(expected);
+		expect(serverFeatureSet(parsed).customSessionAppNames).toBe(expected);
+	});
+
 	it("enables all features for development builds", () => {
 		const featureSet = cliFeatureSet(semver.parse("v0.0.0-devel+abc123"));
 

@@ -22,6 +22,7 @@ import {
 	refreshCertificates,
 } from "@/api/certificateRefresh";
 import { CoderApi, DEFAULT_REQUEST_TIMEOUT_MS } from "@/api/coderApi";
+import { HttpStatusCode } from "@/api/httpStatusCode";
 import {
 	InvalidApiResponseError,
 	VALIDATED_RESPONSES,
@@ -39,6 +40,7 @@ import {
 } from "@/telemetry/reporter";
 import { WebSocketCloseCode } from "@/websocket/codes";
 import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
+import { HandshakeError } from "@/websocket/utils";
 
 import {
 	createMockLogger,
@@ -627,26 +629,12 @@ describe("CoderApi", () => {
 			expect(EventSource).not.toHaveBeenCalled();
 		});
 
-		it("falls back to SSE when WebSocket creation fails with 404", async () => {
-			// Only 404 errors trigger SSE fallback - other errors are thrown
-			vi.mocked(Ws).mockImplementation(function () {
-				throw new Error("Unexpected server response: 404");
-			});
-
-			const connection = await api.watchAgentMetadata(AGENT_ID);
-
-			// Returns ReconnectingWebSocket (which wraps SSE internally)
-			expect(connection).toBeInstanceOf(ReconnectingWebSocket);
-			expect(EventSource).toHaveBeenCalled();
-		});
-
 		it("falls back to SSE on 404 error from WebSocket open", async () => {
 			const mockWs = createMockWebSocket(
 				`wss://${CODER_URL.replace("https://", "")}/api/v2/test`,
 				{
 					connectError: {
-						error: new Error("Unexpected server response: 404"),
-						message: "Unexpected server response: 404",
+						error: new HandshakeError(HttpStatusCode.NOT_FOUND),
 					},
 				},
 			);
@@ -673,8 +661,54 @@ describe("CoderApi", () => {
 			connection.close();
 		});
 
+		it("does not fall back to SSE on a non-404 HTTP handshake failure", async () => {
+			setupWebSocketMock(
+				createMockWebSocket("wss://test", {
+					connectError: { error: new HandshakeError(500) },
+				}),
+			);
+
+			const connection = await api.watchAgentMetadata(AGENT_ID);
+			expect(EventSource).not.toHaveBeenCalled();
+
+			connection.close();
+		});
+
+		it("treats an HTTP failure of the SSE fallback as unrecoverable", async () => {
+			const onConnectionFailure = vi.fn();
+			api = createApi(
+				CODER_URL,
+				AXIOS_TOKEN,
+				NOOP_TELEMETRY_REPORTER,
+				onConnectionFailure,
+			);
+			setupWebSocketMock(
+				createMockWebSocket("wss://test", {
+					connectError: {
+						error: new HandshakeError(HttpStatusCode.NOT_FOUND),
+					},
+				}),
+			);
+			setupEventSourceMock(
+				createMockEventSource(`${CODER_URL}/api/v2/test`, {
+					connectError: Object.assign(new Event("error"), {
+						code: HttpStatusCode.FORBIDDEN,
+						message: "Access denied",
+					}),
+				}),
+			);
+
+			const connection = await api.watchAgentMetadata(AGENT_ID);
+
+			expect(onConnectionFailure).toHaveBeenCalledWith(
+				"unrecoverable_http",
+				`/api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
+			);
+			connection.close();
+		});
+
 		describe("reconnection after fallback", () => {
-			beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+			beforeEach(() => vi.useFakeTimers());
 			afterEach(() => vi.useRealTimers());
 
 			it("reconnects after SSE fallback and retries WS on each reconnect", async () => {
@@ -685,7 +719,7 @@ describe("CoderApi", () => {
 					wsAttempts++;
 					const mockWs = createMockWebSocket("wss://test", {
 						connectError: {
-							error: new Error("Unexpected server response: 404"),
+							error: new HandshakeError(HttpStatusCode.NOT_FOUND),
 						},
 					});
 					return mockWs as Ws;
@@ -697,15 +731,19 @@ describe("CoderApi", () => {
 					return es as unknown as EventSource;
 				});
 
-				const connection = await api.watchAgentMetadata(AGENT_ID);
+				const pendingConnection = api.watchAgentMetadata(AGENT_ID);
+				await vi.runAllTimersAsync();
+				const connection = await pendingConnection;
 				expect(wsAttempts).toBe(1);
 				expect(EventSource).toHaveBeenCalledTimes(1);
 
 				mockEventSources[0].fireError();
-				await vi.advanceTimersByTimeAsync(300);
+				await vi.runAllTimersAsync();
 
 				expect(wsAttempts).toBe(2);
 				expect(EventSource).toHaveBeenCalledTimes(2);
+				expect(mockEventSources[1].close).not.toHaveBeenCalled();
+				expect(vi.getTimerCount()).toBe(0);
 
 				connection.close();
 			});
@@ -732,7 +770,7 @@ describe("CoderApi", () => {
 			await new Promise((resolve) => setImmediate(resolve));
 
 			expect(sockets[0].close).toHaveBeenCalledWith(
-				1000,
+				WebSocketCloseCode.NORMAL,
 				"Replacing connection",
 			);
 			expect(sockets).toHaveLength(2);
@@ -749,7 +787,7 @@ describe("CoderApi", () => {
 			await new Promise((resolve) => setImmediate(resolve));
 
 			expect(sockets[0].close).toHaveBeenCalledWith(
-				1000,
+				WebSocketCloseCode.NORMAL,
 				"Replacing connection",
 			);
 			expect(sockets).toHaveLength(2);
@@ -779,7 +817,10 @@ describe("CoderApi", () => {
 			api.setHost("");
 			await new Promise((resolve) => setImmediate(resolve));
 
-			expect(sockets[0].close).toHaveBeenCalledWith(1000, "Host cleared");
+			expect(sockets[0].close).toHaveBeenCalledWith(
+				WebSocketCloseCode.NORMAL,
+				"Host cleared",
+			);
 			expect(sockets).toHaveLength(1);
 		});
 
@@ -794,7 +835,10 @@ describe("CoderApi", () => {
 
 			// Should only have the initial socket - no reconnection after token change
 			expect(sockets).toHaveLength(1);
-			expect(sockets[0].close).toHaveBeenCalledWith(1000, "Host cleared");
+			expect(sockets[0].close).toHaveBeenCalledWith(
+				WebSocketCloseCode.NORMAL,
+				"Host cleared",
+			);
 		});
 
 		it("setCredentials sets both host and token together", async () => {
@@ -819,7 +863,10 @@ describe("CoderApi", () => {
 			await new Promise((resolve) => setImmediate(resolve));
 
 			expect(sockets).toHaveLength(1);
-			expect(sockets[0].close).toHaveBeenCalledWith(1000, "Host cleared");
+			expect(sockets[0].close).toHaveBeenCalledWith(
+				WebSocketCloseCode.NORMAL,
+				"Host cleared",
+			);
 		});
 	});
 
@@ -1117,7 +1164,10 @@ describe("CoderApi", () => {
 			await api.watchAgentMetadata(AGENT_ID);
 
 			// Trigger close with abnormal code to put socket in AWAITING_RETRY
-			sockets.at(-1)?.fireClose({ code: 1006, reason: "Abnormal closure" });
+			sockets.at(-1)?.fireClose({
+				code: WebSocketCloseCode.ABNORMAL,
+				reason: "Abnormal closure",
+			});
 			await tick();
 
 			mockConfig.set("coder.insecure", true);
@@ -1140,7 +1190,10 @@ describe("CoderApi", () => {
 				await tick();
 
 				// Trigger close with unrecoverable code to put socket in DISCONNECTED
-				sockets.at(-1)?.fireClose({ code: 1002, reason: "Protocol error" });
+				sockets.at(-1)?.fireClose({
+					code: WebSocketCloseCode.PROTOCOL_ERROR,
+					reason: "Protocol error",
+				});
 				await tick();
 
 				mockConfig.set(setting, after);
@@ -1237,15 +1290,25 @@ type MockEventSource = Partial<EventSource> & {
 	fireError: () => void;
 };
 
-function createMockEventSource(url: string): MockEventSource {
+function createMockEventSource(
+	url: string,
+	options: { connectError?: Event } = {},
+): MockEventSource {
+	const { connectError } = options;
 	const handlers: Record<string, ((e: Event) => void) | undefined> = {};
 	const mock: MockEventSource = {
 		url,
 		readyState: EventSource.CONNECTING,
 		addEventListener: vi.fn((event: string, handler: (e: Event) => void) => {
 			handlers[event] = handler;
-			if (event === "open") {
+			if (event === "open" && !connectError) {
 				setImmediate(() => handler(new Event("open")));
+			}
+			if (event === "error" && connectError) {
+				setImmediate(() => {
+					mock.readyState = EventSource.CLOSED;
+					handler(connectError);
+				});
 			}
 		}),
 		removeEventListener: vi.fn(),

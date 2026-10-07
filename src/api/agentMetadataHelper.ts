@@ -1,6 +1,8 @@
 import { type WorkspaceAgent } from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
 
+import { WebSocketCloseCode } from "../websocket/codes";
+
 import {
 	type AgentMetadataEvent,
 	AgentMetadataEventSchemaArray,
@@ -83,7 +85,7 @@ export async function createAgentMetadataWatcher(
 
 	socket.addEventListener("close", (event) => {
 		watcher.closed = true;
-		if (event.code !== 1000) {
+		if (event.code !== WebSocketCloseCode.NORMAL) {
 			handleError(
 				new Error(
 					`WebSocket closed unexpectedly: ${event.code} ${event.reason}`,

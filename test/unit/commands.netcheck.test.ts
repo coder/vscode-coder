@@ -4,10 +4,10 @@ import * as vscode from "vscode";
 import { Commands } from "@/commands";
 import { toSafeHost } from "@/util/uri";
 
+import { createTestCoderApi } from "../mocks/coderApi";
 import { createTelemetryHarness } from "../mocks/telemetry";
 import { createMockLogger, MockUserInteraction } from "../mocks/testHelpers";
 
-import type { CoderApi } from "@/api/coderApi";
 import type { ServiceContainer } from "@/core/container";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
 import type { NetcheckPanelFactory } from "@/webviews/netcheck/netcheckPanelFactory";
@@ -16,12 +16,6 @@ vi.mock("@/workspace/workspacesProvider", () => ({
 	AgentTreeItem: class {},
 	WorkspaceTreeItem: class {},
 }));
-
-function clientWithBaseUrl(baseURL: string | undefined): CoderApi {
-	return {
-		getAxiosInstance: () => ({ defaults: { baseURL } }),
-	} as unknown as CoderApi;
-}
 
 function setup(options: { extensionBaseUrl?: string } = {}) {
 	vi.clearAllMocks();
@@ -44,7 +38,7 @@ function setup(options: { extensionBaseUrl?: string } = {}) {
 
 	const commands = new Commands(
 		serviceContainer,
-		clientWithBaseUrl(options.extensionBaseUrl),
+		createTestCoderApi({ baseUrl: options.extensionBaseUrl }),
 		{} as DeploymentManager,
 	);
 
@@ -87,9 +81,9 @@ describe("Commands.netcheck", () => {
 
 	it("prefers the remote workspace client over the extension client", async () => {
 		const { commands } = setup({ extensionBaseUrl: "https://ext.coder.test" });
-		commands.remoteWorkspaceClient = clientWithBaseUrl(
-			"https://remote.coder.test",
-		);
+		commands.remoteWorkspaceClient = createTestCoderApi({
+			baseUrl: "https://remote.coder.test",
+		});
 		const title = captureProgressTitle();
 
 		await commands.netcheck();

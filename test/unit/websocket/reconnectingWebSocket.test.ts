@@ -1,15 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+import { HttpStatusCode } from "@/api/httpStatusCode";
 import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
 } from "@/telemetry/reporter";
-import { WebSocketCloseCode, HttpStatusCode } from "@/websocket/codes";
+import {
+	UNRECOVERABLE_HTTP_CODES,
+	WebSocketCloseCode,
+} from "@/websocket/codes";
 import {
 	ConnectionState,
 	ReconnectingWebSocket,
 	type SocketFactory,
 } from "@/websocket/reconnectingWebSocket";
+import { HandshakeError } from "@/websocket/utils";
 
 import {
 	createTestTelemetryService,
@@ -105,54 +110,38 @@ describe("ReconnectingWebSocket", () => {
 			},
 		);
 
-		it.each([
-			`Unexpected server response: ${HttpStatusCode.FORBIDDEN}`,
-			`Unexpected server response: ${HttpStatusCode.GONE}`,
-			`Unexpected server response: ${HttpStatusCode.UPGRADE_REQUIRED}`,
-			// eventsource (SSE fallback) reports the status this way.
-			`Non-200 status code (${HttpStatusCode.FORBIDDEN})`,
-		])(
-			"does not reconnect on an unrecoverable handshake failure during creation: %s",
-			async (message) => {
-				let socketCreationAttempts = 0;
-				const factory = vi.fn(() => {
-					socketCreationAttempts++;
-					// Simulate an HTTP error during the handshake.
-					return Promise.reject(new Error(message));
-				});
-
-				// create() returns a disconnected instance instead of throwing
+		it.each([...UNRECOVERABLE_HTTP_CODES])(
+			"does not reconnect on an unrecoverable handshake failure during creation: %i",
+			async (statusCode) => {
+				const factory = vi
+					.fn<SocketFactory<unknown>>()
+					.mockRejectedValue(new HandshakeError(statusCode));
 				const onConnectionFailure = vi.fn();
 				const ws = await fromFactory(factory, { onConnectionFailure });
 
-				// Should be disconnected after unrecoverable HTTP error
 				expect(ws.state).toBe(ConnectionState.DISCONNECTED);
-
-				// Should not retry after unrecoverable HTTP error
-				await vi.advanceTimersByTimeAsync(10000);
-				expect(socketCreationAttempts).toBe(1);
-				expect(onConnectionFailure).toHaveBeenCalledWith(
-					"unrecoverable_http",
-					"/api/v2/test",
-				);
+				expect(vi.getTimerCount()).toBe(0);
+				expect(factory).toHaveBeenCalledOnce();
+				if (statusCode === HttpStatusCode.UNAUTHORIZED) {
+					expect(onConnectionFailure).not.toHaveBeenCalled();
+				} else {
+					expect(onConnectionFailure).toHaveBeenCalledExactlyOnceWith(
+						"unrecoverable_http",
+						"/api/v2/test",
+					);
+				}
 
 				ws.close();
 			},
 		);
 
-		it.each([
-			HttpStatusCode.UNAUTHORIZED,
-			HttpStatusCode.FORBIDDEN,
-			HttpStatusCode.GONE,
-		])(
+		it.each([...UNRECOVERABLE_HTTP_CODES])(
 			"does not reconnect on unrecoverable HTTP error via error event: %i",
 			async (statusCode) => {
-				// HTTP errors during handshake fire 'error' event, then 'close' with 1006
-				const { ws, sockets } = await createReconnectingWebSocket();
-
-				sockets[0].fireError(
-					new Error(`Unexpected server response: ${statusCode}`),
-				);
+				const { ws, sockets, onConnectionFailure } =
+					await createReconnectingWebSocket();
+				sockets[0].fireOpen();
+				sockets[0].fireError(new HandshakeError(statusCode));
 				expect(ws.state).toBe(ConnectionState.DISCONNECTED);
 
 				sockets[0].fireClose({
@@ -160,48 +149,43 @@ describe("ReconnectingWebSocket", () => {
 					reason: "Connection failed",
 				});
 
-				// Should not reconnect - unrecoverable HTTP error
-				await vi.advanceTimersByTimeAsync(10000);
-				expect(sockets).toHaveLength(1);
-
+				expect(vi.getTimerCount()).toBe(0);
+				if (statusCode === HttpStatusCode.UNAUTHORIZED) {
+					expect(onConnectionFailure).not.toHaveBeenCalled();
+				} else {
+					expect(onConnectionFailure).toHaveBeenCalledExactlyOnceWith(
+						"unrecoverable_http",
+						"/api/test",
+					);
+				}
 				ws.close();
 			},
 		);
 
-		it("does not flush on an unrecoverable 401 (a 401 explains itself, and with OAuth a refresh reconnects the same socket)", async () => {
-			const { ws, sockets, onConnectionFailure } =
-				await createReconnectingWebSocket();
+		it("retries HTTP 503 during creation and after open", async () => {
+			const socket = createMockSocket();
+			const factory = vi
+				.fn<SocketFactory<unknown>>()
+				.mockRejectedValueOnce(new HandshakeError(503))
+				.mockResolvedValueOnce(socket)
+				.mockImplementation(() => Promise.resolve(createMockSocket()));
+			const onConnectionFailure = vi.fn();
+			const ws = await fromFactory(factory, { onConnectionFailure });
 
-			sockets[0].fireError(
-				new Error(`Unexpected server response: ${HttpStatusCode.UNAUTHORIZED}`),
-			);
+			expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
+			expect(vi.getTimerCount()).toBe(1);
+			await vi.advanceTimersToNextTimerAsync();
+			expect(factory).toHaveBeenCalledTimes(2);
 
-			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
+			socket.fireOpen();
+			socket.fireError(new HandshakeError(503));
+			expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
+			expect(vi.getTimerCount()).toBe(1);
+			await vi.advanceTimersToNextTimerAsync();
+			expect(factory).toHaveBeenCalledTimes(3);
 			expect(onConnectionFailure).not.toHaveBeenCalled();
 			ws.close();
 		});
-
-		it.each([
-			HttpStatusCode.FORBIDDEN,
-			HttpStatusCode.GONE,
-			HttpStatusCode.UPGRADE_REQUIRED,
-		])(
-			"flushes with the route on an unrecoverable HTTP failure: %i",
-			async (statusCode) => {
-				const { ws, sockets, onConnectionFailure } =
-					await createReconnectingWebSocket();
-
-				sockets[0].fireError(
-					new Error(`Unexpected server response: ${statusCode}`),
-				);
-
-				expect(onConnectionFailure).toHaveBeenCalledWith(
-					"unrecoverable_http",
-					expect.any(String),
-				);
-				ws.close();
-			},
-		);
 
 		it("does not read host/port digits as a status code", async () => {
 			const { ws, sockets, onConnectionFailure } =
@@ -501,9 +485,7 @@ describe("ReconnectingWebSocket", () => {
 			expect(ws.state).toBe(ConnectionState.CONNECTED);
 
 			// Trigger reconnect that will fail with 403
-			setFactoryError(
-				new Error(`Unexpected server response: ${HttpStatusCode.FORBIDDEN}`),
-			);
+			setFactoryError(new HandshakeError(HttpStatusCode.FORBIDDEN));
 			ws.reconnect();
 			await Promise.resolve();
 

@@ -4,6 +4,7 @@ import { type WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import { EventSource } from "eventsource";
 import { describe, it, expect, vi } from "vitest";
 
+import { HttpStatusCode } from "@/api/httpStatusCode";
 import { type Logger } from "@/logging/logger";
 import { WebSocketCloseCode } from "@/websocket/codes";
 import {
@@ -12,6 +13,7 @@ import {
 	type ErrorEvent,
 } from "@/websocket/eventStreamConnection";
 import { SseConnection } from "@/websocket/sseConnection";
+import { handshakeStatus } from "@/websocket/utils";
 
 import { createMockLogger } from "../../mocks/testHelpers";
 
@@ -118,34 +120,39 @@ describe("SseConnection", () => {
 			]);
 		});
 
-		it("fires error event when connection fails", async () => {
-			const mockES = createMockEventSource({
-				addEventListener: vi.fn((event, handler) => {
-					if (event === "error") {
-						const error = {
-							message: "Connection failed",
-							error: new Error("Network error"),
-						};
-						setImmediate(() => handler(error));
-					}
-				}),
-			});
-			setupEventSourceMock(mockES);
+		it.each([undefined, HttpStatusCode.FORBIDDEN])(
+			"preserves status %s",
+			async (code) => {
+				const mockES = createMockEventSource({
+					addEventListener: vi.fn((event, handler) => {
+						if (event === "error") {
+							const error = {
+								code,
+								message: "Connection failed",
+								error: new Error("Network error"),
+							};
+							setImmediate(() => handler(error));
+						}
+					}),
+				});
+				setupEventSourceMock(mockES);
 
-			const mockAxios = axios.create();
-			const mockLogger = createMockLogger();
-			const connection = createConnection(mockAxios, mockLogger);
-			const events: ErrorEvent[] = [];
-			connection.addEventListener("error", (event) => events.push(event));
+				const mockAxios = axios.create();
+				const mockLogger = createMockLogger();
+				const connection = createConnection(mockAxios, mockLogger);
+				const events: ErrorEvent[] = [];
+				connection.addEventListener("error", (event) => events.push(event));
 
-			await waitForNextTick();
-			expect(events).toEqual([
-				{
-					error: expect.any(Error),
-					message: "Connection failed",
-				},
-			]);
-		});
+				await waitForNextTick();
+				expect(events).toEqual([
+					{
+						error: expect.any(Error),
+						message: "Connection failed",
+					},
+				]);
+				expect(handshakeStatus(events[0].error)).toBe(code);
+			},
+		);
 
 		it("fires close event when connection closes on error", async () => {
 			const mockES = createMockEventSource({

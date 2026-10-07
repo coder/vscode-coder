@@ -37,7 +37,7 @@ import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
 } from "../telemetry/reporter";
-import { HttpStatusCode, WebSocketCloseCode } from "../websocket/codes";
+import { WebSocketCloseCode } from "../websocket/codes";
 import {
 	OneWayWebSocket,
 	type OneWayWebSocketInit,
@@ -52,6 +52,7 @@ import { SseConnection } from "../websocket/sseConnection";
 import { handshakeStatus } from "../websocket/utils";
 
 import { getRefreshCommand, refreshCertificates } from "./certificateRefresh";
+import { HttpStatusCode } from "./httpStatusCode";
 import {
 	parseApiResponse,
 	VALIDATED_RESPONSES,

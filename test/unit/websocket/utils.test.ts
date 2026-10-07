@@ -1,22 +1,43 @@
-import { EventSource } from "eventsource";
+import axios from "axios";
 import http from "node:http";
 import { type AddressInfo } from "node:net";
-import { afterEach, describe, expect, it } from "vitest";
-import { WebSocket } from "ws";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { handshakeStatus } from "@/websocket/utils";
+import { HttpStatusCode } from "@/api/httpStatusCode";
+import { WebSocketCloseCode } from "@/websocket/codes";
+import { type ErrorEvent } from "@/websocket/eventStreamConnection";
+import { OneWayWebSocket } from "@/websocket/oneWayWebSocket";
+import { SseConnection } from "@/websocket/sseConnection";
+import { HandshakeError, handshakeStatus } from "@/websocket/utils";
 
-// `handshakeStatus` parses two libraries' internal error text, and neither is a
-// contract. Drive real clients against a rejecting server so a library reword
-// fails here instead of silently turning every unrecoverable status into a
-// retry-forever connection_error.
+import { createMockLogger } from "../../mocks/testHelpers";
+
 describe("handshakeStatus", () => {
+	it("reads status independently of the message", () => {
+		expect(
+			handshakeStatus(
+				new HandshakeError(HttpStatusCode.FORBIDDEN, "Unavailable"),
+			),
+		).toBe(HttpStatusCode.FORBIDDEN);
+	});
+
+	it.each([
+		undefined,
+		null,
+		new Error("Unexpected server response: 404"),
+		new Error("Non-200 status code (403)"),
+	])("ignores untyped errors: %s", (error) => {
+		expect(handshakeStatus(error)).toBeUndefined();
+	});
+});
+
+describe("handshake errors from real transports", () => {
 	let server: http.Server;
 
 	const listen = (statusCode: number): Promise<string> => {
 		server = http.createServer((_req, res) => {
-			res.statusCode = statusCode;
-			res.end();
+			res.writeHead(statusCode);
+			res.flushHeaders();
 		});
 		return new Promise<string>((resolve) => {
 			server.listen(0, "127.0.0.1", () => {
@@ -27,29 +48,61 @@ describe("handshakeStatus", () => {
 	};
 
 	afterEach(async () => {
+		server.closeAllConnections();
 		await new Promise<void>((resolve) => server.close(() => resolve()));
 	});
 
-	it("parses the status from a ws upgrade rejection", async () => {
-		const host = await listen(404);
-		const ws = new WebSocket(`ws://${host}`);
-
-		const error = await new Promise<Error>((resolve) => {
-			ws.on("error", resolve);
+	it("reports the status before closing an unfinished WebSocket handshake", async () => {
+		const host = await listen(HttpStatusCode.NOT_FOUND);
+		const disconnected = new Promise<void>((resolve) => {
+			server.on("connection", (socket) => socket.once("close", resolve));
 		});
+		const ws = new OneWayWebSocket({
+			location: { protocol: "http:", host },
+			apiRoute: "/",
+		});
+		const events: Array<number | undefined> = [];
+		const onError = (event: ErrorEvent) => {
+			events.push(handshakeStatus(event.error));
+			ws.removeEventListener("error", onError);
+			ws.close();
+		};
+		const removed = vi.fn();
+		ws.addEventListener("error", removed);
+		ws.removeEventListener("error", removed);
+		ws.addEventListener("error", onError);
+		ws.addEventListener("error", onError);
 
-		expect(handshakeStatus(error)).toBe(404);
+		await new Promise<void>((resolve) => {
+			ws.addEventListener("close", (event) => {
+				events.push(event.code);
+				resolve();
+			});
+		});
+		await disconnected;
+
+		expect(events).toEqual([
+			HttpStatusCode.NOT_FOUND,
+			WebSocketCloseCode.ABNORMAL,
+		]);
+		expect(removed).not.toHaveBeenCalled();
 	});
 
-	it("parses the status from an EventSource handshake rejection", async () => {
-		const host = await listen(403);
-		const source = new EventSource(`http://${host}`);
-
-		const error = await new Promise<unknown>((resolve) => {
-			source.onerror = (event) => resolve(event);
+	it("reports the status from an SSE handshake rejection", async () => {
+		const host = await listen(HttpStatusCode.FORBIDDEN);
+		const source = new SseConnection({
+			location: { protocol: "http:", host },
+			apiRoute: "/",
+			axiosInstance: axios.create({ proxy: false }),
+			logger: createMockLogger(),
 		});
-		source.close();
-
-		expect(handshakeStatus(error)).toBe(403);
+		try {
+			const event = await new Promise<ErrorEvent>((resolve) => {
+				source.addEventListener("error", resolve);
+			});
+			expect(handshakeStatus(event.error)).toBe(HttpStatusCode.FORBIDDEN);
+		} finally {
+			source.close();
+		}
 	});
 });

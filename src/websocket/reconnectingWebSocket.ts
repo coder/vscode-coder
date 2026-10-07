@@ -1,3 +1,4 @@
+import { HttpStatusCode } from "../api/httpStatusCode";
 import { ClientCertificateError } from "../error/clientCertificateError";
 import { toError } from "../error/errorUtils";
 import {
@@ -8,7 +9,6 @@ import {
 
 import {
 	WebSocketCloseCode,
-	HttpStatusCode,
 	UNRECOVERABLE_WS_CLOSE_CODES,
 	UNRECOVERABLE_HTTP_CODES,
 } from "./codes";
@@ -356,11 +356,9 @@ export class ReconnectingWebSocket<
 		try {
 			if (this.#currentSocket) {
 				this.#telemetry.dropped("replaced", WebSocketCloseCode.NORMAL);
-				this.#currentSocket.close(
-					WebSocketCloseCode.NORMAL,
-					"Replacing connection",
-				);
+				const previousSocket = this.#currentSocket;
 				this.#currentSocket = null;
+				previousSocket.close(WebSocketCloseCode.NORMAL, "Replacing connection");
 			}
 
 			const socket = await this.#socketFactory();

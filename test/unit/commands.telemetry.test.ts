@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Commands } from "@/commands";
 import { maybeAskUrl } from "@/promptUtils";
 
+import { createTestCoderApi } from "../mocks/coderApi";
 import { createTelemetryHarness } from "../mocks/telemetry";
 import {
 	createMockLogger,
@@ -10,7 +11,6 @@ import {
 	MockUserInteraction,
 } from "../mocks/testHelpers";
 
-import type { CoderApi } from "@/api/coderApi";
 import type { CliManager } from "@/core/cliManager";
 import type { ServiceContainer } from "@/core/container";
 import type { MementoManager } from "@/core/mementoManager";
@@ -127,9 +127,7 @@ function setup(options: SetupOptions = {}) {
 		}),
 	} as ServiceContainer;
 
-	const extensionClient = {
-		getAxiosInstance: () => ({ defaults: { baseURL: TEST_URL } }),
-	} as unknown as CoderApi;
+	const extensionClient = createTestCoderApi({ baseUrl: TEST_URL });
 
 	const commands = new Commands(
 		serviceContainer,
