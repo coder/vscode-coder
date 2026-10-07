@@ -892,37 +892,22 @@ describe("ReconnectingWebSocket", () => {
 		async function setupUnreachable(
 			options: { telemetry?: TelemetryReporter } = {},
 		) {
-			const sockets: MockSocket[] = [];
-			let failing = false;
-			const factory = vi.fn(() => {
-				if (failing) {
-					return Promise.reject(new Error("connect ECONNREFUSED"));
-				}
-				const socket = createMockSocket();
-				sockets.push(socket);
-				return Promise.resolve(socket);
-			});
 			const onConnectionFailure =
 				vi.fn<(reason: ConnectionStateReason, route: string) => void>();
-			const ws = await ReconnectingWebSocket.create(
-				factory,
-				createMockLogger(),
-				{
-					telemetry: options.telemetry ?? NOOP_TELEMETRY_REPORTER,
-					route: "/api/v2/test",
-					onCertificateRefreshNeeded: () => Promise.resolve(false),
+			const { ws, sockets, setFactoryError } =
+				await createReconnectingWebSocketWithErrorControl({
+					...options,
 					onConnectionFailure,
 					initialBackoffMs: BACKOFF_MS,
 					maxBackoffMs: BACKOFF_MS,
 					jitterFactor: 0,
-				},
-			);
+				});
 			sockets[0].fireOpen();
 
 			// Drop the healthy socket and make every reconnect fail. The close is
 			// the first failed attempt; each advance is the next.
 			const startOutage = (): void => {
-				failing = true;
+				setFactoryError(new Error("connect ECONNREFUSED"));
 				sockets.at(-1)?.fireClose({
 					code: WebSocketCloseCode.ABNORMAL,
 					reason: "Connection lost",
@@ -932,7 +917,7 @@ describe("ReconnectingWebSocket", () => {
 				await vi.advanceTimersByTimeAsync(BACKOFF_MS);
 			};
 			const recover = async (): Promise<void> => {
-				failing = false;
+				setFactoryError(null);
 				await vi.advanceTimersByTimeAsync(BACKOFF_MS);
 				sockets.at(-1)?.fireOpen();
 			};
@@ -1121,6 +1106,9 @@ interface FactoryOptions {
 	onConnectionFailure?: (reason: ConnectionStateReason, route: string) => void;
 	route?: string;
 	telemetry?: TelemetryReporter;
+	initialBackoffMs?: number;
+	maxBackoffMs?: number;
+	jitterFactor?: number;
 }
 
 async function createReconnectingWebSocket(
@@ -1187,6 +1175,9 @@ async function fromFactory<T>(
 			onCertificateRefreshNeeded:
 				options.onCertificateRefreshNeeded ?? (() => Promise.resolve(false)),
 			onConnectionFailure: options.onConnectionFailure ?? vi.fn(),
+			initialBackoffMs: options.initialBackoffMs,
+			maxBackoffMs: options.maxBackoffMs,
+			jitterFactor: options.jitterFactor,
 		},
 		options.onDispose,
 	);
