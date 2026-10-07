@@ -111,8 +111,16 @@ function reduceState(
 
 export type SocketFactory<TData> = () => Promise<UnidirectionalStream<TData>>;
 
+export type ConnectionFailureReason = ConnectionStateReason | "unreachable";
+
 /** Default failure callback for callers that do not observe connection failures. */
 const NOOP_CONNECTION_FAILURE = (): void => undefined;
+
+/**
+ * Consecutive failed reconnect attempts before the buffer is flushed once and
+ * the server is treated as unreachable.
+ */
+const MAX_RECONNECT_FAILURES_BEFORE_FLUSH = 6;
 
 export interface ReconnectingWebSocketOptions {
 	initialBackoffMs?: number;
@@ -123,8 +131,14 @@ export interface ReconnectingWebSocketOptions {
 	route: string;
 	/** Callback invoked when a refreshable certificate error is detected. Returns true if refresh succeeded. */
 	onCertificateRefreshNeeded: () => Promise<boolean>;
-	/** Callback invoked when the connection fails terminally (not a transient drop). */
-	onConnectionFailure?: (reason: ConnectionStateReason, route: string) => void;
+	/**
+	 * Callback invoked on a terminal failure, or once per outage when the server
+	 * stays unreachable. Retrying continues in the unreachable case.
+	 */
+	onConnectionFailure?: (
+		reason: ConnectionFailureReason,
+		route: string,
+	) => void;
 }
 
 export class ReconnectingWebSocket<
@@ -152,6 +166,7 @@ export class ReconnectingWebSocket<
 	#lastRoute: string;
 	#backoffMs: number;
 	#reconnectTimeoutId: NodeJS.Timeout | null = null;
+	#consecutiveConnectFailures = 0;
 	#state: ConnectionState = ConnectionState.IDLE;
 	#certRefreshAttempted = false; // Tracks if cert refresh was already attempted this connection cycle
 	readonly #onDispose?: () => void;
@@ -275,6 +290,7 @@ export class ReconnectingWebSocket<
 		if (this.#state === ConnectionState.DISCONNECTED) {
 			this.#backoffMs = this.#options.initialBackoffMs;
 			this.#certRefreshAttempted = false; // User-initiated reconnect, allow retry
+			this.#consecutiveConnectFailures = 0;
 		}
 
 		if (this.#reconnectTimeoutId !== null) {
@@ -373,6 +389,7 @@ export class ReconnectingWebSocket<
 				// Reset backoff on successful connection
 				this.#backoffMs = this.#options.initialBackoffMs;
 				this.#certRefreshAttempted = false;
+				this.#consecutiveConnectFailures = 0;
 				this.executeHandlers("open", event);
 			});
 
@@ -447,6 +464,20 @@ export class ReconnectingWebSocket<
 	): void {
 		if (!this.#dispatch({ type: "SCHEDULE_RETRY" }, reason)) {
 			return;
+		}
+
+		this.#consecutiveConnectFailures += 1;
+		if (
+			this.#consecutiveConnectFailures === MAX_RECONNECT_FAILURES_BEFORE_FLUSH
+		) {
+			this.#logger.warn(
+				`Server unreachable after ${this.#consecutiveConnectFailures} reconnect attempts for ${this.#route}, still retrying`,
+			);
+			this.#telemetry.unreachable(
+				this.#route,
+				this.#consecutiveConnectFailures,
+			);
+			this.#options.onConnectionFailure("unreachable", this.#route);
 		}
 		const jitter =
 			this.#backoffMs * this.#options.jitterFactor * (Math.random() * 2 - 1);

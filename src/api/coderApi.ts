@@ -45,6 +45,7 @@ import {
 import {
 	ConnectionState,
 	ReconnectingWebSocket,
+	type ConnectionFailureReason,
 	type ReconnectingWebSocketOptions,
 	type SocketFactory,
 } from "../websocket/reconnectingWebSocket";
@@ -72,7 +73,6 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 import type { ClientOptions } from "ws";
 
-import type { ConnectionStateReason } from "../instrumentation/websocket";
 import type { Logger } from "../logging/logger";
 import type {
 	CloseEvent,
@@ -130,7 +130,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		private readonly httpRequestsTelemetry: HttpRequestsTelemetry,
 		private readonly authConfigTracker: AuthConfigTracker,
 		private readonly onConnectionFailure?: (
-			reason: ConnectionStateReason,
+			reason: ConnectionFailureReason,
 			route: string,
 		) => void,
 	) {
@@ -154,7 +154,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		output: Logger,
 		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 		onConnectionFailure?: (
-			reason: ConnectionStateReason,
+			reason: ConnectionFailureReason,
 			route: string,
 		) => void,
 	): CoderApi {

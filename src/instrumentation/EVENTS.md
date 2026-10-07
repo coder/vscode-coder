@@ -16,7 +16,7 @@ new ones live in `CONVENTIONS.md`.
 | [Remote setup](#remote-setup)                   | `remote.setup`                                                                                                                                                                                                                                                          |
 | [SSH](#ssh)                                     | `ssh.process.discovered`, `ssh.process.lost`, `ssh.process.recovered`, `ssh.process.replaced`, `ssh.process.disposed`, `ssh.network.sampled`                                                                                                                            |
 | [HTTP](#http)                                   | `http.requests`                                                                                                                                                                                                                                                         |
-| [WebSocket connections](#websocket-connections) | `connection.state_transitioned`, `connection.opened`, `connection.dropped`, `connection.reconnect_resolved`                                                                                                                                                             |
+| [WebSocket connections](#websocket-connections) | `connection.state_transitioned`, `connection.opened`, `connection.dropped`, `connection.reconnect_resolved`, `connection.unreachable`                                                                                                                                   |
 | [Workspace](#workspace)                         | `workspace.start.triggered`, `workspace.update.triggered`, `workspace.start.prompted`, `workspace.update.prompted`, `workspace.open`, `workspace.picker.prompted`, `workspace.dev_container.open`, `workspace.state_transitioned`, `workspace.agent.state_transitioned` |
 
 Signal kinds, which each category groups its events by:
@@ -470,6 +470,17 @@ success or termination).
 | `attempts` (measurement)          | connect attempts in the cycle                          |
 | `max_backoff_ms` (measurement)    | largest backoff scheduled                              |
 | `total_duration_ms` (measurement) | cycle wall time                                        |
+
+#### `connection.unreachable`
+
+Emitted once when the reconnect loop has failed enough consecutive times to
+treat the server as unreachable. The socket keeps retrying, and the counter
+resets on a successful open, so a later outage emits again.
+
+| Attribute                | Values                      |
+| ------------------------ | --------------------------- |
+| `route`                  | normalized route            |
+| `attempts` (measurement) | consecutive failed attempts |
 
 ## Workspace
 

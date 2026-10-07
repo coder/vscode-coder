@@ -31,6 +31,23 @@ describe("WebSocketTelemetry", () => {
 		});
 	});
 
+	describe("unreachable", () => {
+		it("emits connection.unreachable with the normalized route and attempts", () => {
+			const { ws, sink } = setup();
+
+			ws.unreachable(
+				"wss://coder.example.com/api/v2/workspaces/123e4567-e89b-12d3-a456-426614174000/watch-ws?token=secret",
+				6,
+			);
+
+			const [event] = sink.eventsNamed("connection.unreachable");
+			expect(event).toMatchObject({
+				properties: { route: "/api/v2/workspaces/{id}/watch-ws" },
+				measurements: { attempts: 6 },
+			});
+		});
+	});
+
 	describe("opened", () => {
 		it("emits connection.opened with route and connect duration", () => {
 			const { ws, sink } = setup();

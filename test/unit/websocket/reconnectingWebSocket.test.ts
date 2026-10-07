@@ -12,6 +12,7 @@ import {
 import {
 	ConnectionState,
 	ReconnectingWebSocket,
+	type ConnectionFailureReason,
 	type SocketFactory,
 } from "@/websocket/reconnectingWebSocket";
 import { HandshakeError } from "@/websocket/utils";
@@ -25,7 +26,6 @@ import { createMockLogger } from "../../mocks/testHelpers";
 
 import type { CloseEvent, Event as WsEvent } from "ws";
 
-import type { ConnectionStateReason } from "@/instrumentation/websocket";
 import type { UnidirectionalStream } from "@/websocket/eventStreamConnection";
 
 describe("ReconnectingWebSocket", () => {
@@ -862,6 +862,143 @@ describe("ReconnectingWebSocket", () => {
 			ws.close();
 		});
 	});
+
+	describe("Unreachable server", () => {
+		// Mirrors MAX_RECONNECT_FAILURES_BEFORE_FLUSH in the implementation.
+		const FAILURES_BEFORE_FLUSH = 6;
+		// Pathname of the mock socket's URL, which becomes the logged route.
+		const ROUTE = "/api/test";
+		// Constant backoff, so advancing by it is exactly one failed attempt.
+		const BACKOFF_MS = 100;
+
+		async function setupUnreachable(
+			options: { telemetry?: TelemetryReporter } = {},
+		) {
+			const onConnectionFailure =
+				vi.fn<(reason: ConnectionFailureReason, route: string) => void>();
+			const { ws, sockets, setFactoryError } =
+				await createReconnectingWebSocketWithErrorControl({
+					...options,
+					onConnectionFailure,
+					initialBackoffMs: BACKOFF_MS,
+					maxBackoffMs: BACKOFF_MS,
+					jitterFactor: 0,
+				});
+			sockets[0].fireOpen();
+
+			// Drop the healthy socket and make every reconnect fail. The close is
+			// the first failed attempt; each advance is the next.
+			const startOutage = (): void => {
+				setFactoryError(new Error("connect ECONNREFUSED"));
+				sockets.at(-1)?.fireClose({
+					code: WebSocketCloseCode.ABNORMAL,
+					reason: "Connection lost",
+				});
+			};
+			const failNextAttempt = async (): Promise<void> => {
+				await vi.advanceTimersByTimeAsync(BACKOFF_MS);
+			};
+			// Fail exactly enough attempts to reach the flush.
+			const failUntilFlush = async (): Promise<void> => {
+				startOutage();
+				for (let i = 0; i < FAILURES_BEFORE_FLUSH - 1; i++) {
+					await failNextAttempt();
+				}
+			};
+			const recover = async (): Promise<void> => {
+				setFactoryError(null);
+				await vi.advanceTimersByTimeAsync(BACKOFF_MS);
+				sockets.at(-1)?.fireOpen();
+			};
+			return {
+				ws,
+				sockets,
+				onConnectionFailure,
+				startOutage,
+				failNextAttempt,
+				failUntilFlush,
+				recover,
+			};
+		}
+
+		it("flushes once with the unreachable reason after N failed attempts", async () => {
+			const { ws, onConnectionFailure, startOutage, failNextAttempt } =
+				await setupUnreachable();
+
+			startOutage(); // attempt 1
+			for (let i = 0; i < FAILURES_BEFORE_FLUSH - 2; i++) {
+				await failNextAttempt(); // through attempt N-1
+			}
+			expect(onConnectionFailure).not.toHaveBeenCalled();
+
+			await failNextAttempt(); // attempt N
+			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
+			expect(onConnectionFailure).toHaveBeenCalledWith("unreachable", ROUTE);
+
+			ws.close();
+		});
+
+		it("keeps retrying through a long outage without flushing again, then recovers", async () => {
+			const { ws, onConnectionFailure, failUntilFlush, recover } =
+				await setupUnreachable();
+
+			await failUntilFlush();
+			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
+
+			// A long outage (sleep, network loss) never gives up or re-flushes.
+			await vi.advanceTimersByTimeAsync(5 * 60_000);
+			expect(ws.state).toBe(ConnectionState.AWAITING_RETRY);
+			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
+
+			await recover();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
+			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
+
+			ws.close();
+		});
+
+		it("flushes again after a successful open resets the counter", async () => {
+			const { ws, onConnectionFailure, failUntilFlush, recover } =
+				await setupUnreachable();
+
+			await failUntilFlush();
+			expect(onConnectionFailure).toHaveBeenCalledTimes(1);
+
+			await recover();
+
+			await failUntilFlush();
+			expect(onConnectionFailure).toHaveBeenCalledTimes(2);
+
+			ws.close();
+		});
+
+		it("does not flush a transient outage that recovers before N", async () => {
+			const { ws, onConnectionFailure, startOutage, failNextAttempt, recover } =
+				await setupUnreachable();
+
+			startOutage();
+			await failNextAttempt();
+			await failNextAttempt();
+			await recover();
+
+			expect(onConnectionFailure).not.toHaveBeenCalled();
+			ws.close();
+		});
+
+		it("emits connection.unreachable at the flush", async () => {
+			enableLocalTelemetry();
+			const sink = new TestSink();
+			const telemetry = createTestTelemetryService(sink);
+			const { ws, failUntilFlush } = await setupUnreachable({
+				telemetry,
+			});
+
+			await failUntilFlush();
+
+			expect(sink.eventsNamed("connection.unreachable")).toHaveLength(1);
+			ws.close();
+		});
+	});
 });
 
 type MockSocket = UnidirectionalStream<unknown> & {
@@ -933,15 +1070,21 @@ function createMockSocket(): MockSocket {
 }
 
 type ConnectionFailureSpy = ReturnType<
-	typeof vi.fn<(reason: ConnectionStateReason, route: string) => void>
+	typeof vi.fn<(reason: ConnectionFailureReason, route: string) => void>
 >;
 
 interface FactoryOptions {
 	onDispose?: () => void;
 	onCertificateRefreshNeeded?: () => Promise<boolean>;
-	onConnectionFailure?: (reason: ConnectionStateReason, route: string) => void;
+	onConnectionFailure?: (
+		reason: ConnectionFailureReason,
+		route: string,
+	) => void;
 	route?: string;
 	telemetry?: TelemetryReporter;
+	initialBackoffMs?: number;
+	maxBackoffMs?: number;
+	jitterFactor?: number;
 }
 
 async function createReconnectingWebSocket(
@@ -953,7 +1096,7 @@ async function createReconnectingWebSocket(
 }> {
 	const sockets: MockSocket[] = [];
 	const onConnectionFailure =
-		vi.fn<(reason: ConnectionStateReason, route: string) => void>();
+		vi.fn<(reason: ConnectionFailureReason, route: string) => void>();
 	const factory = vi.fn(() => {
 		const socket = createMockSocket();
 		sockets.push(socket);
@@ -1008,6 +1151,9 @@ async function fromFactory<T>(
 			onCertificateRefreshNeeded:
 				options.onCertificateRefreshNeeded ?? (() => Promise.resolve(false)),
 			onConnectionFailure: options.onConnectionFailure ?? vi.fn(),
+			initialBackoffMs: options.initialBackoffMs,
+			maxBackoffMs: options.maxBackoffMs,
+			jitterFactor: options.jitterFactor,
 		},
 		options.onDispose,
 	);

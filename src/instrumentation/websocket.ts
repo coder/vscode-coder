@@ -127,6 +127,18 @@ export class WebSocketTelemetry {
 		}
 	}
 
+	/**
+	 * The reconnect loop has failed enough consecutive times to treat the server
+	 * as unreachable. Surfaced so Support can query sustained unreachability.
+	 */
+	public unreachable(route: string, attempts: number): void {
+		this.#telemetry.log(
+			"connection.unreachable",
+			{ route: normalizeRoute(route) },
+			{ attempts },
+		);
+	}
+
 	public reset(): void {
 		this.#connectStartedAtMs = undefined;
 		this.#connectionOpenedAtMs = undefined;
