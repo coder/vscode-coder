@@ -16,7 +16,7 @@ import { handshakeStatus } from "./utils";
 
 import type { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 
-import type { Logger } from "../logging/logger";
+import type { BufferedLogger } from "../logging/logger";
 import type { TelemetryReporter } from "../telemetry/reporter";
 
 import type {
@@ -111,11 +111,6 @@ function reduceState(
 
 export type SocketFactory<TData> = () => Promise<UnidirectionalStream<TData>>;
 
-export type ConnectionFailureReason = ConnectionStateReason | "unreachable";
-
-/** Default failure callback for callers that do not observe connection failures. */
-const NOOP_CONNECTION_FAILURE = (): void => undefined;
-
 /**
  * Consecutive failed reconnect attempts before the buffer is flushed once and
  * the server is treated as unreachable.
@@ -131,21 +126,13 @@ export interface ReconnectingWebSocketOptions {
 	route: string;
 	/** Callback invoked when a refreshable certificate error is detected. Returns true if refresh succeeded. */
 	onCertificateRefreshNeeded: () => Promise<boolean>;
-	/**
-	 * Callback invoked on a terminal failure, or once per outage when the server
-	 * stays unreachable. Retrying continues in the unreachable case.
-	 */
-	onConnectionFailure?: (
-		reason: ConnectionFailureReason,
-		route: string,
-	) => void;
 }
 
 export class ReconnectingWebSocket<
 	TData = unknown,
 > implements UnidirectionalStream<TData> {
 	readonly #socketFactory: SocketFactory<TData>;
-	readonly #logger: Logger;
+	readonly #logger: BufferedLogger;
 	readonly #telemetry: WebSocketTelemetry;
 	readonly #options: Required<
 		Omit<ReconnectingWebSocketOptions, "telemetry" | "route">
@@ -194,7 +181,7 @@ export class ReconnectingWebSocket<
 
 	private constructor(
 		socketFactory: SocketFactory<TData>,
-		logger: Logger,
+		logger: BufferedLogger,
 		options: ReconnectingWebSocketOptions,
 		onDispose?: () => void,
 	) {
@@ -206,8 +193,6 @@ export class ReconnectingWebSocket<
 			maxBackoffMs: options.maxBackoffMs ?? 30000,
 			jitterFactor: options.jitterFactor ?? 0.1,
 			onCertificateRefreshNeeded: options.onCertificateRefreshNeeded,
-			onConnectionFailure:
-				options.onConnectionFailure ?? NOOP_CONNECTION_FAILURE,
 		};
 		this.#lastRoute = options.route;
 		this.#backoffMs = this.#options.initialBackoffMs;
@@ -216,7 +201,7 @@ export class ReconnectingWebSocket<
 
 	public static async create<TData>(
 		socketFactory: SocketFactory<TData>,
-		logger: Logger,
+		logger: BufferedLogger,
 		options: ReconnectingWebSocketOptions,
 		onDispose?: () => void,
 	): Promise<ReconnectingWebSocket<TData>> {
@@ -332,7 +317,7 @@ export class ReconnectingWebSocket<
 		});
 		this.clearCurrentSocket(options.code, options.closeReason);
 		if (options.failure) {
-			this.#options.onConnectionFailure(reason, this.#route);
+			this.#logger.flush(`${reason} ${this.#route}`);
 		}
 	}
 
@@ -477,7 +462,7 @@ export class ReconnectingWebSocket<
 				this.#route,
 				this.#consecutiveConnectFailures,
 			);
-			this.#options.onConnectionFailure("unreachable", this.#route);
+			this.#logger.flush(`unreachable ${this.#route}`);
 		}
 		const jitter =
 			this.#backoffMs * this.#options.jitterFactor * (Math.random() * 2 - 1);

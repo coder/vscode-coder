@@ -84,8 +84,7 @@ import type { MementoManager } from "./core/mementoManager";
 import type { PathResolver } from "./core/pathResolver";
 import type { SecretsManager, SessionAuth } from "./core/secretsManager";
 import type { DeploymentManager } from "./deployment/deploymentManager";
-import type { ConnectionLogBuffer } from "./logging/logBuffer";
-import type { Logger } from "./logging/logger";
+import type { BufferedLogger } from "./logging/logger";
 import type { LoginCoordinator, LoginMethod } from "./login/loginCoordinator";
 import type { TelemetryService } from "./telemetry/service";
 import type { NetcheckPanelFactory } from "./webviews/netcheck/netcheckPanelFactory";
@@ -156,7 +155,7 @@ const openDefaults = {
 } as const satisfies Partial<OpenOptions>;
 
 export class Commands {
-	private readonly logger: Logger;
+	private readonly logger: BufferedLogger;
 	private readonly pathResolver: PathResolver;
 	private readonly mementoManager: MementoManager;
 	private readonly secretsManager: SecretsManager;
@@ -169,7 +168,6 @@ export class Commands {
 	private readonly authTelemetry: AuthTelemetry;
 	private readonly diagnosticTelemetry: DiagnosticTelemetry;
 	private readonly workspaceOpenTelemetry: WorkspaceOpenTelemetry;
-	private readonly connectionLogBuffer: ConnectionLogBuffer;
 
 	// These will only be populated when actively connected to a workspace and are
 	// used in commands.  Because commands can be executed by the user, it is not
@@ -195,7 +193,6 @@ export class Commands {
 			this.telemetryService,
 		);
 		this.logger = serviceContainer.getLogger();
-		this.connectionLogBuffer = serviceContainer.getConnectionLogBuffer();
 		this.pathResolver = serviceContainer.getPathResolver();
 		this.mementoManager = serviceContainer.getMementoManager();
 		this.secretsManager = serviceContainer.getSecretsManager();
@@ -493,7 +490,7 @@ export class Commands {
 				// the channel has time to write them to disk; retain the ring so a
 				// later failure flush still replays them. Best-effort: the channel
 				// writes on its own schedule, so the tail may not land in this bundle.
-				this.connectionLogBuffer.flush("support_bundle", { retain: true });
+				this.logger.flush("support_bundle", { retain: true });
 				await cliExec.supportBundle(env, workspaceId, {
 					outputPath: outputUri.fsPath,
 					agentName,

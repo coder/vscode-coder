@@ -80,11 +80,9 @@ function setup(options: { cliVersion?: string } = {}) {
 	vi.mocked(appendVsCodeLogs).mockResolvedValue(undefined);
 
 	const logger = createMockLogger();
-	const connectionLogBufferFlush = vi.fn();
 	const serviceContainer = {
 		getTelemetryService: () => service,
 		getLogger: () => logger,
-		getConnectionLogBuffer: () => ({ flush: connectionLogBufferFlush }),
 		getPathResolver: () => ({
 			getGlobalConfigDir: () => "/cfg",
 			getProxyLogPath: () => "/logs/proxy",
@@ -114,7 +112,7 @@ function setup(options: { cliVersion?: string } = {}) {
 		{} as DeploymentManager,
 	);
 
-	return { commands, client, logger, interaction, connectionLogBufferFlush };
+	return { commands, client, logger, interaction };
 }
 
 function setRemoteAuthority(value: string | undefined): void {
@@ -139,17 +137,17 @@ function connectToWorkspace(
 
 describe("Commands.supportBundle", () => {
 	it("collects the selected agent's bundle with remote log globs", async () => {
-		const { commands, connectionLogBufferFlush } = setup();
+		const { commands, logger } = setup();
 
 		await commands.supportBundle(agentItem("dev"));
 
 		// The buffered below-level connection logs are replayed for the bundle,
 		// keeping the ring so a later failure flush still has them, and before the
 		// CLI runs so the channel has time to write them to disk.
-		expect(connectionLogBufferFlush).toHaveBeenCalledWith("support_bundle", {
+		expect(logger.flush).toHaveBeenCalledWith("support_bundle", {
 			retain: true,
 		});
-		expect(connectionLogBufferFlush.mock.invocationCallOrder[0]).toBeLessThan(
+		expect(vi.mocked(logger.flush).mock.invocationCallOrder[0]).toBeLessThan(
 			vi.mocked(cliExec.supportBundle).mock.invocationCallOrder[0],
 		);
 

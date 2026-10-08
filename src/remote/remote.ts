@@ -89,7 +89,7 @@ import type { ContextManager } from "../core/contextManager";
 import type { StartupMode } from "../core/mementoManager";
 import type { PathResolver } from "../core/pathResolver";
 import type { SecretsManager } from "../core/secretsManager";
-import type { Logger } from "../logging/logger";
+import type { BufferedLogger } from "../logging/logger";
 import type { LoginCoordinator } from "../login/loginCoordinator";
 
 export interface RemoteDetails extends vscode.Disposable {
@@ -149,7 +149,7 @@ export function workspaceLabelSuffix(
 }
 
 export class Remote {
-	private readonly logger: Logger;
+	private readonly logger: BufferedLogger;
 	private readonly pathResolver: PathResolver;
 	private readonly cliManager: CliManager;
 	private readonly contextManager: ContextManager;
@@ -297,7 +297,6 @@ export class Remote {
 				token,
 				this.logger,
 				this.serviceContainer.getTelemetryService(),
-				this.serviceContainer.getConnectionLogBuffer().onConnectionFailure,
 			);
 			disposables.push(workspaceClient);
 
@@ -1060,7 +1059,7 @@ export class Remote {
 
 	// closeRemote ends the current remote session.
 	public async closeRemote() {
-		this.serviceContainer.getConnectionLogBuffer().flush("remote_closed");
+		this.logger.flush("remote_closed");
 		await vscode.commands.executeCommand("workbench.action.remote.close");
 	}
 

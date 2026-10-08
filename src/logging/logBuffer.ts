@@ -1,6 +1,6 @@
 import { safeStringify } from "./utils";
 
-import type { Logger } from "./logger";
+import type { BufferedLogger, Logger } from "./logger";
 
 /**
  * Numeric severities matching `vscode.LogLevel` (Off=0, Trace=1, Debug=2,
@@ -29,12 +29,6 @@ const MAX_BUFFERED_CHARS = 2_000_000;
 /** Entries replayed per channel call, so a flush is not one RPC per entry. */
 const REPLAY_CHUNK = 100;
 
-/** Replays buffered below-level log entries on a connection failure. */
-export interface ConnectionLogBuffer {
-	flush(reason: string, options?: { readonly retain?: boolean }): void;
-	readonly onConnectionFailure: (reason: string, route: string) => void;
-}
-
 interface LogEntry {
 	readonly atMs: number;
 	readonly level: Level;
@@ -46,7 +40,7 @@ interface LogEntry {
  * Buffers entries below the current log level and replays them on failure at a
  * level the output channel persists.
  */
-export class BufferingLogger implements Logger, ConnectionLogBuffer {
+export class BufferingLogger implements BufferedLogger {
 	private entries: LogEntry[] = [];
 	private chars = 0;
 
@@ -61,18 +55,6 @@ export class BufferingLogger implements Logger, ConnectionLogBuffer {
 	public readonly info = this.wrap("info");
 	public readonly warn = this.wrap("warn");
 	public readonly error = this.wrap("error");
-
-	/**
-	 * Flush the buffer on a terminal socket failure, keyed by the
-	 * `<reason> <route>` string Support greps for. Arrow property so it can be
-	 * passed by value as the socket's failure callback.
-	 */
-	public readonly onConnectionFailure = (
-		reason: string,
-		route: string,
-	): void => {
-		this.flush(`${reason} ${route}`);
-	};
 
 	public show(): void {
 		this.inner.show();

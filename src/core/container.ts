@@ -2,10 +2,7 @@ import * as vscode from "vscode";
 
 import { watchConfigurationChanges } from "../configWatcher";
 import { AuthTelemetry } from "../instrumentation/auth";
-import {
-	BufferingLogger,
-	type ConnectionLogBuffer,
-} from "../logging/logBuffer";
+import { BufferingLogger } from "../logging/logBuffer";
 import { prefixLogger } from "../logging/prefixLogger";
 import { shortId } from "../logging/utils";
 import { LoginCoordinator } from "../login/loginCoordinator";
@@ -30,7 +27,7 @@ import { PathResolver } from "./pathResolver";
 import { SecretsManager } from "./secretsManager";
 import { sessionId } from "./sessionId";
 
-import type { Logger } from "../logging/logger";
+import type { BufferedLogger } from "../logging/logger";
 
 /**
  * Service container for dependency injection.
@@ -166,12 +163,7 @@ export class ServiceContainer implements vscode.Disposable {
 		return this.secretsManager;
 	}
 
-	getLogger(): Logger {
-		return this.logger;
-	}
-
-	/** The connection log buffer that replays below-level entries on failure. */
-	getConnectionLogBuffer(): ConnectionLogBuffer {
+	getLogger(): BufferedLogger {
 		return this.logger;
 	}
 

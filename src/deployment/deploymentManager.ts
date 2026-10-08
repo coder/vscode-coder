@@ -13,7 +13,7 @@ import {
 	type DeploymentRecoveryTrigger,
 	type DeploymentSuspendReason,
 } from "../instrumentation/deployment";
-import { type Logger } from "../logging/logger";
+import { type BufferedLogger } from "../logging/logger";
 import { type OAuthSessionManager } from "../oauth/sessionManager";
 import { getAuthConfigWatchSettings } from "../settings/authConfig";
 import { type TelemetryService } from "../telemetry/service";
@@ -47,7 +47,7 @@ export class DeploymentManager implements vscode.Disposable {
 	private readonly secretsManager: SecretsManager;
 	private readonly mementoManager: MementoManager;
 	private readonly contextManager: ContextManager;
-	private readonly logger: Logger;
+	private readonly logger: BufferedLogger;
 	private readonly telemetryService: TelemetryService;
 	private readonly deploymentTelemetry: DeploymentTelemetry;
 

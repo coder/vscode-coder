@@ -45,7 +45,6 @@ import {
 import {
 	ConnectionState,
 	ReconnectingWebSocket,
-	type ConnectionFailureReason,
 	type ReconnectingWebSocketOptions,
 	type SocketFactory,
 } from "../websocket/reconnectingWebSocket";
@@ -73,7 +72,7 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 import type { ClientOptions } from "ws";
 
-import type { Logger } from "../logging/logger";
+import type { BufferedLogger, Logger } from "../logging/logger";
 import type {
 	CloseEvent,
 	ErrorEvent,
@@ -125,14 +124,10 @@ export class CoderApi extends Api implements vscode.Disposable {
 	private readonly configWatcher: vscode.Disposable;
 
 	private constructor(
-		private readonly output: Logger,
+		private readonly output: BufferedLogger,
 		private readonly telemetry: TelemetryReporter,
 		private readonly httpRequestsTelemetry: HttpRequestsTelemetry,
 		private readonly authConfigTracker: AuthConfigTracker,
-		private readonly onConnectionFailure?: (
-			reason: ConnectionFailureReason,
-			route: string,
-		) => void,
 	) {
 		super();
 		wrapWithValidation(this);
@@ -151,12 +146,8 @@ export class CoderApi extends Api implements vscode.Disposable {
 	static create(
 		baseUrl: string,
 		token: string | undefined,
-		output: Logger,
+		output: BufferedLogger,
 		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
-		onConnectionFailure?: (
-			reason: ConnectionFailureReason,
-			route: string,
-		) => void,
 	): CoderApi {
 		const httpRequestsTelemetry = new HttpRequestsTelemetry(telemetry);
 		const authConfigTracker = new AuthConfigTracker();
@@ -165,7 +156,6 @@ export class CoderApi extends Api implements vscode.Disposable {
 			telemetry,
 			httpRequestsTelemetry,
 			authConfigTracker,
-			onConnectionFailure,
 		);
 		client.getAxiosInstance().defaults.timeout = DEFAULT_REQUEST_TIMEOUT_MS;
 		client.getAxiosInstance().defaults.headers.common[BAGGAGE_HEADER] =
@@ -565,7 +555,6 @@ export class CoderApi extends Api implements vscode.Disposable {
 				}
 				return refreshCertificates(refreshCommand, this.output);
 			},
-			onConnectionFailure: this.onConnectionFailure,
 			telemetry: this.telemetry,
 		};
 
