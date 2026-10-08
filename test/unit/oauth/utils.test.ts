@@ -147,6 +147,12 @@ describe("buildOAuthTokenData", () => {
 		});
 	});
 
+	it("stores coder:all when the server returns no scope", () => {
+		expect(
+			buildOAuthTokenData(createTokenResponse({ scope: undefined })).scope,
+		).toBe("coder:all");
+	});
+
 	describe("token_type validation", () => {
 		it("accepts Bearer tokens", () => {
 			expect(() =>

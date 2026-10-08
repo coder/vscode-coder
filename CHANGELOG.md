@@ -18,6 +18,12 @@
   the socket never reaches a terminal failure. The extension keeps retrying until
   the server is reachable again.
 
+### Fixed
+
+- OAuth sign-in now works on deployments that enforce token scopes. Users signed
+  in with OAuth are asked to sign in again once.
+- Revoke OAuth tokens on logout even when their scopes are outdated.
+
 ## [v1.16.4](https://github.com/coder/vscode-coder/releases/tag/v1.16.4) 2026-09-23
 
 ### Added

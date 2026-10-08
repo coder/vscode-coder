@@ -4,6 +4,10 @@ import * as vscode from "vscode";
 import { InvalidApiResponseError } from "@/api/responseValidation";
 import { getHeaders } from "@/headers";
 import { OAuthAuthorizer } from "@/oauth/authorizer";
+import {
+	DEFAULT_OAUTH_SCOPES,
+	IF_SUPPORTED_OAUTH_SCOPES,
+} from "@/oauth/constants";
 
 import {
 	createMockUser,
@@ -368,6 +372,27 @@ describe("OAuthAuthorizer", () => {
 			const { loginPromise, authUrl, state } = await startLogin();
 			expect(authUrl.searchParams.get("audience")).toBe("workspace");
 			expect(authUrl.searchParams.get("client_id")).toBeTruthy();
+
+			await completeLogin(state);
+			await loginPromise;
+		});
+
+		it.each([
+			{ name: "the server supports", supported: IF_SUPPORTED_OAUTH_SCOPES },
+			{ name: "none when the server supports none", supported: [] },
+		])("requests IF_SUPPORTED_OAUTH_SCOPES: $name", async ({ supported }) => {
+			const { setupOAuthRoutes, startLogin, completeLogin } =
+				createTestContext();
+			setupOAuthRoutes(
+				createMockOAuthMetadata(TEST_URL, {
+					scopes_supported: [...DEFAULT_OAUTH_SCOPES.split(" "), ...supported],
+				}),
+			);
+
+			const { loginPromise, authUrl, state } = await startLogin();
+			expect(authUrl.searchParams.get("scope")).toBe(
+				[DEFAULT_OAUTH_SCOPES, ...supported].join(" "),
+			);
 
 			await completeLogin(state);
 			await loginPromise;

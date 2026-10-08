@@ -6,6 +6,7 @@ import { resolveCoderDashboardUrl } from "../util/uri";
 import {
 	AUTH_GRANT_TYPE,
 	DEFAULT_OAUTH_SCOPES,
+	IF_SUPPORTED_OAUTH_SCOPES,
 	PKCE_CHALLENGE_METHOD,
 	RESPONSE_TYPE,
 	TOKEN_ENDPOINT_AUTH_METHOD,
@@ -213,17 +214,23 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			);
 			if (unsupportedScopes.length > 0) {
 				this.logger.warn(
-					`Requested scopes not in server's supported scopes: ${unsupportedScopes.join(", ")}. Server may still accept them.`,
+					`Requested scopes not in server's supported scopes: ${unsupportedScopes.join(", ")}. Servers that enforce scopes reject the request.`,
 					{ supported_scopes: metadata.scopes_supported },
 				);
 			}
 		}
 
+		const scope = [
+			DEFAULT_OAUTH_SCOPES,
+			...IF_SUPPORTED_OAUTH_SCOPES.filter((s) =>
+				metadata.scopes_supported?.includes(s),
+			),
+		].join(" ");
 		const params = new URLSearchParams({
 			client_id: clientId,
 			response_type: RESPONSE_TYPE,
 			redirect_uri: this.getRedirectUri(),
-			scope: DEFAULT_OAUTH_SCOPES,
+			scope,
 			state,
 			code_challenge: challenge,
 			code_challenge_method: PKCE_CHALLENGE_METHOD,
@@ -240,7 +247,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		this.logger.debug("Built OAuth authorization URL:", {
 			client_id: clientId,
 			redirect_uri: this.getRedirectUri(),
-			scope: DEFAULT_OAUTH_SCOPES,
+			scope,
 		});
 
 		return endpoint.toString();

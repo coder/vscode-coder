@@ -98,8 +98,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	/**
 	 * Get stored tokens fresh from secrets manager.
 	 * Always reads from storage to ensure cross-window synchronization.
-	 * Validates that tokens match current deployment URL and have required scopes.
-	 * Invalid tokens are cleared and undefined is returned.
+	 * Returns undefined for tokens of another deployment URL.
 	 */
 	private async getStoredTokens(): Promise<StoredTokens | undefined> {
 		if (!this.deployment) {
@@ -122,17 +121,24 @@ export class OAuthSessionManager implements vscode.Disposable {
 			return undefined;
 		}
 
-		if (!this.hasRequiredScopes(auth.oauth.scope)) {
-			this.logger.warn("Stored tokens have insufficient scopes", {
-				scope: auth.oauth.scope,
-			});
-			return undefined;
-		}
-
 		return {
 			access_token: auth.token,
 			...auth.oauth,
 		};
+	}
+
+	/** Stored tokens, or undefined when they lack a required scope. */
+	private async getTokensWithRequiredScopes(): Promise<
+		StoredTokens | undefined
+	> {
+		const storedTokens = await this.getStoredTokens();
+		if (storedTokens && !this.hasRequiredScopes(storedTokens.scope)) {
+			this.logger.warn("Stored tokens have insufficient scopes", {
+				scope: storedTokens.scope,
+			});
+			return undefined;
+		}
+		return storedTokens;
 	}
 
 	/**
@@ -186,7 +192,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 			this.refreshTimer = undefined;
 		}
 
-		this.getStoredTokens()
+		this.getTokensWithRequiredScopes()
 			.then((storedTokens) => {
 				if (!storedTokens?.refresh_token) {
 					return;
@@ -262,6 +268,9 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 */
 	private hasRequiredScopes(grantedScope: string): boolean {
 		const grantedScopes = new Set(grantedScope.split(" "));
+		if (grantedScopes.has("coder:all")) {
+			return true;
+		}
 		const requiredScopes = DEFAULT_OAUTH_SCOPES.split(" ");
 
 		for (const required of requiredScopes) {
@@ -331,7 +340,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		this.deployment = deployment;
 		this.clearRefreshState();
 
-		const storedTokens = await this.getStoredTokens();
+		const storedTokens = await this.getTokensWithRequiredScopes();
 		if (storedTokens) {
 			this.logger.debug("Switching OAuth deployment", deployment);
 		}
@@ -385,7 +394,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		this.refreshAbortController = abortController;
 
 		try {
-			const storedTokens = await this.getStoredTokens();
+			const storedTokens = await this.getTokensWithRequiredScopes();
 			if (!storedTokens?.refresh_token) {
 				throw new Error("No refresh token available");
 			}
@@ -475,6 +484,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 	/** Best-effort server-side revocation of the stored refresh and access tokens; never throws. */
 	public async revokeTokens(): Promise<void> {
+		// Includes tokens lacking a required scope, which still work on the server.
 		const storedTokens = await this.getStoredTokens().catch((error) => {
 			this.logger.warn("Failed to read stored tokens for revocation:", error);
 			return undefined;
@@ -535,7 +545,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		if (hostname && hostname !== this.deployment?.safeHostname) {
 			return false;
 		}
-		const storedTokens = await this.getStoredTokens();
+		const storedTokens = await this.getTokensWithRequiredScopes();
 		return storedTokens !== undefined;
 	}
 
