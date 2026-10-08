@@ -211,8 +211,12 @@ function effectiveSettingKey(
 	config: Pick<WorkspaceConfiguration, "inspect">,
 	key: string,
 ): string {
-	if (!key.startsWith("remote.devinSSH.")) return key;
-	if (hasExplicitValue(config.inspect(key))) return key;
+	if (
+		!key.startsWith("remote.devinSSH.") ||
+		hasExplicitValue(config.inspect(key))
+	) {
+		return key;
+	}
 	const fallbackKey = key.replace("remote.devinSSH.", "remote.windsurfSSH.");
 	return hasExplicitValue(config.inspect(fallbackKey)) ? fallbackKey : key;
 }
@@ -233,7 +237,8 @@ function hasExplicitValue(
  * (i.e. present, non-empty, and not the SSH default "none").
  */
 function isActiveRemoteCommand(cmd: string | undefined): boolean {
-	return !!cmd && cmd.toLowerCase() !== "none";
+	if (!cmd) return false;
+	return cmd.toLowerCase() !== "none";
 }
 
 function recommended(
