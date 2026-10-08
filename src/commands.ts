@@ -40,8 +40,8 @@ import {
 } from "./progress";
 import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
 import {
-	RECOMMENDED_SSH_SETTINGS,
 	applySettingOverrides,
+	getRecommendedSshSettings,
 } from "./remote/sshOverrides";
 import { isKeyringEnabled, resolveCliAuth } from "./settings/cli";
 import { appendVsCodeLogs } from "./supportBundle/appendVsCodeLogs";
@@ -901,7 +901,15 @@ export class Commands {
 	 * Apply recommended SSH settings for reliable Coder workspace connections.
 	 */
 	public async applyRecommendedSettings(): Promise<void> {
-		const entries = Object.entries(RECOMMENDED_SSH_SETTINGS);
+		const entries = Object.entries(
+			getRecommendedSshSettings(vscode.workspace.getConfiguration()),
+		);
+		if (entries.length === 0) {
+			vscode.window.showInformationMessage(
+				"No recommended SSH settings are supported by the installed Remote SSH extension.",
+			);
+			return;
+		}
 		const summary = entries.map(([, s]) => s.label).join("\n");
 		const confirm = await vscodeProposed.window.showWarningMessage(
 			"Apply Recommended SSH Settings",
