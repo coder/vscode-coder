@@ -1,10 +1,12 @@
 import { vol } from "memfs";
 import * as fsPromises from "node:fs/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as vscode from "vscode";
 
 import {
 	applySettingOverrides,
 	buildSshOverrides,
+	getRecommendedSshSettings,
 } from "@/remote/sshOverrides";
 
 import {
@@ -13,6 +15,14 @@ import {
 } from "../../mocks/testHelpers";
 
 vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
+
+beforeEach(() => {
+	vi.mocked(vscode.extensions.getExtension).mockImplementation((id) =>
+		id === "ms-vscode-remote.remote-ssh"
+			? ({ id } as vscode.Extension<unknown>)
+			: undefined,
+	);
+});
 
 /** Helper to extract a single override by key from the result. */
 function findOverride(
@@ -206,20 +216,6 @@ describe("buildSshOverrides", () => {
 		});
 	});
 
-	it.each([
-		{ key: "remote.SSH.serverShutdownTimeout", expected: 28800 },
-		{ key: "remote.SSH.maxReconnectionAttempts", expected: null },
-	])("defaults $key when not configured", ({ key, expected }) => {
-		const overrides = buildSshOverrides(
-			new MockConfigurationProvider(),
-			"host",
-			"linux",
-			undefined,
-			buildLogger,
-		);
-		expect(findOverride(overrides, key)).toBe(expected);
-	});
-
 	it("produces no overrides when all settings are already correct", () => {
 		const config = new MockConfigurationProvider();
 		config.set("remote.SSH.remotePlatform", { "my-host": "linux" });
@@ -231,6 +227,158 @@ describe("buildSshOverrides", () => {
 			buildSshOverrides(config, "my-host", "linux", undefined, buildLogger),
 		).toHaveLength(0);
 	});
+});
+
+describe("provider-specific tuning", () => {
+	const logger = createMockLogger();
+	const tuning = (
+		config: MockConfigurationProvider,
+		extensionId: string | undefined,
+	) => {
+		vi.mocked(vscode.extensions.getExtension).mockImplementation((id) =>
+			id === extensionId ? ({ id } as vscode.Extension<unknown>) : undefined,
+		);
+		return Object.fromEntries(
+			buildSshOverrides(config, "host", "linux", undefined, logger)
+				.filter(({ key }) => key !== "remote.SSH.remotePlatform")
+				.map(({ key, value }) => [key, value]),
+		);
+	};
+
+	it.each([
+		[
+			"VS Code",
+			"ms-vscode-remote.remote-ssh",
+			"remote.SSH",
+			{
+				connectTimeout: 1800,
+				reconnectionGraceTime: 28800,
+				maxReconnectionAttempts: null,
+			},
+		],
+		[
+			"Cursor",
+			"anysphere.remote-ssh",
+			"remote.SSH",
+			{ connectTimeout: 1800, serverShutdownTimeout: 28800 },
+		],
+		[
+			"Open Remote SSH forks",
+			"jeanp413.open-remote-ssh",
+			"remote.SSH",
+			{ connectTimeout: 1800 },
+		],
+		[
+			"Devin",
+			"codeium.windsurf-remote-openssh",
+			"remote.devinSSH",
+			{
+				connectTimeout: 1800,
+				reconnectionGraceTime: 28800,
+				maxReconnectionAttempts: null,
+			},
+		],
+		[
+			"Windsurf 2.x",
+			"codeium.windsurf-remote-openssh",
+			"remote.windsurfSSH",
+			{
+				connectTimeout: 1800,
+				reconnectionGraceTime: 28800,
+				maxReconnectionAttempts: null,
+			},
+		],
+		["Windsurf before 2.0", "codeium.windsurf-remote-openssh", undefined, {}],
+		["Antigravity", "google.antigravity-remote-openssh", undefined, {}],
+		["Unrecognized provider", undefined, undefined, {}],
+	] as const)(
+		"applies supported settings for %s",
+		(_editor, id, namespace, settings) => {
+			const config = new MockConfigurationProvider();
+			if (namespace) config.setDefault(`${namespace}.connectTimeout`, 15);
+			config.setDefault("remote.SSH.serverShutdownTimeout", 300);
+			if (namespace)
+				config.setDefault(`${namespace}.reconnectionGraceTime`, null);
+			const automatic = Object.fromEntries(
+				Object.entries(settings).map(([key, value]) => [
+					`${namespace}.${key}`,
+					value,
+				]),
+			);
+			expect(tuning(config, id)).toEqual(automatic);
+			const recommended = getRecommendedSshSettings(config);
+			expect(Object.keys(recommended)).toEqual(Object.keys(automatic));
+			if (namespace && id === "codeium.windsurf-remote-openssh") {
+				const attemptsKey = `${namespace}.maxReconnectionAttempts`;
+				config.setDefault(attemptsKey, null);
+				const { [attemptsKey]: _attempts, ...withDefault } = automatic;
+				expect(tuning(config, id)).toEqual(withDefault);
+			}
+			for (const [key, value] of Object.entries(automatic)) {
+				expect(recommended[key]?.value).toBe(value === 28800 ? 86400 : value);
+				config.set(key, value);
+			}
+			expect(tuning(config, id)).toEqual({});
+		},
+	);
+
+	it.each([
+		{
+			label: "deprecated values",
+			user: {
+				"remote.windsurfSSH.connectTimeout": 3600,
+				"remote.windsurfSSH.reconnectionGraceTime": 600,
+				"remote.windsurfSSH.maxReconnectionAttempts": 4,
+			},
+			expected: {},
+		},
+		{
+			label: "deprecated timeout below minimum",
+			user: {
+				"remote.windsurfSSH.connectTimeout": 60,
+				"remote.windsurfSSH.reconnectionGraceTime": 0,
+			},
+			expected: { "remote.devinSSH.connectTimeout": 1800 },
+		},
+		{
+			label: "Devin values take precedence",
+			user: {
+				"remote.devinSSH.connectTimeout": 60,
+				"remote.windsurfSSH.connectTimeout": 3600,
+				"remote.devinSSH.reconnectionGraceTime": 28800,
+				"remote.windsurfSSH.reconnectionGraceTime": 600,
+			},
+			expected: { "remote.devinSSH.connectTimeout": 1800 },
+		},
+	])("respects Devin's fallback: $label", ({ user, expected }) => {
+		const config = new MockConfigurationProvider();
+		config.setDefault("remote.devinSSH.connectTimeout", 15);
+		config.setDefault("remote.windsurfSSH.connectTimeout", 15);
+		config.setDefault("remote.devinSSH.maxReconnectionAttempts", null);
+		for (const [key, value] of Object.entries(user)) config.set(key, value);
+		expect(tuning(config, "codeium.windsurf-remote-openssh")).toEqual(expected);
+	});
+
+	it.each([
+		{
+			id: "anysphere.remote-ssh",
+			key: "remote.SSH.serverShutdownTimeout",
+			value: 300,
+		},
+		{
+			id: "ms-vscode-remote.remote-ssh",
+			key: "remote.SSH.maxReconnectionAttempts",
+			value: null,
+		},
+	] as const)(
+		"preserves explicit $key, including defaults and null",
+		({ id, key, value }) => {
+			const config = new MockConfigurationProvider();
+			config.setDefault(key, value);
+			config.set(key, value);
+			expect(tuning(config, id)[key]).toBeUndefined();
+		},
+	);
 });
 
 describe("applySettingOverrides", () => {

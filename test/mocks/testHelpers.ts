@@ -103,6 +103,7 @@ export function makeNetworkInfo(
  */
 export class MockConfigurationProvider {
 	private readonly config = new Map<string, unknown>();
+	private readonly defaults = new Map<string, unknown>();
 
 	constructor() {
 		this.setupVSCodeMock();
@@ -123,8 +124,22 @@ export class MockConfigurationProvider {
 	get<T>(key: string): T | undefined;
 	get<T>(key: string, defaultValue: T): T;
 	get<T>(key: string, defaultValue?: T): T | undefined {
-		const value = this.config.get(key);
+		const value = this.config.has(key)
+			? this.config.get(key)
+			: this.defaults.get(key);
 		return value === undefined ? defaultValue : (value as T);
+	}
+
+	setDefault(key: string, value: unknown): void {
+		this.defaults.set(key, value);
+	}
+
+	inspect<T>(key: string) {
+		return {
+			key,
+			defaultValue: this.defaults.get(key) as T | undefined,
+			globalValue: (this.config.get(key) ?? undefined) as T | undefined,
+		};
 	}
 
 	/**
@@ -132,6 +147,7 @@ export class MockConfigurationProvider {
 	 */
 	clear(): void {
 		this.config.clear();
+		this.defaults.clear();
 	}
 
 	/**
@@ -159,18 +175,28 @@ export class MockConfigurationProvider {
 			(section?: string) => {
 				// Create a snapshot of the current config when getConfiguration is called
 				const snapshot = new Map(this.config);
+				const defaults = new Map(this.defaults);
 				const getFullKey = (part: string) =>
 					section ? `${section}.${part}` : part;
 
 				return {
 					get: vi.fn((key: string, defaultValue?: unknown) => {
-						const value = snapshot.get(getFullKey(key));
+						const fullKey = getFullKey(key);
+						const value = snapshot.has(fullKey)
+							? snapshot.get(fullKey)
+							: defaults.get(fullKey);
 						return value === undefined ? defaultValue : value;
 					}),
 					has: vi.fn((key: string) => {
 						return snapshot.has(getFullKey(key));
 					}),
-					inspect: vi.fn(),
+					inspect: <T>(key: string) => ({
+						key: getFullKey(key),
+						defaultValue: defaults.get(getFullKey(key)) as T | undefined,
+						globalValue: (snapshot.get(getFullKey(key)) ?? undefined) as
+							| T
+							| undefined,
+					}),
 					update: vi.fn((key: string, value: unknown) => {
 						this.set(getFullKey(key), value);
 						return Promise.resolve();
