@@ -2,10 +2,7 @@ import * as vscode from "vscode";
 
 import { watchConfigurationChanges } from "../configWatcher";
 import { AuthTelemetry } from "../instrumentation/auth";
-import {
-	BufferingLogger,
-	type ConnectionLogBuffer,
-} from "../logging/logBuffer";
+import { FlightRecorder } from "../logging/flightRecorder";
 import { prefixLogger } from "../logging/prefixLogger";
 import { shortId } from "../logging/utils";
 import { LoginCoordinator } from "../login/loginCoordinator";
@@ -38,7 +35,7 @@ import type { Logger } from "../logging/logger";
  */
 export class ServiceContainer implements vscode.Disposable {
 	private readonly outputChannel: vscode.LogOutputChannel;
-	private readonly logger: BufferingLogger;
+	private readonly logger: FlightRecorder;
 	private readonly connectionLogBufferConfigSubscription: vscode.Disposable;
 	private readonly pathResolver: PathResolver;
 	private readonly mementoManager: MementoManager;
@@ -60,7 +57,7 @@ export class ServiceContainer implements vscode.Disposable {
 		});
 		const readSize = () =>
 			readConnectionLogBufferSize(vscode.workspace.getConfiguration());
-		this.logger = new BufferingLogger(
+		this.logger = new FlightRecorder(
 			prefixLogger(this.outputChannel, `[session ${shortId(sessionId)}]`),
 			this.outputChannel,
 			readSize(),
@@ -167,11 +164,6 @@ export class ServiceContainer implements vscode.Disposable {
 	}
 
 	getLogger(): Logger {
-		return this.logger;
-	}
-
-	/** The connection log buffer that replays below-level entries on failure. */
-	getConnectionLogBuffer(): ConnectionLogBuffer {
 		return this.logger;
 	}
 

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { BufferingLogger } from "@/logging/logBuffer";
+import { FlightRecorder } from "@/logging/flightRecorder";
 
-import type { Logger } from "@/logging/logger";
+import type { LogSink } from "@/logging/logger";
 
 // Numeric levels matching vscode.LogLevel.
 const OFF = 0;
@@ -11,7 +11,7 @@ const INFO = 3;
 const WARNING = 4;
 const ERROR = 5;
 
-type LogMethod = Exclude<keyof Logger, "show">;
+type LogMethod = Exclude<keyof LogSink, "show">;
 
 interface Call {
 	level: LogMethod;
@@ -25,7 +25,7 @@ function setup(level: number, capacity: number) {
 		(method: LogMethod) =>
 		(message: string, ...args: unknown[]) =>
 			calls.push({ level: method, message, args });
-	const logger: Logger = {
+	const logger: LogSink = {
 		trace: push("trace"),
 		debug: push("debug"),
 		info: push("info"),
@@ -34,7 +34,7 @@ function setup(level: number, capacity: number) {
 		show: vi.fn(),
 	};
 	const channel = { logLevel: level };
-	const buffer = new BufferingLogger(logger, channel, capacity);
+	const buffer = new FlightRecorder(logger, channel, capacity);
 	// Ignore the pass-through calls, then return only what the flush replayed.
 	const flush = (
 		reason = "r",
@@ -51,7 +51,7 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-describe("BufferingLogger", () => {
+describe("FlightRecorder", () => {
 	it("forwards every call to the inner logger", () => {
 		const { buffer, calls } = setup(INFO, 10);
 

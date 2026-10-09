@@ -44,7 +44,6 @@ import type { MementoManager } from "@/core/mementoManager";
 import type { PathResolver } from "@/core/pathResolver";
 import type { SecretsManager } from "@/core/secretsManager";
 import type { Deployment } from "@/deployment/types";
-import type { ConnectionLogBuffer } from "@/logging/logBuffer";
 import type { Logger } from "@/logging/logger";
 import type { LoginCoordinator } from "@/login/loginCoordinator";
 import type { NetworkInfo } from "@/remote/sshProcess";
@@ -561,6 +560,7 @@ export function createMockLogger(): Logger {
 		warn: vi.fn(),
 		error: vi.fn(),
 		show: vi.fn(),
+		flush: vi.fn(),
 	};
 }
 
@@ -606,6 +606,8 @@ export class LogCollector implements Logger {
 	}
 
 	show(): void {}
+
+	flush(): void {}
 
 	private collect(
 		level: LogEntry["level"],
@@ -669,10 +671,6 @@ export function createMockServiceContainer(
 	return {
 		getTelemetryService: () => telemetry,
 		getLogger: () => logger,
-		getConnectionLogBuffer: (): ConnectionLogBuffer => ({
-			flush: () => {},
-			onConnectionFailure: () => {},
-		}),
 		getSecretsManager: () =>
 			require("secretsManager", overrides.secretsManager),
 		getMementoManager: () =>
