@@ -7,7 +7,7 @@
 	"customizations": {
 		"vscode": {
 			"extensions": [
-				"esbenp.prettier-vscode",
+				"oxc.oxc-vscode",
 				"dbaeumer.vscode-eslint",
 				"vitest.explorer",
 				"ms-vscode.extension-test-runner"

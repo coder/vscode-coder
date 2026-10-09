@@ -6,10 +6,10 @@ import { defineConfig } from "@vscode/test-cli";
 // See https://github.com/ewanharris/vscode-versions for version mapping
 const versions = ["1.105.0", "stable"];
 
+// Paths resolve against this file's directory.
 const baseConfig = {
-	files: "out/test/integration/**/*.test.js",
-	extensionDevelopmentPath: ".",
-	extensionTestsPath: "./out/test",
+	files: "../../out/test/integration/**/*.test.js",
+	extensionDevelopmentPath: "../..",
 	launchArgs: ["--enable-proposed-api", "coder.coder-remote", "--disable-gpu"],
 	mocha: {
 		ui: "tdd",

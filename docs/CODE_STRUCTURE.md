@@ -17,7 +17,7 @@ Rules for code on either side:
 
 - **Cross the boundary only with messages.** The extension and webviews talk
   through the typed IPC contracts in `@repo/shared` (see the
-  [`webview-shared` README](packages/webview-shared/README.md)), never by
+  [`webview-shared` README](../packages/webview-shared/README.md)), never by
   importing each other's code.
 - **Keep `@repo/shared` runtime-free.** Use plain TypeScript, with no Node
   built-ins, DOM or `vscode`. When behavior differs by runtime, take it as a
@@ -45,7 +45,7 @@ built to be split into its own package later:
 
 A component that knows about Coder, tasks or workspaces belongs in a panel
 package, even if it is built from `@repo/ui` parts. The
-[`ui` README](packages/ui/README.md) covers the details.
+[`ui` README](../packages/ui/README.md) covers the details.
 
 ## Where new code goes
 

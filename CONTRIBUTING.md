@@ -1,249 +1,21 @@
 # Contributing
 
-## Architecture
+Start with [Development](#development) to build and run the extension. These
+guides cover the rest; they serve humans and coding agents alike, and
+[AGENTS.md](AGENTS.md) routes agents to them.
 
-Where code lives and how modules are named is described in
-[CODE_STRUCTURE.md](CODE_STRUCTURE.md).
-
-When the Coder Remote plugin handles a request to open a workspace, it invokes
-Microsoft's [Remote - SSH](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh)
-extension using the following URI structure:
-
-```text
-vscode://ssh-remote+<hostname><path>
-```
-
-The `ssh-remote` scheme is registered by Microsoft's Remote - SSH extension and
-indicates that it should connect to the provided host name using SSH.
-
-The host name takes the format
-`coder-<editor>.<domain>--<username>--<workspace>`, where `<editor>` comes from
-that product's URI scheme, such as `vscode`, `cursor`, or `devin`/`windsurf`. The CLI is
-invoked through SSH's `ProxyCommand` with this prefix so it can route SSH to the
-right workspace. A legacy `coder-vscode` authority opened in another editor is
-reopened once with that editor's prefix; legacy recent-folder entries remain
-compatible when opening the same workspace.
-
-The Coder Remote extension also registers for the
-`onResolveRemoteAuthority:ssh-remote` [extension activation
-event](https://code.visualstudio.com/api/references/activation-events) to hook
-into this process, running before the Remote - SSH extension actually connects.
-
-On activation of this event, we check whether the remote authority belongs to
-the current editor, and if so we delay activation to:
-
-1. Parse the host name to get the domain, username, and workspace.
-2. Ensure the workspace is running.
-3. Download the matching server binary to the client.
-4. Configure the binary with the URL and token, asking the user for them if they
-   are missing. Each domain gets its own config directory.
-5. Write an entry for `coder-<editor>.<domain>--*` to a per-editor,
-   per-deployment file in a data directory shared by every editor, such as
-   `~/.local/share/coder.coder-remote/ssh/cursor--dev.coder.com.conf`.
-6. Keep a shared `Include` block at the top of the user's SSH config that
-   globs the whole directory. Every editor writes the identical block, so
-   concurrent writers converge on the same content. The `CODER INCLUDE <id>`
-   marker convention lets other Coder integrations recognize the block, since
-   Coder-managed includes route disjoint hosts and are order-independent.
-
-```text
-# --- START CODER INCLUDE CODER-REMOTE ---
-# Managed by the Coder extension for VS Code and its forks.
-# Moves back to the top on connect; override options via coder.sshConfig.
-Include "~/.local/share/coder.coder-remote/ssh/*.conf"
-# --- END CODER INCLUDE CODER-REMOTE ---
-```
-
-Each generated file contains only its own editor's host entries for one
-deployment:
-
-```text
-Host coder-cursor.dev.coder.com--*
-  ProxyCommand "/tmp/coder" --global-config "/home/kyle/.config/Cursor/User/globalStorage/coder.coder-remote/dev.coder.com" ssh --stdio --network-info-dir "/home/kyle/.config/Cursor/User/globalStorage/coder.coder-remote/net" --ssh-host-prefix coder-cursor.dev.coder.com-- %h
-  ConnectTimeout 0
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-  LogLevel ERROR
-```
-
-Which main file gains the include depends on the Remote - SSH extension.
-Microsoft's and Cursor's pass `remote.SSH.configFile` to ssh with `-F`, and
-VSCodium's parses the file itself instead of running ssh, so all three connect
-through it. Antigravity and Windsurf/Devin renamed the setting but spawn ssh
-without `-F`, so ssh reads `~/.ssh/config` regardless; we ignore the renamed
-setting there rather than add the include where the connection never looks.
-
-If any step fails, we show an error message. Once the error message is closed
-we close the remote so the Remote - SSH connection does not continue to
-connection. Otherwise, we yield, which lets the Remote - SSH continue.
-
-VS Code SSH uses the `ssh -D <port>` flag to start a SOCKS server on the
-specified port. This port is printed to the `Remote - SSH` log file in the VS
-Code Output panel in the format `-> socksPort <port> ->`. We use this port to
-find the SSH process ID that is being used by the remote session.
-
-The `ssh` subcommand on the `coder` binary periodically flushes its network
-information to `network-info-dir + "/" + process.ppid`. SSH executes
-`ProxyCommand`, which means the `process.ppid` will always be the matching SSH
-command.
-
-Coder Remote periodically reads the `network-info-dir + "/" + matchingSSHPID`
-file to display network information.
-
-### Windows SSH config permissions
-
-Windows files inherit their permissions from the directory they live in, so a
-config the extension generates under `%APPDATA%\coder.coder-remote\ssh` can end
-up readable by other accounts. OpenSSH rejects such a file with "Bad owner or
-permissions" and skips the whole `Include`, which blocks every Coder host, not
-just the one it came from.
-
-Before each managed write, `src/remote/windowsAcl.ts` locks the directory down
-and lets its files inherit from it:
-
-| Step                                                     | Command                                              |
-| -------------------------------------------------------- | ---------------------------------------------------- |
-| Read the current user's SID                              | `whoami.exe /user /fo csv /nh`                       |
-| Clear the directory's own grants                         | `icacls.exe <dir> /reset`                            |
-| Grant that user, SYSTEM, and Administrators full control | `icacls.exe <dir> /inheritance:r /grant:r <trustee>` |
-| Clear each `*.conf` file so it inherits the directory    | `icacls.exe <file> /reset`                           |
-
-Resetting every `*.conf` file, not only the one being written, also repairs
-files left behind by other deployments and editors.
-
-Worth knowing:
-
-- Like VS Code, the code checks exit codes but never reads ACLs back. It needs
-  no script, native module, ownership change, or elevation, and it leaves the
-  user's own SSH config alone.
-- Links and non-files are rejected before the repair, because inheritable
-  grants reach children even without `/T`. That stops mistakes, not an attacker
-  racing the check.
-- The repair is not atomic: a failure after `/reset` can leave the directory
-  with its parent's grants.
-
-`windowsAcl.native.test.ts` drives the real `icacls.exe`, `whoami.exe`, and
-OpenSSH. Run it unelevated as well as in CI to catch privilege assumptions.
-
-## Other features
-
-The extension provides several sidebar panels:
-
-- **My Workspaces / All Workspaces** - tree views showing workspaces with status
-  indicators, quick actions, and search.
-- **Coder Tasks** - a React webview for creating, monitoring, and managing AI
-  agent tasks with real-time log streaming.
-
-There are also notifications for outdated workspace templates and for workspaces
-that are close to shutting down.
-
-## Webviews
-
-The extension ships rich UI panels as webviews built with Vite, organized as a
-pnpm workspace in `packages/`. The canonical guide for building one covers
-the IPC contract, exhaustiveness rules, the "no dropped events" guarantee,
-and a new-panel checklist. It lives next to the code:
-
-**[`packages/webview-shared/README.md`](packages/webview-shared/README.md)**
-
-Existing webviews as references:
-
-- `packages/tasks` + `src/webviews/tasks/`: React (uses `useIpc`).
-- `packages/speedtest` + `src/webviews/speedtest/`: vanilla TS (uses
-  `onNotification` / `sendCommand`).
-
-### Development
-
-```bash
-pnpm watch  # Rebuild extension and webviews on changes
-```
-
-Press F5 to launch the Extension Development Host. Use "Developer: Reload
-Webviews" to see webview changes.
-
-## Telemetry
-
-Local telemetry instrumentation follows a shared style: how spans are threaded,
-how events and properties are named, and properties vs measurements. Read this
-before adding new telemetry so it stays consistent across the codebase. It lives
-next to the code:
-
-**[`src/instrumentation/CONVENTIONS.md`](src/instrumentation/CONVENTIONS.md)**
-
-## Logging
-
-The extension logs to the "Coder" output channel, a `LogOutputChannel` that gates
-messages by the level chosen in its gear menu. To help Support diagnose
-connection failures without asking users to reproduce with debug logging enabled,
-a `FlightRecorder` ([`src/logging/flightRecorder.ts`](src/logging/flightRecorder.ts))
-wraps the channel and keeps a bounded, in-memory ring of the entries that sit
-**below** the current level, which the channel would otherwise drop.
-
-When a WebSocket fails terminally, a remote session closes after a failed or
-canceled open, or you collect a support bundle, the extension replays the ring
-into the channel. The first physical line of each replayed entry carries a
-`[buffered]` marker with its original timestamp and level, and any continuation
-lines carry the bare marker.
-Capture is best-effort: the channel writes on its own schedule, so a bundle may
-miss the most recent lines, but a later failure flush still replays them.
-Transient reconnects and intentional teardown never flush, and neither does a
-handshake `401` (a 401 explains itself, and with OAuth a refresh reconnects the
-same socket). Nothing is recorded or flushed while the channel is at `Off`.
-
-The buffer size is set by `coder.connectionLogBuffer.size` (number of entries;
-`0` disables it) and lives in memory, so a hard kill or out-of-memory event
-loses it. Extension SSH debug logs that pass through the shared logger are
-buffered; the CLI `ProxyCommand` file logs under `coder.proxyLogDirectory` are
-not, since support bundles already collect them from disk.
-
-## Testing
-
-There are a few ways you can test the "Open in VS Code" flow:
-
-- Use the "VS Code Desktop" button from a Coder dashboard.
-- Manually open the link with `Developer: Open URL` from inside VS Code.
-- Use `code --open-url` on the command line.
-
-The link format is `vscode://coder.coder-remote/open?${query}`. For example:
-
-```bash
-code --open-url 'vscode://coder.coder-remote/open?url=dev.coder.com&owner=my-username&workspace=my-ws&agent=my-agent'
-```
-
-### Unit Tests
-
-The project uses Vitest with separate test configurations for extension and webview code:
-
-```bash
-pnpm test:extension  # Extension tests (runs in Electron)
-pnpm test:webview    # Webview tests (runs in Electron with jsdom)
-pnpm test            # Both extension and webview tests (CI mode)
-```
-
-Test files are organized by type:
-
-```text
-test/
-├── unit/           # Extension unit tests (mirrors src/)
-├── webview/        # Webview unit tests (mirrors packages/<pkg>/src/, jsdom)
-├── integration/    # Integration tests (real VS Code)
-└── mocks/          # Shared test mocks
-```
-
-### Integration Tests
-
-Integration tests run inside a real VS Code instance:
-
-```bash
-pnpm test:integration
-```
-
-**Limitations:**
-
-- Must use Mocha (VS Code test runner requirement), not Vitest
-- Cannot run while another VS Code instance is open (they share state)
-- Requires closing VS Code or running in a clean environment
-- Test files in `test/integration/` are compiled to `out/` before running
+- [Code structure](docs/CODE_STRUCTURE.md): where code lives, module and file
+  naming, and test placement.
+- [Architecture](docs/ARCHITECTURE.md): how opening a workspace works, SSH
+  config management, Windows permissions and connection logging.
+- [Testing](docs/TESTING.md): unit, webview and integration tests, and
+  testing the open flow by hand.
+- [Tooling](docs/TOOLING.md): linting, formatting, TypeScript, Node.js and
+  dependency upgrades.
+- [Webviews](packages/AGENTS.md): React, `@repo/ui`, Storybook and the
+  [IPC contract](packages/webview-shared/README.md).
+- [Telemetry](src/instrumentation/CONVENTIONS.md): how to add events, and the
+  [event catalog](src/instrumentation/EVENTS.md).
 
 ## Development
 
@@ -277,70 +49,40 @@ Alternatively:
 4. If your change is something users ought to be aware of, add an entry in the
    changelog.
 
-## Linting
+### Webviews
 
-Linting runs in two stages: [Oxlint](https://oxc.rs) handles all JS/TS/TSX
-rules, and a residual ESLint pass covers what Oxlint cannot do yet. When an
-Oxlint equivalent lands, remove the corresponding entry from
-`eslint.config.mjs` and this list.
+```bash
+pnpm watch  # Rebuild extension and webviews on changes
+```
 
-| ESLint rule/plugin                                          | Why Oxlint can't do it                                                         |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `import-x/order`                                            | Oxlint has no import ordering rule; Oxfmt's `sortImports` reorders differently |
-| `@eslint/markdown` (`markdown/no-missing-label-refs`, etc.) | Oxlint only lints source extensions; Markdown needs processors                 |
-| `eslint-plugin-package-json` (58 rules)                     | Oxlint only lints source extensions                                            |
+Press F5 to launch the Extension Development Host. Use "Developer: Reload
+Webviews" to see webview changes.
 
-`eslint-plugin-oxlint` reads `.oxlintrc.jsonc` and disables every rule Oxlint
-already covers, so the two stages never overlap.
+## Pull requests
 
-## TypeScript Version
+- Titles use Conventional Commits (`type(scope): message`); CI checks them
+  against the types in `.github/workflows/pr-title-lint.yaml`.
+- Open PRs as drafts unless asked otherwise, so the author reviews them
+  before requesting reviewers.
+- Keep the description short: what changed and why, in one or two
+  paragraphs. Use Summary, Problem and Fix sections only when the change
+  needs them.
+- Link related issues and PRs. Add screenshots for UI changes and numbers
+  for performance changes.
+- Leave out test plans, "benefits" sections, line-by-line walkthroughs and
+  marketing language. Let GitHub wrap the prose instead of hard-wrapping it.
 
-TypeScript 7 has no programmatic API yet, so `typescript-eslint` cannot load
-against it. The two run side-by-side, following the
-[official guidance](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/):
+## Reviewing
 
-- `typescript` is aliased to `@typescript/typescript6`: the 6.0 API that
-  `typescript-eslint` consumes. Its binary is `tsc6`.
-- `@typescript/native` is aliased to `typescript@^7`: the `tsc` binary used by
-  `pnpm typecheck` and editors.
-
-When TypeScript 7 ships an API, drop `@typescript/native` and point `typescript`
-back at a single version.
-
-## Node.js Version
-
-This extension targets the Node.js version bundled with VS Code's Electron:
-
-| VS Code | Electron | Node.js | Status            |
-| ------- | -------- | ------- | ----------------- |
-| 1.105   | 37       | 22      | Minimum supported |
-| stable  | latest   | varies  | Also tested in CI |
-
-When updating the minimum Node.js version, update these files:
-
-- **package.json**: `engines.vscode`, `engines.node`, `@types/node`, `@tsconfig/nodeXX`
-- **tsconfig.json**: `extends` (the `@tsconfig/nodeXX` package), `lib` (match base ESNext version)
-- **esbuild.mjs**: `target`
-- **.github/workflows/ci.yaml**: `electron-version` and `vscode-version` matrices
-
-## Dependencies
-
-Some dependencies are not directly used in the source but are required anyway.
-
-- `bufferutil` and `utf-8-validate` are peer dependencies of `ws`. Their source
-  builds are off, so Windows on ARM64 uses their JavaScript fallback.
-- `ua-parser-js` and `dayjs` are used by the Coder API client.
-
-The coder client is vendored from coder/coder. Pin it to a release tag in
-`pnpm-workspace.yaml` (e.g. `coder: github:coder/coder#v2.33.1`), not `#main`.
-A tag gives reproducible builds and is not re-fetched on every `pnpm install`,
-unlike `#main` which can drift between installs. To update, bump the tag and
-run `pnpm install` (or `pnpm update coder`).
-
-After running `pnpm update`, always run `pnpm dedupe` to consolidate duplicate
-package versions across the workspace. Without this, workspace packages can
-resolve to different versions of the same dependency, causing issues like broken
-React context propagation when two copies of a library are loaded.
+- Read the full files and related code before commenting, and check
+  [AGENTS.md](AGENTS.md) before flagging style.
+- Report only issues you're confident are real, state their impact ("crashes
+  when X", not "could be better"), and make each one actionable.
+- State correctness and security findings as facts, not "might" or "could";
+  verify how an API behaves instead of guessing.
+- Don't flag style that matches existing patterns, unchanged code,
+  theoretical issues without a concrete impact, or changes outside the PR's
+  purpose.
 
 ## Releasing
 
