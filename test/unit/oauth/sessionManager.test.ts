@@ -484,6 +484,19 @@ describe("OAuthSessionManager", () => {
 			]);
 		});
 
+		it("revokes tokens with outdated scopes", async () => {
+			const { manager, setupForOAuthOperation } = createTestContext();
+			const revoke = vi.fn(() => ({}));
+			await setupForOAuthOperation(
+				{ "/oauth2/revoke": revoke },
+				{ scope: "workspace:read" },
+			);
+
+			await manager.revokeTokens();
+
+			expect(revoke).toHaveBeenCalledTimes(2);
+		});
+
 		it("does not throw when revocation fails", async () => {
 			const { manager, setupForOAuthOperation } = createTestContext();
 
@@ -531,13 +544,21 @@ describe("OAuthSessionManager", () => {
 				oauth: {
 					refresh_token: "refresh-token",
 					expiry_timestamp: Date.now() + ONE_HOUR_MS,
-					// workspace:* covers workspace:read, workspace:update, etc.
-					scope: "workspace:* template:read user:read_personal",
+					// workspace:* and user:* cover the low-level scopes
+					scope:
+						"coder:workspaces.operate coder:workspaces.access workspace:* user:*",
 				},
 			});
 
 			const result = await manager.isLoggedInWithOAuth();
 			expect(result).toBe(true);
+		});
+
+		it("accepts coder:all", async () => {
+			const { manager, setupOAuthSession } = createTestContext();
+			await setupOAuthSession({ scope: "coder:all" });
+
+			expect(await manager.isLoggedInWithOAuth()).toBe(true);
 		});
 	});
 
