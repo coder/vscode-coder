@@ -5,7 +5,7 @@ import {
 	formatMetadataError,
 	type AgentMetadataWatcher,
 	type AgentMetadataClient,
-} from "../api/agentMetadataHelper";
+} from "../api/agentMetadata";
 
 import type {
 	AgentMetadataMap,

@@ -1,11 +1,11 @@
 import * as vscode from "vscode";
 
-import { toError } from "../../error/errorUtils";
+import { toError } from "../../error/normalize";
 import {
 	withCancellableProgress,
 	type ProgressContext,
 	type ProgressResult,
-} from "../../progress";
+} from "../../ui/progress";
 
 import {
 	collectTelemetryExport,

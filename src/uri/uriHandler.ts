@@ -1,14 +1,14 @@
 import * as vscode from "vscode";
 
-import { errToStr } from "../api/api-helper";
+import { isSameOrigin, toSafeHost } from "../common/url";
+import { errToStr } from "../error/normalize";
 import { AuthTelemetry } from "../instrumentation/auth";
-import { CALLBACK_PATH } from "../oauth/utils";
-import { maybeAskUrl } from "../promptUtils";
-import { isSameOrigin, toSafeHost } from "../util/uri";
-import { vscodeProposed } from "../vscodeProposed";
+import { CALLBACK_PATH } from "../oauth/constants";
+import { maybeAskUrl } from "../ui/prompts";
+import { vscodeProposed } from "../vscode/proposed";
 
 import type { Commands } from "../commands";
-import type { ServiceContainer } from "../core/container";
+import type { ServiceContainer } from "../container";
 import type { DeploymentManager } from "../deployment/deploymentManager";
 
 interface UriHandlerDeps {

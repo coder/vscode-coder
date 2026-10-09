@@ -4,9 +4,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { renameWithRetry } from "@/common/fs";
 import { appendVsCodeLogs } from "@/supportBundle/appendVsCodeLogs";
 import { collectVsCodeDiagnostics } from "@/supportBundle/logFiles";
-import { renameWithRetry } from "@/util/fs";
 
 import { createMockLogger } from "../../mocks/testHelpers";
 
@@ -18,8 +18,9 @@ vi.mock("@/supportBundle/logFiles", () => ({
 
 // Wrap renameWithRetry so individual tests can override it via
 // mockRejectedValueOnce; by default it calls through to the real impl.
-vi.mock("@/util/fs", async () => {
-	const actual = await vi.importActual<typeof import("@/util/fs")>("@/util/fs");
+vi.mock("@/common/fs", async () => {
+	const actual =
+		await vi.importActual<typeof import("@/common/fs")>("@/common/fs");
 	return { ...actual, renameWithRetry: vi.fn(actual.renameWithRetry) };
 });
 

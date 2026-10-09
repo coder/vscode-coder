@@ -1,4 +1,4 @@
-import { isAbortError } from "../error/errorUtils";
+import { isAbortError } from "../error/abort";
 
 import type { Span } from "../telemetry/span";
 

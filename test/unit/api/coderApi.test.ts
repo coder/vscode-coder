@@ -22,25 +22,24 @@ import {
 	refreshCertificates,
 } from "@/api/certificateRefresh";
 import { CoderApi, DEFAULT_REQUEST_TIMEOUT_MS } from "@/api/coderApi";
+import { createHttpAgent } from "@/api/httpAgent";
 import { HttpStatusCode } from "@/api/httpStatusCode";
 import {
 	InvalidApiResponseError,
 	VALIDATED_RESPONSES,
 	type ValidatedMethods,
 } from "@/api/responseValidation";
-import { createHttpAgent } from "@/api/utils";
 import { CONFIG_CHANGE_DEBOUNCE_MS } from "@/configWatcher";
-import { sessionId } from "@/core/sessionId";
 import { ClientCertificateError } from "@/error/clientCertificateError";
 import { ServerCertificateError } from "@/error/serverCertificateError";
 import { getHeaders } from "@/headers";
+import { sessionId } from "@/telemetry/ids";
 import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
 } from "@/telemetry/reporter";
-import { WebSocketCloseCode } from "@/websocket/codes";
+import { WebSocketCloseCode, HandshakeError } from "@/websocket/codes";
 import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
-import { HandshakeError } from "@/websocket/utils";
 
 import {
 	createMockLogger,
@@ -92,7 +91,7 @@ vi.mock("@/headers", () => ({
 	getHeaderCommand: vi.fn(),
 }));
 
-vi.mock("@/api/utils", () => ({
+vi.mock("@/api/httpAgent", () => ({
 	createHttpAgent: vi.fn(),
 }));
 

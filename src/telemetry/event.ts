@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import * as vscode from "vscode";
 
-import { toError } from "../error/errorUtils";
+import { toError } from "../error/normalize";
 
 export type {
 	SessionContext,

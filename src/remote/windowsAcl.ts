@@ -3,7 +3,7 @@ import { lstat, readdir } from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 
-import { wrapError } from "../error/errorUtils";
+import { wrapError } from "../error/normalize";
 
 import type { ManagedPermissions } from "./sshConfig";
 

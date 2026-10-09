@@ -10,13 +10,14 @@
 import { type WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import Ws, { type ClientOptions, type RawData } from "ws";
 
-import { toError } from "../error/errorUtils";
+import { getQueryString } from "../common/url";
+import { toError } from "../error/normalize";
 
+import { HandshakeError } from "./codes";
 import {
 	type UnidirectionalStream,
 	type EventHandler,
 } from "./eventStreamConnection";
-import { getQueryString, HandshakeError, rawDataToString } from "./utils";
 
 export interface OneWayWebSocketInit {
 	location: { protocol: string; host: string };
@@ -157,5 +158,17 @@ export class OneWayWebSocket<
 
 	close(code?: number, reason?: string): void {
 		this.#socket.close(code, reason);
+	}
+}
+
+function rawDataToString(data: RawData): string {
+	if (Buffer.isBuffer(data)) {
+		return data.toString("utf8");
+	} else if (data instanceof ArrayBuffer) {
+		return new TextDecoder().decode(data);
+	} else if (Array.isArray(data)) {
+		return Buffer.concat(data).toString("utf8");
+	} else {
+		return new TextDecoder().decode(data);
 	}
 }

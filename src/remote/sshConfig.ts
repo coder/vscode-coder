@@ -10,9 +10,9 @@ import {
 import * as os from "node:os";
 import path from "node:path";
 
-import { SSH_CONFIG_EXT } from "../core/pathResolver";
-import { countSubstring, lowercase } from "../util";
-import { renameWithRetry, tempFilePath } from "../util/fs";
+import { renameWithRetry, tempFilePath } from "../common/fs";
+import { lowercase } from "../common/strings";
+import { SSH_CONFIG_EXT } from "../storage/pathResolver";
 
 import type { Logger } from "../logging/logger";
 
@@ -593,4 +593,20 @@ export class SshConfig {
 			throw error;
 		}
 	}
+}
+
+/**
+ * Return the number of times a substring appears in a string.
+ */
+export function countSubstring(needle: string, haystack: string): number {
+	if (needle.length < 1 || haystack.length < 1) {
+		return 0;
+	}
+	let count = 0;
+	let pos = haystack.indexOf(needle);
+	while (pos !== -1) {
+		count++;
+		pos = haystack.indexOf(needle, pos + needle.length);
+	}
+	return count;
 }

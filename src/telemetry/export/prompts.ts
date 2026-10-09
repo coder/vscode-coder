@@ -2,7 +2,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
-import { toUtcDateString, validateUtcDateInput } from "../../util/date";
+import { toUtcDateString, validateUtcDateInput } from "../date";
 
 import {
 	TELEMETRY_RANGE_PRESETS,

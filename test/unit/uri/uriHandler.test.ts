@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { MementoManager } from "@/core/mementoManager";
-import { SecretsManager } from "@/core/secretsManager";
+import { CALLBACK_PATH } from "@/oauth/constants";
 import { OAuthCallback } from "@/oauth/oauthCallback";
-import { CALLBACK_PATH } from "@/oauth/utils";
-import { maybeAskUrl } from "@/promptUtils";
+import { MementoManager } from "@/storage/mementoManager";
+import { SecretsManager } from "@/storage/secretsManager";
 import { NOOP_TELEMETRY_REPORTER } from "@/telemetry/reporter";
+import { maybeAskUrl } from "@/ui/prompts";
 import { registerUriHandler } from "@/uri/uriHandler";
 
 import {
@@ -18,10 +18,10 @@ import {
 	MockUserInteraction,
 } from "../../mocks/testHelpers";
 
-import type { ServiceContainer } from "@/core/container";
+import type { ServiceContainer } from "@/container";
 import type { LoginCoordinator, LoginOptions } from "@/login/loginCoordinator";
 
-vi.mock("@/promptUtils", () => ({ maybeAskUrl: vi.fn() }));
+vi.mock("@/ui/prompts", () => ({ maybeAskUrl: vi.fn() }));
 
 const TEST_URL = "https://coder.example.com";
 const TEST_HOSTNAME = "coder.example.com";

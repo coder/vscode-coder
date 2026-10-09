@@ -3,10 +3,9 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
+import { cleanupFiles } from "../common/fs";
 import { SshTelemetry, type ProcessLossCause } from "../instrumentation/ssh";
-import { findPort } from "../util";
-import { cleanupFiles } from "../util/fileCleanup";
-import { createStatusBarItem } from "../util/statusBar";
+import { createStatusBarItem } from "../ui/statusBar";
 
 import { NetworkStatusReporter } from "./networkStatus";
 import {
@@ -545,4 +544,37 @@ async function findSshLogInDir(dirPath: string): Promise<string | undefined> {
 	const files = await fs.readdir(dirPath);
 	const remoteSshLog = files.find(isSharedChannelRemoteSshLog);
 	return remoteSshLog ? path.join(dirPath, remoteSshLog) : undefined;
+}
+
+// Regex patterns to find the SSH port from Remote SSH extension logs.
+// `ms-vscode-remote.remote-ssh`: `-> socksPort <port> ->` or `between local port <port>`
+// `codeium.windsurf-remote-openssh`, `jeanp413.open-remote-ssh`, `google.antigravity-remote-openssh`: `=> <port>(socks) =>`
+// `anysphere.remote-ssh`: `Socks port: <port>`
+const RemoteSSHLogPortRegex =
+	/(?:-> socksPort (\d+) ->|between local port (\d+)|=> (\d+)\(socks\) =>|Socks port: (\d+))/g;
+
+/**
+ * Given the contents of a Remote - SSH log file, find the most recent port
+ * number used by the SSH process. This is typically the socks port, but the
+ * local port works too.
+ *
+ * Returns null if no port is found.
+ */
+export function findPort(text: string): number | null {
+	const allMatches = [...text.matchAll(RemoteSSHLogPortRegex)];
+	if (allMatches.length === 0) {
+		return null;
+	}
+
+	// Get the last match, which is the most recent port.
+	const lastMatch = allMatches[allMatches.length - 1];
+	// Each capture group corresponds to a different Remote SSH extension log format:
+	// [0] full match, [1] and [2] ms-vscode-remote.remote-ssh,
+	// [3] devin/windsurf/open-remote-ssh/antigravity, [4] anysphere.remote-ssh
+	const portStr = lastMatch[1] || lastMatch[2] || lastMatch[3] || lastMatch[4];
+	if (!portStr) {
+		return null;
+	}
+
+	return Number.parseInt(portStr);
 }

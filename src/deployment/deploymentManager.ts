@@ -1,13 +1,10 @@
-import { isOwner } from "../api/api-helper";
 import { CoderApi } from "../api/coderApi";
+import { isOwner } from "../api/models";
 import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
 	watchConfigurationChanges,
 } from "../configWatcher";
-import { type ServiceContainer } from "../core/container";
-import { type ContextManager } from "../core/contextManager";
-import { type MementoManager } from "../core/mementoManager";
-import { type SecretsManager } from "../core/secretsManager";
+import { type ServiceContainer } from "../container";
 import {
 	DeploymentTelemetry,
 	type DeploymentRecoveryTrigger,
@@ -16,7 +13,10 @@ import {
 import { type Logger } from "../logging/logger";
 import { type OAuthSessionManager } from "../oauth/sessionManager";
 import { getAuthConfigWatchSettings } from "../settings/authConfig";
+import { type MementoManager } from "../storage/mementoManager";
+import { type SecretsManager } from "../storage/secretsManager";
 import { type TelemetryService } from "../telemetry/service";
+import { type ContextManager } from "../vscode/contextManager";
 
 import {
 	SessionStore,

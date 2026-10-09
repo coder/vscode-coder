@@ -40,3 +40,19 @@ export const UNRECOVERABLE_HTTP_CODES = new Set<number>([
 	HttpStatusCode.GONE,
 	HttpStatusCode.UPGRADE_REQUIRED,
 ]);
+
+export class HandshakeError extends Error {
+	constructor(
+		readonly statusCode: number,
+		message = `HTTP handshake failed (${statusCode})`,
+		options?: ErrorOptions,
+	) {
+		super(message, options);
+		this.name = "HandshakeError";
+	}
+}
+
+/** HTTP status from a failed `ws` or `eventsource` handshake, or `undefined`. */
+export function handshakeStatus(error: unknown): number | undefined {
+	return error instanceof HandshakeError ? error.statusCode : undefined;
+}

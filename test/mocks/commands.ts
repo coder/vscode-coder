@@ -7,7 +7,7 @@ import { createTestTelemetryService } from "./telemetry";
 import { createMockLogger } from "./testHelpers";
 
 import type { CoderApi } from "@/api/coderApi";
-import type { ServiceContainer } from "@/core/container";
+import type { ServiceContainer } from "@/container";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
 
 /** Build `Commands`; services left unnamed stand in as empty objects. */

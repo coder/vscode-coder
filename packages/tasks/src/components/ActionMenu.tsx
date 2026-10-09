@@ -4,7 +4,7 @@ import {
 } from "@vscode-elements/react-elements";
 import { useState, useRef, useEffect } from "react";
 
-import { isEscape } from "../utils/keys";
+import { isEscape } from "../keys";
 
 interface ActionMenuAction {
 	label: string;

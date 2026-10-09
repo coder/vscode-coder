@@ -54,6 +54,7 @@ node_modules/**
 # Documentation and media
 usage.md
 AGENTS.md
+CODE_STRUCTURE.md
 *.gif
 
 # Build artifacts

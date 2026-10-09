@@ -23,6 +23,13 @@ doesn't make sense. Honesty over agreeableness.
 - Match the style of surrounding code - consistency within a file matters
 - Fix bugs immediately when you find them
 
+## Code Structure
+
+[CODE_STRUCTURE.md](CODE_STRUCTURE.md) is the single source for where code
+lives: the extension/webview boundary and package dependencies, where new
+code goes, topic-named modules (no `utils` or `helpers`), file naming and
+test placement. Follow it when adding, moving or splitting modules.
+
 ## Essential Commands
 
 | Task                      | Command                                             |
@@ -92,8 +99,8 @@ vi.mocked(SomeClass).mockImplementation(function () {
 
 ```text
 test/
-├── unit/           # Extension unit tests (mirrors src/ structure)
-├── webview/        # Webview unit tests (by package name)
+├── unit/           # Extension unit tests (mirrors src/)
+├── webview/        # Webview unit tests (mirrors packages/<pkg>/src/)
 ├── integration/    # VS Code integration tests (uses Mocha, not Vitest)
 ├── utils/          # Test utilities that are also tested
 └── mocks/          # Shared test mocks
@@ -138,8 +145,8 @@ Non-negotiables:
 - Use async/await for promises, avoid explicit Promise construction where
   possible
 - Unit test files must be named `*.test.ts` and use Vitest
-- Extension tests go in `./test/unit/<path in src>`
-- Webview tests go in `./test/webview/<package name>/`
+- Test files mirror their source path (see
+  [CODE_STRUCTURE.md](CODE_STRUCTURE.md#tests))
 - Never disable lint rules without user approval
 
 ### Naming and Comments

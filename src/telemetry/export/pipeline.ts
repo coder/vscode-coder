@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 
-import { throwIfAborted } from "../../error/errorUtils";
+import { throwIfAborted } from "../../error/abort";
 
 import {
 	listTelemetryFilesForRange,

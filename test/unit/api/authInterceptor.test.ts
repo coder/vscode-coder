@@ -6,8 +6,8 @@ import {
 	AuthInterceptor,
 } from "@/api/authInterceptor";
 import { HttpStatusCode } from "@/api/httpStatusCode";
-import { MementoManager } from "@/core/mementoManager";
-import { SecretsManager } from "@/core/secretsManager";
+import { MementoManager } from "@/storage/mementoManager";
+import { SecretsManager } from "@/storage/secretsManager";
 
 import {
 	createTestTelemetryService,

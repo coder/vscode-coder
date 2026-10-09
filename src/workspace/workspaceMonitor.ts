@@ -9,11 +9,8 @@ import {
 import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
 
-import {
-	createWorkspaceIdentifier,
-	errToStr,
-	extractAgents,
-} from "../api/api-helper";
+import { extractAgents, createWorkspaceIdentifier } from "../api/models";
+import { errToStr } from "../error/normalize";
 import {
 	recordAgentState,
 	recordWorkspaceState,
@@ -22,8 +19,8 @@ import {
 	areNotificationsDisabled,
 	areUpdateNotificationsDisabled,
 } from "../settings/notifications";
-import { createStatusBarItem } from "../util/statusBar";
-import { vscodeProposed } from "../vscodeProposed";
+import { createStatusBarItem } from "../ui/statusBar";
+import { vscodeProposed } from "../vscode/proposed";
 
 import {
 	INITIAL_STATE,
@@ -32,10 +29,10 @@ import {
 } from "./observers";
 
 import type { CoderApi } from "../api/coderApi";
-import type { ServiceContainer } from "../core/container";
-import type { ContextManager } from "../core/contextManager";
+import type { ServiceContainer } from "../container";
 import type { Logger } from "../logging/logger";
 import type { TelemetryReporter } from "../telemetry/reporter";
+import type { ContextManager } from "../vscode/contextManager";
 import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
 
 const stateVerb = (from: string | undefined) =>

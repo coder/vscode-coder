@@ -2,6 +2,9 @@
 
 ## Architecture
 
+Where code lives and how modules are named is described in
+[CODE_STRUCTURE.md](CODE_STRUCTURE.md).
+
 When the Coder Remote plugin handles a request to open a workspace, it invokes
 Microsoft's [Remote - SSH](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh)
 extension using the following URI structure:
@@ -221,8 +224,8 @@ Test files are organized by type:
 
 ```text
 test/
-├── unit/           # Extension unit tests
-├── webview/        # Webview unit tests (jsdom environment)
+├── unit/           # Extension unit tests (mirrors src/)
+├── webview/        # Webview unit tests (mirrors packages/<pkg>/src/, jsdom)
 ├── integration/    # Integration tests (real VS Code)
 └── mocks/          # Shared test mocks
 ```

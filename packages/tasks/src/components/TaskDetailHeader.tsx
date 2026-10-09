@@ -1,11 +1,11 @@
 import { getTaskLabel, type Task } from "@repo/shared";
 import { VscodeIcon } from "@vscode-elements/react-elements";
 
-import { getActionLabel } from "../utils/taskLoadingState";
+import { useTaskMenuItems } from "../hooks/useTaskMenuItems";
+import { getActionLabel } from "../taskLoadingState";
 
 import { ActionMenu } from "./ActionMenu";
 import { StatusIndicator } from "./StatusIndicator";
-import { useTaskMenuItems } from "./useTaskMenuItems";
 
 interface TaskDetailHeaderProps {
 	task: Task;

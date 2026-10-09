@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CoderApi } from "@/api/coderApi";
 import { CONFIG_CHANGE_DEBOUNCE_MS } from "@/configWatcher";
-import { MementoManager } from "@/core/mementoManager";
-import { SecretsManager } from "@/core/secretsManager";
 import { DeploymentManager } from "@/deployment/deploymentManager";
+import { MementoManager } from "@/storage/mementoManager";
+import { SecretsManager } from "@/storage/secretsManager";
 
 import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {

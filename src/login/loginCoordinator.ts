@@ -3,26 +3,21 @@ import { getErrorMessage } from "coder/site/src/api/errors";
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
+import { needToken } from "../api/httpAgent";
 import { HttpStatusCode } from "../api/httpStatusCode";
-import { needToken } from "../api/utils";
+import { isSameOrigin, openInBrowser } from "../common/url";
 import { CertificateError } from "../error/certificateError";
 import { OAuthAuthorizer } from "../oauth/authorizer";
-import { buildOAuthTokenData } from "../oauth/utils";
-import { withCancellableProgress } from "../progress";
-import { maybeAskAuthMethod, maybeAskUrl } from "../promptUtils";
-import { showStoreCredentialsError } from "../util/credentials";
-import { isSameOrigin, openInBrowser } from "../util/uri";
-import { vscodeProposed } from "../vscodeProposed";
+import { buildOAuthTokenData } from "../oauth/tokens";
+import { withCancellableProgress } from "../ui/progress";
+import { maybeAskAuthMethod, maybeAskUrl } from "../ui/prompts";
+import { vscodeProposed } from "../vscode/proposed";
+
+import { showStoreCredentialsError } from "./credentials";
 
 import type { User } from "coder/site/src/api/typesGenerated";
 
-import type { CliCredentialManager } from "../core/cliCredentialManager";
-import type { MementoManager } from "../core/mementoManager";
-import type {
-	OAuthTokenData,
-	SecretsManager,
-	SessionAuth,
-} from "../core/secretsManager";
+import type { CliCredentialManager } from "../cli/cliCredentialManager";
 import type { Deployment } from "../deployment/types";
 import type {
 	AuthLoginPromptTrigger,
@@ -31,6 +26,12 @@ import type {
 } from "../instrumentation/auth";
 import type { Logger } from "../logging/logger";
 import type { OAuthCallback } from "../oauth/oauthCallback";
+import type { MementoManager } from "../storage/mementoManager";
+import type {
+	OAuthTokenData,
+	SecretsManager,
+	SessionAuth,
+} from "../storage/secretsManager";
 
 export type LoginMethod =
 	| "mtls"

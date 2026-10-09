@@ -1,4 +1,4 @@
-import { DAY_MS, parseUtcDate, toUtcDateString } from "../../util/date";
+import { DAY_MS, parseUtcDate, toUtcDateString } from "../date";
 
 /**
  * Half-open UTC window `[startMs, endMs)` used to filter telemetry. Either

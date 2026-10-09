@@ -3,7 +3,7 @@ import {
 	VscodeProgressRing,
 } from "@vscode-elements/react-elements";
 
-import { isSubmit } from "../utils/keys";
+import { isSubmit } from "../keys";
 
 export interface PromptInputProps {
 	value: string;

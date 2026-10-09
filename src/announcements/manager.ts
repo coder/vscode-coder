@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
 
-import { errToStr } from "../api/api-helper";
-import { withProgress } from "../progress";
+import { errToStr } from "../error/normalize";
 import { areNotificationsDisabled } from "../settings/notifications";
-import { createStatusBarItem } from "../util/statusBar";
+import { withProgress } from "../ui/progress";
+import { createStatusBarItem } from "../ui/statusBar";
 
 import {
 	type Announcement,
@@ -16,9 +16,9 @@ import {
 import { AnnouncementsPreview } from "./preview";
 
 import type { CoderApi } from "../api/coderApi";
-import type { MementoManager } from "../core/mementoManager";
 import type { SessionState } from "../deployment/sessionStore";
 import type { Logger } from "../logging/logger";
+import type { MementoManager } from "../storage/mementoManager";
 
 /** Background poll interval; sign-in and manual refresh happen immediately either way. */
 export const REFRESH_INTERVAL_MS = 30 * 60 * 1000;

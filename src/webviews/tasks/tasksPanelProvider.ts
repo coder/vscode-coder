@@ -17,7 +17,6 @@ import {
 	type TaskTemplate,
 } from "@repo/shared";
 
-import { errToStr } from "../../api/api-helper";
 import { type CoderApi } from "../../api/coderApi";
 import { HttpStatusCode } from "../../api/httpStatusCode";
 import {
@@ -25,9 +24,10 @@ import {
 	streamAgentLogs,
 	streamBuildLogs,
 } from "../../api/workspace";
+import { openInBrowser } from "../../common/url";
+import { errToStr } from "../../error/normalize";
 import { type Logger } from "../../logging/logger";
-import { openInBrowser } from "../../util/uri";
-import { vscodeProposed } from "../../vscodeProposed";
+import { vscodeProposed } from "../../vscode/proposed";
 import { dispatchWebviewMessage, notifyWebview } from "../dispatch";
 import { getWebviewHtml } from "../html";
 

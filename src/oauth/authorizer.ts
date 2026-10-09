@@ -1,7 +1,8 @@
+import { createHash, randomBytes } from "node:crypto";
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
-import { resolveCoderDashboardUrl } from "../util/uri";
+import { resolveCoderDashboardUrl } from "../common/url";
 
 import {
 	AUTH_GRANT_TYPE,
@@ -10,14 +11,10 @@ import {
 	PKCE_CHALLENGE_METHOD,
 	RESPONSE_TYPE,
 	TOKEN_ENDPOINT_AUTH_METHOD,
+	CALLBACK_PATH,
 } from "./constants";
 import { OAuthMetadataClient } from "./metadataClient";
-import {
-	CALLBACK_PATH,
-	generatePKCE,
-	generateState,
-	toUrlSearchParams,
-} from "./utils";
+import { toUrlSearchParams } from "./tokens";
 import {
 	OAuth2ClientRegistrationResponseSchema,
 	OAuth2TokenResponseSchema,
@@ -34,9 +31,9 @@ import type {
 	User,
 } from "coder/site/src/api/typesGenerated";
 
-import type { SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
 import type { Logger } from "../logging/logger";
+import type { SecretsManager } from "../storage/secretsManager";
 
 import type { OAuthCallback } from "./oauthCallback";
 
@@ -419,4 +416,26 @@ function toBrowserAuthorizationUrl(
 		endpoint.pathname = `${browserPrefix}${endpoint.pathname.slice(connectionPrefix.length)}`;
 	}
 	return endpoint;
+}
+
+interface PKCEChallenge {
+	verifier: string;
+	challenge: string;
+}
+
+/**
+ * Generates a PKCE challenge pair (RFC 7636).
+ * Creates a code verifier and its SHA256 challenge for secure OAuth flows.
+ */
+function generatePKCE(): PKCEChallenge {
+	const verifier = randomBytes(32).toString("base64url");
+	const challenge = createHash("sha256").update(verifier).digest("base64url");
+	return { verifier, challenge };
+}
+
+/**
+ * Generates a cryptographically secure state parameter to prevent CSRF attacks (RFC 6749).
+ */
+function generateState(): string {
+	return randomBytes(16).toString("base64url");
 }

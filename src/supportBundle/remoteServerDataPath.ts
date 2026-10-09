@@ -2,11 +2,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
+import { parseRemoteAuthority } from "../remote/authority";
 import {
 	getRemoteSshExtension,
 	type RemoteSshExtensionId,
 } from "../remote/sshExtension";
-import { parseRemoteAuthority } from "../util/authority";
 
 import type { Logger } from "../logging/logger";
 

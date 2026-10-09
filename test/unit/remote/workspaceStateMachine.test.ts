@@ -11,8 +11,8 @@ import {
 	streamBuildLogs,
 	streamAgentLogs,
 } from "@/api/workspace";
-import { maybeAskAgent } from "@/promptUtils";
 import { WorkspaceStateMachine } from "@/remote/workspaceStateMachine";
+import { maybeAskAgent } from "@/ui/prompts";
 
 import {
 	agent as createAgent,
@@ -39,10 +39,10 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 
 import type { CoderApi } from "@/api/coderApi";
-import type { StartupMode } from "@/core/mementoManager";
 import type { CliFeatureSet } from "@/featureSet";
+import type { AuthorityParts } from "@/remote/authority";
+import type { StartupMode } from "@/storage/mementoManager";
 import type { TelemetryService } from "@/telemetry/service";
-import type { AuthorityParts } from "@/util/authority";
 
 vi.mock("@/api/workspace", async (importActual) => {
 	const { LazyStream } = await importActual<typeof import("@/api/workspace")>();
@@ -69,7 +69,7 @@ vi.mock("@/api/updateParameters", async (importActual) => {
 	};
 });
 
-vi.mock("@/promptUtils", () => ({
+vi.mock("@/ui/prompts", () => ({
 	maybeAskAgent: vi.fn((agents: WorkspaceAgent[]) =>
 		Promise.resolve(agents.length > 0 ? agents[0] : undefined),
 	),

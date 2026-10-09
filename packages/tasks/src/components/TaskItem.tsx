@@ -1,12 +1,12 @@
 import { getTaskLabel, type Task } from "@repo/shared";
 import { VscodeProgressRing } from "@vscode-elements/react-elements";
 
-import { isActivate } from "../utils/keys";
-import { getActionLabel } from "../utils/taskLoadingState";
+import { useTaskMenuItems } from "../hooks/useTaskMenuItems";
+import { isActivate } from "../keys";
+import { getActionLabel } from "../taskLoadingState";
 
 import { ActionMenu } from "./ActionMenu";
 import { StatusIndicator } from "./StatusIndicator";
-import { useTaskMenuItems } from "./useTaskMenuItems";
 
 interface TaskItemProps {
 	task: Task;

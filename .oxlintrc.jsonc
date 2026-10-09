@@ -268,7 +268,7 @@
 			}
 		},
 		{
-			"files": ["src/core/contextManager.ts", "src/core/commandManager.ts"],
+			"files": ["src/vscode/contextManager.ts", "src/vscode/commandManager.ts"],
 			"rules": {
 				"eslint-js/no-restricted-syntax": "off"
 			}

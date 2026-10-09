@@ -1,8 +1,8 @@
+import { Buffer } from "node:buffer";
+import util from "node:util";
 import prettyBytes from "pretty-bytes";
 
-import { lowercase } from "../util";
-
-import { safeStringify } from "./utils";
+import { lowercase } from "../common/strings";
 
 import type { AxiosRequestConfig } from "axios";
 
@@ -164,4 +164,56 @@ function redactStringBody(body: string, seen: WeakSet<object>): unknown {
 		return redacted === params ? body : redacted;
 	}
 	return body;
+}
+
+/**
+ * Returns the byte size of the data if it can be determined from the data's intrinsic properties,
+ * otherwise returns undefined (e.g., for plain objects and arrays that would require serialization).
+ */
+export function sizeOf(data: unknown): number | undefined {
+	if (data === null || data === undefined) {
+		return 0;
+	}
+	if (typeof data === "boolean") {
+		return 4;
+	}
+	if (typeof data === "number") {
+		return 8;
+	}
+	if (typeof data === "string" || typeof data === "bigint") {
+		return Buffer.byteLength(data.toString());
+	}
+	if (
+		Buffer.isBuffer(data) ||
+		data instanceof ArrayBuffer ||
+		ArrayBuffer.isView(data)
+	) {
+		return data.byteLength;
+	}
+	if (
+		typeof data === "object" &&
+		"size" in data &&
+		typeof data.size === "number"
+	) {
+		return data.size;
+	}
+	return undefined;
+}
+
+export function safeStringify(data: unknown): string | null {
+	try {
+		return util.inspect(data, {
+			showHidden: false,
+			// Bounded so a single log line cannot balloon in size.
+			depth: 8,
+			maxArrayLength: 100,
+			maxStringLength: 10_000,
+			breakLength: Infinity,
+			compact: true,
+			getters: false, // avoid side-effects
+		});
+	} catch {
+		// Should rarely happen but just in case
+		return null;
+	}
 }

@@ -1,8 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
 import * as vscode from "vscode";
 
-import { errToStr, extractAllAgents } from "../../api/api-helper";
-import { Poller, type NextRun, type RetryOptions } from "../../util/poller";
+import { extractAllAgents } from "../../api/models";
+import { errToStr } from "../../error/normalize";
 import { AgentMetadataTracker } from "../../workspace/agentMetadataTracker";
 import {
 	availableFilters,
@@ -11,6 +11,8 @@ import {
 	WORKSPACE_FILTERS,
 } from "../../workspace/filters";
 
+import { Poller, type NextRun, type RetryOptions } from "./poller";
+
 import type {
 	Workspace,
 	WorkspaceFilter,
@@ -18,7 +20,7 @@ import type {
 	WorkspacesState,
 } from "@repo/shared";
 
-import type { AgentMetadataClient } from "../../api/agentMetadataHelper";
+import type { AgentMetadataClient } from "../../api/agentMetadata";
 import type { CoderApi } from "../../api/coderApi";
 import type { SessionState } from "../../deployment/sessionStore";
 import type { Logger } from "../../logging/logger";

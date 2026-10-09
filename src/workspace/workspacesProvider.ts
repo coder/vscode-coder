@@ -10,14 +10,14 @@ import {
 	createAgentMetadataWatcher,
 	formatEventLabel,
 	formatMetadataError,
-} from "../api/agentMetadataHelper";
-import {
 	type AgentMetadataEvent,
-	workspaceStatusLabel,
+} from "../api/agentMetadata";
+import { type CoderApi } from "../api/coderApi";
+import {
 	extractAgents,
 	extractAllAgents,
-} from "../api/api-helper";
-import { type CoderApi } from "../api/coderApi";
+	workspaceStatusLabel,
+} from "../api/models";
 import { type Logger } from "../logging/logger";
 
 import {

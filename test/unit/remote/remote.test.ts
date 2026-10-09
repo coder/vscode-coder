@@ -4,18 +4,18 @@ import * as semver from "semver";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { version as cliVersion } from "@/core/cliExec";
-import { MementoManager } from "@/core/mementoManager";
-import { PathResolver } from "@/core/pathResolver";
-import { SecretsManager } from "@/core/secretsManager";
+import { version as cliVersion } from "@/cli/cliExec";
 import { cliFeatureSet } from "@/featureSet";
+import { parseRemoteAuthority } from "@/remote/authority";
 import {
 	buildSshProxyCommand,
 	Remote,
 	workspaceLabelSuffix,
 } from "@/remote/remote";
 import { sshSupportsSetEnv } from "@/remote/sshSupport";
-import { parseRemoteAuthority } from "@/util/authority";
+import { MementoManager } from "@/storage/mementoManager";
+import { PathResolver } from "@/storage/pathResolver";
+import { SecretsManager } from "@/storage/secretsManager";
 
 import { createTestTelemetryService } from "../../mocks/telemetry";
 import {
@@ -29,8 +29,8 @@ import {
 	useEditor,
 } from "../../mocks/testHelpers";
 
+import type { CliManager } from "@/cli/cliManager";
 import type { Commands } from "@/commands";
-import type { CliManager } from "@/core/cliManager";
 import type { Logger } from "@/logging/logger";
 import type { CliAuth } from "@/settings/cli";
 
@@ -43,7 +43,7 @@ vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
 vi.mock("@/remote/windowsAcl", () => ({
 	createManagedPermissions: () => undefined,
 }));
-vi.mock(import("@/core/cliExec"), async (importOriginal) => ({
+vi.mock(import("@/cli/cliExec"), async (importOriginal) => ({
 	...(await importOriginal()),
 	version: vi.fn(),
 }));

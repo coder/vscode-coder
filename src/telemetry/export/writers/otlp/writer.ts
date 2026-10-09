@@ -4,14 +4,10 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import {
-	isAbortError,
-	throwIfAborted,
-	toError,
-	wrapError,
-} from "../../../../error/errorUtils";
-import { toUtcDateString } from "../../../../util/date";
-import { writeAtomically } from "../../../../util/fs";
+import { writeAtomically } from "../../../../common/fs";
+import { isAbortError, throwIfAborted } from "../../../../error/abort";
+import { toError, wrapError } from "../../../../error/normalize";
+import { toUtcDateString } from "../../../date";
 import { describeMetricEvent } from "../../metrics";
 import { parseTelemetryTimestampMs } from "../../range";
 

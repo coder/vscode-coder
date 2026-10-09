@@ -5,8 +5,8 @@ import {
 	AnnouncementManager,
 	REFRESH_INTERVAL_MS,
 } from "@/announcements/manager";
-import { MementoManager } from "@/core/mementoManager";
 import { SessionStore } from "@/deployment/sessionStore";
+import { MementoManager } from "@/storage/mementoManager";
 
 import {
 	createMockLogger,

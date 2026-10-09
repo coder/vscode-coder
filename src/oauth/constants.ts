@@ -28,3 +28,8 @@ export const TOKEN_ENDPOINT_AUTH_METHOD = "client_secret_post";
 
 // PKCE Code Challenge Methods (OAuth 2.1 requires S256)
 export const PKCE_CHALLENGE_METHOD = "S256";
+
+/**
+ * OAuth callback path for handling authorization responses (RFC 6749).
+ */
+export const CALLBACK_PATH = "/oauth/callback";

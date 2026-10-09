@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+	countSubstring,
 	mergeSshConfigValues,
 	parseCoderSshOptions,
 	parseSshConfig,
@@ -818,5 +819,37 @@ describe("validateDeploymentSshOptions", () => {
 				{ ProxyCommand: "user value" },
 			),
 		).toThrow('"LocalCommand"');
+	});
+});
+
+describe("countSubstring", () => {
+	it("handles empty strings", () => {
+		expect(countSubstring("", "")).toBe(0);
+		expect(countSubstring("foo", "")).toBe(0);
+		expect(countSubstring("", "foo")).toBe(0);
+	});
+
+	it("handles single character", () => {
+		expect(countSubstring("a", "a")).toBe(1);
+		expect(countSubstring("a", "b")).toBe(0);
+		expect(countSubstring("a", "aa")).toBe(2);
+		expect(countSubstring("a", "aaa")).toBe(3);
+		expect(countSubstring("a", "baaa")).toBe(3);
+	});
+
+	it("handles multiple characters", () => {
+		expect(countSubstring("foo", "foo")).toBe(1);
+		expect(countSubstring("foo", "bar")).toBe(0);
+		expect(countSubstring("foo", "foobar")).toBe(1);
+		expect(countSubstring("foo", "foobarbaz")).toBe(1);
+		expect(countSubstring("foo", "foobarbazfoo")).toBe(2);
+		expect(countSubstring("foo", "foobarbazfoof")).toBe(2);
+	});
+
+	it("does not handle overlapping substrings", () => {
+		expect(countSubstring("aa", "aaa")).toBe(1);
+		expect(countSubstring("aa", "aaaa")).toBe(2);
+		expect(countSubstring("aa", "aaaaa")).toBe(2);
+		expect(countSubstring("aa", "aaaaaa")).toBe(3);
 	});
 });

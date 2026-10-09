@@ -7,7 +7,7 @@ import {
 import { DEFAULT_OAUTH_SCOPES, REFRESH_GRANT_TYPE } from "./constants";
 import { OAuthError, parseOAuthError } from "./errors";
 import { OAuthMetadataClient } from "./metadataClient";
-import { buildOAuthTokenData, toUrlSearchParams } from "./utils";
+import { buildOAuthTokenData, toUrlSearchParams } from "./tokens";
 import { OAuth2TokenResponseSchema, parseOAuthResponse } from "./validation";
 
 import type { AxiosInstance } from "axios";
@@ -20,10 +20,10 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 import type * as vscode from "vscode";
 
-import type { ServiceContainer } from "../core/container";
-import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
+import type { ServiceContainer } from "../container";
 import type { Deployment } from "../deployment/types";
 import type { Logger } from "../logging/logger";
+import type { OAuthTokenData, SecretsManager } from "../storage/secretsManager";
 
 /**
  * Token refresh threshold: refresh when token expires in less than this time.

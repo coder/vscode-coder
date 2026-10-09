@@ -2,17 +2,14 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
+import { cleanupFiles, type FileCleanupCandidate } from "../../common/fs";
 import { watchConfigurationChanges } from "../../configWatcher";
 import {
 	LOCAL_TELEMETRY_SETTING,
 	readLocalSinkConfig,
 	type LocalSinkConfig,
 } from "../../settings/telemetry";
-import { DAY_MS, toUtcDateString } from "../../util/date";
-import {
-	cleanupFiles,
-	type FileCleanupCandidate,
-} from "../../util/fileCleanup";
+import { DAY_MS, toUtcDateString } from "../date";
 import * as localJsonlFiles from "../localJsonlFiles";
 import {
 	serializeTelemetryEventLine,

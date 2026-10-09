@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { Commands } from "@/commands";
-import { maybeAskUrl } from "@/promptUtils";
+import { maybeAskUrl } from "@/ui/prompts";
 
 import { createTestCoderApi } from "../mocks/coderApi";
 import { createTelemetryHarness } from "../mocks/telemetry";
@@ -11,20 +11,20 @@ import {
 	MockUserInteraction,
 } from "../mocks/testHelpers";
 
-import type { CliManager } from "@/core/cliManager";
-import type { ServiceContainer } from "@/core/container";
-import type { MementoManager } from "@/core/mementoManager";
-import type { PathResolver } from "@/core/pathResolver";
-import type { SecretsManager, SessionAuth } from "@/core/secretsManager";
+import type { CliManager } from "@/cli/cliManager";
+import type { ServiceContainer } from "@/container";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
 import type { Deployment } from "@/deployment/types";
 import type { LoginCoordinator, LoginResult } from "@/login/loginCoordinator";
+import type { MementoManager } from "@/storage/mementoManager";
+import type { PathResolver } from "@/storage/pathResolver";
+import type { SecretsManager, SessionAuth } from "@/storage/secretsManager";
 import type { NetcheckPanelFactory } from "@/webviews/netcheck/netcheckPanelFactory";
 import type { SpeedtestPanelFactory } from "@/webviews/speedtest/speedtestPanelFactory";
 import type { DuplicateWorkspaceIpc } from "@/workspace/duplicateWorkspaceIpc";
 
-vi.mock("@/promptUtils", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@/promptUtils")>();
+vi.mock("@/ui/prompts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/ui/prompts")>();
 	return { ...actual, maybeAskUrl: vi.fn() };
 });
 

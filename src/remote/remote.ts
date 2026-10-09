@@ -10,18 +10,20 @@ import {
 	getEventValue,
 	formatEventLabel,
 	formatMetadataError,
-} from "../api/agentMetadataHelper";
-import { extractAgents } from "../api/api-helper";
+} from "../api/agentMetadata";
 import { AuthInterceptor } from "../api/authInterceptor";
 import { CoderApi } from "../api/coderApi";
+import { needToken } from "../api/httpAgent";
 import { HttpStatusCode } from "../api/httpStatusCode";
-import { needToken } from "../api/utils";
+import { extractAgents } from "../api/models";
+import { version as cliVersion } from "../cli/cliExec";
+import { expandPath } from "../common/fs";
+import { escapeCommandArg } from "../common/strings";
 import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
 	watchConfigurationChanges,
 } from "../configWatcher";
-import { version as cliVersion } from "../core/cliExec";
-import { toError } from "../error/errorUtils";
+import { toError } from "../error/normalize";
 import {
 	cliFeatureSet,
 	serverFeatureSet,
@@ -43,18 +45,17 @@ import {
 	resolveCliAuth,
 } from "../settings/cli";
 import { getHeaderCommand } from "../settings/headers";
-import { escapeCommandArg, expandPath } from "../util";
+import { createStatusBarItem } from "../ui/statusBar";
+import { vscodeProposed } from "../vscode/proposed";
+import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
+
 import {
 	type AuthorityParts,
 	classifySshHost,
 	hostEditorId,
 	parseRemoteAuthority,
 	sshHostOf,
-} from "../util/authority";
-import { createStatusBarItem } from "../util/statusBar";
-import { vscodeProposed } from "../vscodeProposed";
-import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
-
+} from "./authority";
 import { applySshEnvironment, SSH_PROXY_SETTINGS } from "./environment";
 import { migrateAuthToSecretsStorage } from "./migration";
 import {
@@ -82,15 +83,15 @@ import type {
 	WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
 
+import type { CliManager } from "../cli/cliManager";
 import type { Commands } from "../commands";
-import type { CliManager } from "../core/cliManager";
-import type { ServiceContainer } from "../core/container";
-import type { ContextManager } from "../core/contextManager";
-import type { StartupMode } from "../core/mementoManager";
-import type { PathResolver } from "../core/pathResolver";
-import type { SecretsManager } from "../core/secretsManager";
+import type { ServiceContainer } from "../container";
 import type { Logger } from "../logging/logger";
 import type { LoginCoordinator } from "../login/loginCoordinator";
+import type { StartupMode } from "../storage/mementoManager";
+import type { PathResolver } from "../storage/pathResolver";
+import type { SecretsManager } from "../storage/secretsManager";
+import type { ContextManager } from "../vscode/contextManager";
 
 export interface RemoteDetails extends vscode.Disposable {
 	safeHostname: string;

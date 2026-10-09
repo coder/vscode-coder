@@ -1,8 +1,4 @@
-import {
-	createWorkspaceIdentifier,
-	errToStr,
-	extractAgents,
-} from "../api/api-helper";
+import { extractAgents, createWorkspaceIdentifier } from "../api/models";
 import {
 	collectUpdateParameters,
 	WorkspaceUpdateCancelledError,
@@ -14,9 +10,10 @@ import {
 	streamAgentLogs,
 	streamBuildLogs,
 } from "../api/workspace";
+import { errToStr } from "../error/normalize";
 import { WorkspaceOperationTelemetry } from "../instrumentation/workspace";
-import { maybeAskAgent } from "../promptUtils";
-import { vscodeProposed } from "../vscodeProposed";
+import { maybeAskAgent } from "../ui/prompts";
+import { vscodeProposed } from "../vscode/proposed";
 
 import { TerminalOutputChannel } from "./terminalOutputChannel";
 
@@ -28,12 +25,13 @@ import type {
 import type * as vscode from "vscode";
 
 import type { CoderApi } from "../api/coderApi";
-import type { ServiceContainer } from "../core/container";
-import type { StartupMode } from "../core/mementoManager";
+import type { ServiceContainer } from "../container";
 import type { CliFeatureSet, ServerFeatureSet } from "../featureSet";
 import type { Logger } from "../logging/logger";
 import type { CliAuth } from "../settings/cli";
-import type { AuthorityParts } from "../util/authority";
+import type { StartupMode } from "../storage/mementoManager";
+
+import type { AuthorityParts } from "./authority";
 
 /**
  * Manages workspace and agent state transitions until ready for SSH connection.

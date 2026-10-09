@@ -6,14 +6,13 @@ import { describe, it, expect, vi } from "vitest";
 
 import { HttpStatusCode } from "@/api/httpStatusCode";
 import { type Logger } from "@/logging/logger";
-import { WebSocketCloseCode } from "@/websocket/codes";
+import { WebSocketCloseCode, handshakeStatus } from "@/websocket/codes";
 import {
 	type ParsedMessageEvent,
 	type CloseEvent,
 	type ErrorEvent,
 } from "@/websocket/eventStreamConnection";
 import { SseConnection } from "@/websocket/sseConnection";
-import { handshakeStatus } from "@/websocket/utils";
 
 import { createMockLogger } from "../../mocks/testHelpers";
 

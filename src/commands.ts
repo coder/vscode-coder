@@ -5,14 +5,16 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import {
-	createWorkspaceIdentifier,
 	extractAgents,
+	createWorkspaceIdentifier,
 	workspaceStatusLabel,
-} from "./api/api-helper";
+} from "./api/models";
+import * as cliExec from "./cli/cliExec";
 import { runDiagnosticCli } from "./command/diagnosticFlow";
-import * as cliExec from "./core/cliExec";
+import { openInBrowser, toSafeHost } from "./common/url";
+import { raceWithAbort } from "./error/abort";
 import { CertificateError } from "./error/certificateError";
-import { raceWithAbort, toError } from "./error/errorUtils";
+import { toError } from "./error/normalize";
 import { type CliFeatureSet, cliFeatureSet } from "./featureSet";
 import {
 	AuthTelemetry,
@@ -34,11 +36,15 @@ import {
 	type WorkspacePickerSource,
 } from "./instrumentation/workspaceOpen";
 import {
-	reportElapsedProgress,
-	withCancellableProgress,
-	withProgress,
-} from "./progress";
-import { maybeAskAgent, maybeAskUrl } from "./promptUtils";
+	LegacyEditorId,
+	currentEditorId,
+	hostEditorId,
+	isRemoteAuthorityCompatible,
+	parseRemoteAuthority,
+	sshHostOf,
+	toLegacyAuthority,
+	toRemoteAuthority,
+} from "./remote/authority";
 import {
 	applySettingOverrides,
 	getRecommendedSshSettings,
@@ -51,17 +57,12 @@ import {
 } from "./supportBundle/remoteServerDataPath";
 import { runExportTelemetryCommand } from "./telemetry/export/command";
 import {
-	LegacyEditorId,
-	currentEditorId,
-	hostEditorId,
-	isRemoteAuthorityCompatible,
-	parseRemoteAuthority,
-	sshHostOf,
-	toLegacyAuthority,
-	toRemoteAuthority,
-} from "./util/authority";
-import { openInBrowser, toSafeHost } from "./util/uri";
-import { vscodeProposed } from "./vscodeProposed";
+	reportElapsedProgress,
+	withCancellableProgress,
+	withProgress,
+} from "./ui/progress";
+import { maybeAskAgent, maybeAskUrl } from "./ui/prompts";
+import { vscodeProposed } from "./vscode/proposed";
 import { parseNetcheckReport } from "./webviews/netcheck/types";
 import { parseSpeedtestResult } from "./webviews/speedtest/types";
 import {
@@ -78,14 +79,14 @@ import type {
 import type { DashboardPage } from "@repo/shared";
 
 import type { CoderApi } from "./api/coderApi";
-import type { CliManager } from "./core/cliManager";
-import type { ServiceContainer } from "./core/container";
-import type { MementoManager } from "./core/mementoManager";
-import type { PathResolver } from "./core/pathResolver";
-import type { SecretsManager, SessionAuth } from "./core/secretsManager";
+import type { CliManager } from "./cli/cliManager";
+import type { ServiceContainer } from "./container";
 import type { DeploymentManager } from "./deployment/deploymentManager";
 import type { Logger } from "./logging/logger";
 import type { LoginCoordinator, LoginMethod } from "./login/loginCoordinator";
+import type { MementoManager } from "./storage/mementoManager";
+import type { PathResolver } from "./storage/pathResolver";
+import type { SecretsManager, SessionAuth } from "./storage/secretsManager";
 import type { TelemetryService } from "./telemetry/service";
 import type { NetcheckPanelFactory } from "./webviews/netcheck/netcheckPanelFactory";
 import type { SpeedtestPanelFactory } from "./webviews/speedtest/speedtestPanelFactory";

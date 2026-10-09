@@ -1,4 +1,5 @@
-import { type ChartPoint, formatTick, niceRound, niceStep } from "./chartUtils";
+import { type ChartPoint, niceRound, niceStep } from "./chartGeometry";
+import { formatTick } from "./format";
 
 const MIN_TICK_SPACING_EM = 4;
 /** Target Y-axis tick intervals; the actual count varies slightly so steps land on round numbers. */

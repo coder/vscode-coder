@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as readline from "node:readline";
 
-import { toError } from "../../error/errorUtils";
+import { toError } from "../../error/normalize";
 import * as localJsonlFiles from "../localJsonlFiles";
 import { TelemetryFileParser, TelemetryFileParseError } from "../wireFormat";
 
