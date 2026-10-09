@@ -89,7 +89,7 @@ import type { ContextManager } from "../core/contextManager";
 import type { StartupMode } from "../core/mementoManager";
 import type { PathResolver } from "../core/pathResolver";
 import type { SecretsManager } from "../core/secretsManager";
-import type { BufferedLogger } from "../logging/logger";
+import type { Logger } from "../logging/logger";
 import type { LoginCoordinator } from "../login/loginCoordinator";
 
 export interface RemoteDetails extends vscode.Disposable {
@@ -149,7 +149,7 @@ export function workspaceLabelSuffix(
 }
 
 export class Remote {
-	private readonly logger: BufferedLogger;
+	private readonly logger: Logger;
 	private readonly pathResolver: PathResolver;
 	private readonly cliManager: CliManager;
 	private readonly contextManager: ContextManager;

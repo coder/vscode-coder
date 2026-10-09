@@ -31,7 +31,7 @@ import {
 
 import type { Commands } from "@/commands";
 import type { CliManager } from "@/core/cliManager";
-import type { BufferedLogger } from "@/logging/logger";
+import type { Logger } from "@/logging/logger";
 import type { CliAuth } from "@/settings/cli";
 
 const mockWorkspace = vscode.workspace as typeof vscode.workspace & {
@@ -71,7 +71,7 @@ const CLI_AUTH: CliAuth = {
 	allowRedirects: false,
 };
 
-function createRemote(logger: BufferedLogger = createMockLogger()) {
+function createRemote(logger: Logger = createMockLogger()) {
 	new MockConfigurationProvider();
 	const userInteraction = new MockUserInteraction();
 	const pathResolver = new PathResolver("/mock/global", "/mock/log");

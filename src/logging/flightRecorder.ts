@@ -1,6 +1,6 @@
 import { safeStringify } from "./utils";
 
-import type { BufferedLogger, Logger } from "./logger";
+import type { LogSink, Logger } from "./logger";
 
 /**
  * Numeric severities matching `vscode.LogLevel` (Off=0, Trace=1, Debug=2,
@@ -40,12 +40,12 @@ interface LogEntry {
  * Buffers entries below the current log level and replays them on failure at a
  * level the output channel persists.
  */
-export class BufferingLogger implements BufferedLogger {
+export class FlightRecorder implements Logger {
 	private entries: LogEntry[] = [];
 	private chars = 0;
 
 	public constructor(
-		private readonly inner: Logger,
+		private readonly inner: LogSink,
 		private readonly channel: { readonly logLevel: number },
 		private capacity: number,
 	) {}

@@ -172,7 +172,7 @@ next to the code:
 The extension logs to the "Coder" output channel, a `LogOutputChannel` that gates
 messages by the level chosen in its gear menu. To help Support diagnose
 connection failures without asking users to reproduce with debug logging enabled,
-a `BufferingLogger` ([`src/logging/logBuffer.ts`](src/logging/logBuffer.ts))
+a `FlightRecorder` ([`src/logging/flightRecorder.ts`](src/logging/flightRecorder.ts))
 wraps the channel and keeps a bounded, in-memory ring of the entries that sit
 **below** the current level, which the channel would otherwise drop.
 

@@ -23,7 +23,7 @@ import type * as vscode from "vscode";
 import type { ServiceContainer } from "../core/container";
 import type { OAuthTokenData, SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
-import type { BufferedLogger } from "../logging/logger";
+import type { Logger } from "../logging/logger";
 
 /**
  * Token refresh threshold: refresh when token expires in less than this time.
@@ -79,7 +79,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	private constructor(
 		private deployment: Deployment | null,
 		private readonly secretsManager: SecretsManager,
-		private readonly logger: BufferedLogger,
+		private readonly logger: Logger,
 		private readonly onAuthRequired: () => Promise<void>,
 		private readonly authTelemetry: AuthTelemetry,
 	) {}

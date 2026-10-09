@@ -29,7 +29,7 @@ import type {
 	AuthTelemetry,
 	LoginPromptReason,
 } from "../instrumentation/auth";
-import type { BufferedLogger } from "../logging/logger";
+import type { Logger } from "../logging/logger";
 import type { OAuthCallback } from "../oauth/oauthCallback";
 
 export type LoginMethod =
@@ -86,7 +86,7 @@ export class LoginCoordinator implements vscode.Disposable {
 	constructor(
 		private readonly secretsManager: SecretsManager,
 		private readonly mementoManager: MementoManager,
-		private readonly logger: BufferedLogger,
+		private readonly logger: Logger,
 		private readonly cliCredentialManager: CliCredentialManager,
 		private readonly authTelemetry: AuthTelemetry,
 		oauthCallback: OAuthCallback,

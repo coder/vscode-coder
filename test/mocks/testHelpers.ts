@@ -44,7 +44,7 @@ import type { MementoManager } from "@/core/mementoManager";
 import type { PathResolver } from "@/core/pathResolver";
 import type { SecretsManager } from "@/core/secretsManager";
 import type { Deployment } from "@/deployment/types";
-import type { BufferedLogger } from "@/logging/logger";
+import type { Logger } from "@/logging/logger";
 import type { LoginCoordinator } from "@/login/loginCoordinator";
 import type { NetworkInfo } from "@/remote/sshProcess";
 import type { TelemetryService } from "@/telemetry/service";
@@ -552,7 +552,7 @@ export function createMockCliCredentialManager(): CliCredentialManager {
 	} as unknown as CliCredentialManager;
 }
 
-export function createMockLogger(): BufferedLogger {
+export function createMockLogger(): Logger {
 	return {
 		trace: vi.fn(),
 		debug: vi.fn(),
@@ -574,7 +574,7 @@ export interface LogEntry {
  * Logger that records what was logged. Assert on `entries` for exact output,
  * or search `text` when checking that a secret never reached the log.
  */
-export class LogCollector implements BufferedLogger {
+export class LogCollector implements Logger {
 	readonly entries: LogEntry[] = [];
 
 	/** Every message and argument logged, as one searchable string. */
@@ -650,7 +650,7 @@ export async function setAge(filePath: string, daysAgo: number): Promise<void> {
 export function createMockServiceContainer(
 	overrides: {
 		telemetry?: TelemetryService;
-		logger?: BufferedLogger;
+		logger?: Logger;
 		secretsManager?: SecretsManager;
 		mementoManager?: MementoManager;
 		cliCredentialManager?: CliCredentialManager;

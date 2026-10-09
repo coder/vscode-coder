@@ -72,7 +72,7 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 import type { ClientOptions } from "ws";
 
-import type { BufferedLogger, Logger } from "../logging/logger";
+import type { Logger } from "../logging/logger";
 import type {
 	CloseEvent,
 	ErrorEvent,
@@ -124,7 +124,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 	private readonly configWatcher: vscode.Disposable;
 
 	private constructor(
-		private readonly output: BufferedLogger,
+		private readonly output: Logger,
 		private readonly telemetry: TelemetryReporter,
 		private readonly httpRequestsTelemetry: HttpRequestsTelemetry,
 		private readonly authConfigTracker: AuthConfigTracker,
@@ -146,7 +146,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 	static create(
 		baseUrl: string,
 		token: string | undefined,
-		output: BufferedLogger,
+		output: Logger,
 		telemetry: TelemetryReporter = NOOP_TELEMETRY_REPORTER,
 	): CoderApi {
 		const httpRequestsTelemetry = new HttpRequestsTelemetry(telemetry);

@@ -1,4 +1,5 @@
-export interface Logger {
+/** A destination that writes log entries, such as the output channel. */
+export interface LogSink {
 	trace(message: string, ...args: unknown[]): void;
 	debug(message: string, ...args: unknown[]): void;
 	info(message: string, ...args: unknown[]): void;
@@ -7,7 +8,7 @@ export interface Logger {
 	show(): void;
 }
 
-/** A logger that buffers below-level entries and can replay them. */
-export interface BufferedLogger extends Logger {
+/** A sink that also records below-level entries and can replay them. */
+export interface Logger extends LogSink {
 	flush(reason: string, options?: { readonly retain?: boolean }): void;
 }

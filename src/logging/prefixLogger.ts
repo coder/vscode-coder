@@ -1,11 +1,11 @@
-import type { Logger } from "./logger";
+import type { LogSink } from "./logger";
 
 /**
- * Wraps a {@link Logger} so every message is prefixed, letting all lines that
+ * Wraps a {@link LogSink} so every message is prefixed, letting all lines that
  * share a prefix (a session ID, a workspace name) be found with one search.
  * Extra arguments are forwarded untouched.
  */
-export function prefixLogger(inner: Logger, prefix: string): Logger {
+export function prefixLogger(inner: LogSink, prefix: string): LogSink {
 	const tag = (message: string) => `${prefix} ${message}`;
 	return {
 		trace: (message, ...args) => inner.trace(tag(message), ...args),

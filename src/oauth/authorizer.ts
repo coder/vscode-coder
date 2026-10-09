@@ -35,7 +35,7 @@ import type {
 
 import type { SecretsManager } from "../core/secretsManager";
 import type { Deployment } from "../deployment/types";
-import type { BufferedLogger } from "../logging/logger";
+import type { Logger } from "../logging/logger";
 
 import type { OAuthCallback } from "./oauthCallback";
 
@@ -49,7 +49,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 	constructor(
 		private readonly secretsManager: SecretsManager,
 		private readonly oauthCallback: OAuthCallback,
-		private readonly logger: BufferedLogger,
+		private readonly logger: Logger,
 		private readonly extensionId: string,
 	) {}
 

@@ -16,7 +16,7 @@ import { handshakeStatus } from "./utils";
 
 import type { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 
-import type { BufferedLogger } from "../logging/logger";
+import type { Logger } from "../logging/logger";
 import type { TelemetryReporter } from "../telemetry/reporter";
 
 import type {
@@ -132,7 +132,7 @@ export class ReconnectingWebSocket<
 	TData = unknown,
 > implements UnidirectionalStream<TData> {
 	readonly #socketFactory: SocketFactory<TData>;
-	readonly #logger: BufferedLogger;
+	readonly #logger: Logger;
 	readonly #telemetry: WebSocketTelemetry;
 	readonly #options: Required<
 		Omit<ReconnectingWebSocketOptions, "telemetry" | "route">
@@ -181,7 +181,7 @@ export class ReconnectingWebSocket<
 
 	private constructor(
 		socketFactory: SocketFactory<TData>,
-		logger: BufferedLogger,
+		logger: Logger,
 		options: ReconnectingWebSocketOptions,
 		onDispose?: () => void,
 	) {
@@ -201,7 +201,7 @@ export class ReconnectingWebSocket<
 
 	public static async create<TData>(
 		socketFactory: SocketFactory<TData>,
-		logger: BufferedLogger,
+		logger: Logger,
 		options: ReconnectingWebSocketOptions,
 		onDispose?: () => void,
 	): Promise<ReconnectingWebSocket<TData>> {

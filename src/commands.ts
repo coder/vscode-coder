@@ -84,7 +84,7 @@ import type { MementoManager } from "./core/mementoManager";
 import type { PathResolver } from "./core/pathResolver";
 import type { SecretsManager, SessionAuth } from "./core/secretsManager";
 import type { DeploymentManager } from "./deployment/deploymentManager";
-import type { BufferedLogger } from "./logging/logger";
+import type { Logger } from "./logging/logger";
 import type { LoginCoordinator, LoginMethod } from "./login/loginCoordinator";
 import type { TelemetryService } from "./telemetry/service";
 import type { NetcheckPanelFactory } from "./webviews/netcheck/netcheckPanelFactory";
@@ -155,7 +155,7 @@ const openDefaults = {
 } as const satisfies Partial<OpenOptions>;
 
 export class Commands {
-	private readonly logger: BufferedLogger;
+	private readonly logger: Logger;
 	private readonly pathResolver: PathResolver;
 	private readonly mementoManager: MementoManager;
 	private readonly secretsManager: SecretsManager;
