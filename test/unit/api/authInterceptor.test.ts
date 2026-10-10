@@ -116,7 +116,7 @@ function createTestContext() {
 	const mockOAuthManager = new MockOAuthSessionManager();
 
 	// Default: not logged in with OAuth
-	mockOAuthManager.isLoggedInWithOAuth.mockResolvedValue(false);
+	mockOAuthManager.canRefreshOAuthSession.mockResolvedValue(false);
 
 	/** Sets up OAuth tokens in storage and configures mock */
 	const setupOAuthTokens = async () => {
@@ -129,7 +129,7 @@ function createTestContext() {
 				scope: "workspace:read",
 			},
 		});
-		mockOAuthManager.isLoggedInWithOAuth.mockImplementation(
+		mockOAuthManager.canRefreshOAuthSession.mockImplementation(
 			async (hostname?: string) => {
 				if (hostname && hostname !== TEST_HOSTNAME) {
 					return false;
@@ -556,8 +556,8 @@ describe("AuthInterceptor", () => {
 
 			await setupOAuthTokens();
 
-			// Make isLoggedInWithOAuth return false for different hostname
-			mockOAuthManager.isLoggedInWithOAuth.mockImplementation(
+			// Make canRefreshOAuthSession return false for different hostname
+			mockOAuthManager.canRefreshOAuthSession.mockImplementation(
 				(hostname?: string) => {
 					// Simulate hostname mismatch (deployment changed)
 					if (hostname === TEST_HOSTNAME) {

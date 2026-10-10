@@ -1,3 +1,4 @@
+import { CoderApi } from "../api/coderApi";
 import { parseApiResponse } from "../api/responseValidation";
 
 import {
@@ -139,6 +140,33 @@ export class OAuthMetadataClient {
 				`Server does not support required PKCE method: ${PKCE_CHALLENGE_METHOD}. Supported: ${formatSupported(supported)}`,
 			);
 		}
+	}
+}
+
+/**
+ * Run `fn` with a short-lived client for `url` and the server's OAuth
+ * metadata. The client is disposed on exit so its config-change
+ * subscriptions never outlive the operation.
+ */
+export async function withOAuthMetadata<T>(
+	url: string,
+	token: string | undefined,
+	logger: Logger,
+	fn: (ctx: {
+		axiosInstance: AxiosInstance;
+		metadata: OAuth2AuthorizationServerMetadata;
+	}) => Promise<T>,
+): Promise<T> {
+	const client = CoderApi.create(url, token, logger);
+	try {
+		const axiosInstance = client.getAxiosInstance();
+		const metadata = await new OAuthMetadataClient(
+			axiosInstance,
+			logger,
+		).getMetadata();
+		return await fn({ axiosInstance, metadata });
+	} finally {
+		client.dispose();
 	}
 }
 

@@ -20,9 +20,13 @@
 
 ### Fixed
 
-- OAuth sign-in now works on deployments that enforce token scopes. Users signed
-  in with OAuth are asked to sign in again once.
-- Revoke OAuth tokens on logout even when their scopes are outdated.
+- OAuth sign-in now works on deployments that enforce token scopes. Sessions
+  missing required scopes stop refreshing and require sign-in when they expire.
+- Revoke OAuth tokens on logout and after successful session replacement, even
+  when their scopes are outdated. Failed or cancelled sign-ins do not revoke
+  the stored session.
+- Preserve OAuth refresh credentials when reusing a stored token, and request
+  the permissions needed to refresh workspace external-auth links.
 
 ## [v1.16.4](https://github.com/coder/vscode-coder/releases/tag/v1.16.4) 2026-09-23
 

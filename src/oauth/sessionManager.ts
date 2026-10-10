@@ -6,7 +6,8 @@ import {
 
 import { DEFAULT_OAUTH_SCOPES, REFRESH_GRANT_TYPE } from "./constants";
 import { OAuthError, parseOAuthError } from "./errors";
-import { OAuthMetadataClient } from "./metadataClient";
+import { withOAuthMetadata } from "./metadataClient";
+import { revokeOAuthTokens } from "./revocation";
 import { buildOAuthTokenData, toUrlSearchParams } from "./tokens";
 import { OAuth2TokenResponseSchema, parseOAuthResponse } from "./validation";
 
@@ -16,7 +17,6 @@ import type {
 	OAuth2ClientRegistrationResponse,
 	OAuth2TokenRequest,
 	OAuth2TokenResponse,
-	OAuth2TokenRevocationRequest,
 } from "coder/site/src/api/typesGenerated";
 import type * as vscode from "vscode";
 
@@ -295,11 +295,10 @@ export class OAuthSessionManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Run `fn` with a per-call CoderApi configured for the current
-	 * deployment. The client is disposed on exit so its config-change
-	 * subscriptions never outlive the operation.
+	 * Run `fn` with a per-call client, the OAuth metadata and the client
+	 * registration of the current deployment.
 	 */
-	private async withOAuthOperation<T>(
+	private withOAuthOperation<T>(
 		token: string | undefined,
 		fn: (ctx: {
 			axiosInstance: AxiosInstance;
@@ -308,26 +307,21 @@ export class OAuthSessionManager implements vscode.Disposable {
 		}) => Promise<T>,
 	): Promise<T> {
 		const deployment = this.requireDeployment();
-		const client = CoderApi.create(deployment.url, token, this.logger);
-		try {
-			const axiosInstance = client.getAxiosInstance();
-			const metadataClient = new OAuthMetadataClient(
-				axiosInstance,
-				this.logger,
-			);
-			const metadata = await metadataClient.getMetadata();
-
-			const registration = await this.secretsManager.getOAuthClientRegistration(
-				deployment.safeHostname,
-			);
-			if (!registration) {
-				throw new Error("No client registration found");
-			}
-
-			return await fn({ axiosInstance, metadata, registration });
-		} finally {
-			client.dispose();
-		}
+		return withOAuthMetadata(
+			deployment.url,
+			token,
+			this.logger,
+			async (ctx) => {
+				const registration =
+					await this.secretsManager.getOAuthClientRegistration(
+						deployment.safeHostname,
+					);
+				if (!registration) {
+					throw new Error("No client registration found");
+				}
+				return fn({ ...ctx, registration });
+			},
+		);
 	}
 
 	public async setDeployment(deployment: Deployment): Promise<void> {
@@ -484,64 +478,32 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 	/** Best-effort server-side revocation of the stored refresh and access tokens; never throws. */
 	public async revokeTokens(): Promise<void> {
-		// Includes tokens lacking a required scope, which still work on the server.
-		const storedTokens = await this.getStoredTokens().catch((error) => {
-			this.logger.warn("Failed to read stored tokens for revocation:", error);
-			return undefined;
-		});
-		if (!storedTokens) {
+		const deployment = this.deployment;
+		if (!deployment) {
 			return;
 		}
-
-		// Refresh token first, while the access token still authenticates the call.
-		const targets: Array<[string, "access_token" | "refresh_token"]> = [];
-		if (storedTokens.refresh_token) {
-			targets.push([storedTokens.refresh_token, "refresh_token"]);
+		// Includes tokens lacking a required scope, which still work on the server.
+		const auth = await this.secretsManager.getSessionAuth(
+			deployment.safeHostname,
+		);
+		if (auth?.url !== deployment.url) {
+			return;
 		}
-		targets.push([storedTokens.access_token, "access_token"]);
-
-		try {
-			await this.withOAuthOperation(
-				storedTokens.access_token,
-				async ({ axiosInstance, metadata, registration }) => {
-					const endpoint = metadata.revocation_endpoint;
-					if (!endpoint) {
-						this.logger.debug("No revocation endpoint; skipping revocation");
-						return;
-					}
-					for (const [token, token_type_hint] of targets) {
-						const params: OAuth2TokenRevocationRequest = {
-							token,
-							client_id: registration.client_id,
-							client_secret: registration.client_secret,
-							token_type_hint,
-						};
-						try {
-							await axiosInstance.post(endpoint, toUrlSearchParams(params), {
-								headers: {
-									"Content-Type": "application/x-www-form-urlencoded",
-								},
-							});
-							this.logger.debug(`Revoked ${token_type_hint}`);
-						} catch (error) {
-							this.logger.warn(`Failed to revoke ${token_type_hint}:`, error);
-						}
-					}
-				},
-			);
-		} catch (error) {
-			this.logger.warn("Token revocation failed:", error);
-		}
+		const registration = await this.secretsManager.getOAuthClientRegistration(
+			deployment.safeHostname,
+		);
+		await revokeOAuthTokens(auth, registration, this.logger);
 	}
 
 	/**
-	 * Returns true if OAuth tokens exist for the current deployment.
-	 * Always reads fresh from secrets to ensure cross-window synchronization.
+	 * Returns true if the current deployment has OAuth tokens that may be
+	 * refreshed, i.e. they carry every required scope. Always reads fresh from
+	 * secrets to ensure cross-window synchronization.
 	 *
 	 * @param hostname Optional hostname to validate against current deployment.
 	 *                 If provided and doesn't match, returns false (race-safety).
 	 */
-	public async isLoggedInWithOAuth(hostname?: string): Promise<boolean> {
+	public async canRefreshOAuthSession(hostname?: string): Promise<boolean> {
 		if (hostname && hostname !== this.deployment?.safeHostname) {
 			return false;
 		}
