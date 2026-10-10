@@ -6,6 +6,12 @@ const webviewSharedAlias = path.resolve(
 	"packages/webview-shared/src",
 );
 
+const extensionAlias = {
+	"@": path.resolve(import.meta.dirname, "src"),
+	"@repo/webview-shared": webviewSharedAlias,
+	vscode: path.resolve(import.meta.dirname, "test/mocks/vscode.runtime.ts"),
+};
+
 // NTFS is slow with many small-file writes; double the default on Windows CI.
 const testTimeout = process.platform === "win32" ? 10_000 : 5_000;
 
@@ -23,16 +29,19 @@ export default defineConfig({
 					environment: "node",
 					globals: true,
 				},
-				resolve: {
-					alias: {
-						"@": path.resolve(import.meta.dirname, "src"),
-						"@repo/webview-shared": webviewSharedAlias,
-						vscode: path.resolve(
-							import.meta.dirname,
-							"test/mocks/vscode.runtime.ts",
-						),
-					},
+				resolve: { alias: extensionAlias },
+			},
+			{
+				extends: true,
+				test: {
+					name: "scopes",
+					include: ["test/scopes/**/*.test.ts"],
+					environment: "node",
+					// Upper bounds for provisioner jobs; nothing waits on a timer.
+					testTimeout: 120_000,
+					hookTimeout: 300_000,
 				},
+				resolve: { alias: extensionAlias },
 			},
 			{
 				extends: true,

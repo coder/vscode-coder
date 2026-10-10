@@ -4,10 +4,14 @@ import {
 	type AuthTokenRefreshTrigger,
 } from "../instrumentation/auth";
 
-import { DEFAULT_OAUTH_SCOPES, REFRESH_GRANT_TYPE } from "./constants";
+import { REFRESH_GRANT_TYPE } from "./constants";
 import { OAuthError, parseOAuthError } from "./errors";
 import { OAuthMetadataClient } from "./metadataClient";
-import { buildOAuthTokenData, toUrlSearchParams } from "./tokens";
+import {
+	buildOAuthTokenData,
+	hasRequiredScopes,
+	toUrlSearchParams,
+} from "./tokens";
 import { OAuth2TokenResponseSchema, parseOAuthResponse } from "./validation";
 
 import type { AxiosInstance } from "axios";
@@ -132,7 +136,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 		StoredTokens | undefined
 	> {
 		const storedTokens = await this.getStoredTokens();
-		if (storedTokens && !this.hasRequiredScopes(storedTokens.scope)) {
+		if (storedTokens && !hasRequiredScopes(storedTokens.scope)) {
 			this.logger.warn("Stored tokens have insufficient scopes", {
 				scope: storedTokens.scope,
 			});
@@ -260,38 +264,6 @@ export class OAuthSessionManager implements vscode.Disposable {
 					BACKGROUND_REFRESH_INTERVAL_MS,
 				);
 			});
-	}
-
-	/**
-	 * Check if granted scopes cover all required scopes.
-	 * Supports wildcard scopes like "workspace:*".
-	 */
-	private hasRequiredScopes(grantedScope: string): boolean {
-		const grantedScopes = new Set(grantedScope.split(" "));
-		if (grantedScopes.has("coder:all")) {
-			return true;
-		}
-		const requiredScopes = DEFAULT_OAUTH_SCOPES.split(" ");
-
-		for (const required of requiredScopes) {
-			if (grantedScopes.has(required)) {
-				continue;
-			}
-
-			// Check wildcard match (e.g., "workspace:*" grants "workspace:read")
-			const colonIndex = required.indexOf(":");
-			if (colonIndex !== -1) {
-				const prefix = required.substring(0, colonIndex);
-				const wildcard = `${prefix}:*`;
-				if (grantedScopes.has(wildcard)) {
-					continue;
-				}
-			}
-
-			return false;
-		}
-
-		return true;
 	}
 
 	/**

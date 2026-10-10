@@ -1,3 +1,5 @@
+import { DEFAULT_OAUTH_SCOPES } from "./constants";
+
 import type { OAuth2TokenResponse } from "coder/site/src/api/typesGenerated";
 
 import type { OAuthTokenData } from "../storage/secretsManager";
@@ -20,6 +22,38 @@ export function toUrlSearchParams(obj: object): URLSearchParams {
 	) as Record<string, string>;
 
 	return new URLSearchParams(params);
+}
+
+/**
+ * Whether the granted scopes cover DEFAULT_OAUTH_SCOPES.
+ * Supports wildcard scopes like "workspace:*".
+ */
+export function hasRequiredScopes(grantedScope: string): boolean {
+	const grantedScopes = new Set(grantedScope.split(" "));
+	if (grantedScopes.has("coder:all")) {
+		return true;
+	}
+	const requiredScopes = DEFAULT_OAUTH_SCOPES.split(" ");
+
+	for (const required of requiredScopes) {
+		if (grantedScopes.has(required)) {
+			continue;
+		}
+
+		// Check wildcard match (e.g., "workspace:*" grants "workspace:read")
+		const colonIndex = required.indexOf(":");
+		if (colonIndex !== -1) {
+			const prefix = required.substring(0, colonIndex);
+			const wildcard = `${prefix}:*`;
+			if (grantedScopes.has(wildcard)) {
+				continue;
+			}
+		}
+
+		return false;
+	}
+
+	return true;
 }
 
 /**

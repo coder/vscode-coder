@@ -1,0 +1,41 @@
+name: OAuth Scopes
+
+# Pushes and PRs use the image pinned in compose.yaml; nightly runs use latest
+# to catch server changes early.
+on:
+  push:
+    branches: [main]
+    # Code the probes run or import
+    paths: &paths
+      - src/**
+      - test/mocks/**
+      - test/scopes/**
+      - package.json
+      - pnpm-lock.yaml
+      - vitest.config.mts
+      - .github/workflows/oauth-scopes.yaml
+  pull_request:
+    paths: *paths
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-server:
+    name: Live Server Test (coder-preview)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: docker compose -f test/scopes/compose.yaml up -d --wait
+        env:
+          CODER_IMAGE: ${{ github.event_name == 'schedule' && 'ghcr.io/coder/coder-preview:latest' || '' }}
+      - run: pnpm test:scopes
+        env:
+          CODER_SCOPES_TEST_URL: http://localhost:7080
