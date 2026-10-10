@@ -9,6 +9,7 @@ import {
 	type BinaryResolver,
 } from "@/cli/cliCredentialManager";
 import * as cliExec from "@/cli/cliExec";
+import { EMPTY_TOKEN_FLAG } from "@/settings/cli";
 import { PathResolver } from "@/storage/pathResolver";
 
 import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
@@ -41,6 +42,7 @@ const PATH_RESOLVER = new PathResolver("/mock/base", "/mock/log");
 const CRED_DIR = path.join("/mock/base", "dev.coder.com");
 const USER_DIR = "/custom/coderv2";
 
+// Flags for `login --use-token-as-session`; every other command gets EMPTY_TOKEN_FLAG first.
 const EXTENSION_FLAGS = [
 	"--global-config",
 	CRED_DIR,
@@ -204,12 +206,15 @@ describe("CliCredentialManager", () => {
 	describe("storeToken", () => {
 		it("passes the token through the environment only", async () => {
 			stubExecFile();
+			vi.stubEnv("coder_session_token", "host-token");
 			const { manager } = setup();
 
 			await manager.storeToken(TEST_URL, "my-secret-token", configs);
 
 			expect(execOptions().env?.CODER_SESSION_TOKEN).toBe("my-secret-token");
+			expect(execOptions().env).not.toHaveProperty("coder_session_token");
 			expect(execCalls()[0]).not.toContain("my-secret-token");
+			expect(execCalls()[0]).not.toContain(EMPTY_TOKEN_FLAG);
 		});
 
 		interface CliErrorCase {
@@ -254,7 +259,9 @@ describe("CliCredentialManager", () => {
 			const { manager } = setup();
 
 			expect(await manager.readToken(TEST_URL, configs)).toBe("my-token");
-			expect(execCalls()).toEqual([[...KEYRING_FLAGS, "login", "token"]]);
+			expect(execCalls()).toEqual([
+				[EMPTY_TOKEN_FLAG, ...KEYRING_FLAGS, "login", "token"],
+			]);
 		});
 
 		interface ReadTokenCase {
@@ -408,7 +415,7 @@ describe("CliCredentialManager", () => {
 
 			expect(result).toBe(true);
 			expect(execCalls()).toEqual(
-				logout ? [[...logout, "logout", "--yes"]] : [],
+				logout ? [[EMPTY_TOKEN_FLAG, ...logout, "logout", "--yes"]] : [],
 			);
 			expect(credentialFilesExist()).toBe(false);
 			expect(sink.expectOne("auth.credential.clear").properties).toMatchObject({

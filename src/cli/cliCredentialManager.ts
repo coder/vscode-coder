@@ -14,6 +14,7 @@ import {
 import { recordError } from "../instrumentation/outcomes";
 import {
 	type CliAuth,
+	EMPTY_TOKEN_FLAG,
 	getGlobalFlags,
 	mayUseCliStore,
 	resolveCliAuth,
@@ -75,10 +76,16 @@ export class CliCredentialManager {
 				return;
 			}
 			span.setProperty("store", cli.auth.store);
-			await this.exec(cli, ["login", "--use-token-as-session", url], {
-				env: { ...process.env, CODER_SESSION_TOKEN: token },
-				signal: options?.signal,
-			});
+			// `login` reads the token from the environment, which the empty flag would hide.
+			const flags = cli.flags.filter((flag) => flag !== EMPTY_TOKEN_FLAG);
+			await this.exec(
+				{ ...cli, flags },
+				["login", "--use-token-as-session", url],
+				{
+					env: envWithSessionToken(token),
+					signal: options?.signal,
+				},
+			);
 			span.setProperty("outcome", "stored");
 			this.logger.info("Stored token via CLI for", url);
 		});
@@ -267,4 +274,14 @@ export class CliCredentialManager {
 		);
 		return results.every(Boolean);
 	}
+}
+
+/** `process.env` with `token` as the only session token, since the CLI reads the name in any case. */
+function envWithSessionToken(token: string): NodeJS.ProcessEnv {
+	const env = Object.fromEntries(
+		Object.entries(process.env).filter(
+			([key]) => key.toUpperCase() !== "CODER_SESSION_TOKEN",
+		),
+	);
+	return { ...env, CODER_SESSION_TOKEN: token };
 }

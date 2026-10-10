@@ -15,6 +15,7 @@ import {
 import * as vscode from "vscode";
 
 import { cliFeatureSet } from "@/featureSet";
+import { EMPTY_TOKEN_FLAG } from "@/settings/cli";
 
 import {
 	MockConfigurationProvider,
@@ -201,6 +202,7 @@ describe("cliExec", () => {
 				.trim()
 				.split("\n");
 			expect(args).toEqual([
+				EMPTY_TOKEN_FLAG,
 				"--url",
 				"http://localhost:3000",
 				"--header-command",
@@ -246,6 +248,7 @@ describe("cliExec", () => {
 			configs.set("coder.headerCommand", "my-header-cmd");
 			const args = (await cliExec.netcheck(env)).trim().split("\n");
 			expect(args).toEqual([
+				EMPTY_TOKEN_FLAG,
 				"--url",
 				"http://localhost:3000",
 				"--header-command",
@@ -302,6 +305,7 @@ describe("cliExec", () => {
 			});
 			const args = (await fs.readFile(outputPath, "utf-8")).trim().split("\n");
 			expect(args).toEqual([
+				EMPTY_TOKEN_FLAG,
 				"--url",
 				"http://localhost:3000",
 				"--header-command",
@@ -333,6 +337,7 @@ describe("cliExec", () => {
 			await cliExec.supportBundle(env, "owner/workspace", { outputPath });
 			const args = (await fs.readFile(outputPath, "utf-8")).trim().split("\n");
 			expect(args).toEqual([
+				EMPTY_TOKEN_FLAG,
 				"--url",
 				"http://localhost:3000",
 				"support",
@@ -401,7 +406,14 @@ describe("cliExec", () => {
 
 			expect(spawn).toHaveBeenCalledWith(
 				env.binary,
-				["--url", "https://test.coder.com", "ping", "--", "owner/my workspace"],
+				[
+					EMPTY_TOKEN_FLAG,
+					"--url",
+					"https://test.coder.com",
+					"ping",
+					"--",
+					"owner/my workspace",
+				],
 				expect.objectContaining({ detached: process.platform !== "win32" }),
 			);
 		});
@@ -417,6 +429,7 @@ describe("cliExec", () => {
 			expect(spawn).toHaveBeenCalledWith(
 				env.binary,
 				[
+					EMPTY_TOKEN_FLAG,
 					"--verbose",
 					"--global-config",
 					"/cfg",
@@ -477,6 +490,7 @@ describe("cliExec", () => {
 					name: "AI Agent",
 					shellPath: env.binary,
 					shellArgs: [
+						EMPTY_TOKEN_FLAG,
 						"--url",
 						"https://test.coder.com",
 						"ssh",

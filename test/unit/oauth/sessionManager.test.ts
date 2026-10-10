@@ -136,14 +136,14 @@ function createTestContext(deployment: Deployment = createTestDeployment()) {
 }
 
 describe("OAuthSessionManager", () => {
-	describe("isLoggedInWithOAuth", () => {
-		interface IsLoggedInTestCase {
+	describe("canRefreshOAuthSession", () => {
+		interface CanRefreshTestCase {
 			name: string;
 			auth: SessionAuth | null;
 			expected: boolean;
 		}
 
-		it.each<IsLoggedInTestCase>([
+		it.each<CanRefreshTestCase>([
 			{
 				name: "returns true when OAuth tokens exist",
 				auth: {
@@ -177,7 +177,7 @@ describe("OAuthSessionManager", () => {
 				await secretsManager.setSessionAuth(TEST_HOSTNAME, auth);
 			}
 
-			const result = await manager.isLoggedInWithOAuth();
+			const result = await manager.canRefreshOAuthSession();
 			expect(result).toBe(expected);
 		});
 	});
@@ -264,7 +264,7 @@ describe("OAuthSessionManager", () => {
 				},
 			});
 
-			expect(await manager.isLoggedInWithOAuth()).toBe(false);
+			expect(await manager.canRefreshOAuthSession()).toBe(false);
 		});
 	});
 
@@ -279,7 +279,7 @@ describe("OAuthSessionManager", () => {
 
 			await manager.setDeployment(newDeployment);
 
-			const result = await manager.isLoggedInWithOAuth();
+			const result = await manager.canRefreshOAuthSession();
 			expect(result).toBe(false);
 		});
 	});
@@ -290,7 +290,7 @@ describe("OAuthSessionManager", () => {
 
 			manager.clearDeployment();
 
-			const result = await manager.isLoggedInWithOAuth();
+			const result = await manager.canRefreshOAuthSession();
 			expect(result).toBe(false);
 		});
 	});
@@ -518,7 +518,7 @@ describe("OAuthSessionManager", () => {
 	});
 
 	describe("scope validation", () => {
-		it("rejects tokens with insufficient scopes", async () => {
+		it("cannot refresh tokens with insufficient scopes", async () => {
 			const { secretsManager, manager } = createTestContext();
 
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
@@ -531,7 +531,7 @@ describe("OAuthSessionManager", () => {
 				},
 			});
 
-			const result = await manager.isLoggedInWithOAuth();
+			const result = await manager.canRefreshOAuthSession();
 			expect(result).toBe(false);
 		});
 
@@ -550,7 +550,7 @@ describe("OAuthSessionManager", () => {
 				},
 			});
 
-			const result = await manager.isLoggedInWithOAuth();
+			const result = await manager.canRefreshOAuthSession();
 			expect(result).toBe(true);
 		});
 
@@ -558,7 +558,7 @@ describe("OAuthSessionManager", () => {
 			const { manager, setupOAuthSession } = createTestContext();
 			await setupOAuthSession({ scope: "coder:all" });
 
-			expect(await manager.isLoggedInWithOAuth()).toBe(true);
+			expect(await manager.canRefreshOAuthSession()).toBe(true);
 		});
 	});
 

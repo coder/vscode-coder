@@ -59,6 +59,9 @@ export function getGlobalFlags(
 
 const identity = (s: string) => s;
 
+/** Overrides `CODER_SESSION_TOKEN` in any case variant, so the CLI reads its stored session. */
+export const EMPTY_TOKEN_FLAG = "--token=";
+
 function buildGlobalFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 	auth: CliAuth,
@@ -68,10 +71,12 @@ function buildGlobalFlags(
 	// Escape after stripping so expansion whitespace stays in one shell token.
 	// User flags keep shell expansion (e.g. `$VAR`); the auth values and
 	// header command are quoted literally.
-	const flags = stripManagedFlags(
+	const userFlags = stripManagedFlags(
 		getExpandedUserGlobalFlags(configs),
 		auth.store === "extension",
 	).map(escUserFlag);
+	// The last `--token` wins, so a user's own token still applies.
+	const flags = [EMPTY_TOKEN_FLAG, ...userFlags];
 	if (auth.store === "extension") {
 		flags.push("--global-config", escValue(auth.configDir));
 	}

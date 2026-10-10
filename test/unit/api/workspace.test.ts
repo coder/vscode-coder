@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import { LazyStream, startWorkspace, updateWorkspace } from "@/api/workspace";
+import { EMPTY_TOKEN_FLAG } from "@/settings/cli";
 
 import { workspace as createWorkspace } from "@repo/mocks";
 
@@ -20,6 +21,8 @@ vi.mock(import("node:child_process"), async (importOriginal) => ({
 	spawn: vi.fn(),
 }));
 const { spawn } = await import("node:child_process");
+
+const GLOBAL_FLAGS = [EMPTY_TOKEN_FLAG, "--url", "https://test.coder.com"];
 
 const CLI_FEATURES: CliFeatureSet = {
 	cliLogin: true,
@@ -226,8 +229,7 @@ describe("updateWorkspace", () => {
 
 		await expect(result).resolves.toBe(finalWorkspace);
 		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", [
-			"--url",
-			"https://test.coder.com",
+			...GLOBAL_FLAGS,
 			"update",
 			"--",
 			"testuser/test-workspace",
@@ -248,8 +250,7 @@ describe("updateWorkspace", () => {
 		await result;
 
 		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", [
-			"--url",
-			"https://test.coder.com",
+			...GLOBAL_FLAGS,
 			"update",
 			"--parameter",
 			"region=us-east",
@@ -425,8 +426,7 @@ describe("startWorkspace", () => {
 
 		await expect(result).resolves.toBe(finalWorkspace);
 		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", [
-			"--url",
-			"https://test.coder.com",
+			...GLOBAL_FLAGS,
 			"start",
 			"--yes",
 			"--reason",
@@ -456,8 +456,7 @@ describe("startWorkspace", () => {
 		await result;
 
 		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", [
-			"--url",
-			"https://test.coder.com",
+			...GLOBAL_FLAGS,
 			"start",
 			"--yes",
 			"--",

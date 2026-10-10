@@ -7,7 +7,11 @@ import { needToken } from "../api/httpAgent";
 import { HttpStatusCode } from "../api/httpStatusCode";
 import { isSameOrigin, openInBrowser } from "../common/url";
 import { CertificateError } from "../error/certificateError";
-import { OAuthAuthorizer } from "../oauth/authorizer";
+import {
+	ClientRegistrationDisabledError,
+	OAuthAuthorizer,
+} from "../oauth/authorizer";
+import { revokeOAuthTokens } from "../oauth/revocation";
 import { buildOAuthTokenData } from "../oauth/tokens";
 import { withCancellableProgress } from "../ui/progress";
 import { maybeAskAuthMethod, maybeAskUrl } from "../ui/prompts";
@@ -15,7 +19,10 @@ import { vscodeProposed } from "../vscode/proposed";
 
 import { showStoreCredentialsError } from "./credentials";
 
-import type { User } from "coder/site/src/api/typesGenerated";
+import type {
+	User,
+	OAuth2ClientRegistrationResponse,
+} from "coder/site/src/api/typesGenerated";
 
 import type { CliCredentialManager } from "../cli/cliCredentialManager";
 import type { Deployment } from "../deployment/types";
@@ -109,18 +116,14 @@ export class LoginCoordinator implements vscode.Disposable {
 		options: LoginOptions & { url: string },
 	): Promise<LoginResult> {
 		const { safeHostname, url } = options;
-		return this.executeWithGuard(async () => {
-			const result = await this.attemptLogin(
+		return this.executeWithGuard(() =>
+			this.attemptLogin(
 				{ safeHostname, url },
 				options.autoLogin ?? false,
 				options.token,
 				options.tokenSignInConfirmed ?? false,
-			);
-
-			await this.persistSessionAuth(result, safeHostname, url);
-
-			return result;
-		});
+			),
+		);
 	}
 
 	/**
@@ -170,15 +173,11 @@ export class LoginCoordinator implements vscode.Disposable {
 							return { success: false, reason: "no_url_provided" };
 						}
 
-						const result = await this.attemptLogin(
+						return this.attemptLogin(
 							{ url: newUrl, safeHostname },
 							false,
 							options.token,
 						);
-
-						await this.persistSessionAuth(result, safeHostname, newUrl);
-
-						return result;
 					}
 					// User cancelled
 					return { success: false, reason: "user_dismissed" };
@@ -198,28 +197,42 @@ export class LoginCoordinator implements vscode.Disposable {
 	}
 
 	private async persistSessionAuth(
-		result: LoginResult,
-		safeHostname: string,
-		url: string,
+		result: Extract<LoginResult, { success: true }>,
+		deployment: Deployment,
+		registration: OAuth2ClientRegistrationResponse | undefined,
 	): Promise<void> {
-		// Empty token is valid for mTLS
-		if (result.success) {
-			await this.secretsManager.setSessionAuth(safeHostname, {
-				url,
-				token: result.token,
-				username: result.user.username,
-				oauth: result.oauth, // undefined for non-OAuth logins
-			});
-			await this.mementoManager.addToUrlHistory(url);
+		const { safeHostname, url } = deployment;
+		const previous = await this.secretsManager.getSessionAuth(safeHostname);
+		const replaced = previous?.token === result.token ? undefined : previous;
+		// A refresh rotated the stored session while this login checked it.
+		if (result.method === "stored_token" && replaced) {
+			return;
+		}
+		const reusedOAuth =
+			!replaced && previous && isSameOrigin(previous.url, url)
+				? previous.oauth
+				: undefined;
 
-			if (result.token) {
-				const configs = vscode.workspace.getConfiguration();
-				this.cliCredentialManager
-					.storeToken(url, result.token, configs)
-					.catch((error) =>
-						showStoreCredentialsError(error, configs, this.logger),
-					);
-			}
+		// Empty token is valid for mTLS
+		await this.secretsManager.setSessionAuth(safeHostname, {
+			url,
+			token: result.token,
+			username: result.user.username,
+			oauth: result.oauth ?? reusedOAuth,
+		});
+		await this.mementoManager.addToUrlHistory(url);
+
+		if (replaced?.oauth) {
+			void revokeOAuthTokens(replaced, registration, this.logger);
+		}
+
+		if (result.token) {
+			const configs = vscode.workspace.getConfiguration();
+			this.cliCredentialManager
+				.storeToken(url, result.token, configs)
+				.catch((error) =>
+					showStoreCredentialsError(error, configs, this.logger),
+				);
 		}
 	}
 
@@ -286,15 +299,23 @@ export class LoginCoordinator implements vscode.Disposable {
 		providedToken?: string,
 		tokenSignInConfirmed = false,
 	): Promise<LoginResult> {
+		// Read before an OAuth login can re-register the client.
+		const registration = await this.secretsManager.getOAuthClientRegistration(
+			deployment.safeHostname,
+		);
 		const client = CoderApi.create(deployment.url, "", this.logger);
 		try {
-			return await this.runLoginAttempts(
+			const result = await this.runLoginAttempts(
 				client,
 				deployment,
 				isAutoLogin,
 				providedToken,
 				tokenSignInConfirmed,
 			);
+			if (result.success) {
+				await this.persistSessionAuth(result, deployment, registration);
+			}
+			return result;
 		} finally {
 			client.dispose();
 		}
@@ -477,11 +498,16 @@ export class LoginCoordinator implements vscode.Disposable {
 	private async askAuthMethod(ctx: LoginAttemptContext): Promise<LoginResult> {
 		const authMethod = await maybeAskAuthMethod(ctx.client);
 		switch (authMethod) {
-			case "oauth":
+			case "oauth": {
+				const result = await this.loginWithOAuth(ctx.deployment);
+				if (result !== "use_token") {
+					return withLoginMethod("oauth", result);
+				}
 				return withLoginMethod(
-					"oauth",
-					await this.loginWithOAuth(ctx.deployment),
+					"cli_token",
+					await this.loginWithToken(ctx.client),
 				);
+			}
 			case "legacy":
 				return withLoginMethod(
 					"cli_token",
@@ -636,12 +662,10 @@ export class LoginCoordinator implements vscode.Disposable {
 		return { success: false, reason: "user_dismissed" };
 	}
 
-	/**
-	 * OAuth authentication flow.
-	 */
+	/** OAuth flow; "use_token" means the user chose session-token sign-in instead. */
 	private async loginWithOAuth(
 		deployment: Deployment,
-	): Promise<LoginAttemptResult> {
+	): Promise<LoginAttemptResult | "use_token"> {
 		try {
 			this.logger.debug("Starting OAuth authentication");
 
@@ -666,6 +690,21 @@ export class LoginCoordinator implements vscode.Disposable {
 				oauth: buildOAuthTokenData(tokenResponse),
 			};
 		} catch (error) {
+			if (error instanceof ClientRegistrationDisabledError) {
+				this.logger.warn("OAuth sign-in unavailable:", error.message);
+				const action = await vscodeProposed.window.showWarningMessage(
+					"OAuth sign-in is unavailable",
+					{
+						useCustom: true,
+						modal: true,
+						detail: `${error.message}. To use OAuth, ask an administrator to set dynamic_client_registration_enabled.`,
+					},
+					"Sign In with Token",
+				);
+				return action === "Sign In with Token"
+					? "use_token"
+					: { success: false, reason: "user_dismissed" };
+			}
 			const title = "OAuth authentication failed";
 			this.logger.error(title, error);
 			if (error instanceof CertificateError) {

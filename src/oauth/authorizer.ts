@@ -1,7 +1,9 @@
+import { type AxiosInstance, isAxiosError } from "axios";
 import { createHash, randomBytes } from "node:crypto";
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
+import { HttpStatusCode } from "../api/httpStatusCode";
 import { resolveCoderDashboardUrl } from "../common/url";
 
 import {
@@ -21,7 +23,6 @@ import {
 	parseOAuthResponse,
 } from "./validation";
 
-import type { AxiosInstance } from "axios";
 import type {
 	OAuth2AuthorizationServerMetadata,
 	OAuth2ClientRegistrationRequest,
@@ -36,6 +37,14 @@ import type { Logger } from "../logging/logger";
 import type { SecretsManager } from "../storage/secretsManager";
 
 import type { OAuthCallback } from "./oauthCallback";
+
+/** The server refuses client registration, which is off by default from Coder 2.38. */
+export class ClientRegistrationDisabledError extends Error {
+	constructor() {
+		super("Dynamic client registration is disabled on this deployment");
+		this.name = "ClientRegistrationDisabledError";
+	}
+}
 
 /**
  * Handles the OAuth authorization code flow for authenticating with Coder deployments.
@@ -171,10 +180,20 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			token_endpoint_auth_method: TOKEN_ENDPOINT_AUTH_METHOD,
 		};
 
-		const response = await axiosInstance.post<OAuth2ClientRegistrationResponse>(
-			metadata.registration_endpoint,
-			registrationRequest,
-		);
+		const response = await axiosInstance
+			.post<OAuth2ClientRegistrationResponse>(
+				metadata.registration_endpoint,
+				registrationRequest,
+			)
+			.catch((error: unknown) => {
+				if (
+					isAxiosError(error) &&
+					error.response?.status === HttpStatusCode.FORBIDDEN
+				) {
+					throw new ClientRegistrationDisabledError();
+				}
+				throw error;
+			});
 
 		const registrationResponse = parseOAuthResponse(
 			OAuth2ClientRegistrationResponseSchema,

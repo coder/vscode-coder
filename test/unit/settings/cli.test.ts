@@ -5,6 +5,7 @@ import { afterEach, beforeEach, it, expect, describe, vi } from "vitest";
 import { cliFeatureSet } from "@/featureSet";
 import {
 	type CliAuth,
+	EMPTY_TOKEN_FLAG,
 	getExpandedUserGlobalFlags,
 	getGlobalFlags,
 	getGlobalShellFlags,
@@ -78,7 +79,10 @@ describe("cliConfig", () => {
 			},
 		])("emits auth flags for a $scenario", ({ auth, expected }) => {
 			const config = new MockConfigurationProvider();
-			expect(getGlobalShellFlags(config, auth)).toStrictEqual(expected);
+			expect(getGlobalShellFlags(config, auth)).toStrictEqual([
+				EMPTY_TOKEN_FLAG,
+				...expected,
+			]);
 		});
 
 		it.each(INVALID_DEPLOYMENT_URLS)(
@@ -97,6 +101,7 @@ describe("cliConfig", () => {
 			config.set("coder.globalFlags", ["--verbose", "--global-configs"]);
 
 			expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
+				EMPTY_TOKEN_FLAG,
 				"--verbose",
 				"--global-configs", // similar prefixes are not managed flags
 				...EXTENSION_SHELL_FLAGS,
@@ -108,6 +113,7 @@ describe("cliConfig", () => {
 			config.set("coder.globalFlags", ["--verbose", "--use-keyring=false"]);
 
 			expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
+				EMPTY_TOKEN_FLAG,
 				"--verbose",
 				...EXTENSION_SHELL_FLAGS,
 			]);
@@ -128,6 +134,7 @@ describe("cliConfig", () => {
 				config.set("coder.globalFlags", flags);
 
 				expect(getGlobalShellFlags(config, cliStoreAuth)).toStrictEqual([
+					EMPTY_TOKEN_FLAG,
 					...flags,
 					...CLI_SHELL_FLAGS,
 				]);
@@ -147,6 +154,7 @@ describe("cliConfig", () => {
 				config.set("coder.globalFlags", flags);
 
 				expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
+					EMPTY_TOKEN_FLAG,
 					"-v",
 					...EXTENSION_SHELL_FLAGS,
 				]);
@@ -160,6 +168,7 @@ describe("cliConfig", () => {
 			config.set("coder.globalFlags", ["-v", "--header-command custom"]);
 
 			expect(getGlobalShellFlags(config, cliStoreAuth)).toStrictEqual([
+				EMPTY_TOKEN_FLAG,
 				"-v",
 				'"--header-command custom"', // ignored by CLI
 				...CLI_SHELL_FLAGS,
@@ -195,6 +204,7 @@ describe("cliConfig", () => {
 						configDir: "/home/$USER/%APPDATA%/coder",
 					}),
 				).toStrictEqual([
+					EMPTY_TOKEN_FLAG,
 					'"--header=Authorization=$TOKEN"',
 					"--global-config",
 					configDir,
@@ -213,6 +223,7 @@ describe("cliConfig", () => {
 
 			// Without per-entry escaping the space splits the shell command.
 			expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
+				EMPTY_TOKEN_FLAG,
 				'"--cfg=C:\\Users\\John Doe/coder"',
 				...EXTENSION_SHELL_FLAGS,
 			]);
@@ -226,10 +237,22 @@ describe("cliConfig", () => {
 			config.set("coder.headerCommand", "echo test");
 
 			expect(getGlobalFlags(config, extensionStoreAuth)).toStrictEqual([
+				EMPTY_TOKEN_FLAG,
 				"--verbose",
 				...EXTENSION_FLAGS,
 				"--header-command",
 				"echo test",
+			]);
+		});
+
+		it("places a user --token after the empty token flag so it wins", () => {
+			const config = new MockConfigurationProvider();
+			config.set("coder.globalFlags", ["--token=abc"]);
+
+			expect(getGlobalFlags(config, cliStoreAuth)).toStrictEqual([
+				EMPTY_TOKEN_FLAG,
+				"--token=abc",
+				...CLI_FLAGS,
 			]);
 		});
 	});
@@ -491,9 +514,10 @@ describe("cliConfig", () => {
 			}
 			config.set("coder.globalFlags", userFlags);
 
-			expect(getGlobalFlags(config, resolve(config, version))).toStrictEqual(
-				expected,
-			);
+			expect(getGlobalFlags(config, resolve(config, version))).toStrictEqual([
+				EMPTY_TOKEN_FLAG,
+				...expected,
+			]);
 		});
 	});
 });

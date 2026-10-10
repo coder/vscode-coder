@@ -20,9 +20,18 @@
 
 ### Fixed
 
-- OAuth sign-in now works on deployments that enforce token scopes. Users signed
-  in with OAuth are asked to sign in again once.
-- Revoke OAuth tokens on logout even when their scopes are outdated.
+- OAuth sign-in now works on deployments that enforce token scopes. Sessions
+  missing required scopes stop refreshing and require sign-in when they expire.
+- Revoke OAuth tokens on logout and after successful session replacement, even
+  when their scopes are outdated. Failed or canceled sign-ins do not revoke
+  the stored session.
+- Preserve OAuth refresh credentials when reusing a stored token, and request
+  the permissions needed to refresh workspace external-auth links.
+- If a deployment disables dynamic client registration (the default from Coder
+  2.38), OAuth sign-in now names the setting and offers session-token sign-in.
+- CLI commands and SSH connections that the extension starts ignore
+  `CODER_SESSION_TOKEN` from the environment, so they no longer fail or run as a
+  different user inside a Coder workspace.
 
 ### Fixed
 

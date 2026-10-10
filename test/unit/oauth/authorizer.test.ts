@@ -3,13 +3,17 @@ import * as vscode from "vscode";
 
 import { InvalidApiResponseError } from "@/api/responseValidation";
 import { getHeaders } from "@/headers";
-import { OAuthAuthorizer } from "@/oauth/authorizer";
+import {
+	ClientRegistrationDisabledError,
+	OAuthAuthorizer,
+} from "@/oauth/authorizer";
 import {
 	DEFAULT_OAUTH_SCOPES,
 	IF_SUPPORTED_OAUTH_SCOPES,
 } from "@/oauth/constants";
 
 import {
+	createAxiosError,
 	createMockUser,
 	MockCancellationToken,
 	MockProgress,
@@ -523,6 +527,21 @@ describe("OAuthAuthorizer", () => {
 					new MockCancellationToken(),
 				),
 			).rejects.toThrow("Server does not support dynamic client registration");
+		});
+
+		it("throws ClientRegistrationDisabledError when the server refuses registration", async () => {
+			const { setupOAuthRoutes, authorizer } = createTestContext();
+			setupOAuthRoutes(undefined, {
+				"/oauth2/register": createAxiosError(403, "Forbidden"),
+			});
+
+			await expect(
+				authorizer.login(
+					createTestDeployment(),
+					new MockProgress(),
+					new MockCancellationToken(),
+				),
+			).rejects.toThrow(ClientRegistrationDisabledError);
 		});
 
 		it("rejects a token response without an access token", async () => {
