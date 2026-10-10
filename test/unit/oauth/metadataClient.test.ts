@@ -36,9 +36,9 @@ vi.mock("@/headers", () => ({
 	getHeaderCommand: vi.fn(),
 }));
 
-vi.mock("@/api/utils", async () => {
+vi.mock("@/api/httpAgent", async () => {
 	const actual =
-		await vi.importActual<typeof import("@/api/utils")>("@/api/utils");
+		await vi.importActual<typeof import("@/api/httpAgent")>("@/api/httpAgent");
 	return { ...actual, createHttpAgent: vi.fn() };
 });
 

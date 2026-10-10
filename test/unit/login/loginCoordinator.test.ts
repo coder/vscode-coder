@@ -3,13 +3,13 @@ import { describe, expect, it, vi, type Mock } from "vitest";
 import * as vscode from "vscode";
 
 import { HttpStatusCode } from "@/api/httpStatusCode";
-import { MementoManager } from "@/core/mementoManager";
-import { SecretsManager } from "@/core/secretsManager";
 import { getHeaders } from "@/headers";
 import { AuthTelemetry } from "@/instrumentation/auth";
 import { LoginCoordinator, type LoginMethod } from "@/login/loginCoordinator";
 import { OAuthCallback } from "@/oauth/oauthCallback";
-import { maybeAskAuthMethod, maybeAskUrl } from "@/promptUtils";
+import { MementoManager } from "@/storage/mementoManager";
+import { SecretsManager } from "@/storage/secretsManager";
+import { maybeAskAuthMethod, maybeAskUrl } from "@/ui/prompts";
 
 import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
 import {
@@ -60,9 +60,9 @@ vi.mock("@/headers", () => ({
 	getHeaderCommand: vi.fn(),
 }));
 
-vi.mock("@/api/utils", async () => {
+vi.mock("@/api/httpAgent", async () => {
 	const actual =
-		await vi.importActual<typeof import("@/api/utils")>("@/api/utils");
+		await vi.importActual<typeof import("@/api/httpAgent")>("@/api/httpAgent");
 	return { ...actual, createHttpAgent: vi.fn() };
 });
 
@@ -70,7 +70,7 @@ vi.mock("@/api/streamingFetchAdapter", () => ({
 	createStreamingFetchAdapter: vi.fn(() => fetch),
 }));
 
-vi.mock("@/promptUtils", () => ({
+vi.mock("@/ui/prompts", () => ({
 	maybeAskAuthMethod: vi.fn().mockResolvedValue("legacy"),
 	maybeAskUrl: vi.fn(),
 }));

@@ -1,6 +1,6 @@
 import { HttpStatusCode } from "../api/httpStatusCode";
 import { ClientCertificateError } from "../error/clientCertificateError";
-import { toError } from "../error/errorUtils";
+import { toError } from "../error/normalize";
 import {
 	WebSocketTelemetry,
 	type ConnectionDropCause,
@@ -11,8 +11,8 @@ import {
 	WebSocketCloseCode,
 	UNRECOVERABLE_WS_CLOSE_CODES,
 	UNRECOVERABLE_HTTP_CODES,
+	handshakeStatus,
 } from "./codes";
-import { handshakeStatus } from "./utils";
 
 import type { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 

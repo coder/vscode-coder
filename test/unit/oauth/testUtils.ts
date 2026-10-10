@@ -1,10 +1,10 @@
 import { AxiosError, AxiosHeaders } from "axios";
 import { vi } from "vitest";
 
-import { MementoManager } from "@/core/mementoManager";
-import { SecretsManager } from "@/core/secretsManager";
 import { getHeaders } from "@/headers";
 import { OAuthCallback } from "@/oauth/oauthCallback";
+import { MementoManager } from "@/storage/mementoManager";
+import { SecretsManager } from "@/storage/secretsManager";
 
 import {
 	createMockLogger,

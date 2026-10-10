@@ -89,6 +89,8 @@ export default defineConfig(
 			"package-json/require-files": "off",
 			"package-json/require-sideEffects": "off",
 			"package-json/require-attribution": "off",
+			// vsce, unlike npm, only packages LICENSE when "files" lists it.
+			"package-json/no-redundant-files": "off",
 		},
 	},
 

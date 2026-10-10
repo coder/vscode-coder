@@ -1,0 +1,26 @@
+import { defineConfig } from "@vscode/test-cli";
+
+// VS Code to Electron/Node version mapping:
+//   VS Code 1.105 (Sept 2025) -> Electron 37, Node 22 - Minimum supported
+//   VS Code stable             -> Latest
+// See https://github.com/ewanharris/vscode-versions for version mapping
+const versions = ["1.105.0", "stable"];
+
+// Paths resolve against this file's directory.
+const baseConfig = {
+	files: "../../out/test/integration/**/*.test.js",
+	extensionDevelopmentPath: "../..",
+	launchArgs: ["--enable-proposed-api", "coder.coder-remote", "--disable-gpu"],
+	mocha: {
+		ui: "tdd",
+		timeout: 20000,
+	},
+};
+
+export default defineConfig(
+	versions.map((version) => ({
+		...baseConfig,
+		version,
+		label: `VS Code ${version}`,
+	})),
+);

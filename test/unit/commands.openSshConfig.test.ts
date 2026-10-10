@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { PathResolver } from "@/core/pathResolver";
+import { PathResolver } from "@/storage/pathResolver";
 
 import { createTestCommands } from "../mocks/commands";
 import { MockConfigurationProvider, useEditor } from "../mocks/testHelpers";

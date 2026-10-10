@@ -11,7 +11,7 @@ import * as vscode from "vscode";
 import { type Logger } from "../logging/logger";
 
 import { CertificateError } from "./certificateError";
-import { toError } from "./errorUtils";
+import { toError } from "./normalize";
 
 // X509_ERR_CODE represents error codes as returned from BoringSSL/OpenSSL.
 export enum X509_ERR_CODE {

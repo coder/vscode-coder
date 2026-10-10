@@ -1,8 +1,8 @@
 import * as fs from "node:fs/promises";
 
-import type { PathResolver } from "../core/pathResolver";
-import type { SecretsManager } from "../core/secretsManager";
 import type { Logger } from "../logging/logger";
+import type { PathResolver } from "../storage/pathResolver";
+import type { SecretsManager } from "../storage/secretsManager";
 
 type SessionAuthStore = Pick<
 	SecretsManager,

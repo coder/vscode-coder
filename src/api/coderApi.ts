@@ -12,12 +12,12 @@ import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
 	watchConfigurationChanges,
 } from "../configWatcher";
-import { sessionId } from "../core/sessionId";
 import { ClientCertificateError } from "../error/clientCertificateError";
-import { toError } from "../error/errorUtils";
+import { toError } from "../error/normalize";
 import { ServerCertificateError } from "../error/serverCertificateError";
 import { getHeaders } from "../headers";
 import { EventStreamLogger } from "../logging/eventStreamLogger";
+import { sizeOf } from "../logging/formatters";
 import {
 	createRequestMeta,
 	logError,
@@ -29,15 +29,15 @@ import {
 	type RequestConfigWithMeta,
 	type HttpClientLogLevel,
 } from "../logging/types";
-import { sizeOf } from "../logging/utils";
 import { AuthConfigTracker } from "../settings/authConfig";
 import { getHeaderCommand } from "../settings/headers";
 import { readHttpClientLogLevel } from "../settings/logger";
+import { sessionId } from "../telemetry/ids";
 import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
 } from "../telemetry/reporter";
-import { WebSocketCloseCode } from "../websocket/codes";
+import { WebSocketCloseCode, handshakeStatus } from "../websocket/codes";
 import {
 	OneWayWebSocket,
 	type OneWayWebSocketInit,
@@ -49,16 +49,15 @@ import {
 	type SocketFactory,
 } from "../websocket/reconnectingWebSocket";
 import { SseConnection } from "../websocket/sseConnection";
-import { handshakeStatus } from "../websocket/utils";
 
 import { getRefreshCommand, refreshCertificates } from "./certificateRefresh";
+import { createHttpAgent } from "./httpAgent";
 import { HttpStatusCode } from "./httpStatusCode";
 import {
 	parseApiResponse,
 	VALIDATED_RESPONSES,
 	type ValidatedMethods,
 } from "./responseValidation";
-import { createHttpAgent } from "./utils";
 
 import type {
 	GetInboxNotificationResponse,

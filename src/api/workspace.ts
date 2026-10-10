@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 
+import { errToStr } from "../error/normalize";
 import { getGlobalFlags, type CliAuth } from "../settings/cli";
 
-import { errToStr, createWorkspaceIdentifier } from "./api-helper";
+import { createWorkspaceIdentifier } from "./models";
 
 import type { Api } from "coder/site/src/api/api";
 import type {

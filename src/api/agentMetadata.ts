@@ -1,0 +1,130 @@
+import { type WorkspaceAgent } from "coder/site/src/api/typesGenerated";
+import * as vscode from "vscode";
+import { z } from "zod";
+
+import { errToStr } from "../error/normalize";
+import { WebSocketCloseCode } from "../websocket/codes";
+
+import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
+
+export const AgentMetadataEventSchema = z.object({
+	result: z.object({
+		collected_at: z.string(),
+		age: z.number(),
+		value: z.string(),
+		error: z.string(),
+	}),
+	description: z.object({
+		display_name: z.string(),
+		key: z.string(),
+		script: z.string(),
+		interval: z.number(),
+		timeout: z.number(),
+	}),
+});
+
+export const AgentMetadataEventSchemaArray = z.array(AgentMetadataEventSchema);
+
+export type AgentMetadataEvent = z.infer<typeof AgentMetadataEventSchema>;
+
+export interface AgentMetadataClient {
+	watchAgentMetadata(
+		agentId: string,
+	): Promise<UnidirectionalStream<{ data: unknown }>>;
+}
+
+export interface AgentMetadataWatcher {
+	readonly onChange: vscode.EventEmitter<null>["event"];
+	readonly dispose: () => void;
+	metadata?: AgentMetadataEvent[];
+	error?: unknown;
+	/** True once the socket closed on its own, so it reports nothing more. */
+	closed: boolean;
+}
+
+/**
+ * Opens a websocket connection to watch metadata for a given workspace agent.
+ * Emits onChange when metadata updates or an error occurs.
+ */
+export async function createAgentMetadataWatcher(
+	agentId: WorkspaceAgent["id"],
+	client: AgentMetadataClient,
+): Promise<AgentMetadataWatcher> {
+	const socket = await client.watchAgentMetadata(agentId);
+
+	let disposed = false;
+	const onChange = new vscode.EventEmitter<null>();
+	const watcher: AgentMetadataWatcher = {
+		onChange: onChange.event,
+		closed: false,
+		dispose: () => {
+			if (!disposed) {
+				disposed = true;
+				// Listeners go first, so closing the socket reports nothing more.
+				onChange.dispose();
+				socket.close();
+			}
+		},
+	};
+
+	const handleError = (error: unknown) => {
+		watcher.error = error;
+		onChange.fire(null);
+	};
+
+	socket.addEventListener("message", (event) => {
+		try {
+			if (event.parseError) {
+				handleError(event.parseError);
+				return;
+			}
+
+			const metadata = AgentMetadataEventSchemaArray.parse(
+				event.parsedMessage.data,
+			);
+
+			if (watcher.error !== undefined) {
+				watcher.error = undefined;
+				onChange.fire(null);
+			}
+
+			if (JSON.stringify(watcher.metadata) !== JSON.stringify(metadata)) {
+				watcher.metadata = metadata;
+				onChange.fire(null);
+			}
+		} catch (error) {
+			handleError(error);
+		}
+	});
+
+	socket.addEventListener("error", handleError);
+
+	socket.addEventListener("close", (event) => {
+		watcher.closed = true;
+		if (event.code !== WebSocketCloseCode.NORMAL) {
+			handleError(
+				new Error(
+					`WebSocket closed unexpectedly: ${event.code} ${event.reason}`,
+				),
+			);
+		}
+	});
+
+	return watcher;
+}
+
+export function formatMetadataError(error: unknown): string {
+	return "Failed to query metadata: " + errToStr(error, "no error provided");
+}
+
+export function formatEventLabel(metadataEvent: AgentMetadataEvent): string {
+	return getEventName(metadataEvent) + ": " + getEventValue(metadataEvent);
+}
+
+export function getEventName(metadataEvent: AgentMetadataEvent): string {
+	return metadataEvent.description.display_name.trim();
+}
+
+export function getEventValue(metadataEvent: AgentMetadataEvent): string {
+	return metadataEvent.result.value.replace(/\n/g, "").trim();
+}

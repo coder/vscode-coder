@@ -8,14 +8,13 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import { AnnouncementManager } from "./announcements/manager";
-import { errToStr } from "./api/api-helper";
 import { AuthInterceptor } from "./api/authInterceptor";
 import { CoderApi } from "./api/coderApi";
 import { Commands } from "./commands";
-import { ServiceContainer } from "./core/container";
+import { ServiceContainer } from "./container";
 import { DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
-import { getErrorDetail, toError } from "./error/errorUtils";
+import { errToStr, getErrorDetail, toError } from "./error/normalize";
 import { serverFeatureSet } from "./featureSet";
 import {
 	ActivationTelemetry,
@@ -25,9 +24,9 @@ import { OAuthSessionManager } from "./oauth/sessionManager";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
-import { initVscodeProposed } from "./vscodeProposed";
+import { initVscodeProposed } from "./vscode/proposed";
 import { TasksPanelProvider } from "./webviews/tasks/tasksPanelProvider";
-import { WorkspacesPanelProvider } from "./webviews/workspaces/panelProvider";
+import { WorkspacesPanelProvider } from "./webviews/workspaces/workspacesPanelProvider";
 import { WorkspaceStore } from "./webviews/workspaces/workspaceStore";
 import { WorkspaceProvider } from "./workspace/workspacesProvider";
 

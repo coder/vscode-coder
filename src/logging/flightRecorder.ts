@@ -1,4 +1,4 @@
-import { safeStringify } from "./utils";
+import { safeStringify } from "./formatters";
 
 import type { LogSink, Logger } from "./logger";
 

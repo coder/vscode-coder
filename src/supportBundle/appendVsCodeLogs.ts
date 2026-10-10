@@ -4,12 +4,10 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 
+import { renameWithRetry } from "../common/fs";
 import { type Logger } from "../logging/logger";
-import { renameWithRetry } from "../util/fs";
 
 import { collectVsCodeDiagnostics, type LogSources } from "./logFiles";
-
-export type { LogSources } from "./logFiles";
 
 const unzipAsync = promisify(unzip);
 const zipAsync = promisify(zip);

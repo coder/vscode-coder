@@ -1,5 +1,5 @@
 import { joinNoProxy } from "../api/proxy";
-import { sessionId } from "../core/sessionId";
+import { sessionId } from "../telemetry/ids";
 
 import type {
 	GlobalEnvironmentVariableCollection,

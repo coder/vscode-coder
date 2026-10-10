@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import * as cliExec from "@/cli/cliExec";
 import { Commands } from "@/commands";
-import * as cliExec from "@/core/cliExec";
 import { appendVsCodeLogs } from "@/supportBundle/appendVsCodeLogs";
 import { getRemoteServerDataPath } from "@/supportBundle/remoteServerDataPath";
 import {
@@ -22,11 +22,11 @@ import {
 } from "../mocks/testHelpers";
 
 import type { CoderApi } from "@/api/coderApi";
-import type { ServiceContainer } from "@/core/container";
+import type { ServiceContainer } from "@/container";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
 
-vi.mock("@/core/cliExec", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@/core/cliExec")>();
+vi.mock("@/cli/cliExec", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/cli/cliExec")>();
 	return { ...actual, version: vi.fn(), supportBundle: vi.fn() };
 });
 

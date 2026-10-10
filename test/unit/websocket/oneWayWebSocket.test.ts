@@ -3,7 +3,7 @@ import { type AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WebSocketServer } from "ws";
 
-import { toError } from "@/error/errorUtils";
+import { toError } from "@/error/normalize";
 import { WebSocketCloseCode } from "@/websocket/codes";
 import { OneWayWebSocket } from "@/websocket/oneWayWebSocket";
 

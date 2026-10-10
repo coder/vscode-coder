@@ -4,11 +4,11 @@ import { type WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import { EventSource, type ErrorEvent } from "eventsource";
 
 import { createStreamingFetchAdapter } from "../api/streamingFetchAdapter";
-import { toError } from "../error/errorUtils";
+import { getQueryString } from "../common/url";
+import { toError } from "../error/normalize";
 import { type Logger } from "../logging/logger";
 
-import { WebSocketCloseCode } from "./codes";
-import { getQueryString, HandshakeError } from "./utils";
+import { WebSocketCloseCode, HandshakeError } from "./codes";
 
 import type {
 	UnidirectionalStream,

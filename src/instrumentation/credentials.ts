@@ -1,4 +1,4 @@
-import { isAbortError } from "../error/errorUtils";
+import { isAbortError } from "../error/abort";
 import { isKeyringEnabled } from "../settings/cli";
 
 import type { WorkspaceConfiguration } from "vscode";

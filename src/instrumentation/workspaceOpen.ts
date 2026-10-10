@@ -1,4 +1,4 @@
-import { extractAgents } from "../api/api-helper";
+import { extractAgents } from "../api/models";
 
 import { recordAbortableError, recordAborted, recordError } from "./outcomes";
 

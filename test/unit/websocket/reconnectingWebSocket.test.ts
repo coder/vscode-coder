@@ -8,13 +8,13 @@ import {
 import {
 	UNRECOVERABLE_HTTP_CODES,
 	WebSocketCloseCode,
+	HandshakeError,
 } from "@/websocket/codes";
 import {
 	ConnectionState,
 	ReconnectingWebSocket,
 	type SocketFactory,
 } from "@/websocket/reconnectingWebSocket";
-import { HandshakeError } from "@/websocket/utils";
 
 import {
 	createTestTelemetryService,

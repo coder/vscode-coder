@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { toError } from "../error/errorUtils";
+import { toError } from "../error/normalize";
 import { type Logger } from "../logging/logger";
 
 import type { IpcRequest, IpcResponse, NotificationDef } from "@repo/shared";

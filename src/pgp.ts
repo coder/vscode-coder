@@ -3,7 +3,7 @@ import * as openpgp from "openpgp";
 import * as path from "path";
 import { Readable } from "stream";
 
-import { errToStr } from "./api/api-helper";
+import { errToStr } from "./error/normalize";
 import { type Logger } from "./logging/logger";
 
 export type Key = openpgp.Key;

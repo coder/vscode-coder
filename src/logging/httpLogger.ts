@@ -1,7 +1,7 @@
 import { isAxiosError, type AxiosResponse } from "axios";
 import { getErrorMessage } from "coder/site/src/api/errors";
 
-import { getErrorDetail } from "../error/errorUtils";
+import { getErrorDetail } from "../error/normalize";
 
 import {
 	formatBody,
@@ -11,12 +11,12 @@ import {
 	formatTime,
 	formatUri,
 } from "./formatters";
+import { createRequestId, shortId } from "./ids";
 import {
 	HttpClientLogLevel,
 	type RequestConfigWithMeta,
 	type RequestMeta,
 } from "./types";
-import { createRequestId, shortId } from "./utils";
 
 import type { Logger } from "./logger";
 

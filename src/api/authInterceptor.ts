@@ -1,17 +1,17 @@
 import { type AxiosError, isAxiosError } from "axios";
 
+import { toSafeHost } from "../common/url";
 import { AuthTelemetry } from "../instrumentation/auth";
 import { OAuthError } from "../oauth/errors";
-import { toSafeHost } from "../util/uri";
 
 import { HttpStatusCode } from "./httpStatusCode";
 
 import type * as vscode from "vscode";
 
-import type { ServiceContainer } from "../core/container";
-import type { SecretsManager } from "../core/secretsManager";
+import type { ServiceContainer } from "../container";
 import type { Logger } from "../logging/logger";
 import type { OAuthSessionManager } from "../oauth/sessionManager";
+import type { SecretsManager } from "../storage/secretsManager";
 
 import type { CoderApi } from "./coderApi";
 

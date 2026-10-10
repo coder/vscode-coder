@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
 import { CertificateError } from "./certificateError";
-import { toError } from "./errorUtils";
+import { toError } from "./normalize";
 
 /**
  * SSL/TLS alert codes related to client certificates (RFC 5246).

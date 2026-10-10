@@ -1,6 +1,6 @@
 import * as childProcess from "child_process";
 
-import { lowercase } from "../util";
+import { lowercase } from "../common/strings";
 
 /**
  * Matches the OpenSSH version number from `ssh -V` output.

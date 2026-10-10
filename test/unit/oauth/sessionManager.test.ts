@@ -6,9 +6,9 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { InvalidApiResponseError } from "@/api/responseValidation";
-import { type SessionAuth } from "@/core/secretsManager";
 import { DEFAULT_OAUTH_SCOPES } from "@/oauth/constants";
 import { OAuthSessionManager } from "@/oauth/sessionManager";
+import { type SessionAuth } from "@/storage/secretsManager";
 
 import {
 	createTestTelemetryService,
@@ -55,9 +55,9 @@ vi.mock("@/headers", () => ({
 	getHeaderCommand: vi.fn(),
 }));
 
-vi.mock("@/api/utils", async () => {
+vi.mock("@/api/httpAgent", async () => {
 	const actual =
-		await vi.importActual<typeof import("@/api/utils")>("@/api/utils");
+		await vi.importActual<typeof import("@/api/httpAgent")>("@/api/httpAgent");
 	return { ...actual, createHttpAgent: vi.fn() };
 });
 

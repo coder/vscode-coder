@@ -26,7 +26,7 @@ import type {
 	WorkspaceAppStatus,
 } from "coder/site/src/api/typesGenerated";
 
-import type { AgentMetadataEvent } from "@/api/api-helper";
+import type { AgentMetadataEvent } from "@/api/agentMetadata";
 import type { CoderApi } from "@/api/coderApi";
 
 import type { WorkspaceFilter } from "@repo/shared";

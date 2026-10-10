@@ -1,4 +1,4 @@
-import { vscodeProposed } from "../vscodeProposed";
+import { vscodeProposed } from "../vscode/proposed";
 
 /**
  * Base class for certificate-related errors that can display notifications to users.

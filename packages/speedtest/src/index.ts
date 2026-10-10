@@ -14,10 +14,9 @@ import {
 	type ChartPoint,
 	findNearestDot,
 	findNearestOnLine,
-	formatDuration,
-	formatThroughput,
 	toChartSamples,
-} from "./chartUtils";
+} from "./chartGeometry";
+import { formatDuration, formatThroughput } from "./format";
 import "./index.css";
 
 /** Above this sample count, render the line alone (no per-point dots). */

@@ -1,6 +1,7 @@
 import os from "node:os";
 
-import { escapeCommandArg, escapeShellArg, expandPath } from "../util";
+import { expandPath } from "../common/fs";
+import { escapeCommandArg, escapeShellArg } from "../common/strings";
 
 import { getHeaderArgs } from "./headers";
 

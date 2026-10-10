@@ -1,6 +1,6 @@
 import { createWriteStream } from "node:fs";
 
-import { wrapError } from "../../../../error/errorUtils";
+import { wrapError } from "../../../../error/normalize";
 
 /** `openBlock` and `append` are not re-entrant. */
 export interface EnvelopeFile {

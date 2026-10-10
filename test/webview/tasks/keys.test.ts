@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isActivate, isEscape, isSubmit } from "@repo/tasks/utils/keys";
+import { isActivate, isEscape, isSubmit } from "@repo/tasks/keys";
 
 describe("isSubmit", () => {
 	it("returns true for Enter+ctrlKey", () => {

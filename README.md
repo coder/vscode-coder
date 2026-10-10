@@ -8,7 +8,7 @@ Discord"](https://badgen.net/discord/online-members/coder)](https://coder.com/ch
 The Coder Remote extension connects your editor to
 [Coder](https://github.com/coder/coder) workspaces with a single click.
 
-![Demo](https://github.com/coder/vscode-coder/raw/main/demo.gif?raw=true)
+![Demo](media/demo.gif)
 
 ## Features
 
@@ -104,3 +104,12 @@ Opens a dev container running inside a workspace.
 | `localWorkspaceFolder` | No       | Local path of the dev container project. Required if `localConfigFile` is set. |
 | `localConfigFile`      | No       | Local path to the `devcontainer.json` file.                                    |
 | `url`, `token`         | No       | Same as `/open`.                                                               |
+
+## Sharing Extensions with code-server
+
+Extensions installed in a remote window live in `~/.vscode-server/extensions`
+on the workspace. To reuse them in code-server, point it at that directory:
+
+```shell
+code-server --extensions-dir ~/.vscode-server/extensions
+```

@@ -34,20 +34,20 @@ import type {
 import type { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import type { IncomingMessage } from "node:http";
 
-import type { AgentMetadataEvent } from "@/api/api-helper";
+import type { AgentMetadataEvent } from "@/api/agentMetadata";
 import type { CoderApi } from "@/api/coderApi";
-import type { CliCredentialManager } from "@/core/cliCredentialManager";
-import type { CliManager } from "@/core/cliManager";
-import type { ServiceContainer } from "@/core/container";
-import type { ContextManager } from "@/core/contextManager";
-import type { MementoManager } from "@/core/mementoManager";
-import type { PathResolver } from "@/core/pathResolver";
-import type { SecretsManager } from "@/core/secretsManager";
+import type { CliCredentialManager } from "@/cli/cliCredentialManager";
+import type { CliManager } from "@/cli/cliManager";
+import type { ServiceContainer } from "@/container";
 import type { Deployment } from "@/deployment/types";
 import type { Logger } from "@/logging/logger";
 import type { LoginCoordinator } from "@/login/loginCoordinator";
 import type { NetworkInfo } from "@/remote/sshProcess";
+import type { MementoManager } from "@/storage/mementoManager";
+import type { PathResolver } from "@/storage/pathResolver";
+import type { SecretsManager } from "@/storage/secretsManager";
 import type { TelemetryService } from "@/telemetry/service";
+import type { ContextManager } from "@/vscode/contextManager";
 import type {
 	EventHandler,
 	EventPayloadMap,

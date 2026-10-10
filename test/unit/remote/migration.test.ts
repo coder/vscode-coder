@@ -1,14 +1,14 @@
 import { vol } from "memfs";
 import { describe, expect, it, vi } from "vitest";
 
-import { PathResolver } from "@/core/pathResolver";
 import { migrateAuthToSecretsStorage } from "@/remote/migration";
+import { PathResolver } from "@/storage/pathResolver";
 
 import { createMockLogger } from "../../mocks/testHelpers";
 
 import type * as nodeFs from "node:fs";
 
-import type { SessionAuth } from "@/core/secretsManager";
+import type { SessionAuth } from "@/storage/secretsManager";
 
 vi.mock("fs/promises", async () => {
 	const memfs: { fs: typeof nodeFs } = await vi.importActual("memfs");

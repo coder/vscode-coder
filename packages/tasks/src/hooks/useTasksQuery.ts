@@ -5,7 +5,7 @@ import {
 	TASK_LIST_POLL_INTERVAL_MS,
 	TEMPLATE_POLL_INTERVAL_MS,
 	queryKeys,
-} from "../utils/config";
+} from "../config";
 
 import { useTasksApi } from "./useTasksApi";
 

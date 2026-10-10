@@ -2,7 +2,7 @@ import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-import { writeAtomically } from "../../../util/fs";
+import { writeAtomically } from "../../../common/fs";
 import { serializeTelemetryEvent } from "../../wireFormat";
 
 import type { TelemetryEvent } from "../../event";

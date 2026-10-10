@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 import { ZodError } from "zod";
 
-import { toError } from "../error/errorUtils";
-import { withCancellableProgress, type ProgressContext } from "../progress";
+import { toError } from "../error/normalize";
+import { withCancellableProgress, type ProgressContext } from "../ui/progress";
 import { openJsonBeside } from "../webviews/openJson";
 
 import type { DiagnosticTrace } from "../instrumentation/diagnostics";

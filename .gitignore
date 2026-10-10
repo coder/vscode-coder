@@ -1,17 +1,15 @@
+node_modules/
 /dist/
-/node_modules/
 /out/
 /.vscode-test/
-/.nyc_output/
 /coverage/
 /.pnpm-store/
 *.vsix
 pnpm-debug.log
-.eslintcache
-
-# Workspace packages
-packages/*/node_modules/
 
 # Storybook
 storybook-static/
 debug-storybook.log
+
+# Personal agent instructions
+AGENTS.local.md

@@ -3,16 +3,11 @@
 	"printWidth": 80,
 	// Disabled to avoid churning the key order of every package.json in the repo.
 	"sortPackageJson": false,
+	// Oxfmt also skips everything in .gitignore.
 	"ignorePatterns": [
-		"/dist/",
-		"/node_modules/",
-		"/out/",
-		"/.vscode-test/",
-		"/coverage/",
-		"*.vsix",
 		"flake.lock",
 		"pnpm-lock.yaml",
-		"/storybook-static/",
+		// Golden snapshots and generated VS Code theme dumps are written verbatim.
 		"**/__golden__/",
 		".storybook/themes/generated/"
 	],

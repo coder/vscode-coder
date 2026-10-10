@@ -1,11 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { sessionId } from "@/core/sessionId";
 import {
 	applySshEnvironment,
 	getSshProxyEnvironment,
 } from "@/remote/environment";
+import { sessionId } from "@/telemetry/ids";
 
 import {
 	config,

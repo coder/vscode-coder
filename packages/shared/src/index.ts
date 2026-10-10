@@ -2,11 +2,11 @@
 export * from "./ipc/protocol";
 
 // Error utilities
-export { toError } from "./error/utils";
+export { toError } from "./error/toError";
 
 // Tasks types, utilities, and API
 export * from "./tasks/types";
-export * from "./tasks/utils";
+export * from "./tasks/status";
 export * from "./tasks/api";
 
 // Speedtest API
@@ -19,7 +19,7 @@ export {
 
 // Netcheck API
 export { NetcheckApi } from "./netcheck/api";
-export { overallNetcheckSeverity, worstSeverity } from "./netcheck/utils";
+export { overallNetcheckSeverity, worstSeverity } from "./netcheck/severity";
 export type {
 	NetcheckConnectivity,
 	NetcheckData,

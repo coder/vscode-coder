@@ -6,7 +6,7 @@ import {
 	TASK_ACTIVE_INTERVAL_MS,
 	TASK_IDLE_INTERVAL_MS,
 	queryKeys,
-} from "../utils/config";
+} from "../config";
 
 import { useTasksApi } from "./useTasksApi";
 

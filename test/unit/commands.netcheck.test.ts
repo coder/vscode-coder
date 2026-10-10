@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import { Commands } from "@/commands";
-import { toSafeHost } from "@/util/uri";
+import { toSafeHost } from "@/common/url";
 
 import { createTestCoderApi } from "../mocks/coderApi";
 import { createTelemetryHarness } from "../mocks/telemetry";
 import { createMockLogger, MockUserInteraction } from "../mocks/testHelpers";
 
-import type { ServiceContainer } from "@/core/container";
+import type { ServiceContainer } from "@/container";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
 import type { NetcheckPanelFactory } from "@/webviews/netcheck/netcheckPanelFactory";
 
