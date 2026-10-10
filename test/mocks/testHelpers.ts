@@ -1066,7 +1066,7 @@ export class MockOAuthSessionManager {
 		.fn()
 		.mockResolvedValue({ access_token: "test-token" });
 	readonly revokeTokens = vi.fn().mockResolvedValue(undefined);
-	readonly isLoggedInWithOAuth = vi.fn().mockResolvedValue(false);
+	readonly canRefreshOAuthSession = vi.fn().mockResolvedValue(false);
 	readonly clearOAuthState = vi.fn().mockResolvedValue(undefined);
 	readonly dispose = vi.fn();
 }

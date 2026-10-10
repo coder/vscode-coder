@@ -6,9 +6,11 @@ import { HttpStatusCode } from "@/api/httpStatusCode";
 import { getHeaders } from "@/headers";
 import { AuthTelemetry } from "@/instrumentation/auth";
 import { LoginCoordinator, type LoginMethod } from "@/login/loginCoordinator";
+import { OAuthAuthorizer } from "@/oauth/authorizer";
 import { OAuthCallback } from "@/oauth/oauthCallback";
+import { revokeOAuthTokens } from "@/oauth/revocation";
 import { MementoManager } from "@/storage/mementoManager";
-import { SecretsManager } from "@/storage/secretsManager";
+import { SecretsManager, type SessionAuth } from "@/storage/secretsManager";
 import { maybeAskAuthMethod, maybeAskUrl } from "@/ui/prompts";
 
 import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
@@ -23,6 +25,10 @@ import {
 	MockProgressReporter,
 	MockUserInteraction,
 } from "../../mocks/testHelpers";
+import {
+	createMockClientRegistration,
+	createMockTokenResponse,
+} from "../oauth/testUtils";
 
 import type { User } from "coder/site/src/api/typesGenerated";
 
@@ -74,6 +80,8 @@ vi.mock("@/ui/prompts", () => ({
 	maybeAskAuthMethod: vi.fn().mockResolvedValue("legacy"),
 	maybeAskUrl: vi.fn(),
 }));
+
+vi.mock("@/oauth/revocation", () => ({ revokeOAuthTokens: vi.fn() }));
 
 // Mock CoderApi to control getAuthenticatedUser behavior
 const mockGetAuthenticatedUser = vi.hoisted(() => vi.fn());
@@ -850,6 +858,112 @@ describe("LoginCoordinator", () => {
 				token: "new-token",
 			});
 			expect(await t.storedToken()).toBe("new-token");
+		});
+	});
+
+	describe("replacing an OAuth session", () => {
+		const registration = createMockClientRegistration();
+		const oldSession: SessionAuth = {
+			url: TEST_URL,
+			token: "old-token",
+			username: createMockUser().username,
+			oauth: {
+				refresh_token: "old-refresh-token",
+				scope: "coder:all",
+				expiry_timestamp: Date.now() + 60 * 60 * 1000,
+			},
+		};
+
+		async function setup() {
+			const ctx = createTestContext();
+			const user = ctx.mockSuccessfulAuth();
+			await ctx.secretsManager.setSessionAuth(TEST_HOSTNAME, oldSession);
+			await ctx.secretsManager.setOAuthClientRegistration(
+				TEST_HOSTNAME,
+				registration,
+			);
+			return {
+				...ctx,
+				user,
+				login: (token?: string) =>
+					ctx.coordinator.ensureLoggedIn({
+						url: TEST_URL,
+						safeHostname: TEST_HOSTNAME,
+						token,
+					}),
+				stored: () => ctx.secretsManager.getSessionAuth(TEST_HOSTNAME),
+			};
+		}
+
+		it.each([undefined, "old-token"])(
+			"keeps the OAuth data of a reused session (provided token: %s)",
+			async (token) => {
+				const t = await setup();
+
+				expect(await t.login(token)).toMatchObject({ success: true });
+				expect(await t.stored()).toEqual(oldSession);
+				expect(revokeOAuthTokens).not.toHaveBeenCalled();
+			},
+		);
+
+		it.each<{
+			name: string;
+			token: string | undefined;
+			method: "legacy" | "oauth";
+		}>([
+			{ name: "a manual token", token: undefined, method: "legacy" },
+			{ name: "a provided token", token: "new-token", method: "legacy" },
+			{ name: "an OAuth login", token: undefined, method: "oauth" },
+		])(
+			"revokes the session replaced by $name, after saving it",
+			async ({ token, method }) => {
+				const t = await setup();
+				const rotated = { ...oldSession, token: "rotated-token" };
+				// While the first token is checked, a refresh rotates the session
+				// and a different client registers; the stored token has expired.
+				t.mockGetAuthenticatedUser.mockImplementationOnce(async () => {
+					await t.secretsManager.setSessionAuth(TEST_HOSTNAME, rotated);
+					await t.secretsManager.setOAuthClientRegistration(
+						TEST_HOSTNAME,
+						createMockClientRegistration({ client_id: "other-client" }),
+					);
+					if (!token) {
+						throw createAxiosError(HttpStatusCode.UNAUTHORIZED, "Expired");
+					}
+					return t.user;
+				});
+				vi.mocked(maybeAskAuthMethod).mockResolvedValue(method);
+				t.userInteraction.setInputBoxValue("new-token");
+				vi.spyOn(OAuthAuthorizer.prototype, "login").mockResolvedValue({
+					tokenResponse: createMockTokenResponse({ access_token: "new-token" }),
+					user: t.user,
+				});
+				let storedAtRevoke: Promise<SessionAuth | undefined> | undefined;
+				vi.mocked(revokeOAuthTokens).mockImplementation(() => {
+					storedAtRevoke = t.stored();
+					return Promise.resolve();
+				});
+
+				expect(await t.login(token)).toMatchObject({ token: "new-token" });
+				expect((await storedAtRevoke)?.token).toBe("new-token");
+				expect(revokeOAuthTokens).toHaveBeenCalledExactlyOnceWith(
+					rotated,
+					registration,
+					t.logger,
+				);
+			},
+		);
+
+		it.each([
+			{ name: "the provided token is invalid", token: "bad-token" },
+			{ name: "the manual token prompt is cancelled", token: undefined },
+		])("keeps the old session when $name", async ({ token }) => {
+			const t = await setup();
+			t.mockAuthFailure();
+
+			expect(await t.login(token)).toMatchObject({ success: false });
+			expect(await t.stored()).toEqual(oldSession);
+			expect(revokeOAuthTokens).not.toHaveBeenCalled();
 		});
 	});
 
