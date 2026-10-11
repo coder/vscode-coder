@@ -74,11 +74,9 @@ Some dependencies are not directly used in the source but are required anyway.
   builds are off, so Windows on ARM64 uses their JavaScript fallback.
 - `ua-parser-js` and `dayjs` are used by the Coder API client.
 
-The coder client is vendored from coder/coder. Pin it to a release tag in
-`pnpm-workspace.yaml` (e.g. `coder: github:coder/coder#v2.33.1`), not `#main`.
-A tag gives reproducible builds and is not re-fetched on every `pnpm install`,
-unlike `#main` which can drift between installs. To update, bump the tag and
-run `pnpm install` (or `pnpm update coder`).
+The Coder API client is vendored from coder/coder into `vendor/coder/site`. To
+update it, set `CODER_COMMIT` in `vendor/coder/sync.mjs` to a release commit
+and run `pnpm sync:coder`.
 
 After running `pnpm update`, always run `pnpm dedupe` to consolidate duplicate
 package versions across the workspace. Without this, workspace packages can

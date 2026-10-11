@@ -7,9 +7,10 @@
 	"ignorePatterns": [
 		"flake.lock",
 		"pnpm-lock.yaml",
-		// Golden snapshots and generated VS Code theme dumps are written verbatim.
+		// Golden snapshots, VS Code theme dumps, and the vendored Coder client are written verbatim.
 		"**/__golden__/",
-		".storybook/themes/generated/"
+		".storybook/themes/generated/",
+		"vendor/coder/site/"
 	],
 	"overrides": [
 		{

@@ -207,9 +207,6 @@ catalogs:
     babel-plugin-react-compiler:
       specifier: ^1.0.0
       version: 1.0.0
-    coder:
-      specifier: github:coder/coder#22f4284f8fa67bc3af6fc38e0079616d39128566
-      version: https://codeload.github.com/coder/coder/tar.gz/22f4284f8fa67bc3af6fc38e0079616d39128566
     date-fns:
       specifier: ^4.4.0
       version: 4.4.0
@@ -397,8 +394,8 @@ importers:
         specifier: ^4.1.0
         version: 4.1.0
       coder:
-        specifier: 'catalog:'
-        version: '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/22f4284f8fa67bc3af6fc38e0079616d39128566'
+        specifier: link:vendor/coder
+        version: link:vendor/coder
       concurrently:
         specifier: ^10.0.6
         version: 10.0.6
@@ -902,10 +899,6 @@ packages:
 
   '@cacheable/utils@2.5.0':
     resolution: {integrity: sha512-buipgOVDkkPXNR5+xBpDw7Zk2n1EvU7qBJCNUcL7rhQ//kfpOXPAvQ511Os0vpLYJ1pZnvudNytkQt2hst3wqA==}
-
-  '@coder/coder@https://codeload.github.com/coder/coder/tar.gz/22f4284f8fa67bc3af6fc38e0079616d39128566':
-    resolution: {gitHosted: true, integrity: sha512-jypoiakjE9qbfTR1KTO6U2VJDHN2SpTGwBSBsWXBdC/2nHAmpkVx9CcUYNE98xMAvimh3CaoQ/B79ZTwP2RH2A==, tarball: https://codeload.github.com/coder/coder/tar.gz/22f4284f8fa67bc3af6fc38e0079616d39128566}
-    version: 0.0.0
 
   '@coder/pixel-storybook@0.3.0':
     resolution: {integrity: sha512-+M3tr9lfjN/B2v3XCYDeAcz4TqZnN80Xa1ezpBS1NejsmhGf6RePWDz9ksgLmHGJ0iCmAypjbCX8BFosOfYeoA==}

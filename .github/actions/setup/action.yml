@@ -4,11 +4,6 @@ description: Install pnpm, Node.js, and project dependencies.
 runs:
   using: composite
   steps:
-    - name: Use HTTPS for GitHub git clones
-      shell: bash
-      # Needed for git-based deps (e.g. github:coder/coder) so pnpm can clone without SSH.
-      run: git config --global url."https://github.com/".insteadOf "git@github.com:"
-
     - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
       with:
         runtime: node@22
