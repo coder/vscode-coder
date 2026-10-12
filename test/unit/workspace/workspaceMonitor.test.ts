@@ -552,7 +552,7 @@ describe("WorkspaceMonitor", () => {
 
 			await vi.waitFor(() => {
 				expect(Object.fromEntries(writes)).toEqual({
-					"Startup Logs: Install deps": ["installing\r\nnpm ERR!"],
+					"Startup Logs: Install deps": ["installing\r\nnpm ERR!\r\n"],
 				});
 			});
 		});
