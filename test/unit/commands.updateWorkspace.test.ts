@@ -60,4 +60,28 @@ describe("Commands.updateWorkspace", () => {
 			}
 		},
 	);
+
+	it("shows the latest version's message in the confirmation", async () => {
+		const { commands } = setup();
+		const getTemplateVersion = vi
+			.fn()
+			.mockResolvedValue({ message: "Adds a GPU option." });
+		commands.remoteWorkspaceClient = { getTemplateVersion } as Pick<
+			CoderApi,
+			"getTemplateVersion"
+		> as CoderApi;
+
+		await commands.updateWorkspace();
+
+		expect(getTemplateVersion).toHaveBeenCalledWith(
+			commands.workspace?.template_active_version_id,
+		);
+		expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+			"Update Workspace",
+			expect.objectContaining({
+				detail: expect.stringMatching(/\n\nAdds a GPU option\.$/),
+			}),
+			UPDATE_ACTION,
+		);
+	});
 });

@@ -17,9 +17,16 @@
   connecting" problem is captured even when the server is simply unreachable and
   the socket never reaches a terminal failure. The extension keeps retrying until
   the server is reachable again.
+- Updating a workspace whose template uses dynamic parameters works like the
+  dashboard: the update goes ahead when the current values are still valid, and
+  a form asks only for missing or invalid ones. Servers before v2.24 keep the
+  classic prompts.
+- The update prompts show the new template version's message.
 
 ### Fixed
 
+- A failed workspace update shows the server's error detail instead of the HTTP
+  status.
 - OAuth sign-in now works on deployments that enforce token scopes. Users signed
   in with OAuth are asked to sign in again once.
 - Revoke OAuth tokens on logout even when their scopes are outdated.

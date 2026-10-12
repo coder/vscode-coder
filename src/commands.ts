@@ -9,6 +9,7 @@ import {
 	createWorkspaceIdentifier,
 	workspaceStatusLabel,
 } from "./api/models";
+import { getLatestVersionMessage } from "./api/workspace";
 import * as cliExec from "./cli/cliExec";
 import { runDiagnosticCli } from "./command/diagnosticFlow";
 import { openInBrowser, toSafeHost } from "./common/url";
@@ -1343,13 +1344,23 @@ export class Commands {
 			this.telemetryService,
 			workspaceName,
 		);
+		const versionMessage = await getLatestVersionMessage(
+			this.remoteWorkspaceClient,
+			this.workspace,
+		);
 		const action = await operationTelemetry.traceConfirmationPrompt(async () =>
 			vscodeProposed.window.showWarningMessage(
 				"Update Workspace",
 				{
 					useCustom: true,
 					modal: true,
-					detail: `Update ${workspaceName} to the latest version?\n\nUpdating will restart your workspace which stops any running processes and may result in the loss of unsaved work.`,
+					detail: [
+						`Update ${workspaceName} to the latest version?`,
+						"Updating will restart your workspace which stops any running processes and may result in the loss of unsaved work.",
+						versionMessage,
+					]
+						.filter(Boolean)
+						.join("\n\n"),
 				},
 				UPDATE_AND_RESTART_ACTION,
 			),

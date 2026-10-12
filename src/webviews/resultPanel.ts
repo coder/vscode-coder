@@ -1,10 +1,8 @@
 import * as vscode from "vscode";
 
-import { dispatchWebviewMessage, onWhileVisible } from "./dispatch";
-import { getWebviewHtml } from "./html";
+import { createCoderPanel, type CoderPanelOptions } from "./coderPanel";
+import { onWhileVisible, type WebviewHandlers } from "./dispatch";
 import { openJsonBeside } from "./openJson";
-
-import type { Logger } from "../logging/logger";
 
 export interface ResultPanelHandlerContext {
 	/** Push the payload to the webview. */
@@ -13,14 +11,10 @@ export interface ResultPanelHandlerContext {
 	openRawJson: () => Promise<void>;
 }
 
-export interface ResultPanelOptions {
-	extensionUri: vscode.Uri;
-	logger: Logger;
-	/** Panel view type, e.g. `coder.speedtestPanel`. */
-	viewType: string;
-	/** Bundle name under `dist/webviews/`. */
-	webviewName: string;
-	title: string;
+export interface ResultPanelOptions extends Omit<
+	CoderPanelOptions,
+	"buildHandlers"
+> {
 	/** Raw CLI output backing the open-JSON action. */
 	rawJson: string;
 	/** Human-readable feature name used in error messages, e.g. "speed test". */
@@ -32,49 +26,21 @@ export interface ResultPanelOptions {
 	 * `buildRequestHandlers` so the compile-time exhaustiveness check stays
 	 * with the concrete API definition.
 	 */
-	buildHandlers: (ctx: ResultPanelHandlerContext) => {
-		commands: Record<string, (params: unknown) => void | Promise<void>>;
-		requests: Record<string, (params: unknown) => Promise<unknown>>;
-	};
+	buildHandlers: (ctx: ResultPanelHandlerContext) => WebviewHandlers;
 }
 
 /**
- * Create a webview panel that renders a one-shot CLI result. Owns the panel
- * scaffolding shared by such panels: HTML/CSP generation, payload re-send on
- * visibility and theme changes, message dispatch, and disposal.
+ * Create a webview panel that renders a one-shot CLI result, re-sending the
+ * payload on visibility and theme changes.
  */
 export function showResultPanel(options: ResultPanelOptions): void {
-	const { extensionUri, logger, webviewName, title } = options;
-	const panel = vscode.window.createWebviewPanel(
-		options.viewType,
-		title,
-		vscode.ViewColumn.One,
-		{
-			enableScripts: true,
-			localResourceRoots: [
-				vscode.Uri.joinPath(extensionUri, "dist", "webviews", webviewName),
-			],
-		},
-	);
-
-	panel.iconPath = {
-		light: vscode.Uri.joinPath(extensionUri, "media", "logo-black.svg"),
-		dark: vscode.Uri.joinPath(extensionUri, "media", "logo-white.svg"),
-	};
-
-	panel.webview.html = getWebviewHtml(
-		panel.webview,
-		extensionUri,
-		webviewName,
-		title,
-	);
-
+	// Called only after the panel exists.
 	const sendData = () => options.notify(panel.webview);
 	const openRawJson = () =>
-		openJsonBeside(options.rawJson, options.jsonErrorLabel, logger);
-	const { commands, requests } = options.buildHandlers({
-		sendData,
-		openRawJson,
+		openJsonBeside(options.rawJson, options.jsonErrorLabel, options.logger);
+	const panel = createCoderPanel({
+		...options,
+		buildHandlers: () => options.buildHandlers({ sendData, openRawJson }),
 	});
 
 	// Webview JS is discarded when hidden (no retainContextWhenHidden), and
@@ -83,14 +49,6 @@ export function showResultPanel(options: ResultPanelOptions): void {
 	const disposables: vscode.Disposable[] = [
 		onWhileVisible(panel, panel.onDidChangeViewState, sendData),
 		onWhileVisible(panel, vscode.window.onDidChangeActiveColorTheme, sendData),
-		panel.webview.onDidReceiveMessage((message: unknown) => {
-			void dispatchWebviewMessage(
-				message,
-				{ requests, commands },
-				panel.webview,
-				{ logger },
-			);
-		}),
 	];
 	panel.onDidDispose(() => {
 		for (const d of disposables) {

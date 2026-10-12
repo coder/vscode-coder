@@ -14,6 +14,10 @@
 	height: 26px;
 }
 
+.ui-text-control:is([aria-invalid="true"], :has(> [aria-invalid="true"])) {
+	border-color: var(--ui-input-validation-error-border);
+}
+
 .ui-text-control:focus-within {
 	border-color: var(--ui-focus-border);
 }

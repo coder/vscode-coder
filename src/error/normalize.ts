@@ -45,3 +45,14 @@ export function errToStr(error: unknown, def = "No error message provided") {
 	}
 	return def;
 }
+
+/** Like `errToStr`, but keeps the server's detail and field errors. */
+export function describeError(error: unknown): string {
+	if (!isApiError(error)) {
+		return errToStr(error);
+	}
+	const { message, detail, validations = [] } = error.response.data;
+	return [message, detail, ...validations.map((v) => `${v.field}: ${v.detail}`)]
+		.filter(Boolean)
+		.join("\n");
+}
