@@ -29,6 +29,11 @@
   the permissions needed to refresh workspace external-auth links.
 - If a deployment disables dynamic client registration (the default from Coder
   2.38), OAuth sign-in now names the setting and offers session-token sign-in.
+  OAuth becomes the default sign-in method in a future release, so ask your
+  Coder administrator to enable dynamic client registration. For instructions,
+  see [OAuth2 provider](https://coder.com/docs/admin/integrations/oauth2-provider).
+- Keep session tokens, OAuth tokens, and client secrets from failed requests out
+  of the buffered logs that the Coder output channel replays.
 - CLI commands and SSH connections that the extension starts ignore
   `CODER_SESSION_TOKEN` from the environment, so they no longer fail or run as a
   different user inside a Coder workspace.

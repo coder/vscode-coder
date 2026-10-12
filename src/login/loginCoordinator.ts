@@ -204,7 +204,7 @@ export class LoginCoordinator implements vscode.Disposable {
 		const { safeHostname, url } = deployment;
 		const previous = await this.secretsManager.getSessionAuth(safeHostname);
 		const replaced = previous?.token === result.token ? undefined : previous;
-		// A refresh rotated the stored session while this login checked it.
+		// A refresh replaced the stored session during this login; keep it.
 		if (result.method === "stored_token" && replaced) {
 			return;
 		}
@@ -299,7 +299,8 @@ export class LoginCoordinator implements vscode.Disposable {
 		providedToken?: string,
 		tokenSignInConfirmed = false,
 	): Promise<LoginResult> {
-		// Read before an OAuth login can re-register the client.
+		// Revokes sessions that don't record their client. Read it before login can
+		// re-register the client.
 		const registration = await this.secretsManager.getOAuthClientRegistration(
 			deployment.safeHostname,
 		);
@@ -669,25 +670,26 @@ export class LoginCoordinator implements vscode.Disposable {
 		try {
 			this.logger.debug("Starting OAuth authentication");
 
-			const { tokenResponse, user } = await vscode.window.withProgress(
-				{
-					location: vscode.ProgressLocation.Notification,
-					title: "Authenticating",
-					cancellable: true,
-				},
-				async (progress, cancellationToken) =>
-					await this.oauthAuthorizer.login(
-						deployment,
-						progress,
-						cancellationToken,
-					),
-			);
+			const { tokenResponse, user, registration } =
+				await vscode.window.withProgress(
+					{
+						location: vscode.ProgressLocation.Notification,
+						title: "Authenticating",
+						cancellable: true,
+					},
+					async (progress, cancellationToken) =>
+						await this.oauthAuthorizer.login(
+							deployment,
+							progress,
+							cancellationToken,
+						),
+				);
 
 			return {
 				success: true,
 				token: tokenResponse.access_token,
 				user,
-				oauth: buildOAuthTokenData(tokenResponse),
+				oauth: buildOAuthTokenData(tokenResponse, registration),
 			};
 		} catch (error) {
 			if (error instanceof ClientRegistrationDisabledError) {

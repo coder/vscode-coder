@@ -143,11 +143,7 @@ export class OAuthMetadataClient {
 	}
 }
 
-/**
- * Run `fn` with a short-lived client for `url` and the server's OAuth
- * metadata. The client is disposed on exit so its config-change
- * subscriptions never outlive the operation.
- */
+/** Runs `fn` with the server's OAuth metadata and a client disposed afterward. */
 export async function withOAuthMetadata<T>(
 	url: string,
 	token: string | undefined,

@@ -38,6 +38,13 @@ import type { SecretsManager } from "../storage/secretsManager";
 
 import type { OAuthCallback } from "./oauthCallback";
 
+interface OAuthLoginResult {
+	tokenResponse: OAuth2TokenResponse;
+	user: User;
+	/** Client the tokens were issued to. */
+	registration: OAuth2ClientRegistrationResponse;
+}
+
 /** The server refuses client registration, which is off by default from Coder 2.38. */
 export class ClientRegistrationDisabledError extends Error {
 	constructor() {
@@ -60,16 +67,12 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		private readonly extensionId: string,
 	) {}
 
-	/**
-	 * Perform complete OAuth login flow.
-	 * Creates CoderApi internally from deployment.
-	 * Returns the token response and user - does not persist tokens.
-	 */
+	/** Runs the OAuth login flow. Saves the client registration, not the tokens. */
 	public async login(
 		deployment: Deployment,
 		progress: vscode.Progress<{ message?: string; increment?: number }>,
 		cancellationToken: vscode.CancellationToken,
-	): Promise<{ tokenResponse: OAuth2TokenResponse; user: User }> {
+	): Promise<OAuthLoginResult> {
 		const client = CoderApi.create(deployment.url, undefined, this.logger);
 		try {
 			return await this.runLoginFlow(
@@ -88,7 +91,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		deployment: Deployment,
 		progress: vscode.Progress<{ message?: string; increment?: number }>,
 		cancellationToken: vscode.CancellationToken,
-	): Promise<{ tokenResponse: OAuth2TokenResponse; user: User }> {
+	): Promise<OAuthLoginResult> {
 		const reportProgress = (message?: string, increment?: number): void => {
 			if (cancellationToken.isCancellationRequested) {
 				throw new Error("OAuth login cancelled by user");
@@ -133,7 +136,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 
 		this.logger.debug("OAuth login flow completed successfully");
 
-		return { tokenResponse, user };
+		return { tokenResponse, user, registration };
 	}
 
 	/**

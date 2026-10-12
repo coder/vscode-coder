@@ -1,10 +1,9 @@
+import { type AxiosError, type AxiosRequestConfig, isAxiosError } from "axios";
 import { Buffer } from "node:buffer";
 import util from "node:util";
 import prettyBytes from "pretty-bytes";
 
 import { lowercase } from "../common/strings";
-
-import type { AxiosRequestConfig } from "axios";
 
 const SENSITIVE_HEADERS: ReadonlySet<Lowercase<string>> = new Set([
 	"authorization",
@@ -200,9 +199,22 @@ export function sizeOf(data: unknown): number | undefined {
 	return undefined;
 }
 
+/** Drops the error's config and socket, which hold the request's credentials. */
+function summarizeAxiosError(error: AxiosError) {
+	return {
+		name: error.name,
+		message: error.message,
+		code: error.code,
+		method: formatMethod(error.config?.method),
+		url: formatUri(error.config),
+		status: error.response?.status,
+		data: redactBodyFields(error.response?.data),
+	};
+}
+
 export function safeStringify(data: unknown): string | null {
 	try {
-		return util.inspect(data, {
+		return util.inspect(isAxiosError(data) ? summarizeAxiosError(data) : data, {
 			showHidden: false,
 			// Bounded so a single log line cannot balloon in size.
 			depth: 8,

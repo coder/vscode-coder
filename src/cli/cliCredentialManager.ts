@@ -76,7 +76,7 @@ export class CliCredentialManager {
 				return;
 			}
 			span.setProperty("store", cli.auth.store);
-			// `login` reads the token from the environment, which the empty flag would hide.
+			// `login` reads the token from the environment, so drop the empty flag.
 			const flags = cli.flags.filter((flag) => flag !== EMPTY_TOKEN_FLAG);
 			await this.exec(
 				{ ...cli, flags },
@@ -276,7 +276,7 @@ export class CliCredentialManager {
 	}
 }
 
-/** `process.env` with `token` as the only session token, since the CLI reads the name in any case. */
+/** `process.env` with `token` as its only `CODER_SESSION_TOKEN`, in any case. */
 function envWithSessionToken(token: string): NodeJS.ProcessEnv {
 	const env = Object.fromEntries(
 		Object.entries(process.env).filter(

@@ -940,6 +940,9 @@ describe("LoginCoordinator", () => {
 				vi.spyOn(OAuthAuthorizer.prototype, "login").mockResolvedValue({
 					tokenResponse: createMockTokenResponse({ access_token: "new-token" }),
 					user: t.user,
+					registration: createMockClientRegistration({
+						client_id: "new-client",
+					}),
 				});
 				let storedAtRevoke: Promise<SessionAuth | undefined> | undefined;
 				vi.mocked(revokeOAuthTokens).mockImplementation(() => {

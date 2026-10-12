@@ -1,24 +1,25 @@
 import { withOAuthMetadata } from "./metadataClient";
-import { toUrlSearchParams } from "./tokens";
+import { type OAuthClient, toUrlSearchParams } from "./tokens";
 
-import type {
-	OAuth2ClientRegistrationResponse,
-	OAuth2TokenRevocationRequest,
-} from "coder/site/src/api/typesGenerated";
+import type { OAuth2TokenRevocationRequest } from "coder/site/src/api/typesGenerated";
 
 import type { Logger } from "../logging/logger";
 import type { SessionAuth } from "../storage/secretsManager";
 
-/** Best-effort revocation of the token pair in `auth`; never throws. */
+/**
+ * Best-effort revocation of the token pair in `auth`; never throws. Signs in as
+ * the client that issued the tokens, else `fallbackClient`.
+ */
 export async function revokeOAuthTokens(
 	auth: SessionAuth,
-	registration: OAuth2ClientRegistrationResponse | undefined,
+	fallbackClient: OAuthClient | undefined,
 	logger: Logger,
 ): Promise<void> {
 	if (!auth.oauth) {
 		return;
 	}
-	if (!registration) {
+	const client = auth.oauth.client ?? fallbackClient;
+	if (!client) {
 		logger.warn("Skipped token revocation: no client registration");
 		return;
 	}
@@ -45,8 +46,8 @@ export async function revokeOAuthTokens(
 					}
 					const params: OAuth2TokenRevocationRequest = {
 						token,
-						client_id: registration.client_id,
-						client_secret: registration.client_secret,
+						client_id: client.client_id,
+						client_secret: client.client_secret,
 						token_type_hint,
 					};
 					try {

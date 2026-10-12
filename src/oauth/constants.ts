@@ -12,6 +12,8 @@ export const DEFAULT_OAUTH_SCOPES = [
 	"workspace:create",
 	"user:read",
 	"user:read_personal",
+	// Lets `coder start` refresh expired external-auth links. No narrower scope
+	// exists, so it also allows profile and Git SSH key changes.
 	"user:update_personal",
 ].join(" ");
 

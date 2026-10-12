@@ -59,7 +59,7 @@ export function getGlobalFlags(
 
 const identity = (s: string) => s;
 
-/** Overrides `CODER_SESSION_TOKEN` in any case variant, so the CLI reads its stored session. */
+/** Hides `CODER_SESSION_TOKEN` (in any case) so the CLI uses its stored session. */
 export const EMPTY_TOKEN_FLAG = "--token=";
 
 function buildGlobalFlags(
@@ -75,7 +75,7 @@ function buildGlobalFlags(
 		getExpandedUserGlobalFlags(configs),
 		auth.store === "extension",
 	).map(escUserFlag);
-	// The last `--token` wins, so a user's own token still applies.
+	// A user's own `--token` comes later, so it wins.
 	const flags = [EMPTY_TOKEN_FLAG, ...userFlags];
 	if (auth.store === "extension") {
 		flags.push("--global-config", escValue(auth.configDir));

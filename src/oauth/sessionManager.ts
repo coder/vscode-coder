@@ -361,10 +361,12 @@ export class OAuthSessionManager implements vscode.Disposable {
 			}
 
 			const refreshToken = storedTokens.refresh_token;
-			const registration = await this.secretsManager.getOAuthClientRegistration(
-				deployment.safeHostname,
-			);
-			if (!registration) {
+			const client =
+				storedTokens.client ??
+				(await this.secretsManager.getOAuthClientRegistration(
+					deployment.safeHostname,
+				));
+			if (!client) {
 				throw new Error("No client registration found");
 			}
 
@@ -378,8 +380,8 @@ export class OAuthSessionManager implements vscode.Disposable {
 					const params: OAuth2TokenRequest = {
 						grant_type: REFRESH_GRANT_TYPE,
 						refresh_token: refreshToken,
-						client_id: registration.client_id,
-						client_secret: registration.client_secret,
+						client_id: client.client_id,
+						client_secret: client.client_secret,
 					};
 
 					const response = await axiosInstance.post<OAuth2TokenResponse>(
@@ -412,7 +414,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 							deployment,
 							tokenResponse.access_token,
 						),
-						oauth: buildOAuthTokenData(tokenResponse),
+						oauth: buildOAuthTokenData(tokenResponse, client),
 					});
 
 					return tokenResponse;
@@ -470,9 +472,8 @@ export class OAuthSessionManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Returns true if the current deployment has OAuth tokens that may be
-	 * refreshed, i.e. they carry every required scope. Always reads fresh from
-	 * secrets to ensure cross-window synchronization.
+	 * Whether the deployment's OAuth tokens carry every required scope, so they
+	 * may refresh. Reads secrets each time to stay in sync across windows.
 	 *
 	 * @param hostname Optional hostname to validate against current deployment.
 	 *                 If provided and doesn't match, returns false (race-safety).

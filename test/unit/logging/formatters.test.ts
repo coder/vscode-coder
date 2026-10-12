@@ -1,3 +1,4 @@
+import { AxiosError, AxiosHeaders } from "axios";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -290,5 +291,37 @@ describe("safeStringify", () => {
 			nested = { child: nested };
 		}
 		expect(safeStringify(nested)).not.toContain("bottom");
+	});
+
+	it("keeps request credentials out of Axios errors", () => {
+		const config = {
+			method: "post",
+			url: "https://coder.example.com/oauth2/revoke",
+			headers: new AxiosHeaders({ "Coder-Session-Token": "session-secret" }),
+			data: "token=token-secret&client_secret=client-secret",
+		};
+		const error = new AxiosError(
+			"Bad request",
+			"ERR_BAD_REQUEST",
+			config,
+			{},
+			{
+				status: 400,
+				statusText: "Bad Request",
+				headers: {},
+				config,
+				data: { error: "invalid_client", refresh_token: "reply-secret" },
+			},
+		);
+
+		const result = safeStringify(error);
+
+		expect(result).toContain("POST");
+		expect(result).toContain("https://coder.example.com/oauth2/revoke");
+		expect(result).toContain("status: 400");
+		expect(result).toContain("invalid_client");
+		expect(result).not.toMatch(
+			/session-secret|token-secret|client-secret|reply-secret/,
+		);
 	});
 });

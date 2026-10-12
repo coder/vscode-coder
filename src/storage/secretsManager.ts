@@ -39,6 +39,10 @@ const OAuthTokenDataSchema = z.object({
 	refresh_token: z.string().optional(),
 	scope: z.string(),
 	expiry_timestamp: z.number(),
+	/** Client that issued the tokens; if absent, the stored registration is used. */
+	client: z
+		.object({ client_id: z.string(), client_secret: z.string().optional() })
+		.optional(),
 });
 
 export type OAuthTokenData = z.infer<typeof OAuthTokenDataSchema>;
