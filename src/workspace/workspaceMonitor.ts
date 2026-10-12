@@ -371,9 +371,11 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		logs: readonly WorkspaceAgentLog[],
 	): vscode.Terminal {
 		const writeEmitter = new vscode.EventEmitter<string>();
+		// End every line so the cursor sits below the logs: xterm.js never
+		// reflows the cursor's line, which `open` writes before the final width.
 		const output = logs
-			.map((log) => log.output.replace(/\r?\n/g, "\r\n"))
-			.join("\r\n");
+			.map((log) => log.output.replace(/\r?\n/g, "\r\n") + "\r\n")
+			.join("");
 		return vscode.window.createTerminal({
 			name,
 			pty: {
