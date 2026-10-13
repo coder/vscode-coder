@@ -14,8 +14,11 @@ import {
 	resolveCliAuth,
 } from "@/settings/cli";
 
-import { MockConfigurationProvider } from "../../mocks/testHelpers";
-import { quoteCommand } from "../../utils/platform";
+import {
+	INVALID_DEPLOYMENT_URLS,
+	MockConfigurationProvider,
+} from "../../mocks/testHelpers";
+import { isWindows, quoteCommand } from "../../utils/platform";
 
 vi.mock("node:os");
 
@@ -37,38 +40,57 @@ const cliStoreAuth: CliAuth = {
 	allowRedirects: false,
 };
 
-const EXTENSION_FLAGS = ["--global-config", EXT_DIR, "--url", URL];
-const CLI_FLAGS = ["--url", URL];
+const EXTENSION_FLAGS = ["--global-config", EXT_DIR, "--url", URL] as const;
+const CLI_FLAGS = ["--url", URL] as const;
+// Shell contexts quote the auth values literally.
+const EXTENSION_SHELL_FLAGS = [
+	"--global-config",
+	`'${EXT_DIR}'`,
+	"--url",
+	`'${URL}'`,
+] as const;
+const CLI_SHELL_FLAGS = ["--url", `'${URL}'`] as const;
 
 describe("cliConfig", () => {
 	describe("getGlobalShellFlags", () => {
 		interface AuthFlagsCase {
 			scenario: string;
 			auth: CliAuth;
-			expected: string[];
+			expected: readonly string[];
 		}
 
 		it.each<AuthFlagsCase>([
 			{
 				scenario: "extension store",
 				auth: extensionStoreAuth,
-				expected: EXTENSION_FLAGS,
+				expected: EXTENSION_SHELL_FLAGS,
 			},
-			{ scenario: "CLI store", auth: cliStoreAuth, expected: CLI_FLAGS },
+			{ scenario: "CLI store", auth: cliStoreAuth, expected: CLI_SHELL_FLAGS },
 			{
 				scenario: "extension store with keyring off",
 				auth: { ...extensionStoreAuth, useKeyring: false },
-				expected: [...EXTENSION_FLAGS, "--use-keyring=false"],
+				expected: [...EXTENSION_SHELL_FLAGS, "--use-keyring=false"],
 			},
 			{
 				scenario: "CLI store with keyring on",
 				auth: { ...cliStoreAuth, useKeyring: true },
-				expected: [...CLI_FLAGS, "--use-keyring=true"],
+				expected: [...CLI_SHELL_FLAGS, "--use-keyring=true"],
 			},
 		])("emits auth flags for a $scenario", ({ auth, expected }) => {
 			const config = new MockConfigurationProvider();
 			expect(getGlobalShellFlags(config, auth)).toStrictEqual(expected);
 		});
+
+		it.each(INVALID_DEPLOYMENT_URLS)(
+			"rejects deployment URL %j before it reaches a shell",
+			(url) => {
+				const config = new MockConfigurationProvider();
+
+				expect(() =>
+					getGlobalShellFlags(config, { ...cliStoreAuth, url }),
+				).toThrow(/Invalid URL/);
+			},
+		);
 
 		it("appends auth flags after user global flags", () => {
 			const config = new MockConfigurationProvider();
@@ -77,7 +99,7 @@ describe("cliConfig", () => {
 			expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
 				"--verbose",
 				"--global-configs", // similar prefixes are not managed flags
-				...EXTENSION_FLAGS,
+				...EXTENSION_SHELL_FLAGS,
 			]);
 		});
 
@@ -87,7 +109,7 @@ describe("cliConfig", () => {
 
 			expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
 				"--verbose",
-				...EXTENSION_FLAGS,
+				...EXTENSION_SHELL_FLAGS,
 			]);
 		});
 
@@ -107,7 +129,7 @@ describe("cliConfig", () => {
 
 				expect(getGlobalShellFlags(config, cliStoreAuth)).toStrictEqual([
 					...flags,
-					...CLI_FLAGS,
+					...CLI_SHELL_FLAGS,
 				]);
 			},
 		);
@@ -126,7 +148,7 @@ describe("cliConfig", () => {
 
 				expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
 					"-v",
-					...EXTENSION_FLAGS,
+					...EXTENSION_SHELL_FLAGS,
 				]);
 			},
 		);
@@ -140,10 +162,48 @@ describe("cliConfig", () => {
 			expect(getGlobalShellFlags(config, cliStoreAuth)).toStrictEqual([
 				"-v",
 				'"--header-command custom"', // ignored by CLI
-				...CLI_FLAGS,
+				...CLI_SHELL_FLAGS,
 				"--header-command",
 				quoteCommand(headerCommand),
 			]);
+		});
+
+		describe("shell expansion", () => {
+			afterEach(() => vi.mocked(os.platform).mockReset());
+
+			it("expands user flags but keeps auth values and the header command literal", () => {
+				// `node:os` is mocked in this file; CI covers each platform's quoting.
+				vi.mocked(os.platform).mockReturnValue(process.platform);
+				const config = new MockConfigurationProvider();
+				config.set("coder.globalFlags", ["--header=Authorization=$TOKEN"]);
+				config.set("coder.headerCommand", "get-token $(id) `whoami` %TOKEN%");
+
+				// Hardcoded so routing either value through `escapeCommandArg`, which
+				// lets the shell expand `$VAR` and `%VAR%`, fails.
+				const [configDir, headerCommand] = isWindows()
+					? [
+							'"/home/$USER/%%APPDATA%%/coder"',
+							'"get-token $(id) `whoami` %%TOKEN%%"',
+						]
+					: [
+							"'/home/$USER/%APPDATA%/coder'",
+							"'get-token $(id) `whoami` %TOKEN%'",
+						];
+				expect(
+					getGlobalShellFlags(config, {
+						...extensionStoreAuth,
+						configDir: "/home/$USER/%APPDATA%/coder",
+					}),
+				).toStrictEqual([
+					'"--header=Authorization=$TOKEN"',
+					"--global-config",
+					configDir,
+					"--url",
+					quoteCommand(URL),
+					"--header-command",
+					headerCommand,
+				]);
+			});
 		});
 
 		it("quotes flags whose expanded value contains whitespace", () => {
@@ -154,7 +214,7 @@ describe("cliConfig", () => {
 			// Without per-entry escaping the space splits the shell command.
 			expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
 				'"--cfg=C:\\Users\\John Doe/coder"',
-				...EXTENSION_FLAGS,
+				...EXTENSION_SHELL_FLAGS,
 			]);
 		});
 	});

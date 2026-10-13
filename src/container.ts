@@ -147,7 +147,10 @@ export class ServiceContainer implements vscode.Disposable {
 			this.logger,
 		);
 
-		this.commandManager = new CommandManager(this.telemetryService);
+		this.commandManager = new CommandManager(
+			this.telemetryService,
+			this.logger,
+		);
 	}
 
 	getPathResolver(): PathResolver {

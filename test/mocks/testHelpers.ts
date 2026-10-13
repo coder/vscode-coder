@@ -964,6 +964,29 @@ export class MockStatusBarItem implements vscode.StatusBarItem {
 	}
 }
 
+/** Terminal returned by a mocked `vscode.window.createTerminal`. */
+export class MockTerminal implements vscode.Terminal {
+	readonly processId = Promise.resolve(undefined);
+	readonly exitStatus = undefined;
+	readonly state = { isInteractedWith: false, shell: undefined };
+	readonly shellIntegration = undefined;
+
+	readonly sendText = vi.fn();
+	readonly show = vi.fn();
+	readonly hide = vi.fn();
+	readonly dispose = vi.fn();
+
+	constructor(
+		readonly creationOptions:
+			| vscode.TerminalOptions
+			| vscode.ExtensionTerminalOptions = {},
+	) {}
+
+	get name(): string {
+		return this.creationOptions.name ?? "";
+	}
+}
+
 /**
  * Mock CoderApi for testing. Tracks method calls and allows controlling responses.
  */
@@ -1503,6 +1526,29 @@ export const TEST_DEPLOYMENT: Deployment = {
 	url: "https://coder.example.com",
 	safeHostname: "coder.example.com",
 };
+
+/**
+ * Deployment URLs that sign-in, every storage read, and the SSH
+ * `ProxyCommand` must all reject, so no layer applies a weaker check.
+ */
+export const INVALID_DEPLOYMENT_URLS = [
+	"not a url",
+	"https://alice:secret@coder.example.com",
+	"https://alice@coder.example.com",
+	"https://coder.example.com/?token=secret",
+	"https://coder.example.com?",
+	"https://coder.example.com/#secret",
+	"https://coder.example.com#",
+	"https://coder.example.com/$(id)",
+	"https://coder.example.com/$HOME",
+	"https://coder.example.com/`id`",
+	"https://coder.example.com/'; id; '",
+	'https://coder.example.com/"; id; "',
+	"https://coder.example.com/a&b",
+	"https://coder.example.com/a|b",
+	"https://coder.example.com/a b",
+	"https://coder.example.com/%h", // OpenSSH ProxyCommand token
+] as const;
 
 /**
  * Real SessionStore that starts signed in as TEST_CURRENT_USER_ID, with

@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { validateIdentifier } from "@/common/validation";
+import { OPEN_CODER_OUTPUT_ACTION } from "@/error/inputValidationError";
 import {
 	CODER_COMMAND_IDS,
 	CommandManager,
@@ -10,19 +12,27 @@ import {
 } from "@/vscode/commandManager";
 
 import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
-import { MockConfigurationProvider } from "../../mocks/testHelpers";
+import {
+	createMockLogger,
+	MockConfigurationProvider,
+} from "../../mocks/testHelpers";
+
+import type { Logger } from "@/logging/logger";
 
 interface Harness {
 	manager: CommandManager;
 	sink: TestSink;
+	logger: Logger;
 }
 
 function makeHarness(): Harness {
 	new MockConfigurationProvider();
 	const sink = new TestSink();
+	const logger = createMockLogger();
 	return {
-		manager: new CommandManager(createTestTelemetryService(sink)),
+		manager: new CommandManager(createTestTelemetryService(sink), logger),
 		sink,
+		logger,
 	};
 }
 
@@ -97,12 +107,39 @@ describe("CommandManager", () => {
 
 			await expect(getRegisteredCallback("coder.login")()).rejects.toBe(boom);
 
+			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
 			expect(sink.events).toHaveLength(1);
 			expect(sink.events[0]).toMatchObject({
 				eventName: "command.invoked",
 				properties: { command_id: "coder.login", result: "error" },
 				error: { message: "boom", type: "TypeError" },
 			});
+		});
+	});
+
+	it("reports a validator failure safely while still recording the error", async () => {
+		const { manager, sink, logger } = makeHarness();
+		const injected = "[Run](command:workbench.action.terminal.new)";
+		manager.register("coder.open", () =>
+			validateIdentifier(injected, "workspace name"),
+		);
+
+		await expect(
+			getRegisteredCallback("coder.open")(),
+		).resolves.toBeUndefined();
+
+		const [[message, diagnostic]] = vi.mocked(logger.warn).mock.calls;
+		expect(diagnostic).toEqual({ value: JSON.stringify(injected) });
+		expect(message).not.toContain("command:");
+		expect(vscode.window.showErrorMessage).toHaveBeenCalledExactlyOnceWith(
+			message,
+			OPEN_CODER_OUTPUT_ACTION,
+		);
+		expect(sink.events).toHaveLength(1);
+		expect(sink.events[0]).toMatchObject({
+			eventName: "command.invoked",
+			properties: { command_id: "coder.open", result: "error" },
+			error: { message, type: "InputValidationError" },
 		});
 	});
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { toSafeHost } from "../common/url";
+import { isValidDeploymentUrl } from "../common/validation";
 import { DeploymentSchema, type Deployment } from "../deployment/types";
 
 import type { OAuth2ClientRegistrationResponse } from "coder/site/src/api/typesGenerated";
@@ -70,7 +71,7 @@ export class SecretsManager {
 			authHostname = toSafeHost(url);
 		} catch {
 			throw new Error(
-				`Session auth hostname mismatch: expected "${safeHostname}", got an invalid URL "${url}"`,
+				`Session auth hostname mismatch: expected "${safeHostname}", got an invalid URL`,
 			);
 		}
 		if (authHostname !== safeHostname) {
@@ -145,7 +146,14 @@ export class SecretsManager {
 			}
 			const parsed: unknown = JSON.parse(data);
 			const result = CurrentDeploymentStateSchema.safeParse(parsed);
-			return result.success ? result.data.deployment : null;
+			const deployment = result.success ? result.data.deployment : null;
+			// Treat an invalid URL stored by an older version as signed out, so the
+			// next sign-in replaces it.
+			if (deployment && !isValidDeploymentUrl(deployment.url)) {
+				this.logger.warn("Ignoring current deployment with an invalid URL");
+				return null;
+			}
+			return deployment;
 		} catch {
 			return null;
 		}
@@ -214,6 +222,14 @@ export class SecretsManager {
 			this.assertSessionAuthHostname(safeHostname, result.data.url);
 		} catch (error) {
 			this.logger.warn("Ignoring stored session auth:", error);
+			return undefined;
+		}
+		// Treat an invalid URL stored by an older version as missing, so connecting
+		// prompts a sign-in instead of failing.
+		if (!isValidDeploymentUrl(result.data.url)) {
+			this.logger.warn(
+				`Ignoring stored session auth for ${safeHostname}: the URL is invalid`,
+			);
 			return undefined;
 		}
 		return result.data;
@@ -301,12 +317,9 @@ export class SecretsManager {
 			return undefined;
 		}
 
+		const safeHostname = toSafeHost(legacyUrl);
 		const oldToken = await this.secrets.get(LEGACY_SESSION_TOKEN_KEY);
 
-		await this.secrets.delete(LEGACY_SESSION_TOKEN_KEY);
-		await this.mementoManager.clearLegacyUrl();
-
-		const safeHostname = toSafeHost(legacyUrl);
 		const existing = await this.getSessionAuth(safeHostname);
 		if (!existing) {
 			await this.setSessionAuth(safeHostname, {
@@ -321,6 +334,8 @@ export class SecretsManager {
 			await this.setCurrentDeployment({ url: legacyUrl, safeHostname });
 		}
 
+		await this.secrets.delete(LEGACY_SESSION_TOKEN_KEY);
+		await this.mementoManager.clearLegacyUrl();
 		return safeHostname;
 	}
 

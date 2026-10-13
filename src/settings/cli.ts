@@ -2,6 +2,7 @@ import os from "node:os";
 
 import { expandPath } from "../common/fs";
 import { escapeCommandArg, escapeShellArg } from "../common/strings";
+import { validateDeploymentUrl } from "../common/validation";
 
 import { getHeaderArgs } from "./headers";
 
@@ -35,11 +36,16 @@ export function getExpandedUserGlobalFlags(
 	});
 }
 
-/** Flags for shell contexts (`terminal.sendText`, SSH `ProxyCommand`). */
+/** Flags for shell contexts (SSH `ProxyCommand`). */
 export function getGlobalShellFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 	auth: CliAuth,
 ): string[] {
+	// Quoting cannot neutralize the URL: OpenSSH expands `%` tokens before any
+	// shell runs, and on Windows no single quoting style covers cmd.exe, Windows
+	// OpenSSH (no shell), and `sh`. `maybeAskUrl` rejects these at entry; this
+	// covers URLs that reach storage some other way.
+	validateDeploymentUrl(auth.url);
 	return buildGlobalFlags(configs, auth, escapeCommandArg, escapeShellArg);
 }
 
@@ -56,25 +62,27 @@ const identity = (s: string) => s;
 function buildGlobalFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 	auth: CliAuth,
-	escAuth: (s: string) => string,
-	escHeader: (s: string) => string,
+	escUserFlag: (s: string) => string,
+	escValue: (s: string) => string,
 ): string[] {
 	// Escape after stripping so expansion whitespace stays in one shell token.
+	// User flags keep shell expansion (e.g. `$VAR`); the auth values and
+	// header command are quoted literally.
 	const flags = stripManagedFlags(
 		getExpandedUserGlobalFlags(configs),
 		auth.store === "extension",
-	).map(escAuth);
+	).map(escUserFlag);
 	if (auth.store === "extension") {
-		flags.push("--global-config", escAuth(auth.configDir));
+		flags.push("--global-config", escValue(auth.configDir));
 	}
-	flags.push("--url", escAuth(auth.url));
+	flags.push("--url", escValue(auth.url));
 	if (auth.useKeyring !== undefined) {
 		flags.push(`--use-keyring=${auth.useKeyring}`);
 	}
 	if (auth.allowRedirects) {
 		flags.push("--allow-redirects");
 	}
-	return [...flags, ...getHeaderArgs(configs, escHeader)];
+	return [...flags, ...getHeaderArgs(configs, escValue)];
 }
 
 /** Drops `--use-keyring`, and `--global-config` when the extension supplies its own. */

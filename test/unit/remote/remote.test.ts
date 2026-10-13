@@ -28,6 +28,7 @@ import {
 	MockUserInteraction,
 	useEditor,
 } from "../../mocks/testHelpers";
+import { quoteCommand } from "../../utils/platform";
 
 import type { CliManager } from "@/cli/cliManager";
 import type { Commands } from "@/commands";
@@ -394,7 +395,7 @@ describe("Remote", () => {
 			});
 
 			expect(elideNetworkInfoDir(proxyCommand)).toBe(
-				`/mock/coder --global-config /mock/global --url https://coder.example.com ${expected}`,
+				`/mock/coder --global-config ${quoteCommand("/mock/global")} --url ${quoteCommand("https://coder.example.com")} ${expected}`,
 			);
 		});
 	});

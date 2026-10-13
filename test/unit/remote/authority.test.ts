@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import os from "node:os";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
 	type AuthorityClassification,
@@ -27,6 +28,18 @@ const parts = (prefix: string): AuthorityParts => ({
 });
 
 describe("parseRemoteAuthority", () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	it("applies Windows filename restrictions to a directly supplied authority", () => {
+		const authority = "ssh-remote+coder-vscode.[::1]--foo--bar";
+		vi.spyOn(os, "platform").mockReturnValue("linux");
+		expect(parseRemoteAuthority(authority)?.safeHostname).toBe("[::1]");
+		vi.spyOn(os, "platform").mockReturnValue("win32");
+		expect(() => parseRemoteAuthority(authority)).toThrow(
+			/Cannot connect on Windows/,
+		);
+	});
+
 	interface ClassificationCase {
 		editor: string;
 		prefix: string;
@@ -93,6 +106,26 @@ describe("parseRemoteAuthority", () => {
 		},
 	);
 
+	// The grammar is covered in common/validation.test.ts; these check that
+	// parsing applies it to the hostname and the identifiers.
+	it.each([
+		[
+			"command substitution in workspace",
+			"coder-vscode.dev.coder.com--foo--x$(touch /tmp/pwned)",
+		],
+		[
+			"space in hostname (would split the Host pattern)",
+			"coder-vscode.evil *--foo--bar",
+		],
+		["path traversal hostname", "coder-vscode...--foo--bar"],
+		["IPv6 zone token", "coder-vscode.[::1%h]--foo--bar"],
+		["path separator in hostname", "coder-vscode.a/b--foo--bar"],
+	])("rejects unexpected characters: %s", (_label, sshHost) => {
+		expect(() => parseRemoteAuthority(`ssh-remote+${sshHost}`)).toThrow(
+			/Cannot (use|connect)/,
+		);
+	});
+
 	interface ParseCase {
 		sshHost: string;
 		safeHostname: string;
@@ -153,6 +186,27 @@ describe("authority construction", () => {
 		).toBe("ssh-remote+coder-cursor--dev.xn--18j4d--alice--workspace.main");
 	});
 
+	it.each(["-dev", "dev-", "dev_1", "_dev_"])(
+		"round-trips legacy agent %j without changing the authority format",
+		(agent) => {
+			const authority = toRemoteAuthority(
+				"https://xn--bcher-kva.example",
+				"alice",
+				"dev",
+				agent,
+			);
+			expect(authority).toBe(
+				`ssh-remote+coder-vscode.xn--bcher-kva.example--alice--dev.${agent}`,
+			);
+			expect(parseRemoteAuthority(authority)).toMatchObject({
+				safeHostname: "xn--bcher-kva.example",
+				username: "alice",
+				workspace: "dev",
+				agent,
+			});
+		},
+	);
+
 	it("omits an absent agent", () => {
 		expect(
 			toRemoteAuthority("https://dev.coder.com", "foo", "bar", undefined),
@@ -174,6 +228,45 @@ describe("authority construction", () => {
 			toRemoteAuthority("https://dev.coder.com", "foo", "bar", undefined),
 		).toThrow("must not be empty");
 	});
+
+	// One payload per parameter; the grammar is covered in common/validation.test.ts.
+	it.each([
+		{
+			label: "command substitution in workspace name",
+			owner: "foo",
+			workspace: "x$(touch /tmp/pwned)",
+			agent: undefined,
+		},
+		{
+			label: "backticks in owner name",
+			owner: "x`id`",
+			workspace: "bar",
+			agent: undefined,
+		},
+		{
+			label: "shell metacharacters in agent name",
+			owner: "foo",
+			workspace: "bar",
+			agent: "baz;ls",
+		},
+	])(
+		"rejects server-provided identifiers with $label",
+		({ owner, workspace, agent }) => {
+			expect(() =>
+				toRemoteAuthority("https://dev.coder.com", owner, workspace, agent),
+			).toThrow(/Cannot (use|connect)/);
+		},
+	);
+
+	// Filename safety does not imply shell safety; construction guards both.
+	it.each(["https://a$(id).com", "https://a;id.com", "https://a&id.com"])(
+		"rejects shell-unsafe deployment host %j",
+		(baseUrl) => {
+			expect(() => toRemoteAuthority(baseUrl, "foo", "bar", undefined)).toThrow(
+				/Cannot use this deployment hostname/,
+			);
+		},
+	);
 });
 
 describe("legacy authority compatibility", () => {

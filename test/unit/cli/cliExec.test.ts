@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import * as semver from "semver";
 import {
 	afterEach,
 	beforeAll,
@@ -13,7 +14,12 @@ import {
 } from "vitest";
 import * as vscode from "vscode";
 
-import { MockConfigurationProvider } from "../../mocks/testHelpers";
+import { cliFeatureSet } from "@/featureSet";
+
+import {
+	MockConfigurationProvider,
+	MockTerminal,
+} from "../../mocks/testHelpers";
 import {
 	isWindows,
 	writeExecutable,
@@ -200,11 +206,12 @@ describe("cliExec", () => {
 				"--header-command",
 				"my-header-cmd",
 				"speedtest",
-				"owner/workspace",
 				"--output",
 				"json",
 				"-t",
 				"10s",
+				"--",
+				"owner/workspace",
 			]);
 		});
 
@@ -301,8 +308,6 @@ describe("cliExec", () => {
 				"my-header-cmd",
 				"support",
 				"bundle",
-				"owner/workspace",
-				"dev",
 				"--output-file",
 				outputPath,
 				"--yes",
@@ -310,6 +315,9 @@ describe("cliExec", () => {
 				"$HOME/.vscode-server/data/logs/**/*.log",
 				"--workspace-file",
 				"$HOME/.cursor-server/data/logs/**/*.log",
+				"--",
+				"owner/workspace",
+				"dev",
 			]);
 		});
 
@@ -329,10 +337,11 @@ describe("cliExec", () => {
 				"http://localhost:3000",
 				"support",
 				"bundle",
-				"owner/workspace",
 				"--output-file",
 				outputPath,
 				"--yes",
+				"--",
+				"owner/workspace",
 			]);
 		});
 
@@ -377,7 +386,7 @@ describe("cliExec", () => {
 						writeListeners.push(s);
 					});
 					opts.pty.open?.(undefined);
-					return { show: vi.fn() } as unknown as vscode.Terminal;
+					return new MockTerminal(opts);
 				},
 			);
 		});
@@ -392,7 +401,7 @@ describe("cliExec", () => {
 
 			expect(spawn).toHaveBeenCalledWith(
 				env.binary,
-				["--url", "https://test.coder.com", "ping", "owner/my workspace"],
+				["--url", "https://test.coder.com", "ping", "--", "owner/my workspace"],
 				expect.objectContaining({ detached: process.platform !== "win32" }),
 			);
 		});
@@ -414,6 +423,7 @@ describe("cliExec", () => {
 					"--url",
 					"https://test.coder.com",
 					"ping",
+					"--",
 					"owner/ws",
 				],
 				expect.objectContaining({ detached: process.platform !== "win32" }),
@@ -432,5 +442,74 @@ describe("cliExec", () => {
 			expect(output).toContain("Failed to start: spawn /missing/coder ENOENT");
 			expect(output).not.toContain("Process exited");
 		});
+	});
+
+	describe("openAppStatusTerminal", () => {
+		const command = "$(touch /tmp/pwned); rm -rf ~";
+
+		function appEnv(cliVersion: string) {
+			const { env } = setup(sharedAuth("https://test.coder.com"));
+			return { ...env, featureSet: cliFeatureSet(semver.parse(cliVersion)) };
+		}
+
+		beforeEach(() => {
+			vi.clearAllMocks();
+			vi.mocked(vscode.window.createTerminal).mockImplementation(
+				(opts: vscode.TerminalOptions) => new MockTerminal(opts),
+			);
+		});
+
+		it.each([
+			{ cliVersion: "2.23.0", ttyArgs: [] },
+			{ cliVersion: "2.34.0", ttyArgs: ["--tty"] },
+		])(
+			"runs the app command as one argv entry after `--` on CLI $cliVersion",
+			({ cliVersion, ttyArgs }) => {
+				const env = appEnv(cliVersion);
+
+				cliExec.openAppStatusTerminal(env, {
+					name: "AI Agent",
+					command,
+					workspace_name: "ws",
+				});
+
+				expect(vscode.window.createTerminal).toHaveBeenCalledWith({
+					name: "AI Agent",
+					shellPath: env.binary,
+					shellArgs: [
+						"--url",
+						"https://test.coder.com",
+						"ssh",
+						...ttyArgs,
+						"ws",
+						"--",
+						command,
+					],
+				});
+			},
+		);
+
+		it("refuses CLIs that cannot take a command instead of typing it into a shell", () => {
+			expect(() =>
+				cliExec.openAppStatusTerminal(appEnv("2.22.9"), {
+					command,
+					workspace_name: "ws",
+				}),
+			).toThrow("requires Coder CLI v2.23.0");
+			expect(vscode.window.createTerminal).not.toHaveBeenCalled();
+		});
+
+		it.each(["x$(touch /tmp/pwned)", "--proxy-command=evil"])(
+			"rejects workspace name %j",
+			(workspaceName) => {
+				expect(() =>
+					cliExec.openAppStatusTerminal(appEnv("2.34.0"), {
+						command,
+						workspace_name: workspaceName,
+					}),
+				).toThrow(/Cannot use this workspace name/);
+				expect(vscode.window.createTerminal).not.toHaveBeenCalled();
+			},
+		);
 	});
 });

@@ -122,6 +122,20 @@ describe("NetworkStatusReporter tooltip", () => {
 		expect(t).not.toContain("Upload:");
 		expect(t).not.toContain("Latency:");
 	});
+
+	it.each([
+		["[x](command:evil)", String.raw`\[x\]\(command:evil\)`],
+		["<command:evil>", String.raw`<command:evil\>`],
+		// VS Code renders icons after markdown, so the `$` itself needs `\\`.
+		["$(alert)", String.raw`\\$\(alert\)`],
+	])("renders the DERP region name %j as plain text", (region, escaped) => {
+		const { bar, reporter } = setup(200);
+		reporter.update(
+			makeNetworkInfo({ p2p: false, preferred_derp: region, latency: 40 }),
+			false,
+		);
+		expect(tooltipOf(bar)).toContain(`Connected via ${escaped} relay`);
+	});
 });
 
 describe("NetworkStatusReporter warning state", () => {

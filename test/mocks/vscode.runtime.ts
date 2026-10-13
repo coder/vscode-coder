@@ -50,11 +50,32 @@ export const InputBoxValidationSeverity = E({
 
 export class MarkdownString {
 	value: string;
-	isTrusted = false;
+	isTrusted: boolean | { readonly enabledCommands: readonly string[] } = false;
 	supportThemeIcons = false;
 
 	constructor(value = "") {
 		this.value = value;
+	}
+
+	/** Mirrors VS Code's `MarkdownString.appendText` escaping. */
+	appendText(value: string): this {
+		const text = this.supportThemeIcons
+			? value.replace(/(\\)?\$\([\w-]+(?:~[\w-]+)?\)/g, (match, escaped) =>
+					escaped ? match : `\\${match}`,
+				)
+			: value;
+		this.value += text
+			.replace(/[\\`*_{}[\]()#+!~]/g, "\\$&")
+			.replace(/^([ \t]*)-/gm, "$1\\-")
+			.replace(/([ \t]+)/g, (_match, g1: string) => "&nbsp;".repeat(g1.length))
+			.replace(/>/gm, "\\>")
+			.replace(/\n/g, "\n\n");
+		return this;
+	}
+
+	appendMarkdown(value: string): this {
+		this.value += value;
+		return this;
 	}
 }
 

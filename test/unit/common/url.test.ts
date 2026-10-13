@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import os from "node:os";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import {
@@ -12,6 +13,23 @@ import {
 import { MockConfigurationProvider } from "../../mocks/testHelpers";
 
 describe("toSafeHost", () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	it("rejects a traversal hostname before it becomes a deployment directory", () => {
+		expect(() => toSafeHost("https://..")).toThrow(
+			/Cannot use this deployment hostname/,
+		);
+	});
+
+	it("preserves the IPv6 deployment key on POSIX but rejects it on Windows", () => {
+		vi.spyOn(os, "platform").mockReturnValue("linux");
+		expect(toSafeHost("https://[::1]:8080")).toBe("[::1]");
+		vi.spyOn(os, "platform").mockReturnValue("win32");
+		expect(() => toSafeHost("https://[::1]:8080")).toThrow(
+			/Cannot connect on Windows/,
+		);
+	});
+
 	it.each([
 		["https://foobar:8080", "foobar"],
 		["https://ほげ", "xn--18j4d"],

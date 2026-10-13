@@ -24,6 +24,29 @@
   in with OAuth are asked to sign in again once.
 - Revoke OAuth tokens on logout even when their scopes are outdated.
 
+### Fixed
+
+- Run workspace app commands as arguments to `coder ssh` instead of typing them
+  into a local terminal. This requires Coder CLI v2.23.0 or later.
+- Validate workspace, owner, and agent names from the deployment before using
+  them in SSH hosts and paths, preserving legacy agents with underscores and
+  leading or trailing hyphens.
+- Reject deployment hostnames unsafe for directory names, with Windows-specific
+  restrictions applied only on Windows.
+- Show validation failures without rendering deployment-provided values in
+  notifications; diagnostic details are available in Coder Output.
+- Show the network tooltip's relay name as plain text instead of rendering
+  deployment-provided markdown.
+- Reject deployment URLs that contain shell metacharacters or `%` when building
+  SSH commands. If an earlier version stored such a URL, or a URL with a
+  non-ASCII hostname, you are asked to sign in again, and the URL is then
+  stored in its ASCII form.
+- Reject deployment URLs that include a username, password, query, or fragment
+  when you sign in. If a proxy in front of your deployment needs credentials,
+  send them with `coder.headerCommand`.
+- Keep the stored URL of a deployment you are signed in to when a link names
+  the same origin with a different path.
+
 ## [v1.16.4](https://github.com/coder/vscode-coder/releases/tag/v1.16.4) 2026-09-23
 
 ### Added

@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 
 import { isSameOrigin, toSafeHost } from "../common/url";
+import { InputValidationError } from "../common/validation";
+import { reportInputValidationError } from "../error/inputValidationError";
 import { errToStr } from "../error/normalize";
 import { AuthTelemetry } from "../instrumentation/auth";
 import { CALLBACK_PATH } from "../oauth/constants";
@@ -53,6 +55,14 @@ export function registerUriHandler(deps: UriHandlerDeps): vscode.Disposable {
 			} catch (error) {
 				if (error instanceof UserDeclinedError) {
 					output.info("URI handling cancelled by the user", summarizeUri(uri));
+					return;
+				}
+				if (error instanceof InputValidationError) {
+					await reportInputValidationError(
+						error,
+						output,
+						"Failed to handle URI",
+					);
 					return;
 				}
 				const message = errToStr(error, "No error message was provided");
@@ -172,16 +182,16 @@ async function setupDeployment(
 	// queries will default to localhost) so ask for it if missing.
 	// Pre-populate in case we do have the right URL so the user can just
 	// hit enter and move on.
-	const url = await maybeAskUrl(
+	const linkUrl = await maybeAskUrl(
 		mementoManager,
 		params.get("url"),
 		currentDeployment?.url,
 	);
-	if (!url) {
+	if (!linkUrl) {
 		throw new Error("url must be provided or specified as a query parameter");
 	}
 
-	const safeHostname = toSafeHost(url);
+	const safeHostname = toSafeHost(linkUrl);
 	const owner = params.get("owner") ?? "";
 	const workspace = params.get("workspace") ?? "";
 	const token: string | undefined = params.get("token") ?? undefined;
@@ -189,7 +199,9 @@ async function setupDeployment(
 	// A deployment is known once a login stored a session for the same origin.
 	const existingAuth = await secretsManager.getSessionAuth(safeHostname);
 	const knownDeployment =
-		existingAuth !== undefined && isSameOrigin(existingAuth.url, url);
+		existingAuth !== undefined && isSameOrigin(existingAuth.url, linkUrl);
+	// A link picks the deployment but never rewrites a known deployment's URL.
+	const url = knownDeployment ? existingAuth.url : linkUrl;
 
 	// Set once the trust prompt has disclosed the token sign-in and the user
 	// agreed, so the login flow does not ask again.

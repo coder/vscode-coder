@@ -91,7 +91,7 @@ describe("escapeShellArg", () => {
 			);
 		});
 
-		it("doubles `%` to block %VAR% expansion", () => {
+		it("doubles `%` so OpenSSH token expansion keeps it literal", () => {
 			expect(escapeShellArg("%PATH%")).toBe('"%%PATH%%"');
 		});
 

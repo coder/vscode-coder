@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MementoManager } from "@/storage/mementoManager";
 
-import { InMemoryMemento } from "../../mocks/testHelpers";
+import {
+	INVALID_DEPLOYMENT_URLS,
+	InMemoryMemento,
+} from "../../mocks/testHelpers";
 
 describe("MementoManager", () => {
 	let memento: InMemoryMemento;
@@ -31,38 +34,61 @@ describe("MementoManager", () => {
 		});
 
 		it("should deduplicate URLs in history", async () => {
-			await mementoManager.addToUrlHistory("url1");
-			await mementoManager.addToUrlHistory("url2");
-			await mementoManager.addToUrlHistory("url1"); // Re-add first URL
+			await mementoManager.addToUrlHistory("https://url1");
+			await mementoManager.addToUrlHistory("https://url2");
+			await mementoManager.addToUrlHistory("https://url1"); // Re-add first URL
 
-			expect(memento.get("urlHistory")).toEqual(["url2", "url1"]);
+			expect(memento.get("urlHistory")).toEqual([
+				"https://url2",
+				"https://url1",
+			]);
 		});
 	});
 
 	describe("withUrlHistory", () => {
 		it("should append URLs and remove duplicates", async () => {
-			await memento.update("urlHistory", ["existing1", "existing2"]);
+			await memento.update("urlHistory", [
+				"https://existing1",
+				"https://existing2",
+			]);
 
-			const result = mementoManager.withUrlHistory("existing2", "new1");
+			const result = mementoManager.withUrlHistory(
+				"https://existing2",
+				"https://new1",
+			);
 
-			expect(result).toEqual(["existing1", "existing2", "new1"]);
+			expect(result).toEqual([
+				"https://existing1",
+				"https://existing2",
+				"https://new1",
+			]);
 		});
 
 		it("should limit to 10 URLs", async () => {
-			const urls = Array.from({ length: 10 }, (_, i) => `url${i}`);
+			const urls = Array.from({ length: 10 }, (_, i) => `https://url${i}`);
 			await memento.update("urlHistory", urls);
 
-			const result = mementoManager.withUrlHistory("url20");
+			const result = mementoManager.withUrlHistory("https://url20");
 
 			expect(result).toHaveLength(10);
-			expect(result[0]).toBe("url1");
-			expect(result[9]).toBe("url20");
+			expect(result[0]).toBe("https://url1");
+			expect(result[9]).toBe("https://url20");
 		});
 
 		it("should handle non-array storage gracefully", async () => {
 			await memento.update("urlHistory", "not-an-array");
-			const result = mementoManager.withUrlHistory("url1");
-			expect(result).toEqual(["url1"]);
+			const result = mementoManager.withUrlHistory("https://url1");
+			expect(result).toEqual(["https://url1"]);
+		});
+
+		it("drops stored URLs that sign-in rejects", async () => {
+			await memento.update("urlHistory", [
+				...INVALID_DEPLOYMENT_URLS,
+				"https://coder.example.com",
+			]);
+			expect(mementoManager.withUrlHistory()).toEqual([
+				"https://coder.example.com",
+			]);
 		});
 	});
 

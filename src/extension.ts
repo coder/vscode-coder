@@ -11,9 +11,11 @@ import { AnnouncementManager } from "./announcements/manager";
 import { AuthInterceptor } from "./api/authInterceptor";
 import { CoderApi } from "./api/coderApi";
 import { Commands } from "./commands";
+import { InputValidationError } from "./common/validation";
 import { ServiceContainer } from "./container";
 import { DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
+import { reportInputValidationError } from "./error/inputValidationError";
 import { errToStr, getErrorDetail, toError } from "./error/normalize";
 import { serverFeatureSet } from "./featureSet";
 import {
@@ -483,6 +485,12 @@ async function doActivate(
 				await ex.showNotification("Failed to open workspace", {
 					modal: true,
 				});
+			} else if (ex instanceof InputValidationError) {
+				await reportInputValidationError(
+					ex,
+					output,
+					"Failed to open workspace",
+				);
 			} else if (isAxiosError(ex)) {
 				const msg = getErrorMessage(ex, "None");
 				const detail = getErrorDetail(ex) || "None";

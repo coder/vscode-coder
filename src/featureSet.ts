@@ -9,6 +9,8 @@ export interface CliFeatureSet {
 	cliUpdate: boolean;
 	keyringAuth: boolean;
 	tokenRead: boolean;
+	sshCommand: boolean;
+	sshTty: boolean;
 	supportBundle: boolean;
 	supportBundleWorkspaceFiles: boolean;
 	allowRedirects: boolean;
@@ -54,6 +56,10 @@ export function cliFeatureSet(version: semver.SemVer | null): CliFeatureSet {
 		keyringAuth: versionAtLeast(version, "2.29.0"),
 		// `coder login token`; from 2.32 file mode also checks the URL it stored.
 		tokenRead: versionAtLeast(version, "2.32.0"),
+		// `coder ssh <workspace> -- <command>` one-shot remote commands
+		sshCommand: versionAtLeast(version, "2.23.0"),
+		// `coder ssh --tty`; earlier CLIs always allocate a PTY in command mode
+		sshTty: versionAtLeast(version, "2.34.0"),
 		// `coder support bundle` (officially released/unhidden in 2.10.0)
 		supportBundle: versionAtLeast(version, "2.10.0"),
 		// --workspace-file flag for `coder support bundle`

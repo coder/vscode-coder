@@ -1105,15 +1105,16 @@ export class Commands {
 		workspace_name: string;
 	}): Promise<void> {
 		// Launch and run command in terminal if command is provided
-		if (app.command) {
+		const command = app.command;
+		if (command) {
 			return withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
-					title: `Connecting to AI Agent...`,
+					title: `Preparing Coder CLI...`,
 				},
 				async () => {
 					const env = await this.resolveCliEnv(this.extensionClient);
-					await cliExec.openAppStatusTerminal(env, app);
+					cliExec.openAppStatusTerminal(env, { ...app, command });
 				},
 			);
 		}

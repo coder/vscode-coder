@@ -61,6 +61,21 @@ before handoff run typecheck, lint, format check and the affected tests.
 - Add a `CHANGELOG.md` entry for changes users should know about.
 - Never disable a lint rule without user approval.
 
+## Running the Coder CLI
+
+Workspace, owner, and agent names, app commands, and URLs come from the
+deployment. Treat them as untrusted:
+
+- Run the CLI with `execFile`/`spawn` argv (or a terminal's `shellPath` and
+  `shellArgs`), never through a shell or `terminal.sendText`.
+- Put flags first, then `--`, then deployment-provided operands
+  (`coder ping -- owner/ws`) so a value like `--foo` is never read as a flag.
+- Validate names with `src/common/validation.ts` before they reach SSH hosts,
+  paths, or the CLI.
+- In SSH `ProxyCommand` (the one shell context), build flags with
+  `getGlobalShellFlags`, which validates the URL and quotes it with
+  `escapeShellArg`.
+
 ## Code style
 
 - Strict TypeScript: no `any`, `as unknown as`, or non-null assertions

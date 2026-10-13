@@ -1,6 +1,10 @@
 import * as vscode from "vscode";
 
+import { InputValidationError } from "../common/validation";
+import { reportInputValidationError } from "../error/inputValidationError";
 import { type TelemetryService } from "../telemetry/service";
+
+import type { Logger } from "../logging/logger";
 
 /**
  * Every `coder.*` command id contributed by this extension. Kept in sync with
@@ -50,12 +54,16 @@ type CommandHandler = (...args: never[]) => unknown;
 /**
  * Single registration point for `coder.*` commands. Wraps every handler in
  * `TelemetryService.trace("command.invoked", ...)` so duration plus
- * success/error are captured uniformly.
+ * success/error are captured uniformly. Input validation errors are reported
+ * with a safe notification instead of VS Code's generic error notification.
  */
 export class CommandManager implements vscode.Disposable {
 	private readonly registrations = new Set<vscode.Disposable>();
 
-	public constructor(private readonly telemetry: TelemetryService) {}
+	public constructor(
+		private readonly telemetry: TelemetryService,
+		private readonly logger: Logger,
+	) {}
 
 	public register(
 		id: CoderCommandId,
@@ -67,12 +75,22 @@ export class CommandManager implements vscode.Disposable {
 
 		const invoke = handler as (...args: unknown[]) => unknown;
 		const properties = { command_id: id };
-		const wrapped = (...args: unknown[]): Thenable<unknown> =>
-			this.telemetry.trace(
-				COMMAND_INVOKED_EVENT,
-				() => Promise.resolve(invoke(...args)),
-				properties,
-			);
+		const wrapped = async (...args: unknown[]): Promise<unknown> => {
+			try {
+				return await this.telemetry.trace(
+					COMMAND_INVOKED_EVENT,
+					() => Promise.resolve(invoke(...args)),
+					properties,
+				);
+			} catch (error) {
+				if (!(error instanceof InputValidationError)) {
+					throw error;
+				}
+				// Not awaited so the command settles without waiting on the user.
+				void reportInputValidationError(error, this.logger);
+				return undefined;
+			}
+		};
 
 		let live: vscode.Disposable | null = vscode.commands.registerCommand(
 			id,

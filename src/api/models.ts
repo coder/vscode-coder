@@ -6,16 +6,18 @@ import {
 	type WorkspaceStatus,
 } from "coder/site/src/api/typesGenerated";
 
+import { validateIdentifier } from "../common/validation";
+
 /** True when the user holds the deployment-wide owner role. */
 export function isOwner(user: User | undefined): boolean {
 	return user?.roles.some((role) => role.name === "owner") ?? false;
 }
 
-/**
- * Create workspace owner/name identifier
- */
+/** Create the validated `owner/name` identifier used in CLI argv and URLs. */
 export function createWorkspaceIdentifier(workspace: Workspace): string {
-	return `${workspace.owner_name}/${workspace.name}`;
+	const owner = validateIdentifier(workspace.owner_name, "workspace owner");
+	const name = validateIdentifier(workspace.name, "workspace name");
+	return `${owner}/${name}`;
 }
 
 const WORKSPACE_STATUS_LABEL: Readonly<Record<WorkspaceStatus, string>> = {

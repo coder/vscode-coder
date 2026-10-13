@@ -11,6 +11,14 @@ const WARNING_BACKGROUND = new vscode.ThemeColor(
 );
 
 const CODER_CONNECT_TEXT = "$(globe) Coder Connect";
+
+/** The commands the tooltip links to; no other command link may run. */
+const TOOLTIP_COMMANDS = [
+	"coder.pingWorkspace",
+	"coder.netcheck",
+	"workbench.action.openSettings",
+];
+
 const CODER_CONNECT_TOOLTIP = markdown(
 	"$(cloud) Connected using Coder Connect. Detailed network stats aren't collected for this connection type.",
 );
@@ -23,7 +31,11 @@ function connectionSummary(network: NetworkInfo): string {
 	if (network.p2p) {
 		return "$(zap) Directly connected peer-to-peer.";
 	}
-	return `$(broadcast) Connected via ${network.preferred_derp} relay. Will switch to peer-to-peer when available.`;
+	// The region name comes from the deployment, so append it as plain text.
+	return markdown("$(broadcast) Connected via ")
+		.appendText(network.preferred_derp)
+		.appendMarkdown(" relay. Will switch to peer-to-peer when available.")
+		.value;
 }
 
 function buildStatusText(network: NetworkInfo, isStale: boolean): string {
@@ -142,7 +154,7 @@ export class NetworkStatusReporter {
 
 function markdown(value: string): vscode.MarkdownString {
 	const md = new vscode.MarkdownString(value);
-	md.isTrusted = true;
+	md.isTrusted = { enabledCommands: TOOLTIP_COMMANDS };
 	md.supportThemeIcons = true;
 	return md;
 }

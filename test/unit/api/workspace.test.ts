@@ -29,6 +29,8 @@ const CLI_FEATURES: CliFeatureSet = {
 	cliUpdate: true,
 	keyringAuth: true,
 	tokenRead: true,
+	sshCommand: true,
+	sshTty: true,
 	supportBundle: true,
 	supportBundleWorkspaceFiles: true,
 	allowRedirects: true,
@@ -227,6 +229,7 @@ describe("updateWorkspace", () => {
 			"--url",
 			"https://test.coder.com",
 			"update",
+			"--",
 			"testuser/test-workspace",
 		]);
 		expect(sp.stdinEnd).toHaveBeenCalled();
@@ -252,6 +255,7 @@ describe("updateWorkspace", () => {
 			"region=us-east",
 			"--parameter",
 			"size=large",
+			"--",
 			"testuser/test-workspace",
 		]);
 	});
@@ -427,6 +431,7 @@ describe("startWorkspace", () => {
 			"--yes",
 			"--reason",
 			"vscode_connection",
+			"--",
 			"testuser/test-workspace",
 		]);
 		expect(restClient.getWorkspace).toHaveBeenCalledWith(ctx.workspace.id);
@@ -455,6 +460,7 @@ describe("startWorkspace", () => {
 			"https://test.coder.com",
 			"start",
 			"--yes",
+			"--",
 			"testuser/test-workspace",
 		]);
 	});

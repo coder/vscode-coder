@@ -1,6 +1,12 @@
 import * as vscode from "vscode";
 
 import { toSafeHost } from "../common/url";
+import {
+	validateAgentName,
+	validateFilenameHostname,
+	validateIdentifier,
+	validateShellSafeHostname,
+} from "../common/validation";
 
 /** The editor every host was named after before per-editor prefixes existed. */
 export const LegacyEditorId = "vscode";
@@ -137,6 +143,15 @@ export function parseRemoteAuthority(authority: string): AuthorityParts | null {
 		}
 	}
 
+	// These reach SSH host aliases, ProxyCommand %h, and per-deployment paths.
+	validateFilenameHostname(safeHostname);
+	validateShellSafeHostname(safeHostname);
+	validateIdentifier(username, "username");
+	validateIdentifier(workspace, "workspace name");
+	if (agent !== "") {
+		validateAgentName(agent);
+	}
+
 	return {
 		agent,
 		hostPrefix: `${prefix}${safeHostname}--`,
@@ -153,8 +168,13 @@ export function toRemoteAuthority(
 	workspaceName: string,
 	workspaceAgent: string | undefined,
 ): string {
-	let remoteAuthority = `ssh-remote+${currentAuthorityPrefix()}.${toSafeHost(baseUrl)}--${workspaceOwner}--${workspaceName}`;
+	// Filename safety does not imply shell or SSH Host-pattern safety.
+	const safeHostname = validateShellSafeHostname(toSafeHost(baseUrl));
+	validateIdentifier(workspaceOwner, "workspace owner");
+	validateIdentifier(workspaceName, "workspace name");
+	let remoteAuthority = `ssh-remote+${currentAuthorityPrefix()}.${safeHostname}--${workspaceOwner}--${workspaceName}`;
 	if (workspaceAgent) {
+		validateAgentName(workspaceAgent);
 		remoteAuthority += `.${workspaceAgent}`;
 	}
 	return remoteAuthority;

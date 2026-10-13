@@ -78,6 +78,7 @@ function runCliCommand(ctx: CliContext, args: string[]): Promise<void> {
 		const fullArgs = [
 			...getGlobalFlags(vscode.workspace.getConfiguration(), ctx.auth),
 			...args,
+			"--",
 			createWorkspaceIdentifier(ctx.workspace),
 		];
 		const proc = spawn(ctx.binPath, fullArgs);

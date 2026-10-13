@@ -7,6 +7,7 @@ import {
 } from "@/storage/secretsManager";
 
 import {
+	INVALID_DEPLOYMENT_URLS,
 	InMemoryMemento,
 	InMemorySecretStorage,
 	LogCollector,
@@ -67,12 +68,12 @@ describe("SecretsManager", () => {
 
 		// A mismatched URL can carry credentials, so only its hostname may
 		// appear in the error.
-		const MISMATCH_CASES: MismatchCase[] = [
+		const MISMATCH_CASES: readonly MismatchCase[] = [
 			{
 				name: "malformed URL",
-				url: "not a URL",
+				url: "https://alice:hunter2@[bad",
 				error:
-					'Session auth hostname mismatch: expected "example.com", got an invalid URL "not a URL"',
+					'Session auth hostname mismatch: expected "example.com", got an invalid URL',
 			},
 			{
 				name: "mismatched hostname",
@@ -122,6 +123,20 @@ describe("SecretsManager", () => {
 						args: [new Error(error)],
 					},
 				]);
+			},
+		);
+
+		it.each(INVALID_DEPLOYMENT_URLS)(
+			"ignores session auth whose URL an older version stored as %j",
+			async (url) => {
+				await secretStorage.store(
+					"coder.session.coder.example.com",
+					JSON.stringify({ url, token: "test-token" }),
+				);
+
+				expect(
+					await secretsManager.getSessionAuth("coder.example.com"),
+				).toBeUndefined();
 			},
 		);
 
@@ -313,6 +328,18 @@ describe("SecretsManager", () => {
 			expect(events).toEqual(deployments.map((deployment) => ({ deployment })));
 		});
 
+		it.each(INVALID_DEPLOYMENT_URLS)(
+			"ignores a current deployment whose URL an older version stored as %j",
+			async (url) => {
+				await secretsManager.setCurrentDeployment({
+					url,
+					safeHostname: "coder.example.com",
+				});
+
+				expect(await secretsManager.getCurrentDeployment()).toBeNull();
+			},
+		);
+
 		it("should handle corrupted storage gracefully", async () => {
 			await secretStorage.store("coder.currentDeployment", "invalid-json{");
 
@@ -322,6 +349,18 @@ describe("SecretsManager", () => {
 	});
 
 	describe("migrateFromLegacyStorage", () => {
+		it("retains legacy credentials when the hostname cannot be used for storage", async () => {
+			await memento.update("url", "https://..");
+			await secretStorage.store("sessionToken", "legacy-token");
+
+			await expect(secretsManager.migrateFromLegacyStorage()).rejects.toThrow(
+				/local storage/,
+			);
+
+			expect(await secretStorage.get("sessionToken")).toBe("legacy-token");
+			expect(mementoManager.getLegacyUrl()).toBe("https://..");
+			expect(await secretsManager.getCurrentDeployment()).toBeNull();
+		});
 		it("migrates legacy url/token to new format and sets current deployment", async () => {
 			// Set up legacy storage
 			await memento.update("url", "https://legacy.coder.com");

@@ -56,6 +56,20 @@ describe("check version support", () => {
 			["v2.32.0", "v2.32.1", "v2.33.0", "v3.0.0"],
 		);
 	});
+	it("ssh command", () => {
+		expectFlag(
+			"sshCommand",
+			["v2.22.9", "v2.22.0", "v1.0.0", "v2.3.3+e491217"],
+			["v2.23.0", "v2.23.1", "v2.34.0", "v3.0.0"],
+		);
+	});
+	it("ssh tty", () => {
+		expectFlag(
+			"sshTty",
+			["v2.23.0", "v2.33.11", "v1.0.0", "v2.3.3+e491217"],
+			["v2.34.0", "v2.34.1", "v2.35.0", "v3.0.0"],
+		);
+	});
 	it("support bundle", () => {
 		expectFlag(
 			"supportBundle",

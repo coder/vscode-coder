@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { isValidDeploymentUrl } from "../common/validation";
+
 import type { Memento } from "vscode";
 
 /** Maximum number of recent URLs to store. */
@@ -48,7 +50,10 @@ export class MementoManager {
 	 */
 	public withUrlHistory(...append: Array<string | undefined>): string[] {
 		const val = this.memento.get<string[]>("urlHistory");
-		const urls: Set<string> = Array.isArray(val) ? new Set(val) : new Set();
+		// Drop invalid URLs stored by older versions; sign-in rejects them.
+		const urls = new Set(
+			Array.isArray(val) ? val.filter(isValidDeploymentUrl) : [],
+		);
 		for (const url of append) {
 			if (url) {
 				// It might exist; delete first so it gets appended.

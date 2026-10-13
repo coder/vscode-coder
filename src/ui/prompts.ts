@@ -2,6 +2,10 @@ import { type WorkspaceAgent } from "coder/site/src/api/typesGenerated";
 import * as vscode from "vscode";
 
 import { type CoderApi } from "../api/coderApi";
+import {
+	parseDeploymentUrl,
+	validateDeploymentUrl,
+} from "../common/validation";
 import { OAuthMetadataClient } from "../oauth/metadataClient";
 import { type MementoManager } from "../storage/mementoManager";
 
@@ -131,10 +135,13 @@ export async function maybeAskUrl(
 		// Default to HTTPS if not provided so URLs can be typed more easily.
 		url = "https://" + url;
 	}
+	// Converts an international domain name to its ASCII (punycode) form.
+	url = parseDeploymentUrl(url).href;
 	while (url.endsWith("/")) {
 		url = url.substring(0, url.length - 1);
 	}
-	return url;
+	// Fail before sign-in rather than when the URL reaches the SSH ProxyCommand.
+	return validateDeploymentUrl(url);
 }
 
 export async function maybeAskAuthMethod(

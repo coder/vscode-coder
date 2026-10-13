@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { OPEN_CODER_OUTPUT_ACTION } from "@/error/inputValidationError";
 import { CALLBACK_PATH } from "@/oauth/constants";
 import { OAuthCallback } from "@/oauth/oauthCallback";
 import { MementoManager } from "@/storage/mementoManager";
@@ -447,6 +448,22 @@ describe("uriHandler", () => {
 			},
 		);
 
+		it("keeps the stored URL when a link names a known deployment's origin", async () => {
+			const t = createTestContext();
+			await t.storeSession();
+			const linkUrl = `${TEST_URL}/$(id>$HOME/pwned)/../../..`;
+
+			await t.open(`owner=o&workspace=w&url=${encodeURIComponent(linkUrl)}`);
+
+			expect(t.showWarningMessage).not.toHaveBeenCalled();
+			expect(t.deploymentManager.setDeployment).toHaveBeenCalledWith(
+				expect.objectContaining({ url: TEST_URL }),
+			);
+			expect(await t.secretsManager.getSessionAuth(TEST_HOSTNAME)).toEqual(
+				expect.objectContaining({ url: TEST_URL }),
+			);
+		});
+
 		interface LookalikeOriginCase {
 			name: string;
 			storedUrl: string;
@@ -456,7 +473,7 @@ describe("uriHandler", () => {
 			{ name: "a different scheme", storedUrl: "http://coder.example.com" },
 			{ name: "a different port", storedUrl: "https://coder.example.com:8443" },
 		])(
-			"prompts when the stored session is for $name ($storedUrl)",
+			"prompts and uses the link's URL when the stored session is for $name ($storedUrl)",
 			async ({ storedUrl }) => {
 				const t = createTestContext();
 				await t.storeSession({ url: storedUrl });
@@ -464,6 +481,9 @@ describe("uriHandler", () => {
 				await t.open();
 
 				expectTrustPrompt(expect.stringContaining(TEST_URL));
+				expect(t.deploymentManager.setDeployment).toHaveBeenCalledWith(
+					expect.objectContaining({ url: TEST_URL }),
+				);
 			},
 		);
 
@@ -592,6 +612,31 @@ describe("uriHandler", () => {
 
 			expectUriError("Connection failed");
 		});
+
+		it.each([
+			{ action: OPEN_CODER_OUTPUT_ACTION, showsOutput: true },
+			{ action: undefined, showsOutput: false },
+		])(
+			"reports an unsafe link hostname safely (action: $action)",
+			async ({ action, showsOutput }) => {
+				const t = createTestContext();
+				t.userInteraction.setResponse("Failed to handle URI", action);
+				const linkUrl = "https://../";
+
+				await t.open(`owner=o&workspace=w&url=${encodeURIComponent(linkUrl)}`);
+
+				const [[message, diagnostic]] = vi.mocked(t.logger.warn).mock.calls;
+				expect(diagnostic).toEqual({ value: JSON.stringify("..") });
+				expect(message).not.toContain(linkUrl);
+				expect(t.showErrorMessage).toHaveBeenCalledExactlyOnceWith(
+					"Failed to handle URI",
+					{ modal: true, useCustom: true, detail: message },
+					OPEN_CODER_OUTPUT_ACTION,
+				);
+				expect(t.logger.show).toHaveBeenCalledTimes(showsOutput ? 1 : 0);
+				expect(t.commands.open).not.toHaveBeenCalled();
+			},
+		);
 	});
 
 	describe(CALLBACK_PATH, () => {
