@@ -1,4 +1,4 @@
-import { safeStringify } from "./formatters";
+import { redactSecrets, safeStringify } from "./formatters";
 
 import type { LogSink, Logger } from "./logger";
 
@@ -109,8 +109,13 @@ export class FlightRecorder implements Logger {
 	/** Pass a call through to the sink and buffer it when below the level. */
 	private wrap(level: Level): (message: string, ...args: unknown[]) => void {
 		return (message, ...args) => {
-			this.record(level, message, args);
-			this.inner[level](message, ...args);
+			if (SEVERITY[level] < this.channel.logLevel) {
+				// The channel drops this entry, so only the buffered copy is formatted.
+				this.record(level, message, args);
+				this.inner[level](message, ...args);
+			} else {
+				this.inner[level](message, ...args.map(redactSecrets));
+			}
 		};
 	}
 
@@ -130,7 +135,7 @@ export class FlightRecorder implements Logger {
 	}
 
 	private record(level: Level, message: string, args: unknown[]): void {
-		if (this.capacity === 0 || SEVERITY[level] >= this.channel.logLevel) {
+		if (this.capacity === 0) {
 			return;
 		}
 		const text = [message, ...args.map((arg) => safeStringify(arg) ?? "")].join(

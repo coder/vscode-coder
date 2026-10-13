@@ -33,8 +33,8 @@
   in a future release, so ask your Coder administrator to enable dynamic client
   registration. For instructions, see
   [OAuth2 provider](https://coder.com/docs/admin/integrations/oauth2-provider).
-- Keep session tokens, OAuth tokens, and client secrets from failed requests out
-  of the buffered logs that the Coder output channel replays.
+- Keep session tokens, OAuth tokens, and client secrets out of the Coder output
+  channel and its buffered logs, including from failed requests.
 - CLI commands and SSH connections that the extension starts ignore
   `CODER_SESSION_TOKEN` from the environment, so they no longer fail or run as a
   different user inside a Coder workspace.

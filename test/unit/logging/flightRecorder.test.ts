@@ -70,6 +70,17 @@ describe("FlightRecorder", () => {
 		]);
 	});
 
+	it("redacts credentials from forwarded and buffered args", () => {
+		const { buffer, calls, flush } = setup(INFO, 10);
+		const auth = { url: "https://coder.example.com", token: "secret" };
+
+		buffer.info("shown", auth);
+		buffer.debug("hidden", auth);
+
+		expect(calls[0].args).toEqual([{ ...auth, token: "<redacted>" }]);
+		expect(flush().join(" ")).not.toContain("secret");
+	});
+
 	interface LevelCase {
 		level: number;
 		hidden: LogMethod;
