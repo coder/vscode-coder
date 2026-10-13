@@ -5,7 +5,7 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
-## Unreleased
+## [v1.17.0](https://github.com/coder/vscode-coder/releases/tag/v1.17.0) 2026-10-13
 
 ### Added
 
@@ -18,29 +18,33 @@
   the socket never reaches a terminal failure. The extension keeps retrying until
   the server is reachable again.
 
+### Changed
+
+- Report the editor you connect from, such as Cursor or Windsurf, to Coder
+  for workspace session tracking. Requires Coder 2.38.0 or later; older
+  versions keep reporting `vscode`.
+
 ### Fixed
 
-- OAuth sign-in now works on deployments that enforce token scopes. Sessions
-  missing required scopes stop refreshing and require sign-in when they expire.
+- OAuth sign-in is offered only when the deployment enables Coder's OAuth2
+  provider and allows dynamic client registration, which is off by default
+  from Coder 2.37; otherwise a notice says sign-in uses a session token. OAuth
+  becomes the default sign-in method in a future release, so ask your Coder
+  administrator to enable them. For instructions, see
+  [OAuth2 provider](https://coder.com/docs/admin/integrations/oauth2-provider).
+- OAuth sign-in now works on deployments that enforce token scopes, and
+  requests the permissions needed to refresh workspace external-auth links.
+  Sessions missing required scopes stop refreshing and require sign-in when
+  they expire.
+- Preserve OAuth refresh credentials when reusing a stored token.
 - Revoke OAuth tokens on logout and after successful session replacement, even
   when their scopes are outdated. Failed or canceled sign-ins do not revoke
   the stored session.
-- Preserve OAuth refresh credentials when reusing a stored token, and request
-  the permissions needed to refresh workspace external-auth links.
-- OAuth sign-in is offered only when the deployment allows dynamic client
-  registration, which is off by default from Coder 2.37; otherwise a notice
-  says sign-in uses a session token. OAuth becomes the default sign-in method
-  in a future release, so ask your Coder administrator to enable dynamic client
-  registration. For instructions, see
-  [OAuth2 provider](https://coder.com/docs/admin/integrations/oauth2-provider).
 - Keep session tokens, OAuth tokens, and client secrets out of the Coder output
   channel and its buffered logs, including from failed requests.
 - CLI commands and SSH connections that the extension starts ignore
-  `CODER_SESSION_TOKEN` from the environment, so they no longer fail or run as a
-  different user inside a Coder workspace.
-
-### Fixed
-
+  `CODER_SESSION_TOKEN` from the environment and use your stored session, so
+  they no longer fail or run as a different user when that variable is set.
 - Run workspace app commands as arguments to `coder ssh` instead of typing them
   into a local terminal. This requires Coder CLI v2.23.0 or later.
 - Validate workspace, owner, and agent names from the deployment before using
@@ -61,6 +65,14 @@
   send them with `coder.headerCommand`.
 - Keep the stored URL of a deployment you are signed in to when a link names
   the same origin with a different path.
+- Apply the SSH connection settings in Devin Desktop (formerly Windsurf), which
+  reads them from `remote.devinSSH.*`, or `remote.windsurfSSH.*` on Windsurf
+  2.0 to 2.3, instead of `remote.SSH.*`. Each editor now gets only the
+  settings its Remote SSH extension reads, both on connect and in **Coder:
+  Apply Recommended SSH Settings**.
+- Escape glob characters in the SSH config `Include` path in a way OpenSSH for
+  Windows understands, so a config directory whose path contains `*`, `?`, or
+  `[` is included correctly on Windows.
 
 ## [v1.16.4](https://github.com/coder/vscode-coder/releases/tag/v1.16.4) 2026-09-23
 
