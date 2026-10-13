@@ -14,7 +14,7 @@ import {
 import { recordError } from "../instrumentation/outcomes";
 import {
 	type CliAuth,
-	EMPTY_TOKEN_FLAG,
+	getCliProcessEnv,
 	getGlobalFlags,
 	mayUseCliStore,
 	resolveCliAuth,
@@ -76,16 +76,10 @@ export class CliCredentialManager {
 				return;
 			}
 			span.setProperty("store", cli.auth.store);
-			// `login` reads the token from the environment, so drop the empty flag.
-			const flags = cli.flags.filter((flag) => flag !== EMPTY_TOKEN_FLAG);
-			await this.exec(
-				{ ...cli, flags },
-				["login", "--use-token-as-session", url],
-				{
-					env: envWithSessionToken(token),
-					signal: options?.signal,
-				},
-			);
+			await this.exec(cli, ["login", "--use-token-as-session", url], {
+				env: { ...getCliProcessEnv(), CODER_SESSION_TOKEN: token },
+				signal: options?.signal,
+			});
 			span.setProperty("outcome", "stored");
 			this.logger.info("Stored token via CLI for", url);
 		});
@@ -241,6 +235,7 @@ export class CliCredentialManager {
 		}, EXEC_LOG_INTERVAL_MS);
 		try {
 			return await execFileAsync(cli.binPath, [...cli.flags, ...args], {
+				env: getCliProcessEnv(),
 				...options,
 				timeout: EXEC_TIMEOUT_MS,
 			});
@@ -274,14 +269,4 @@ export class CliCredentialManager {
 		);
 		return results.every(Boolean);
 	}
-}
-
-/** `process.env` with `token` as its only `CODER_SESSION_TOKEN`, in any case. */
-function envWithSessionToken(token: string): NodeJS.ProcessEnv {
-	const env = Object.fromEntries(
-		Object.entries(process.env).filter(
-			([key]) => key.toUpperCase() !== "CODER_SESSION_TOKEN",
-		),
-	);
-	return { ...env, CODER_SESSION_TOKEN: token };
 }

@@ -36,7 +36,11 @@ export function getExpandedUserGlobalFlags(
 	});
 }
 
-/** Flags for shell contexts (SSH `ProxyCommand`). */
+/**
+ * Flags for the SSH `ProxyCommand`, whose environment the extension can't set.
+ * `--token=` hides a host `CODER_SESSION_TOKEN`; a user's `--token` comes
+ * later and wins.
+ */
 export function getGlobalShellFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 	auth: CliAuth,
@@ -46,10 +50,13 @@ export function getGlobalShellFlags(
 	// OpenSSH (no shell), and `sh`. `maybeAskUrl` rejects these at entry; this
 	// covers URLs that reach storage some other way.
 	validateDeploymentUrl(auth.url);
-	return buildGlobalFlags(configs, auth, escapeCommandArg, escapeShellArg);
+	return [
+		"--token=",
+		...buildGlobalFlags(configs, auth, escapeCommandArg, escapeShellArg),
+	];
 }
 
-/** Raw flags for `execFile` or `spawn` without a shell. */
+/** Raw flags for `execFile` or `spawn` without a shell; pair them with `getCliProcessEnv`. */
 export function getGlobalFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 	auth: CliAuth,
@@ -59,8 +66,22 @@ export function getGlobalFlags(
 
 const identity = (s: string) => s;
 
-/** Hides `CODER_SESSION_TOKEN` (in any case) so the CLI uses its stored session. */
-export const EMPTY_TOKEN_FLAG = "--token=";
+/**
+ * `process.env` without `CODER_SESSION_TOKEN` (any letter case, optionally
+ * `HOMEBREW_`-prefixed), which the CLI would use over its stored session.
+ */
+export function getCliProcessEnv(): NodeJS.ProcessEnv {
+	return Object.fromEntries(
+		Object.entries(process.env).filter(([name]) => !isSessionTokenEnv(name)),
+	);
+}
+
+function isSessionTokenEnv(name: string): boolean {
+	const upper = name.toUpperCase();
+	return (
+		upper === "CODER_SESSION_TOKEN" || upper === "HOMEBREW_CODER_SESSION_TOKEN"
+	);
+}
 
 function buildGlobalFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
@@ -71,12 +92,10 @@ function buildGlobalFlags(
 	// Escape after stripping so expansion whitespace stays in one shell token.
 	// User flags keep shell expansion (e.g. `$VAR`); the auth values and
 	// header command are quoted literally.
-	const userFlags = stripManagedFlags(
+	const flags = stripManagedFlags(
 		getExpandedUserGlobalFlags(configs),
 		auth.store === "extension",
 	).map(escUserFlag);
-	// A user's own `--token` comes later, so it wins.
-	const flags = [EMPTY_TOKEN_FLAG, ...userFlags];
 	if (auth.store === "extension") {
 		flags.push("--global-config", escValue(auth.configDir));
 	}

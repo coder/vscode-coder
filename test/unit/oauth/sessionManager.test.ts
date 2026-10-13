@@ -33,7 +33,7 @@ import {
 } from "./testUtils";
 
 import type { Deployment } from "@/deployment/types";
-import type { OAuthClient } from "@/oauth/tokens";
+import type { OAuthClientRegistration } from "@/oauth/tokens";
 import type { TelemetryService } from "@/telemetry/service";
 
 vi.mock("axios", async () => {
@@ -86,7 +86,7 @@ function createTestContext(deployment: Deployment = createTestDeployment()) {
 			refreshToken?: string;
 			expiryMs?: number;
 			scope?: string;
-			client?: OAuthClient;
+			registration?: OAuthClientRegistration;
 		} = {},
 	) => {
 		await base.secretsManager.setSessionAuth(TEST_HOSTNAME, {
@@ -97,7 +97,7 @@ function createTestContext(deployment: Deployment = createTestDeployment()) {
 				refresh_token: overrides.refreshToken ?? "refresh-token",
 				expiry_timestamp: Date.now() + (overrides.expiryMs ?? ONE_HOUR_MS),
 				scope: overrides.scope ?? DEFAULT_OAUTH_SCOPES,
-				client: overrides.client,
+				registration: overrides.registration,
 			},
 		});
 	};
@@ -216,10 +216,13 @@ describe("OAuthSessionManager", () => {
 			});
 		});
 
-		it("authenticates as the client that issued the tokens and keeps it", async () => {
+		it("authenticates as the registration that issued the tokens and keeps it", async () => {
 			const { secretsManager, manager, setupForOAuthOperation } =
 				createTestContext();
-			const client = { client_id: "issuer", client_secret: "issuer-secret" };
+			const registration = {
+				client_id: "issuer",
+				client_secret: "issuer-secret",
+			};
 			let params: URLSearchParams | undefined;
 			await setupForOAuthOperation(
 				{
@@ -229,7 +232,7 @@ describe("OAuthSessionManager", () => {
 					},
 					"/api/v2/users/me": createMockUser(),
 				},
-				{ client },
+				{ registration },
 			);
 
 			await manager.refreshToken();
@@ -238,7 +241,7 @@ describe("OAuthSessionManager", () => {
 			expect(params?.get("client_secret")).toBe("issuer-secret");
 			expect(
 				(await secretsManager.getSessionAuth(TEST_HOSTNAME))?.oauth,
-			).toMatchObject({ client });
+			).toMatchObject({ registration });
 		});
 
 		it("keeps the stored username when the user lookup fails", async () => {
@@ -491,13 +494,13 @@ describe("OAuthSessionManager", () => {
 	describe("revokeTokens", () => {
 		interface RevokeCase {
 			name: string;
-			client?: OAuthClient;
+			registration?: OAuthClientRegistration;
 			clientId: string;
 		}
 		it.each<RevokeCase>([
 			{
-				name: "the client that issued the tokens",
-				client: { client_id: "issuer", client_secret: "issuer-secret" },
+				name: "the registration that issued the tokens",
+				registration: { client_id: "issuer", client_secret: "issuer-secret" },
 				clientId: "issuer",
 			},
 			{
@@ -506,7 +509,7 @@ describe("OAuthSessionManager", () => {
 			},
 		])(
 			"revokes the refresh and access tokens as $name",
-			async ({ client, clientId }) => {
+			async ({ registration, clientId }) => {
 				const { manager, setupForOAuthOperation } = createTestContext();
 
 				const revoked: Array<Record<string, string | null>> = [];
@@ -522,7 +525,7 @@ describe("OAuthSessionManager", () => {
 							return {};
 						},
 					},
-					{ client },
+					{ registration },
 				);
 
 				await manager.revokeTokens();

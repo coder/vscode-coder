@@ -25,19 +25,19 @@ export function toUrlSearchParams(obj: object): URLSearchParams {
 	return new URLSearchParams(params);
 }
 
-/** Client credentials that refresh and revocation authenticate with. */
-export type OAuthClient = Pick<
+/** Client ID and secret that refresh and revocation authenticate with. */
+export type OAuthClientRegistration = Pick<
 	OAuth2ClientRegistrationResponse,
 	"client_id" | "client_secret"
 >;
 
 /**
- * Build OAuthTokenData from a token response issued to `client`.
+ * Build OAuthTokenData from a token response issued to `registration`.
  * Prefers the `expiry` timestamp over calculating from `expires_in`.
  */
 export function buildOAuthTokenData(
 	tokenResponse: OAuth2TokenResponse,
-	client: OAuthClient,
+	registration: OAuthClientRegistration,
 ): OAuthTokenData {
 	if (tokenResponse.token_type !== "Bearer") {
 		throw new Error(
@@ -50,9 +50,9 @@ export function buildOAuthTokenData(
 		// Servers that ignore scopes return none and grant everything
 		scope: tokenResponse.scope || "coder:all",
 		expiry_timestamp: getExpiryTimestamp(tokenResponse),
-		client: {
-			client_id: client.client_id,
-			client_secret: client.client_secret,
+		registration: {
+			client_id: registration.client_id,
+			client_secret: registration.client_secret,
 		},
 	};
 }

@@ -3,17 +3,13 @@ import * as vscode from "vscode";
 
 import { InvalidApiResponseError } from "@/api/responseValidation";
 import { getHeaders } from "@/headers";
-import {
-	ClientRegistrationDisabledError,
-	OAuthAuthorizer,
-} from "@/oauth/authorizer";
+import { OAuthAuthorizer } from "@/oauth/authorizer";
 import {
 	DEFAULT_OAUTH_SCOPES,
 	IF_SUPPORTED_OAUTH_SCOPES,
 } from "@/oauth/constants";
 
 import {
-	createAxiosError,
 	createMockUser,
 	MockCancellationToken,
 	MockProgress,
@@ -242,6 +238,31 @@ describe("OAuthAuthorizer", () => {
 			const stored =
 				await secretsManager.getOAuthClientRegistration(TEST_HOSTNAME);
 			expect(stored?.client_id).toBe("new-client-id");
+		});
+
+		it("keeps the stored registration when login fails after re-registering", async () => {
+			const { setupOAuthRoutes, oauthCallback, secretsManager, startLogin } =
+				createTestContext();
+			await secretsManager.setOAuthClientRegistration(
+				TEST_HOSTNAME,
+				createMockClientRegistration({
+					client_id: "old-client-id",
+					redirect_uris: ["vscode://different-extension/oauth/callback"],
+				}),
+			);
+			setupOAuthRoutes(undefined, {
+				"/oauth2/register": createMockClientRegistration({
+					client_id: "new-client-id",
+				}),
+			});
+
+			const { loginPromise, state } = await startLogin();
+			await oauthCallback.send({ state, code: null, error: "access_denied" });
+			await expect(loginPromise).rejects.toThrow("OAuth error: access_denied");
+
+			const stored =
+				await secretsManager.getOAuthClientRegistration(TEST_HOSTNAME);
+			expect(stored?.client_id).toBe("old-client-id");
 		});
 
 		it("reports progress during login flow", async () => {
@@ -527,21 +548,6 @@ describe("OAuthAuthorizer", () => {
 					new MockCancellationToken(),
 				),
 			).rejects.toThrow("Server does not support dynamic client registration");
-		});
-
-		it("throws ClientRegistrationDisabledError when the server refuses registration", async () => {
-			const { setupOAuthRoutes, authorizer } = createTestContext();
-			setupOAuthRoutes(undefined, {
-				"/oauth2/register": createAxiosError(403, "Forbidden"),
-			});
-
-			await expect(
-				authorizer.login(
-					createTestDeployment(),
-					new MockProgress(),
-					new MockCancellationToken(),
-				),
-			).rejects.toThrow(ClientRegistrationDisabledError);
 		});
 
 		it("rejects a token response without an access token", async () => {

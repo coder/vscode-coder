@@ -68,6 +68,8 @@ deployment. Treat them as untrusted:
 
 - Run the CLI with `execFile`/`spawn` argv (or a terminal's `shellPath` and
   `shellArgs`), never through a shell or `terminal.sendText`.
+- Pass `env: getCliProcessEnv()` (plus `strictEnv: true` for a terminal) so
+  a host `CODER_SESSION_TOKEN` cannot replace the stored session.
 - Put flags first, then `--`, then deployment-provided operands
   (`coder ping -- owner/ws`) so a value like `--foo` is never read as a flag.
 - Validate names with `src/common/validation.ts` before they reach SSH hosts,

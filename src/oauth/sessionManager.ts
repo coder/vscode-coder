@@ -361,12 +361,12 @@ export class OAuthSessionManager implements vscode.Disposable {
 			}
 
 			const refreshToken = storedTokens.refresh_token;
-			const client =
-				storedTokens.client ??
+			const registration =
+				storedTokens.registration ??
 				(await this.secretsManager.getOAuthClientRegistration(
 					deployment.safeHostname,
 				));
-			if (!client) {
+			if (!registration) {
 				throw new Error("No client registration found");
 			}
 
@@ -380,8 +380,8 @@ export class OAuthSessionManager implements vscode.Disposable {
 					const params: OAuth2TokenRequest = {
 						grant_type: REFRESH_GRANT_TYPE,
 						refresh_token: refreshToken,
-						client_id: client.client_id,
-						client_secret: client.client_secret,
+						client_id: registration.client_id,
+						client_secret: registration.client_secret,
 					};
 
 					const response = await axiosInstance.post<OAuth2TokenResponse>(
@@ -414,7 +414,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 							deployment,
 							tokenResponse.access_token,
 						),
-						oauth: buildOAuthTokenData(tokenResponse, client),
+						oauth: buildOAuthTokenData(tokenResponse, registration),
 					});
 
 					return tokenResponse;

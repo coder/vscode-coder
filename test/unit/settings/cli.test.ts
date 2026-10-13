@@ -5,7 +5,7 @@ import { afterEach, beforeEach, it, expect, describe, vi } from "vitest";
 import { cliFeatureSet } from "@/featureSet";
 import {
 	type CliAuth,
-	EMPTY_TOKEN_FLAG,
+	getCliProcessEnv,
 	getExpandedUserGlobalFlags,
 	getGlobalFlags,
 	getGlobalShellFlags,
@@ -80,7 +80,7 @@ describe("cliConfig", () => {
 		])("emits auth flags for a $scenario", ({ auth, expected }) => {
 			const config = new MockConfigurationProvider();
 			expect(getGlobalShellFlags(config, auth)).toStrictEqual([
-				EMPTY_TOKEN_FLAG,
+				"--token=",
 				...expected,
 			]);
 		});
@@ -101,7 +101,7 @@ describe("cliConfig", () => {
 			config.set("coder.globalFlags", ["--verbose", "--global-configs"]);
 
 			expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
-				EMPTY_TOKEN_FLAG,
+				"--token=",
 				"--verbose",
 				"--global-configs", // similar prefixes are not managed flags
 				...EXTENSION_SHELL_FLAGS,
@@ -113,9 +113,20 @@ describe("cliConfig", () => {
 			config.set("coder.globalFlags", ["--verbose", "--use-keyring=false"]);
 
 			expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
-				EMPTY_TOKEN_FLAG,
+				"--token=",
 				"--verbose",
 				...EXTENSION_SHELL_FLAGS,
+			]);
+		});
+
+		it("places a user --token after the empty token flag so it wins", () => {
+			const config = new MockConfigurationProvider();
+			config.set("coder.globalFlags", ["--token=abc"]);
+
+			expect(getGlobalShellFlags(config, cliStoreAuth)).toStrictEqual([
+				"--token=",
+				"--token=abc",
+				...CLI_SHELL_FLAGS,
 			]);
 		});
 
@@ -134,7 +145,7 @@ describe("cliConfig", () => {
 				config.set("coder.globalFlags", flags);
 
 				expect(getGlobalShellFlags(config, cliStoreAuth)).toStrictEqual([
-					EMPTY_TOKEN_FLAG,
+					"--token=",
 					...flags,
 					...CLI_SHELL_FLAGS,
 				]);
@@ -154,7 +165,7 @@ describe("cliConfig", () => {
 				config.set("coder.globalFlags", flags);
 
 				expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
-					EMPTY_TOKEN_FLAG,
+					"--token=",
 					"-v",
 					...EXTENSION_SHELL_FLAGS,
 				]);
@@ -168,7 +179,7 @@ describe("cliConfig", () => {
 			config.set("coder.globalFlags", ["-v", "--header-command custom"]);
 
 			expect(getGlobalShellFlags(config, cliStoreAuth)).toStrictEqual([
-				EMPTY_TOKEN_FLAG,
+				"--token=",
 				"-v",
 				'"--header-command custom"', // ignored by CLI
 				...CLI_SHELL_FLAGS,
@@ -204,7 +215,7 @@ describe("cliConfig", () => {
 						configDir: "/home/$USER/%APPDATA%/coder",
 					}),
 				).toStrictEqual([
-					EMPTY_TOKEN_FLAG,
+					"--token=",
 					'"--header=Authorization=$TOKEN"',
 					"--global-config",
 					configDir,
@@ -223,7 +234,7 @@ describe("cliConfig", () => {
 
 			// Without per-entry escaping the space splits the shell command.
 			expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
-				EMPTY_TOKEN_FLAG,
+				"--token=",
 				'"--cfg=C:\\Users\\John Doe/coder"',
 				...EXTENSION_SHELL_FLAGS,
 			]);
@@ -237,23 +248,29 @@ describe("cliConfig", () => {
 			config.set("coder.headerCommand", "echo test");
 
 			expect(getGlobalFlags(config, extensionStoreAuth)).toStrictEqual([
-				EMPTY_TOKEN_FLAG,
 				"--verbose",
 				...EXTENSION_FLAGS,
 				"--header-command",
 				"echo test",
 			]);
 		});
+	});
 
-		it("places a user --token after the empty token flag so it wins", () => {
-			const config = new MockConfigurationProvider();
-			config.set("coder.globalFlags", ["--token=abc"]);
+	describe("getCliProcessEnv", () => {
+		afterEach(() => {
+			vi.unstubAllEnvs();
+		});
 
-			expect(getGlobalFlags(config, cliStoreAuth)).toStrictEqual([
-				EMPTY_TOKEN_FLAG,
-				"--token=abc",
-				...CLI_FLAGS,
-			]);
+		it("drops every session token variable the CLI reads", () => {
+			vi.stubEnv("coder_session_token", "host-token");
+			vi.stubEnv("HOMEBREW_CODER_SESSION_TOKEN", "brew-token");
+			vi.stubEnv("CODER_URL", "https://coder.example.com");
+
+			const env = getCliProcessEnv();
+
+			expect(env).not.toHaveProperty("coder_session_token");
+			expect(env).not.toHaveProperty("HOMEBREW_CODER_SESSION_TOKEN");
+			expect(env).toHaveProperty("CODER_URL", "https://coder.example.com");
 		});
 	});
 
@@ -514,10 +531,9 @@ describe("cliConfig", () => {
 			}
 			config.set("coder.globalFlags", userFlags);
 
-			expect(getGlobalFlags(config, resolve(config, version))).toStrictEqual([
-				EMPTY_TOKEN_FLAG,
-				...expected,
-			]);
+			expect(getGlobalFlags(config, resolve(config, version))).toStrictEqual(
+				expected,
+			);
 		});
 	});
 });

@@ -6,10 +6,7 @@ import { HttpStatusCode } from "@/api/httpStatusCode";
 import { getHeaders } from "@/headers";
 import { AuthTelemetry } from "@/instrumentation/auth";
 import { LoginCoordinator, type LoginMethod } from "@/login/loginCoordinator";
-import {
-	ClientRegistrationDisabledError,
-	OAuthAuthorizer,
-} from "@/oauth/authorizer";
+import { OAuthAuthorizer } from "@/oauth/authorizer";
 import { OAuthCallback } from "@/oauth/oauthCallback";
 import { revokeOAuthTokens } from "@/oauth/revocation";
 import { MementoManager } from "@/storage/mementoManager";
@@ -983,47 +980,6 @@ describe("LoginCoordinator", () => {
 			expect(await t.login(token)).toMatchObject({ success: false });
 			expect(await t.stored()).toEqual(oldSession);
 			expect(revokeOAuthTokens).not.toHaveBeenCalled();
-		});
-	});
-
-	describe("when client registration is disabled", () => {
-		function setup() {
-			const ctx = createTestContext();
-			ctx.mockSuccessfulAuth();
-			vi.mocked(maybeAskAuthMethod).mockResolvedValue("oauth");
-			vi.spyOn(OAuthAuthorizer.prototype, "login").mockRejectedValue(
-				new ClientRegistrationDisabledError(),
-			);
-			ctx.userInteraction.setInputBoxValue("session-token");
-			return {
-				...ctx,
-				login: () =>
-					ctx.coordinator.ensureLoggedIn({
-						url: TEST_URL,
-						safeHostname: TEST_HOSTNAME,
-					}),
-			};
-		}
-
-		it("signs in with a session token when the user chooses it", async () => {
-			const t = setup();
-			t.userInteraction.setResponse(
-				"OAuth sign-in is unavailable",
-				"Sign In with Token",
-			);
-
-			expect(await t.login()).toMatchObject({
-				method: "cli_token",
-				token: "session-token",
-			});
-		});
-
-		it("cancels sign-in when the user dismisses the prompt", async () => {
-			const t = setup();
-			t.userInteraction.setResponse("OAuth sign-in is unavailable", undefined);
-
-			expect(await t.login()).toMatchObject({ reason: "user_dismissed" });
-			expect(vscode.window.showInputBox).not.toHaveBeenCalled();
 		});
 	});
 

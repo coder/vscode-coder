@@ -15,7 +15,6 @@ import {
 import * as vscode from "vscode";
 
 import { cliFeatureSet } from "@/featureSet";
-import { EMPTY_TOKEN_FLAG } from "@/settings/cli";
 
 import {
 	MockConfigurationProvider,
@@ -65,6 +64,10 @@ describe("cliExec", () => {
 		await fs.mkdir(tmp, { recursive: true });
 		const code = `process.argv.slice(2).forEach(a => console.log(a));`;
 		echoArgsBin = await writeExecutable(tmp, "echo-args", code);
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
 	});
 
 	function setup(auth: CliEnv["auth"], binary = echoArgsBin) {
@@ -202,7 +205,6 @@ describe("cliExec", () => {
 				.trim()
 				.split("\n");
 			expect(args).toEqual([
-				EMPTY_TOKEN_FLAG,
 				"--url",
 				"http://localhost:3000",
 				"--header-command",
@@ -215,6 +217,17 @@ describe("cliExec", () => {
 				"--",
 				"owner/workspace",
 			]);
+		});
+
+		it("hides the host session token from the CLI", async () => {
+			vi.stubEnv("CODER_SESSION_TOKEN", "host-token");
+			const code = `console.log(process.env.CODER_SESSION_TOKEN ?? "unset");`;
+			const bin = await writeExecutable(tmp, "speedtest-env", code);
+			const { env } = setup(sharedAuth("http://localhost:3000"), bin);
+
+			const output = await cliExec.speedtest(env, "owner/workspace");
+
+			expect(output.trim()).toBe("unset");
 		});
 
 		it("surfaces stderr instead of full command line on failure", async () => {
@@ -248,7 +261,6 @@ describe("cliExec", () => {
 			configs.set("coder.headerCommand", "my-header-cmd");
 			const args = (await cliExec.netcheck(env)).trim().split("\n");
 			expect(args).toEqual([
-				EMPTY_TOKEN_FLAG,
 				"--url",
 				"http://localhost:3000",
 				"--header-command",
@@ -305,7 +317,6 @@ describe("cliExec", () => {
 			});
 			const args = (await fs.readFile(outputPath, "utf-8")).trim().split("\n");
 			expect(args).toEqual([
-				EMPTY_TOKEN_FLAG,
 				"--url",
 				"http://localhost:3000",
 				"--header-command",
@@ -337,7 +348,6 @@ describe("cliExec", () => {
 			await cliExec.supportBundle(env, "owner/workspace", { outputPath });
 			const args = (await fs.readFile(outputPath, "utf-8")).trim().split("\n");
 			expect(args).toEqual([
-				EMPTY_TOKEN_FLAG,
 				"--url",
 				"http://localhost:3000",
 				"support",
@@ -406,16 +416,18 @@ describe("cliExec", () => {
 
 			expect(spawn).toHaveBeenCalledWith(
 				env.binary,
-				[
-					EMPTY_TOKEN_FLAG,
-					"--url",
-					"https://test.coder.com",
-					"ping",
-					"--",
-					"owner/my workspace",
-				],
+				["--url", "https://test.coder.com", "ping", "--", "owner/my workspace"],
 				expect.objectContaining({ detached: process.platform !== "win32" }),
 			);
+		});
+
+		it("hides the host session token from the CLI", () => {
+			vi.stubEnv("CODER_SESSION_TOKEN", "host-token");
+			const { env } = setup(sharedAuth("https://test.coder.com"));
+			cliExec.ping(env, "owner/ws");
+
+			const options = vi.mocked(spawn).mock.calls[0][2];
+			expect(options.env).not.toHaveProperty("CODER_SESSION_TOKEN");
 		});
 
 		it("includes user global flags raw in the spawn argv", () => {
@@ -429,7 +441,6 @@ describe("cliExec", () => {
 			expect(spawn).toHaveBeenCalledWith(
 				env.binary,
 				[
-					EMPTY_TOKEN_FLAG,
 					"--verbose",
 					"--global-config",
 					"/cfg",
@@ -478,6 +489,7 @@ describe("cliExec", () => {
 		])(
 			"runs the app command as one argv entry after `--` on CLI $cliVersion",
 			({ cliVersion, ttyArgs }) => {
+				vi.stubEnv("CODER_SESSION_TOKEN", "host-token");
 				const env = appEnv(cliVersion);
 
 				cliExec.openAppStatusTerminal(env, {
@@ -490,7 +502,6 @@ describe("cliExec", () => {
 					name: "AI Agent",
 					shellPath: env.binary,
 					shellArgs: [
-						EMPTY_TOKEN_FLAG,
 						"--url",
 						"https://test.coder.com",
 						"ssh",
@@ -499,6 +510,10 @@ describe("cliExec", () => {
 						"--",
 						command,
 					],
+					env: expect.not.objectContaining({
+						CODER_SESSION_TOKEN: "host-token",
+					}),
+					strictEnv: true,
 				});
 			},
 		);

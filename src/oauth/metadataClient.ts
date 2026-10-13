@@ -38,6 +38,12 @@ const DEFAULT_AUTH_METHODS: readonly OAuth2TokenEndpointAuthMethod[] = [
 	"client_secret_basic",
 ];
 
+/** Whether a server allows OAuth sign-in, or why not. */
+export type OAuthSupport =
+	| "supported"
+	| "registration_disabled"
+	| "unsupported";
+
 /**
  * Client for discovering and validating OAuth server metadata.
  */
@@ -48,16 +54,27 @@ export class OAuthMetadataClient {
 	) {}
 
 	/**
-	 * Check if a server supports OAuth by attempting to fetch the well-known endpoint.
+	 * Checks OAuth discovery for client registration, which Coder omits while
+	 * dynamic client registration is off (the default from 2.37).
 	 */
 	public static async checkOAuthSupport(
 		axiosInstance: AxiosInstance,
-	): Promise<boolean> {
+		logger: Logger,
+	): Promise<OAuthSupport> {
 		try {
-			await axiosInstance.get(OAUTH_DISCOVERY_ENDPOINT);
-			return true;
-		} catch {
-			return false;
+			const response = await axiosInstance.get<
+				Partial<OAuth2AuthorizationServerMetadata>
+			>(OAUTH_DISCOVERY_ENDPOINT);
+			if (response.data.registration_endpoint) {
+				return "supported";
+			}
+			logger.warn(
+				"OAuth sign-in unavailable: dynamic client registration is disabled",
+			);
+			return "registration_disabled";
+		} catch (error) {
+			logger.info("OAuth sign-in unavailable: discovery failed", error);
+			return "unsupported";
 		}
 	}
 

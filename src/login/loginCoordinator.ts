@@ -7,10 +7,7 @@ import { needToken } from "../api/httpAgent";
 import { HttpStatusCode } from "../api/httpStatusCode";
 import { isSameOrigin, openInBrowser } from "../common/url";
 import { CertificateError } from "../error/certificateError";
-import {
-	ClientRegistrationDisabledError,
-	OAuthAuthorizer,
-} from "../oauth/authorizer";
+import { OAuthAuthorizer } from "../oauth/authorizer";
 import { revokeOAuthTokens } from "../oauth/revocation";
 import { buildOAuthTokenData } from "../oauth/tokens";
 import { withCancellableProgress } from "../ui/progress";
@@ -288,10 +285,8 @@ export class LoginCoordinator implements vscode.Disposable {
 	}
 
 	/**
-	 * Attempt to authenticate using OAuth, token, or mTLS. If necessary, prompts
-	 * for authentication method and credentials. Returns the token, user, and
-	 * method on success, or a bounded reason when the user aborts or
-	 * authentication fails.
+	 * Authenticate via OAuth, token, or mTLS, prompting as needed. On success,
+	 * persists the session and revokes the OAuth session it replaces.
 	 */
 	private async attemptLogin(
 		deployment: Deployment,
@@ -299,8 +294,8 @@ export class LoginCoordinator implements vscode.Disposable {
 		providedToken?: string,
 		tokenSignInConfirmed = false,
 	): Promise<LoginResult> {
-		// Revokes sessions that don't record their client. Read it before login can
-		// re-register the client.
+		// Read before OAuth login replaces it; it revokes a replaced session saved
+		// without its own registration.
 		const registration = await this.secretsManager.getOAuthClientRegistration(
 			deployment.safeHostname,
 		);
@@ -497,18 +492,13 @@ export class LoginCoordinator implements vscode.Disposable {
 
 	/** Last resort: ask the user how to authenticate. */
 	private async askAuthMethod(ctx: LoginAttemptContext): Promise<LoginResult> {
-		const authMethod = await maybeAskAuthMethod(ctx.client);
+		const authMethod = await maybeAskAuthMethod(ctx.client, this.logger);
 		switch (authMethod) {
-			case "oauth": {
-				const result = await this.loginWithOAuth(ctx.deployment);
-				if (result !== "use_token") {
-					return withLoginMethod("oauth", result);
-				}
+			case "oauth":
 				return withLoginMethod(
-					"cli_token",
-					await this.loginWithToken(ctx.client),
+					"oauth",
+					await this.loginWithOAuth(ctx.deployment),
 				);
-			}
 			case "legacy":
 				return withLoginMethod(
 					"cli_token",
@@ -663,10 +653,12 @@ export class LoginCoordinator implements vscode.Disposable {
 		return { success: false, reason: "user_dismissed" };
 	}
 
-	/** OAuth flow; "use_token" means the user chose session-token sign-in instead. */
+	/**
+	 * OAuth authentication flow.
+	 */
 	private async loginWithOAuth(
 		deployment: Deployment,
-	): Promise<LoginAttemptResult | "use_token"> {
+	): Promise<LoginAttemptResult> {
 		try {
 			this.logger.debug("Starting OAuth authentication");
 
@@ -692,21 +684,6 @@ export class LoginCoordinator implements vscode.Disposable {
 				oauth: buildOAuthTokenData(tokenResponse, registration),
 			};
 		} catch (error) {
-			if (error instanceof ClientRegistrationDisabledError) {
-				this.logger.warn("OAuth sign-in unavailable:", error.message);
-				const action = await vscodeProposed.window.showWarningMessage(
-					"OAuth sign-in is unavailable",
-					{
-						useCustom: true,
-						modal: true,
-						detail: `${error.message}. To use OAuth, ask an administrator to set dynamic_client_registration_enabled.`,
-					},
-					"Sign In with Token",
-				);
-				return action === "Sign In with Token"
-					? "use_token"
-					: { success: false, reason: "user_dismissed" };
-			}
 			const title = "OAuth authentication failed";
 			this.logger.error(title, error);
 			if (error instanceof CertificateError) {

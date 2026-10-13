@@ -5,7 +5,7 @@ import { buildOAuthTokenData } from "@/oauth/tokens";
 import type { OAuth2TokenResponse } from "coder/site/src/api/typesGenerated";
 
 const ACCESS_TOKEN_DEFAULT_EXPIRY_MS = 60 * 60 * 1000;
-const CLIENT = { client_id: "client-id", client_secret: "client-secret" };
+const REGISTRATION = { client_id: "client-id", client_secret: "client-secret" };
 
 function createTokenResponse(
 	overrides: Partial<OAuth2TokenResponse> = {},
@@ -25,7 +25,7 @@ describe("buildOAuthTokenData", () => {
 		it("uses expires_in when valid", () => {
 			const result = buildOAuthTokenData(
 				createTokenResponse({ expires_in: 7200 }),
-				CLIENT,
+				REGISTRATION,
 			);
 			const expectedExpiry = Date.now() + 7200 * 1000;
 			expect(result.expiry_timestamp).toBeGreaterThanOrEqual(
@@ -38,7 +38,7 @@ describe("buildOAuthTokenData", () => {
 			const before = Date.now();
 			const result = buildOAuthTokenData(
 				createTokenResponse({ expires_in: 0 }),
-				CLIENT,
+				REGISTRATION,
 			);
 			expect(result.expiry_timestamp).toBeGreaterThanOrEqual(
 				before + ACCESS_TOKEN_DEFAULT_EXPIRY_MS,
@@ -49,7 +49,7 @@ describe("buildOAuthTokenData", () => {
 			const before = Date.now();
 			const result = buildOAuthTokenData(
 				createTokenResponse({ expires_in: -100 }),
-				CLIENT,
+				REGISTRATION,
 			);
 			expect(result.expiry_timestamp).toBeGreaterThanOrEqual(
 				before + ACCESS_TOKEN_DEFAULT_EXPIRY_MS,
@@ -60,7 +60,7 @@ describe("buildOAuthTokenData", () => {
 			const before = Date.now();
 			const result = buildOAuthTokenData(
 				createTokenResponse({ expires_in: undefined }),
-				CLIENT,
+				REGISTRATION,
 			);
 			expect(result.expiry_timestamp).toBeGreaterThanOrEqual(
 				before + ACCESS_TOKEN_DEFAULT_EXPIRY_MS,
@@ -71,7 +71,7 @@ describe("buildOAuthTokenData", () => {
 			const before = Date.now();
 			const result = buildOAuthTokenData(
 				createTokenResponse({ expires_in: Infinity }),
-				CLIENT,
+				REGISTRATION,
 			);
 			expect(result.expiry_timestamp).toBeGreaterThanOrEqual(
 				before + ACCESS_TOKEN_DEFAULT_EXPIRY_MS,
@@ -87,7 +87,7 @@ describe("buildOAuthTokenData", () => {
 					expires_in: 3600,
 					expiry: futureExpiry.toISOString(),
 				}),
-				CLIENT,
+				REGISTRATION,
 			);
 			expect(result.expiry_timestamp).toBeGreaterThanOrEqual(
 				futureExpiry.getTime() - 100,
@@ -104,7 +104,7 @@ describe("buildOAuthTokenData", () => {
 					expires_in: 3600,
 					expiry: pastExpiry.toISOString(),
 				}),
-				CLIENT,
+				REGISTRATION,
 			);
 			const expectedExpiry = Date.now() + 3600 * 1000;
 			expect(result.expiry_timestamp).toBeGreaterThanOrEqual(
@@ -119,7 +119,7 @@ describe("buildOAuthTokenData", () => {
 					expires_in: 3600,
 					expiry: "not-a-valid-date",
 				}),
-				CLIENT,
+				REGISTRATION,
 			);
 			const expectedExpiry = Date.now() + 3600 * 1000;
 			expect(result.expiry_timestamp).toBeGreaterThanOrEqual(
@@ -135,7 +135,7 @@ describe("buildOAuthTokenData", () => {
 					expires_in: undefined,
 					expiry: "not-a-valid-date",
 				}),
-				CLIENT,
+				REGISTRATION,
 			);
 			expect(result.expiry_timestamp).toBeGreaterThanOrEqual(
 				before + ACCESS_TOKEN_DEFAULT_EXPIRY_MS,
@@ -148,7 +148,7 @@ describe("buildOAuthTokenData", () => {
 					expires_in: 7200,
 					expiry: undefined,
 				}),
-				CLIENT,
+				REGISTRATION,
 			);
 			const expectedExpiry = Date.now() + 7200 * 1000;
 			expect(result.expiry_timestamp).toBeGreaterThanOrEqual(
@@ -158,16 +158,18 @@ describe("buildOAuthTokenData", () => {
 		});
 	});
 
-	it("records the client the tokens were issued to", () => {
-		expect(buildOAuthTokenData(createTokenResponse(), CLIENT).client).toEqual(
-			CLIENT,
-		);
+	it("records the registration the tokens were issued to", () => {
+		expect(
+			buildOAuthTokenData(createTokenResponse(), REGISTRATION).registration,
+		).toEqual(REGISTRATION);
 	});
 
 	it("stores coder:all when the server returns no scope", () => {
 		expect(
-			buildOAuthTokenData(createTokenResponse({ scope: undefined }), CLIENT)
-				.scope,
+			buildOAuthTokenData(
+				createTokenResponse({ scope: undefined }),
+				REGISTRATION,
+			).scope,
 		).toBe("coder:all");
 	});
 
@@ -176,7 +178,7 @@ describe("buildOAuthTokenData", () => {
 			expect(() =>
 				buildOAuthTokenData(
 					createTokenResponse({ token_type: "Bearer" }),
-					CLIENT,
+					REGISTRATION,
 				),
 			).not.toThrow();
 		});
@@ -187,7 +189,7 @@ describe("buildOAuthTokenData", () => {
 				expect(() =>
 					buildOAuthTokenData(
 						createTokenResponse({ token_type: tokenType as "Bearer" }),
-						CLIENT,
+						REGISTRATION,
 					),
 				).toThrow(`Unsupported token type: ${tokenType}`);
 			},

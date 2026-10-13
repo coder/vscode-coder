@@ -244,7 +244,10 @@ describe("OAuthMetadataClient", () => {
 	});
 
 	describe("checkOAuthSupport", () => {
-		it("returns true when endpoint exists", async () => {
+		const checkSupport = (axiosInstance: AxiosInstance) =>
+			OAuthMetadataClient.checkOAuthSupport(axiosInstance, createMockLogger());
+
+		it("returns supported when registration is advertised", async () => {
 			const { mockAdapter, axiosInstance } = createTestContext();
 
 			setupAxiosMockRoutes(mockAdapter, {
@@ -252,8 +255,20 @@ describe("OAuthMetadataClient", () => {
 					createMockOAuthMetadata(TEST_URL),
 			});
 
-			const result = await OAuthMetadataClient.checkOAuthSupport(axiosInstance);
-			expect(result).toBe(true);
+			expect(await checkSupport(axiosInstance)).toBe("supported");
+		});
+
+		it("returns registration_disabled without a registration endpoint", async () => {
+			const { mockAdapter, axiosInstance } = createTestContext();
+
+			setupAxiosMockRoutes(mockAdapter, {
+				"/.well-known/oauth-authorization-server": createMockOAuthMetadata(
+					TEST_URL,
+					{ registration_endpoint: undefined },
+				),
+			});
+
+			expect(await checkSupport(axiosInstance)).toBe("registration_disabled");
 		});
 
 		it.each([
@@ -264,7 +279,7 @@ describe("OAuthMetadataClient", () => {
 				}),
 			},
 			{ name: "network error", error: new Error("Network Error") },
-		])("returns false on $name", async ({ error }) => {
+		])("returns unsupported on $name", async ({ error }) => {
 			const { mockAdapter, axiosInstance } = createTestContext();
 
 			mockAdapter.mockImplementation((config: InternalAxiosRequestConfig) => {
@@ -280,8 +295,7 @@ describe("OAuthMetadataClient", () => {
 				});
 			});
 
-			const result = await OAuthMetadataClient.checkOAuthSupport(axiosInstance);
-			expect(result).toBe(false);
+			expect(await checkSupport(axiosInstance)).toBe("unsupported");
 		});
 	});
 });

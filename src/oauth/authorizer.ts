@@ -1,9 +1,7 @@
-import { type AxiosInstance, isAxiosError } from "axios";
 import { createHash, randomBytes } from "node:crypto";
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
-import { HttpStatusCode } from "../api/httpStatusCode";
 import { resolveCoderDashboardUrl } from "../common/url";
 
 import {
@@ -23,6 +21,7 @@ import {
 	parseOAuthResponse,
 } from "./validation";
 
+import type { AxiosInstance } from "axios";
 import type {
 	OAuth2AuthorizationServerMetadata,
 	OAuth2ClientRegistrationRequest,
@@ -41,16 +40,7 @@ import type { OAuthCallback } from "./oauthCallback";
 interface OAuthLoginResult {
 	tokenResponse: OAuth2TokenResponse;
 	user: User;
-	/** Client the tokens were issued to. */
 	registration: OAuth2ClientRegistrationResponse;
-}
-
-/** The server refuses client registration, which is off by default from Coder 2.38. */
-export class ClientRegistrationDisabledError extends Error {
-	constructor() {
-		super("Dynamic client registration is disabled on this deployment");
-		this.name = "ClientRegistrationDisabledError";
-	}
 }
 
 /**
@@ -67,7 +57,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		private readonly extensionId: string,
 	) {}
 
-	/** Runs the OAuth login flow. Saves the client registration, not the tokens. */
+	/** Runs the OAuth login flow. Saves the registration on success, never the tokens. */
 	public async login(
 		deployment: Deployment,
 		progress: vscode.Progress<{ message?: string; increment?: number }>,
@@ -134,6 +124,11 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		reportProgress("fetching user...", 20);
 		const user = await client.getAuthenticatedUser();
 
+		// Save only on success so a failed login keeps the stored session's registration.
+		await this.secretsManager.setOAuthClientRegistration(
+			deployment.safeHostname,
+			registration,
+		);
 		this.logger.debug("OAuth login flow completed successfully");
 
 		return { tokenResponse, user, registration };
@@ -183,20 +178,10 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			token_endpoint_auth_method: TOKEN_ENDPOINT_AUTH_METHOD,
 		};
 
-		const response = await axiosInstance
-			.post<OAuth2ClientRegistrationResponse>(
-				metadata.registration_endpoint,
-				registrationRequest,
-			)
-			.catch((error: unknown) => {
-				if (
-					isAxiosError(error) &&
-					error.response?.status === HttpStatusCode.FORBIDDEN
-				) {
-					throw new ClientRegistrationDisabledError();
-				}
-				throw error;
-			});
+		const response = await axiosInstance.post<OAuth2ClientRegistrationResponse>(
+			metadata.registration_endpoint,
+			registrationRequest,
+		);
 
 		const registrationResponse = parseOAuthResponse(
 			OAuth2ClientRegistrationResponseSchema,
@@ -204,12 +189,8 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			metadata.registration_endpoint,
 		);
 
-		await this.secretsManager.setOAuthClientRegistration(
-			deployment.safeHostname,
-			registrationResponse,
-		);
 		this.logger.debug(
-			"Saved OAuth client registration:",
+			"Registered OAuth client:",
 			registrationResponse.client_id,
 		);
 
