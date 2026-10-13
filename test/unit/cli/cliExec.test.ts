@@ -66,6 +66,10 @@ describe("cliExec", () => {
 		echoArgsBin = await writeExecutable(tmp, "echo-args", code);
 	});
 
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
 	function setup(auth: CliEnv["auth"], binary = echoArgsBin) {
 		const configs = new MockConfigurationProvider();
 		const env: CliEnv = { binary, auth, configs };
@@ -213,6 +217,17 @@ describe("cliExec", () => {
 				"--",
 				"owner/workspace",
 			]);
+		});
+
+		it("hides the host session token from the CLI", async () => {
+			vi.stubEnv("CODER_SESSION_TOKEN", "host-token");
+			const code = `console.log(process.env.CODER_SESSION_TOKEN ?? "unset");`;
+			const bin = await writeExecutable(tmp, "speedtest-env", code);
+			const { env } = setup(sharedAuth("http://localhost:3000"), bin);
+
+			const output = await cliExec.speedtest(env, "owner/workspace");
+
+			expect(output.trim()).toBe("unset");
 		});
 
 		it("surfaces stderr instead of full command line on failure", async () => {
@@ -406,6 +421,15 @@ describe("cliExec", () => {
 			);
 		});
 
+		it("hides the host session token from the CLI", () => {
+			vi.stubEnv("CODER_SESSION_TOKEN", "host-token");
+			const { env } = setup(sharedAuth("https://test.coder.com"));
+			cliExec.ping(env, "owner/ws");
+
+			const options = vi.mocked(spawn).mock.calls[0][2];
+			expect(options.env).not.toHaveProperty("CODER_SESSION_TOKEN");
+		});
+
 		it("includes user global flags raw in the spawn argv", () => {
 			const { configs, env } = setup(
 				privateAuth("https://test.coder.com", "/cfg"),
@@ -465,6 +489,7 @@ describe("cliExec", () => {
 		])(
 			"runs the app command as one argv entry after `--` on CLI $cliVersion",
 			({ cliVersion, ttyArgs }) => {
+				vi.stubEnv("CODER_SESSION_TOKEN", "host-token");
 				const env = appEnv(cliVersion);
 
 				cliExec.openAppStatusTerminal(env, {
@@ -485,6 +510,10 @@ describe("cliExec", () => {
 						"--",
 						command,
 					],
+					env: expect.not.objectContaining({
+						CODER_SESSION_TOKEN: "host-token",
+					}),
+					strictEnv: true,
 				});
 			},
 		);

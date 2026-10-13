@@ -1,12 +1,63 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as vscode from "vscode";
 
+import { OAuthMetadataClient, type OAuthSupport } from "@/oauth/metadataClient";
 import { MementoManager } from "@/storage/mementoManager";
-import { maybeAskUrl } from "@/ui/prompts";
+import { maybeAskAuthMethod, maybeAskUrl } from "@/ui/prompts";
 
 import {
+	createMockLogger,
 	INVALID_DEPLOYMENT_URLS,
 	InMemoryMemento,
+	MockConfigurationProvider,
 } from "../../mocks/testHelpers";
+
+import type { CoderApi } from "@/api/coderApi";
+
+vi.mock("@/ui/progress", () => ({
+	withProgress: (_options: unknown, fn: () => Promise<unknown>) => fn(),
+}));
+
+const client = { getAxiosInstance: vi.fn() } as unknown as CoderApi;
+
+describe("maybeAskAuthMethod", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		new MockConfigurationProvider().set("coder.experimental.oauth", true);
+	});
+
+	function mockSupport(support: OAuthSupport) {
+		vi.spyOn(OAuthMetadataClient, "checkOAuthSupport").mockResolvedValue(
+			support,
+		);
+	}
+
+	it("signs in with a token and explains why when registration is disabled", async () => {
+		mockSupport("registration_disabled");
+
+		expect(await maybeAskAuthMethod(client, createMockLogger())).toBe("legacy");
+		expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+			expect.stringContaining("dynamic client registration is disabled"),
+		);
+	});
+
+	it("signs in with a token without a notice when OAuth is unsupported", async () => {
+		mockSupport("unsupported");
+
+		expect(await maybeAskAuthMethod(client, createMockLogger())).toBe("legacy");
+		expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+	});
+
+	it("asks for the method when OAuth is supported", async () => {
+		mockSupport("supported");
+		vi.mocked(vscode.window.showQuickPick).mockResolvedValue({
+			label: "OAuth (Recommended)",
+			value: "oauth",
+		} as vscode.QuickPickItem);
+
+		expect(await maybeAskAuthMethod(client, createMockLogger())).toBe("oauth");
+	});
+});
 
 describe("maybeAskUrl", () => {
 	const mementoManager = new MementoManager(new InMemoryMemento());

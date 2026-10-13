@@ -14,6 +14,7 @@ import {
 import { recordError } from "../instrumentation/outcomes";
 import {
 	type CliAuth,
+	getCliProcessEnv,
 	getGlobalFlags,
 	mayUseCliStore,
 	resolveCliAuth,
@@ -76,7 +77,7 @@ export class CliCredentialManager {
 			}
 			span.setProperty("store", cli.auth.store);
 			await this.exec(cli, ["login", "--use-token-as-session", url], {
-				env: { ...process.env, CODER_SESSION_TOKEN: token },
+				env: { ...getCliProcessEnv(), CODER_SESSION_TOKEN: token },
 				signal: options?.signal,
 			});
 			span.setProperty("outcome", "stored");
@@ -234,6 +235,7 @@ export class CliCredentialManager {
 		}, EXEC_LOG_INTERVAL_MS);
 		try {
 			return await execFileAsync(cli.binPath, [...cli.flags, ...args], {
+				env: getCliProcessEnv(),
 				...options,
 				timeout: EXEC_TIMEOUT_MS,
 			});

@@ -33,6 +33,7 @@ import {
 } from "./testUtils";
 
 import type { Deployment } from "@/deployment/types";
+import type { OAuthClientRegistration } from "@/oauth/tokens";
 import type { TelemetryService } from "@/telemetry/service";
 
 vi.mock("axios", async () => {
@@ -85,6 +86,7 @@ function createTestContext(deployment: Deployment = createTestDeployment()) {
 			refreshToken?: string;
 			expiryMs?: number;
 			scope?: string;
+			registration?: OAuthClientRegistration;
 		} = {},
 	) => {
 		await base.secretsManager.setSessionAuth(TEST_HOSTNAME, {
@@ -95,6 +97,7 @@ function createTestContext(deployment: Deployment = createTestDeployment()) {
 				refresh_token: overrides.refreshToken ?? "refresh-token",
 				expiry_timestamp: Date.now() + (overrides.expiryMs ?? ONE_HOUR_MS),
 				scope: overrides.scope ?? DEFAULT_OAUTH_SCOPES,
+				registration: overrides.registration,
 			},
 		});
 	};
@@ -136,14 +139,14 @@ function createTestContext(deployment: Deployment = createTestDeployment()) {
 }
 
 describe("OAuthSessionManager", () => {
-	describe("isLoggedInWithOAuth", () => {
-		interface IsLoggedInTestCase {
+	describe("canRefreshOAuthSession", () => {
+		interface CanRefreshTestCase {
 			name: string;
 			auth: SessionAuth | null;
 			expected: boolean;
 		}
 
-		it.each<IsLoggedInTestCase>([
+		it.each<CanRefreshTestCase>([
 			{
 				name: "returns true when OAuth tokens exist",
 				auth: {
@@ -177,7 +180,7 @@ describe("OAuthSessionManager", () => {
 				await secretsManager.setSessionAuth(TEST_HOSTNAME, auth);
 			}
 
-			const result = await manager.isLoggedInWithOAuth();
+			const result = await manager.canRefreshOAuthSession();
 			expect(result).toBe(expected);
 		});
 	});
@@ -211,6 +214,34 @@ describe("OAuthSessionManager", () => {
 				token: "refreshed-token",
 				username: "refreshed-user",
 			});
+		});
+
+		it("authenticates as the registration that issued the tokens and keeps it", async () => {
+			const { secretsManager, manager, setupForOAuthOperation } =
+				createTestContext();
+			const registration = {
+				client_id: "issuer",
+				client_secret: "issuer-secret",
+			};
+			let params: URLSearchParams | undefined;
+			await setupForOAuthOperation(
+				{
+					"/oauth2/token": (config: InternalAxiosRequestConfig) => {
+						params = new URLSearchParams(config.data as string);
+						return createMockTokenResponse();
+					},
+					"/api/v2/users/me": createMockUser(),
+				},
+				{ registration },
+			);
+
+			await manager.refreshToken();
+
+			expect(params?.get("client_id")).toBe("issuer");
+			expect(params?.get("client_secret")).toBe("issuer-secret");
+			expect(
+				(await secretsManager.getSessionAuth(TEST_HOSTNAME))?.oauth,
+			).toMatchObject({ registration });
 		});
 
 		it("keeps the stored username when the user lookup fails", async () => {
@@ -264,7 +295,7 @@ describe("OAuthSessionManager", () => {
 				},
 			});
 
-			expect(await manager.isLoggedInWithOAuth()).toBe(false);
+			expect(await manager.canRefreshOAuthSession()).toBe(false);
 		});
 	});
 
@@ -279,7 +310,7 @@ describe("OAuthSessionManager", () => {
 
 			await manager.setDeployment(newDeployment);
 
-			const result = await manager.isLoggedInWithOAuth();
+			const result = await manager.canRefreshOAuthSession();
 			expect(result).toBe(false);
 		});
 	});
@@ -290,7 +321,7 @@ describe("OAuthSessionManager", () => {
 
 			manager.clearDeployment();
 
-			const result = await manager.isLoggedInWithOAuth();
+			const result = await manager.canRefreshOAuthSession();
 			expect(result).toBe(false);
 		});
 	});
@@ -461,28 +492,50 @@ describe("OAuthSessionManager", () => {
 	});
 
 	describe("revokeTokens", () => {
-		it("revokes the refresh and access tokens", async () => {
-			const { manager, setupForOAuthOperation } = createTestContext();
+		interface RevokeCase {
+			name: string;
+			registration?: OAuthClientRegistration;
+			clientId: string;
+		}
+		it.each<RevokeCase>([
+			{
+				name: "the registration that issued the tokens",
+				registration: { client_id: "issuer", client_secret: "issuer-secret" },
+				clientId: "issuer",
+			},
+			{
+				name: "the stored registration without one",
+				clientId: "test-client-id",
+			},
+		])(
+			"revokes the refresh and access tokens as $name",
+			async ({ registration, clientId }) => {
+				const { manager, setupForOAuthOperation } = createTestContext();
 
-			const revoked: Array<{ token: string | null; hint: string | null }> = [];
-			await setupForOAuthOperation({
-				"/oauth2/revoke": (config: InternalAxiosRequestConfig) => {
-					const params = new URLSearchParams(config.data as string);
-					revoked.push({
-						token: params.get("token"),
-						hint: params.get("token_type_hint"),
-					});
-					return {};
-				},
-			});
+				const revoked: Array<Record<string, string | null>> = [];
+				await setupForOAuthOperation(
+					{
+						"/oauth2/revoke": (config: InternalAxiosRequestConfig) => {
+							const params = new URLSearchParams(config.data as string);
+							revoked.push({
+								token: params.get("token"),
+								hint: params.get("token_type_hint"),
+								client: params.get("client_id"),
+							});
+							return {};
+						},
+					},
+					{ registration },
+				);
 
-			await manager.revokeTokens();
+				await manager.revokeTokens();
 
-			expect(revoked).toEqual([
-				{ token: "refresh-token", hint: "refresh_token" },
-				{ token: "access-token", hint: "access_token" },
-			]);
-		});
+				expect(revoked).toEqual([
+					{ token: "refresh-token", hint: "refresh_token", client: clientId },
+					{ token: "access-token", hint: "access_token", client: clientId },
+				]);
+			},
+		);
 
 		it("revokes tokens with outdated scopes", async () => {
 			const { manager, setupForOAuthOperation } = createTestContext();
@@ -518,7 +571,7 @@ describe("OAuthSessionManager", () => {
 	});
 
 	describe("scope validation", () => {
-		it("rejects tokens with insufficient scopes", async () => {
+		it("cannot refresh tokens with insufficient scopes", async () => {
 			const { secretsManager, manager } = createTestContext();
 
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
@@ -531,7 +584,7 @@ describe("OAuthSessionManager", () => {
 				},
 			});
 
-			const result = await manager.isLoggedInWithOAuth();
+			const result = await manager.canRefreshOAuthSession();
 			expect(result).toBe(false);
 		});
 
@@ -550,7 +603,7 @@ describe("OAuthSessionManager", () => {
 				},
 			});
 
-			const result = await manager.isLoggedInWithOAuth();
+			const result = await manager.canRefreshOAuthSession();
 			expect(result).toBe(true);
 		});
 
@@ -558,7 +611,7 @@ describe("OAuthSessionManager", () => {
 			const { manager, setupOAuthSession } = createTestContext();
 			await setupOAuthSession({ scope: "coder:all" });
 
-			expect(await manager.isLoggedInWithOAuth()).toBe(true);
+			expect(await manager.canRefreshOAuthSession()).toBe(true);
 		});
 	});
 

@@ -240,6 +240,31 @@ describe("OAuthAuthorizer", () => {
 			expect(stored?.client_id).toBe("new-client-id");
 		});
 
+		it("keeps the stored registration when login fails after re-registering", async () => {
+			const { setupOAuthRoutes, oauthCallback, secretsManager, startLogin } =
+				createTestContext();
+			await secretsManager.setOAuthClientRegistration(
+				TEST_HOSTNAME,
+				createMockClientRegistration({
+					client_id: "old-client-id",
+					redirect_uris: ["vscode://different-extension/oauth/callback"],
+				}),
+			);
+			setupOAuthRoutes(undefined, {
+				"/oauth2/register": createMockClientRegistration({
+					client_id: "new-client-id",
+				}),
+			});
+
+			const { loginPromise, state } = await startLogin();
+			await oauthCallback.send({ state, code: null, error: "access_denied" });
+			await expect(loginPromise).rejects.toThrow("OAuth error: access_denied");
+
+			const stored =
+				await secretsManager.getOAuthClientRegistration(TEST_HOSTNAME);
+			expect(stored?.client_id).toBe("old-client-id");
+		});
+
 		it("reports progress during login flow", async () => {
 			const { setupOAuthRoutes, startLogin, completeLogin } =
 				createTestContext();

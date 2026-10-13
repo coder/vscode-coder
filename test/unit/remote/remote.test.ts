@@ -395,7 +395,7 @@ describe("Remote", () => {
 			});
 
 			expect(elideNetworkInfoDir(proxyCommand)).toBe(
-				`/mock/coder --global-config ${quoteCommand("/mock/global")} --url ${quoteCommand("https://coder.example.com")} ${expected}`,
+				`/mock/coder --token= --global-config ${quoteCommand("/mock/global")} --url ${quoteCommand("https://coder.example.com")} ${expected}`,
 			);
 		});
 	});

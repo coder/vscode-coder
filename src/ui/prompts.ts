@@ -11,6 +11,8 @@ import { type MementoManager } from "../storage/mementoManager";
 
 import { withProgress } from "./progress";
 
+import type { Logger } from "../logging/logger";
+
 type AuthMethod = "oauth" | "legacy";
 
 /**
@@ -146,6 +148,7 @@ export async function maybeAskUrl(
 
 export async function maybeAskAuthMethod(
 	client: CoderApi,
+	logger: Logger,
 ): Promise<AuthMethod | undefined> {
 	const experimentalOAuthEnabled = vscode.workspace
 		.getConfiguration()
@@ -155,20 +158,24 @@ export async function maybeAskAuthMethod(
 		return "legacy";
 	}
 
-	// Check if server supports OAuth with progress indication
-	const supportsOAuth = await withProgress(
+	const support = await withProgress(
 		{
 			location: vscode.ProgressLocation.Notification,
 			title: "Checking authentication methods",
 		},
-		() => OAuthMetadataClient.checkOAuthSupport(client.getAxiosInstance()),
+		() =>
+			OAuthMetadataClient.checkOAuthSupport(client.getAxiosInstance(), logger),
 	);
 
-	if (supportsOAuth) {
+	if (support === "supported") {
 		return await askAuthMethod();
-	} else {
-		return "legacy";
 	}
+	if (support === "registration_disabled") {
+		void vscode.window.showWarningMessage(
+			"OAuth sign-in is unavailable: dynamic client registration is disabled on this deployment. Signing in with a session token instead.",
+		);
+	}
+	return "legacy";
 }
 
 /**

@@ -7,7 +7,11 @@ import { validateIdentifier } from "../common/validation";
 import { isAbortError } from "../error/abort";
 import { toError } from "../error/normalize";
 import { type CliFeatureSet } from "../featureSet";
-import { type CliAuth, getGlobalFlags } from "../settings/cli";
+import {
+	type CliAuth,
+	getCliProcessEnv,
+	getGlobalFlags,
+} from "../settings/cli";
 
 /** Resolved CLI environment for invoking the coder binary. */
 export interface CliEnv {
@@ -86,7 +90,10 @@ export async function speedtest(
 	}
 	args.push("--", workspaceName);
 	try {
-		const result = await execFileAsync(env.binary, args, { signal });
+		const result = await execFileAsync(env.binary, args, {
+			env: getCliProcessEnv(),
+			signal,
+		});
 		return result.stdout;
 	} catch (error) {
 		throw cliError(error);
@@ -105,7 +112,7 @@ export async function netcheck(
 		const result = await execFileAsync(
 			env.binary,
 			[...globalFlags, "netcheck"],
-			{ signal },
+			{ env: getCliProcessEnv(), signal },
 		);
 		return result.stdout;
 	} catch (error) {
@@ -141,7 +148,7 @@ export async function supportBundle(
 		...(agentName ? [agentName] : []),
 	];
 	try {
-		await execFileAsync(env.binary, args, { signal });
+		await execFileAsync(env.binary, args, { env: getCliProcessEnv(), signal });
 	} catch (error) {
 		throw cliError(error);
 	}
@@ -185,7 +192,13 @@ export function openAppStatusTerminal(
 		app.command,
 	];
 	vscode.window
-		.createTerminal({ name: app.name, shellPath: env.binary, shellArgs: args })
+		.createTerminal({
+			name: app.name,
+			shellPath: env.binary,
+			shellArgs: args,
+			env: getCliProcessEnv(),
+			strictEnv: true,
+		})
 		.show(false);
 }
 
@@ -228,6 +241,7 @@ function spawnCliInTerminal(options: {
 	// fall back to proc.kill() there.
 	const useProcessGroup = process.platform !== "win32";
 	const proc = spawn(options.binary, options.args, {
+		env: getCliProcessEnv(),
 		detached: useProcessGroup,
 	});
 

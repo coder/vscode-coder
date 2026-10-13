@@ -3,8 +3,8 @@ export const AUTH_GRANT_TYPE = "authorization_code";
 export const REFRESH_GRANT_TYPE = "refresh_token";
 
 /**
- * Scopes the extension and the CLI need. Stored sessions must have all of
- * them, so adding one signs out users of servers that enforce scopes.
+ * Scopes the extension and the CLI need. Sessions missing one stop refreshing,
+ * so on servers that enforce scopes, adding one means signing in at expiry.
  */
 export const DEFAULT_OAUTH_SCOPES = [
 	"coder:workspaces.operate",
@@ -12,6 +12,9 @@ export const DEFAULT_OAUTH_SCOPES = [
 	"workspace:create",
 	"user:read",
 	"user:read_personal",
+	// Lets `coder start` refresh expired external-auth links. No narrower scope
+	// exists, so it also allows profile and Git SSH key changes.
+	"user:update_personal",
 ].join(" ");
 
 /**

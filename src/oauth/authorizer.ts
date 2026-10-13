@@ -37,6 +37,12 @@ import type { SecretsManager } from "../storage/secretsManager";
 
 import type { OAuthCallback } from "./oauthCallback";
 
+interface OAuthLoginResult {
+	tokenResponse: OAuth2TokenResponse;
+	user: User;
+	registration: OAuth2ClientRegistrationResponse;
+}
+
 /**
  * Handles the OAuth authorization code flow for authenticating with Coder deployments.
  * Encapsulates client registration, PKCE challenge, and token exchange.
@@ -51,16 +57,12 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		private readonly extensionId: string,
 	) {}
 
-	/**
-	 * Perform complete OAuth login flow.
-	 * Creates CoderApi internally from deployment.
-	 * Returns the token response and user - does not persist tokens.
-	 */
+	/** Runs the OAuth login flow. Saves the registration on success, never the tokens. */
 	public async login(
 		deployment: Deployment,
 		progress: vscode.Progress<{ message?: string; increment?: number }>,
 		cancellationToken: vscode.CancellationToken,
-	): Promise<{ tokenResponse: OAuth2TokenResponse; user: User }> {
+	): Promise<OAuthLoginResult> {
 		const client = CoderApi.create(deployment.url, undefined, this.logger);
 		try {
 			return await this.runLoginFlow(
@@ -79,7 +81,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		deployment: Deployment,
 		progress: vscode.Progress<{ message?: string; increment?: number }>,
 		cancellationToken: vscode.CancellationToken,
-	): Promise<{ tokenResponse: OAuth2TokenResponse; user: User }> {
+	): Promise<OAuthLoginResult> {
 		const reportProgress = (message?: string, increment?: number): void => {
 			if (cancellationToken.isCancellationRequested) {
 				throw new Error("OAuth login cancelled by user");
@@ -122,9 +124,14 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		reportProgress("fetching user...", 20);
 		const user = await client.getAuthenticatedUser();
 
+		// Save only on success so a failed login keeps the stored session's registration.
+		await this.secretsManager.setOAuthClientRegistration(
+			deployment.safeHostname,
+			registration,
+		);
 		this.logger.debug("OAuth login flow completed successfully");
 
-		return { tokenResponse, user };
+		return { tokenResponse, user, registration };
 	}
 
 	/**
@@ -182,12 +189,8 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			metadata.registration_endpoint,
 		);
 
-		await this.secretsManager.setOAuthClientRegistration(
-			deployment.safeHostname,
-			registrationResponse,
-		);
 		this.logger.debug(
-			"Saved OAuth client registration:",
+			"Registered OAuth client:",
 			registrationResponse.client_id,
 		);
 

@@ -1,10 +1,9 @@
+import { type AxiosError, type AxiosRequestConfig, isAxiosError } from "axios";
 import { Buffer } from "node:buffer";
 import util from "node:util";
 import prettyBytes from "pretty-bytes";
 
 import { lowercase } from "../common/strings";
-
-import type { AxiosRequestConfig } from "axios";
 
 const SENSITIVE_HEADERS: ReadonlySet<Lowercase<string>> = new Set([
 	"authorization",
@@ -15,8 +14,8 @@ const SENSITIVE_HEADERS: ReadonlySet<Lowercase<string>> = new Set([
 	"x-api-key",
 ]);
 
-/** Credential fields from OAuth token requests/responses, logged at BODY level. */
-const SENSITIVE_BODY_FIELDS: ReadonlySet<Lowercase<string>> = new Set([
+/** Credential fields, such as those in OAuth requests, responses, and sessions. */
+const SENSITIVE_FIELDS: ReadonlySet<Lowercase<string>> = new Set([
 	"access_token",
 	"client_secret",
 	"code",
@@ -79,80 +78,124 @@ export function formatHeaders(
 
 export function formatBody(body: unknown): string {
 	if (body) {
-		return safeStringify(redactBodyFields(body)) ?? "<invalid body>";
+		return stringify(redactBody(body)) ?? "<invalid body>";
 	} else {
 		return "<no body>";
 	}
 }
 
 /**
- * Redact known credential fields, copying only what changes; untouched
- * values keep their original reference. util.inspect has no replacer
- * hook, so the value is walked before stringifying.
+ * Copy of `value` with credentials redacted and Axios errors summarized at any
+ * depth; unchanged values keep their reference. Never throws.
  */
-function redactBodyFields(
-	value: unknown,
-	seen = new WeakSet<object>(),
-): unknown {
-	if (typeof value === "string") {
-		return redactStringBody(value, seen);
+export function redactSecrets(value: unknown): unknown {
+	try {
+		return redact(value, new WeakSet());
+	} catch {
+		return REDACTED;
 	}
-	if (value instanceof URLSearchParams) {
-		const keys = [...value.keys()];
-		if (!keys.some((key) => SENSITIVE_BODY_FIELDS.has(lowercase(key)))) {
-			return value;
-		}
-		return new URLSearchParams(
-			[...value].map(([key, entry]) => [
-				key,
-				SENSITIVE_BODY_FIELDS.has(lowercase(key)) ? REDACTED : entry,
-			]),
-		);
-	}
+}
+
+function redact(value: unknown, seen: WeakSet<object>): unknown {
 	if (typeof value !== "object" || value === null || seen.has(value)) {
 		return value;
 	}
 	seen.add(value);
+	if (isAxiosError(value)) {
+		return summarizeAxiosError(value);
+	}
+	if (value instanceof URLSearchParams) {
+		return redactParams(value);
+	}
 	if (Array.isArray(value)) {
-		const entries: readonly unknown[] = value;
-		let copy: unknown[] | undefined;
-		entries.forEach((entry, index) => {
-			const redacted = redactBodyFields(entry, seen);
-			if (redacted !== entry) {
-				copy ??= [...entries];
-				copy[index] = redacted;
-			}
-		});
-		return copy ?? value;
+		return redactArray(value, seen);
 	}
-	// Rebuilding a Date or Buffer from its entries would mangle its output.
+	// Copying a Date, Buffer, or class instance property by property would mangle it.
 	const proto: unknown = Object.getPrototypeOf(value);
-	if (proto !== Object.prototype && proto !== null) {
-		return value;
-	}
-	let copy: Record<string, unknown> | undefined;
-	for (const [key, entry] of Object.entries(value)) {
-		const redacted = SENSITIVE_BODY_FIELDS.has(lowercase(key))
-			? REDACTED
-			: redactBodyFields(entry, seen);
-		if (redacted !== entry) {
-			copy ??= { ...value };
-			copy[key] = redacted;
-		}
-	}
-	return copy ?? value;
+	return value instanceof Error || proto === Object.prototype || proto === null
+		? redactProperties(value, seen)
+		: value;
 }
 
-/**
- * Axios error paths expose only the serialized body, so JSON and
- * form-encoded strings are parsed too. Clean strings pass through as-is.
- */
-function redactStringBody(body: string, seen: WeakSet<object>): unknown {
+function redactArray(
+	array: readonly unknown[],
+	seen: WeakSet<object>,
+): readonly unknown[] {
+	let copy: unknown[] | undefined;
+	for (const [index, entry] of array.entries()) {
+		const redacted = redact(entry, seen);
+		if (redacted !== entry) {
+			copy ??= [...array];
+			copy[index] = redacted;
+		}
+	}
+	return copy ?? array;
+}
+
+/** Reads data properties only, so getters never run. */
+function redactProperties(value: object, seen: WeakSet<object>): object {
+	let descriptors: PropertyDescriptorMap | undefined;
+	for (const key of Reflect.ownKeys(value)) {
+		const descriptor = Object.getOwnPropertyDescriptor(value, key);
+		if (!descriptor || !("value" in descriptor)) {
+			continue;
+		}
+		const entry: unknown = descriptor.value;
+		const redacted = isCredential(key, entry) ? REDACTED : redact(entry, seen);
+		if (redacted !== entry) {
+			descriptors ??= Object.getOwnPropertyDescriptors(value);
+			descriptors[key] = { ...descriptor, value: redacted };
+		}
+	}
+	if (!descriptors) {
+		return value;
+	}
+	if (value instanceof Error) {
+		// V8's `stack` accessor reads the original error's internal slot.
+		descriptors.stack = {
+			value: value.stack,
+			writable: true,
+			configurable: true,
+		};
+	}
+	return Object.create(
+		Object.getPrototypeOf(value) as object | null,
+		descriptors,
+	) as object;
+}
+
+function redactParams(params: URLSearchParams): URLSearchParams {
+	const entries = [...params];
+	if (!entries.some(([key, entry]) => isCredential(key, entry))) {
+		return params;
+	}
+	return new URLSearchParams(
+		entries.map(([key, entry]) => [
+			key,
+			isCredential(key, entry) ? REDACTED : entry,
+		]),
+	);
+}
+
+/** Credentials are strings, so numeric fields such as a close `code` stay readable. */
+function isCredential(key: PropertyKey, value: unknown): boolean {
+	return (
+		typeof key === "string" &&
+		typeof value === "string" &&
+		SENSITIVE_FIELDS.has(lowercase(key))
+	);
+}
+
+/** Axios error paths expose only the serialized body, so JSON and form-encoded strings are parsed too. */
+function redactBody(body: unknown): unknown {
+	if (typeof body !== "string") {
+		return redactSecrets(body);
+	}
 	const trimmed = body.trim();
 	if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
 		try {
 			const parsed: unknown = JSON.parse(trimmed);
-			const redacted = redactBodyFields(parsed, seen);
+			const redacted = redactSecrets(parsed);
 			return redacted === parsed ? body : redacted;
 		} catch {
 			// Not JSON; fall through.
@@ -160,7 +203,7 @@ function redactStringBody(body: string, seen: WeakSet<object>): unknown {
 	}
 	if (trimmed.includes("=")) {
 		const params = new URLSearchParams(trimmed);
-		const redacted = redactBodyFields(params, seen);
+		const redacted = redactParams(params);
 		return redacted === params ? body : redacted;
 	}
 	return body;
@@ -200,7 +243,24 @@ export function sizeOf(data: unknown): number | undefined {
 	return undefined;
 }
 
+/** Drops the error's config and socket, which hold the request's credentials. */
+function summarizeAxiosError(error: AxiosError) {
+	return {
+		name: error.name,
+		message: error.message,
+		code: error.code,
+		method: formatMethod(error.config?.method),
+		url: formatUri(error.config),
+		status: error.response?.status,
+		data: redactBody(error.response?.data),
+	};
+}
+
 export function safeStringify(data: unknown): string | null {
+	return stringify(redactSecrets(data));
+}
+
+function stringify(data: unknown): string | null {
 	try {
 		return util.inspect(data, {
 			showHidden: false,
@@ -213,7 +273,6 @@ export function safeStringify(data: unknown): string | null {
 			getters: false, // avoid side-effects
 		});
 	} catch {
-		// Should rarely happen but just in case
 		return null;
 	}
 }

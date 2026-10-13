@@ -102,7 +102,7 @@ export class AuthInterceptor implements vscode.Disposable {
 
 			// 1) OAuth refresh path.
 			const isOAuth =
-				await this.oauthSessionManager.isLoggedInWithOAuth(hostname);
+				await this.oauthSessionManager.canRefreshOAuthSession(hostname);
 			recorder.setRefreshAttempted(isOAuth);
 			if (isOAuth) {
 				const newToken = await this.tryOAuthRefresh();

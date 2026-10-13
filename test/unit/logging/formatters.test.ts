@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { AxiosError, AxiosHeaders } from "axios";
+import { describe, expect, it, vi } from "vitest";
 
 import {
 	formatBody,
@@ -7,6 +8,7 @@ import {
 	formatSize,
 	formatTime,
 	formatUri,
+	redactSecrets,
 	safeStringify,
 	sizeOf,
 } from "@/logging/formatters";
@@ -204,6 +206,40 @@ describe("Logging formatters", () => {
 	});
 });
 
+describe("redactSecrets", () => {
+	it("returns unchanged values by reference", () => {
+		const value = { nested: { code: 1006 }, list: ["a"] };
+		expect(redactSecrets(value)).toBe(value);
+	});
+
+	it("never runs getters and never throws", () => {
+		const getter = vi.fn(() => "secret");
+		const value = Object.defineProperty({ token: "secret" }, "lazy", {
+			get: getter,
+			enumerable: true,
+		});
+		const { proxy, revoke } = Proxy.revocable({}, {});
+		revoke();
+
+		expect(redactSecrets(value)).toMatchObject({ token: "<redacted>" });
+		expect(getter).not.toHaveBeenCalled();
+		expect(redactSecrets(proxy)).toBe("<redacted>");
+	});
+
+	it("redacts an error's fields on a copy that keeps its stack", () => {
+		const error = Object.assign(new TypeError("failed"), { token: "secret" });
+
+		const redacted = redactSecrets(error);
+
+		expect(redacted).toBeInstanceOf(TypeError);
+		expect(redacted).toMatchObject({
+			message: "failed",
+			stack: error.stack,
+			token: "<redacted>",
+		});
+	});
+});
+
 describe("sizeOf", () => {
 	type SizeOfTestCase = [data: unknown, bytes: number | undefined];
 	it.each<SizeOfTestCase>([
@@ -290,5 +326,49 @@ describe("safeStringify", () => {
 			nested = { child: nested };
 		}
 		expect(safeStringify(nested)).not.toContain("bottom");
+	});
+
+	it("redacts credential fields in any logged object", () => {
+		const result = safeStringify({
+			token: "access-secret",
+			oauth: { refresh_token: "refresh-secret", scope: "coder:all" },
+		});
+
+		expect(result).toContain("coder:all");
+		expect(result).not.toMatch(/access-secret|refresh-secret/);
+	});
+
+	it("keeps request credentials out of Axios errors at any depth", () => {
+		const config = {
+			method: "post",
+			url: "https://coder.example.com/oauth2/revoke",
+			headers: new AxiosHeaders({ "Coder-Session-Token": "session-secret" }),
+			data: "token=token-secret&client_secret=client-secret",
+		};
+		const error = new AxiosError(
+			"Bad request",
+			"ERR_BAD_REQUEST",
+			config,
+			{},
+			{
+				status: 400,
+				statusText: "Bad Request",
+				headers: {},
+				config,
+				data: { error: "invalid_client", refresh_token: "reply-secret" },
+			},
+		);
+
+		const wrapped = new Error("Revocation failed", { cause: error });
+		const result = safeStringify({ attempts: [wrapped] });
+
+		expect(result).toContain("Revocation failed");
+		expect(result).toContain("POST");
+		expect(result).toContain("https://coder.example.com/oauth2/revoke");
+		expect(result).toContain("status: 400");
+		expect(result).toContain("invalid_client");
+		expect(result).not.toMatch(
+			/session-secret|token-secret|client-secret|reply-secret/,
+		);
 	});
 });

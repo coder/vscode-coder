@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import { LazyStream, startWorkspace, updateWorkspace } from "@/api/workspace";
@@ -20,6 +20,11 @@ vi.mock(import("node:child_process"), async (importOriginal) => ({
 	spawn: vi.fn(),
 }));
 const { spawn } = await import("node:child_process");
+
+const GLOBAL_FLAGS = ["--url", "https://test.coder.com"];
+
+/** Arguments of the first CLI invocation. */
+const spawnedArgs = () => vi.mocked(spawn).mock.calls[0][1];
 
 const CLI_FEATURES: CliFeatureSet = {
 	cliLogin: true,
@@ -217,6 +222,10 @@ describe("updateWorkspace", () => {
 		vi.clearAllMocks();
 	});
 
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
 	it("runs coder update on servers before 2.36", async () => {
 		const { ctx, restClient, finalWorkspace } = createUpdateCtx();
 		const sp = controlSpawn();
@@ -225,15 +234,28 @@ describe("updateWorkspace", () => {
 		await sp.close(0);
 
 		await expect(result).resolves.toBe(finalWorkspace);
-		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", [
-			"--url",
-			"https://test.coder.com",
+		expect(spawnedArgs()).toEqual([
+			...GLOBAL_FLAGS,
 			"update",
 			"--",
 			"testuser/test-workspace",
 		]);
 		expect(sp.stdinEnd).toHaveBeenCalled();
 		expect(restClient.getWorkspace).toHaveBeenCalledWith(ctx.workspace.id);
+	});
+
+	it("hides the host session token from the CLI", async () => {
+		vi.stubEnv("CODER_SESSION_TOKEN", "host-token");
+		const { ctx } = createUpdateCtx();
+		const sp = controlSpawn();
+
+		const result = updateWorkspace(ctx, []);
+		await sp.close(0);
+		await result;
+
+		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", expect.any(Array), {
+			env: expect.not.objectContaining({ CODER_SESSION_TOKEN: "host-token" }),
+		});
 	});
 
 	it("passes collected parameters as --parameter flags", async () => {
@@ -247,9 +269,8 @@ describe("updateWorkspace", () => {
 		await sp.close(0);
 		await result;
 
-		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", [
-			"--url",
-			"https://test.coder.com",
+		expect(spawnedArgs()).toEqual([
+			...GLOBAL_FLAGS,
 			"update",
 			"--parameter",
 			"region=us-east",
@@ -424,9 +445,8 @@ describe("startWorkspace", () => {
 		await sp.close(0);
 
 		await expect(result).resolves.toBe(finalWorkspace);
-		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", [
-			"--url",
-			"https://test.coder.com",
+		expect(spawnedArgs()).toEqual([
+			...GLOBAL_FLAGS,
 			"start",
 			"--yes",
 			"--reason",
@@ -455,9 +475,8 @@ describe("startWorkspace", () => {
 		await sp.close(0);
 		await result;
 
-		expect(spawn).toHaveBeenCalledWith("/usr/bin/coder", [
-			"--url",
-			"https://test.coder.com",
+		expect(spawnedArgs()).toEqual([
+			...GLOBAL_FLAGS,
 			"start",
 			"--yes",
 			"--",

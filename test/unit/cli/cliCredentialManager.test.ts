@@ -204,11 +204,13 @@ describe("CliCredentialManager", () => {
 	describe("storeToken", () => {
 		it("passes the token through the environment only", async () => {
 			stubExecFile();
+			vi.stubEnv("coder_session_token", "host-token");
 			const { manager } = setup();
 
 			await manager.storeToken(TEST_URL, "my-secret-token", configs);
 
 			expect(execOptions().env?.CODER_SESSION_TOKEN).toBe("my-secret-token");
+			expect(execOptions().env).not.toHaveProperty("coder_session_token");
 			expect(execCalls()[0]).not.toContain("my-secret-token");
 		});
 
@@ -255,6 +257,16 @@ describe("CliCredentialManager", () => {
 
 			expect(await manager.readToken(TEST_URL, configs)).toBe("my-token");
 			expect(execCalls()).toEqual([[...KEYRING_FLAGS, "login", "token"]]);
+		});
+
+		it("hides the host session token from the CLI", async () => {
+			vi.mocked(os.platform).mockReturnValue("darwin");
+			stubExecFile({ token: "my-token" });
+			vi.stubEnv("CODER_SESSION_TOKEN", "host-token");
+
+			await setup().manager.readToken(TEST_URL, configs);
+
+			expect(execOptions().env).not.toHaveProperty("CODER_SESSION_TOKEN");
 		});
 
 		interface ReadTokenCase {
