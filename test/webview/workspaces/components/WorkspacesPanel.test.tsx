@@ -1,6 +1,6 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { agent, agentMetadata, app, appStatus, workspace } from "@repo/mocks";
 import { WorkspacesApi, type WorkspacesState } from "@repo/shared";
@@ -216,6 +216,28 @@ describe("WorkspacesPanel", () => {
 
 		unmount();
 		expect(watches()).toEqual([{ agentIds: [] }]);
+	});
+
+	it("describes reported metadata through keyboard hover", async () => {
+		// jsdom has no layout, but tree hovers require a visible anchor.
+		const boxes = vi
+			.spyOn(Element.prototype, "getBoundingClientRect")
+			.mockReturnValue(DOMRect.fromRect({ width: 200, height: 22 }));
+		onTestFinished(() => boxes.mockRestore());
+		const { user } = await setup({
+			...STATE,
+			workspaces: [workspace({ agents: [agent()] })],
+			metadata: {
+				"agent-1": { kind: "reported", metadata: [agentMetadata()] },
+			},
+		});
+		await user.click(row("test-workspace testuser"));
+		await user.click(row("Agent metadata"));
+		await user.click(row("CPU: 42"));
+		await user.keyboard("{Control>}k{/Control}{Control>}i{/Control}");
+		const tooltip = await screen.findByRole("tooltip");
+		expect(tooltip).toHaveTextContent("CPU: 42");
+		expect(tooltip).toHaveTextContent("Collected at 2024-01-01T00:00:00Z");
 	});
 
 	it("lists an agent's app statuses under the agent", async () => {

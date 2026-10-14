@@ -1,4 +1,4 @@
-import { Tooltip } from "@repo/ui";
+import { Icon, Tooltip } from "@repo/ui";
 
 type StatusTone = "running" | "pending" | "error" | "stopped";
 
@@ -11,8 +11,8 @@ export function StatusDot({
 }) {
 	return (
 		<Tooltip content={status}>
-			<span
-				role="img"
+			<Icon
+				name="circle-small-filled"
 				aria-label={status}
 				className={`workspace-status workspace-status--${tone}`}
 			/>

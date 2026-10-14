@@ -1,44 +1,52 @@
 body {
 	margin: 0;
 	padding: 0;
-	font-family: var(--vscode-font-family, sans-serif);
-	font-size: var(--vscode-font-size, 13px);
+	font-family: var(--ui-font-family, sans-serif);
+	font-size: var(--ui-font-size, 13px);
 	color: var(--ui-foreground);
 	background: var(--ui-background);
 }
 
+.workspaces-app {
+	height: 100vh;
+}
+
 .workspaces-panel {
 	box-sizing: border-box;
-	height: 100vh;
+	height: 100%;
 	overflow-y: auto;
-	padding-block: 8px;
+	padding-block: var(--ui-spacing-40);
 }
 
 .workspaces-header {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding: 0 12px 8px;
+	gap: var(--ui-spacing-60);
+	padding: 0 var(--ui-spacing-120) var(--ui-spacing-40);
 }
 
 .workspaces-header h1 {
 	flex: 1;
+	min-width: 0;
 	margin: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 	font-size: inherit;
-	font-weight: 600;
+	font-weight: var(--ui-font-weight-semibold);
 }
 
-.workspaces-header .ui-select__trigger {
-	min-width: 72px;
+.workspaces-header .workspace-filter {
+	flex: none;
+	width: 88px;
 }
 
 .workspace-label {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: var(--ui-spacing-60);
 	min-width: 0;
 	width: 100%;
-	padding-inline-start: 3px;
 }
 
 .workspace-name,
@@ -58,22 +66,29 @@ body {
 	color: var(--ui-description-foreground);
 }
 
+.workspace-label > .ui-spinner {
+	flex: none;
+}
+
 .workspace-agent-icon {
 	flex: none;
 	color: var(--ui-description-foreground);
-	font-size: 10px;
 }
 
 .workspace-status {
 	--workspace-status-color: var(--ui-description-foreground);
 	flex: none;
-	width: 6px;
-	height: 6px;
-	margin: 3px;
+	color: color-mix(
+		in srgb,
+		var(--workspace-status-color) 60%,
+		var(--ui-foreground)
+	);
 	border-radius: 50%;
-	background: var(--workspace-status-color);
-	box-shadow: 0 0 0 3px
-		color-mix(in srgb, var(--workspace-status-color) 20%, transparent);
+	background: radial-gradient(
+		circle,
+		color-mix(in srgb, var(--workspace-status-color) 20%, transparent) 6px,
+		transparent 6px
+	);
 }
 
 .workspace-status--running {
@@ -99,23 +114,61 @@ body {
 
 .workspace-metadata-heading {
 	color: var(--ui-description-foreground);
-	font-size: 0.95em;
 }
 
 .workspace-metadata {
 	display: flex;
 	justify-content: space-between;
-	gap: 16px;
+	gap: var(--ui-spacing-120);
 	width: 100%;
 	min-width: 0;
 }
 
 .workspace-metadata > span {
+	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+
+.workspace-metadata > span:last-child {
+	max-width: 65%;
+	text-align: end;
+	font-variant-numeric: tabular-nums;
 }
 
 .workspace-metadata--error,
 .workspace-delete {
 	color: var(--ui-error-foreground);
+}
+
+.ui-tree-item[aria-selected="true"]
+	:is(.workspace-owner, .workspace-agent-icon, .workspace-metadata--error) {
+	color: inherit;
+}
+
+body:is(
+		[data-vscode-theme-kind="vscode-high-contrast"],
+		[data-vscode-theme-kind="vscode-high-contrast-light"]
+	)
+	.workspace-status {
+	background: none;
+	outline: 1px solid var(--ui-contrast-border);
+	outline-offset: -1px;
+}
+
+.ui-tree-item[aria-selected="true"] .workspace-status {
+	outline: 1px solid var(--ui-list-inactive-selection-foreground);
+	outline-offset: -1px;
+}
+
+.ui-tree--focused .ui-tree-item[aria-selected="true"] .workspace-status {
+	outline-color: var(--ui-list-active-selection-foreground);
+}
+
+@media (forced-colors: active) {
+	.workspace-status {
+		color: CanvasText;
+		background: none;
+		outline: 1px solid CanvasText;
+	}
 }

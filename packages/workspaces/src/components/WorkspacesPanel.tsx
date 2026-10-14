@@ -135,7 +135,10 @@ export function WorkspacesPanel({
 									api.setFilter({ filter });
 							}}
 						>
-							<SelectTrigger aria-label="Workspace filter">
+							<SelectTrigger
+								className="workspace-filter"
+								aria-label="Workspace filter"
+							>
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>

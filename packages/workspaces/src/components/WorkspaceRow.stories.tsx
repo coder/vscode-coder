@@ -1,11 +1,26 @@
-import { workspace } from "@repo/mocks";
-import { TooltipProvider, Tree } from "@repo/ui";
-import { fn } from "storybook/test";
+import {
+	agent,
+	agentMetadata,
+	app,
+	appStatus,
+	PENDING_METADATA,
+	workspace,
+} from "@repo/mocks";
+import { TooltipProvider, Tree, type TreeNode } from "@repo/ui";
+import { useState } from "react";
+import { expect, fn, screen, userEvent, within } from "storybook/test";
 
+import { agentMetadataNodes } from "./AgentMetadataList";
+import { AgentRow } from "./AgentRow";
+import { appStatusNodes } from "./AppStatusRow";
 import { WorkspaceActions } from "./WorkspaceActions";
 import { WorkspaceRow } from "./WorkspaceRow";
 
-import type { Workspace } from "@repo/shared";
+import type {
+	AgentMetadataState,
+	Workspace,
+	WorkspaceAgent,
+} from "@repo/shared";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const api = {
@@ -50,42 +65,248 @@ const WORKSPACES: readonly Workspace[] = [
 	workspace({ id: "unknown", name: "", owner_name: "" }),
 ];
 
-const WorkspaceRows = ({
-	hovered,
-}: {
-	hovered?: string;
-}): React.JSX.Element => (
-	<TooltipProvider>
-		<Tree
-			aria-label="Workspaces"
-			className="workspaces-tree"
-			nodes={WORKSPACES.map((ws) => ({
-				id: ws.id,
-				textValue: `${ws.name} ${ws.owner_name}`,
-				label: <WorkspaceRow workspace={ws} />,
-				className: ws.id === hovered ? "story-hover" : undefined,
-				action: (
-					<WorkspaceActions workspaceId={ws.id} name={ws.name} api={api} />
-				),
-				children: [],
-			}))}
-		/>
-	</TooltipProvider>
-);
+const MAIN = agent({ id: "main", name: "main" });
+const AGENTS = [
+	MAIN,
+	agent({ id: "connecting", name: "connecting", status: "connecting" }),
+	agent({
+		id: "starting-agent",
+		name: "starting",
+		lifecycle_state: "starting",
+	}),
+	agent({ id: "timeout", name: "timeout", status: "timeout" }),
+	agent({ id: "disconnected", name: "disconnected", status: "disconnected" }),
+];
 
-const meta: Meta<typeof WorkspaceRows> = {
-	title: "Workspaces/WorkspaceRow",
-	component: WorkspaceRows,
+function agentNode(
+	value: WorkspaceAgent,
+	children?: readonly TreeNode[],
+): TreeNode {
+	return {
+		id: value.id,
+		textValue: value.name,
+		label: <AgentRow agent={value} />,
+		action: (
+			<WorkspaceActions
+				workspaceId="workspace-1"
+				name={value.name}
+				agentId={value.id}
+				api={api}
+			/>
+		),
+		children,
+	};
+}
+
+function ComponentRows() {
+	const [expandedIds, setExpandedIds] = useState<readonly string[]>([
+		"workspaces",
+		"agents",
+		MAIN.id,
+	]);
+	const [selectedItemId, setSelectedItemId] = useState<string>();
+	return (
+		<TooltipProvider>
+			<Tree
+				aria-label="Workspace and agent rows"
+				expandedIds={expandedIds}
+				onExpandedIdsChange={setExpandedIds}
+				selectedItemId={selectedItemId}
+				onSelectedItemChange={setSelectedItemId}
+				nodes={[
+					{
+						id: "workspaces",
+						label: "Workspaces",
+						children: WORKSPACES.map((ws) => ({
+							id: `ws:${ws.id}`,
+							textValue: `${ws.name || "Unknown"} ${ws.owner_name || "Unknown"}`,
+							label: <WorkspaceRow workspace={ws} />,
+							action: (
+								<WorkspaceActions
+									workspaceId={ws.id}
+									name={ws.name || "Unknown"}
+									api={api}
+								/>
+							),
+						})),
+					},
+					{
+						id: "agents",
+						label: "Agents",
+						children: AGENTS.map((value) =>
+							agentNode(
+								value,
+								value.id === MAIN.id
+									? [
+											agentNode(
+												agent({
+													id: "devcontainer",
+													name: "devcontainer",
+													parent_id: MAIN.id,
+												}),
+											),
+										]
+									: undefined,
+							),
+						),
+					},
+				]}
+			/>
+		</TooltipProvider>
+	);
+}
+
+const DETAILS: ReadonlyArray<[WorkspaceAgent, AgentMetadataState]> = [
+	[
+		agent({
+			id: "reported",
+			name: "main",
+			apps: [
+				app({
+					statuses: [
+						appStatus({
+							id: "complete",
+							state: "complete",
+							message: "Opened a pull request",
+						}),
+						appStatus({ id: "working", message: "Running tests" }),
+						appStatus({
+							id: "failure",
+							state: "failure",
+							message: "Build failed",
+						}),
+						appStatus({ id: "idle", state: "idle", message: "" }),
+					],
+				}),
+			],
+		}),
+		{
+			kind: "reported",
+			metadata: [
+				agentMetadata(),
+				agentMetadata({
+					description: { key: "memory", display_name: "Memory" },
+					result: { value: "3.1/8 GiB" },
+				}),
+				agentMetadata({
+					description: { key: "disk", display_name: "Disk" },
+					result: { value: "", error: "df: permission denied" },
+				}),
+				agentMetadata({
+					description: { key: "load", display_name: "" },
+					result: { value: "" },
+				}),
+				agentMetadata({
+					description: {
+						key: "branch",
+						display_name: "A metadata name long enough to truncate",
+					},
+					result: { value: "feature/a-branch-name-that-is-also-long" },
+				}),
+			],
+		},
+	],
+	[agent({ id: "pending", name: "Awaiting metadata" }), PENDING_METADATA],
+	[
+		agent({ id: "empty", name: "No metadata" }),
+		{ kind: "reported", metadata: [] },
+	],
+	[
+		agent({ id: "failed", name: "Metadata unavailable" }),
+		{ kind: "failed", error: "Agent unreachable" },
+	],
+];
+
+function AgentDetails() {
+	const [expandedIds, setExpandedIds] = useState<readonly string[]>(
+		DETAILS.flatMap(([value]) => [value.id, `metadata:${value.id}`]),
+	);
+	return (
+		<TooltipProvider>
+			<Tree
+				aria-label="Agent details"
+				expandedIds={expandedIds}
+				onExpandedIdsChange={setExpandedIds}
+				nodes={DETAILS.map(([value, metadata]) =>
+					agentNode(value, [
+						...appStatusNodes(value),
+						{
+							id: `metadata:${value.id}`,
+							label: "Agent metadata",
+							className: "workspace-metadata-heading",
+							children: agentMetadataNodes(value.id, metadata),
+						},
+					]),
+				)}
+			/>
+		</TooltipProvider>
+	);
+}
+
+const meta: Meta<typeof ComponentRows> = {
+	title: "Workspaces/Components",
+	component: ComponentRows,
+	decorators: [
+		(Story) => (
+			<div style={{ width: 300, maxWidth: "calc(100vw - 32px)" }}>
+				<Story />
+			</div>
+		),
+	],
+	parameters: {
+		pixel: {
+			matrix: {
+				themes: ["light", "dark", "high-contrast", "high-contrast-light"],
+			},
+		},
+	},
 };
 
 export default meta;
-type Story = StoryObj<typeof WorkspaceRows>;
+type Story = StoryObj<typeof ComponentRows>;
 
-export const Statuses: Story = {};
+export const Rows: Story = {};
 
-export const Hovered: Story = {
-	args: { hovered: "long" },
-	parameters: {
-		pseudo: { hover: [".story-hover > .ui-tree-item__row"] },
+export const AgentDetailStates: Story = { render: () => <AgentDetails /> };
+
+export const RowTooltip: Story = {
+	play: async ({ canvasElement }) => {
+		const row = within(canvasElement).getByRole("treeitem", {
+			name: "a-workspace-name-long-enough-to-truncate an-owner-name-that-also-truncates",
+		});
+		await userEvent.hover(
+			within(row).getByText("a-workspace-name-long-enough-to-truncate"),
+		);
+		await expect(await screen.findByRole("tooltip")).toHaveTextContent(
+			"an-owner-name-that-also-truncates",
+		);
+	},
+};
+
+export const ActionTooltip: Story = {
+	play: async ({ canvasElement }) => {
+		const row = within(canvasElement).getByRole("treeitem", {
+			name: "running alice",
+		});
+		await userEvent.click(row);
+		await userEvent.hover(
+			within(row).getByRole("button", { name: "Open running in VS Code" }),
+		);
+		await expect(await screen.findByRole("tooltip")).toHaveTextContent(
+			"Open running in VS Code",
+		);
+	},
+};
+
+export const MetadataTooltip: Story = {
+	render: () => <AgentDetails />,
+	play: async ({ canvasElement }) => {
+		const row = within(canvasElement).getByRole("treeitem", {
+			name: "CPU: 42",
+		});
+		await userEvent.hover(within(row).getByText("CPU:"));
+		await expect(await screen.findByRole("tooltip")).toHaveTextContent(
+			"Collected at 2024-01-01T00:00:00Z",
+		);
 	},
 };

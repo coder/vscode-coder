@@ -5,8 +5,6 @@ import {
 	Icon,
 	IconButton,
 	MenuItem,
-	MenuLabel,
-	MenuGroup,
 	MenuSeparator,
 } from "@repo/ui";
 
@@ -49,7 +47,10 @@ export function WorkspaceActions({
 							<IconButton icon="more" label={`More actions for ${name}`} />
 						}
 					/>
-					<DropdownMenuContent align="end">
+					<DropdownMenuContent
+						align="end"
+						aria-description="Disabled actions are not supported by this panel."
+					>
 						<MenuItem disabled>
 							<Icon name="primitive-square" />
 							Stop
@@ -79,9 +80,6 @@ export function WorkspaceActions({
 							<Icon name="trash" />
 							Delete...
 						</MenuItem>
-						<MenuGroup>
-							<MenuLabel>Not available yet</MenuLabel>
-						</MenuGroup>
 					</DropdownMenuContent>
 				</DropdownMenu>
 			)}

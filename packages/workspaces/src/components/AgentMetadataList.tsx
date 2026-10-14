@@ -12,7 +12,12 @@ export function agentMetadataNodes(
 			{
 				id: `${prefix}:loading`,
 				textValue: "Loading metadata",
-				label: <Spinner label="Loading metadata" />,
+				label: (
+					<span className="workspace-label">
+						<Spinner size="small" label="Loading metadata" />
+						<span className="workspace-name">Loading metadata...</span>
+					</span>
+				),
 			},
 		];
 	}
@@ -22,18 +27,28 @@ export function agentMetadataNodes(
 	if (state.metadata.length === 0) {
 		return [{ id: `${prefix}:empty`, label: "No metadata reported" }];
 	}
-	return state.metadata.map(({ description, result }) => ({
-		id: `${prefix}:${description.key}`,
-		textValue: `${description.display_name || description.key}: ${result.error || result.value || "Unknown"}`,
-		label: (
-			<AgentMetadataList
-				name={description.display_name || description.key}
-				value={result.error || result.value || "Unknown"}
-				error={Boolean(result.error)}
-			/>
-		),
-		tooltip: `Collected at ${result.collected_at}${result.error ? `: ${result.error}` : ""}`,
-	}));
+	return state.metadata.map(({ description, result }) => {
+		const name = description.display_name || description.key;
+		const value = result.error || result.value || "Unknown";
+		return {
+			id: `${prefix}:${description.key}`,
+			textValue: `${name}: ${value}`,
+			label: (
+				<AgentMetadataList
+					name={name}
+					value={value}
+					error={Boolean(result.error)}
+				/>
+			),
+			tooltip: (
+				<>
+					{name}: {value}
+					<br />
+					Collected at {result.collected_at}
+				</>
+			),
+		};
+	});
 }
 
 export function AgentMetadataList({

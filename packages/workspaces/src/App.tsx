@@ -3,5 +3,9 @@ import { useWorkspaces } from "./hooks/useWorkspaces";
 
 export default function App() {
 	const { state, api } = useWorkspaces();
-	return <WorkspacesPanel state={state} api={api} />;
+	return (
+		<div className="workspaces-app">
+			<WorkspacesPanel state={state} api={api} />
+		</div>
+	);
 }

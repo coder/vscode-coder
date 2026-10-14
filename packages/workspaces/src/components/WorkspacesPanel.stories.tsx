@@ -79,19 +79,32 @@ const READY: WorkspacesState = {
 	},
 };
 
+const api = {
+	openWorkspace: fn(),
+	viewInDashboard: fn(),
+	refresh: fn(),
+	setFilter: fn(),
+	watchAgents: fn(),
+};
+
 const meta: Meta<typeof WorkspacesPanel> = {
 	title: "Workspaces/WorkspacesPanel",
 	component: WorkspacesPanel,
-	args: {
-		state: READY,
-		api: {
-			openWorkspace: fn(),
-			viewInDashboard: fn(),
-			refresh: fn(),
-			setFilter: fn(),
-			watchAgents: fn(),
+	decorators: [
+		(Story) => (
+			<div style={{ height: 480 }}>
+				<Story />
+			</div>
+		),
+	],
+	parameters: {
+		pixel: {
+			matrix: {
+				themes: ["light", "dark", "high-contrast", "high-contrast-light"],
+			},
 		},
 	},
+	args: { state: READY, api },
 };
 
 export default meta;
@@ -111,18 +124,10 @@ const clickRows =
 export const Collapsed: Story = {};
 
 export const Expanded: Story = {
-	play: clickRows(
-		"ml-training-cluster-with-a-really-long-name a-user-with-a-long-username",
-		"api-server bob",
-		"frontend alice",
-	),
-};
-
-export const Metadata: Story = {
 	play: async (context) => {
 		await clickRows("frontend alice")(context);
 		const canvas = within(context.canvasElement);
-		// The child agent's metadata, then the parent's.
+
 		for (const heading of canvas.getAllByRole("treeitem", {
 			name: "Agent metadata",
 		})) {
@@ -131,24 +136,6 @@ export const Metadata: Story = {
 		await expect(
 			await canvas.findByRole("treeitem", { name: "Memory: 3.1/8 GiB" }),
 		).toBeVisible();
-	},
-};
-
-export const MetadataFailed: Story = {
-	args: {
-		state: {
-			...READY,
-			metadata: {
-				"agent-main": { kind: "failed", error: "Agent unreachable" },
-			},
-		},
-	},
-	play: async (context) => {
-		await clickRows("frontend alice")(context);
-		const canvas = within(context.canvasElement);
-		await userEvent.click(
-			canvas.getAllByRole("treeitem", { name: "Agent metadata" })[1],
-		);
 	},
 };
 
@@ -165,12 +152,6 @@ export const MenuOpen: Story = {
 };
 
 export const FilterOpen: Story = {
-	args: {
-		state: {
-			...READY,
-			capabilities: { authenticated: true, filters: ["mine"] },
-		},
-	},
 	play: async ({ canvasElement }) => {
 		await userEvent.click(
 			within(canvasElement).getByRole("combobox", { name: "Workspace filter" }),
@@ -179,42 +160,56 @@ export const FilterOpen: Story = {
 	},
 };
 
-export const Loading: Story = { args: { state: undefined } };
-
-export const Refreshing: Story = {
-	args: { state: { ...READY, status: { kind: "loading" } } },
-	play: clickRows("frontend alice"),
-};
-
-export const FailedFirstLoad: Story = {
-	args: {
-		state: {
-			...READY,
-			workspaces: [],
-			status: { kind: "failed", error: "Could not reach the deployment." },
-		},
-	},
-};
-
-export const FailedRefresh: Story = {
-	args: {
-		state: {
-			...READY,
-			status: { kind: "failed", error: "Request timed out." },
-		},
-	},
-};
-
-export const Empty: Story = {
-	args: { state: { ...READY, workspaces: [] } },
-};
-
-export const SignedOut: Story = {
-	args: {
-		state: {
+const STATES: ReadonlyArray<[string, WorkspacesState | undefined]> = [
+	["Loading", undefined],
+	["Empty", { ...READY, workspaces: [] }],
+	[
+		"Signed out",
+		{
 			...READY,
 			workspaces: [],
 			capabilities: { authenticated: false, filters: [] },
 		},
-	},
+	],
+	[
+		"Failed",
+		{
+			...READY,
+			workspaces: [],
+			status: { kind: "failed", error: "Could not reach the deployment." },
+		},
+	],
+	["Refreshing", { ...READY, status: { kind: "loading" } }],
+	[
+		"Failed refresh",
+		{ ...READY, status: { kind: "failed", error: "Request timed out." } },
+	],
+];
+
+export const States: Story = {
+	parameters: { rootWidth: 640 },
+	render: () => (
+		<div
+			style={{
+				display: "grid",
+				gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+				gap: 12,
+			}}
+		>
+			{STATES.map(([label, state]) => (
+				<div key={label}>
+					<h2 style={{ fontSize: "inherit", margin: "0 0 4px" }}>{label}</h2>
+					<div
+						style={{
+							height: 200,
+							border: "1px solid var(--ui-border)",
+							overflow: "hidden",
+						}}
+					>
+						<WorkspacesPanel state={state} api={api} />
+					</div>
+				</div>
+			))}
+		</div>
+	),
 };
