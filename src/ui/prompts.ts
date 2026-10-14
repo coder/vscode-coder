@@ -150,11 +150,12 @@ export async function maybeAskAuthMethod(
 	client: CoderApi,
 	logger: Logger,
 ): Promise<AuthMethod | undefined> {
-	const experimentalOAuthEnabled = vscode.workspace
-		.getConfiguration()
-		.get<boolean>("coder.experimental.oauth", false);
+	const config = vscode.workspace.getConfiguration();
+	const oauthEnabled =
+		config.inspect<boolean>("coder.oauth.enabled")?.globalValue ??
+		config.get<boolean>("coder.experimental.oauth", false);
 
-	if (!experimentalOAuthEnabled) {
+	if (!oauthEnabled) {
 		return "legacy";
 	}
 
