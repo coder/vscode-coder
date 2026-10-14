@@ -1,7 +1,6 @@
 import {
 	EmptyState,
 	ErrorState,
-	IconButton,
 	LoadingState,
 	ProgressBar,
 	Select,
@@ -124,8 +123,7 @@ export function WorkspacesPanel({
 	return (
 		<TooltipProvider>
 			<section className="workspaces-panel" aria-label="Workspaces">
-				<header className="workspaces-header">
-					<h1>Workspaces</h1>
+				<div className="workspaces-filter-bar">
 					{state?.capabilities.authenticated && (
 						<Select
 							items={FILTERS}
@@ -154,12 +152,7 @@ export function WorkspacesPanel({
 							</SelectContent>
 						</Select>
 					)}
-					<IconButton
-						icon="refresh"
-						label="Refresh workspaces"
-						onClick={() => api.refresh()}
-					/>
-				</header>
+				</div>
 				{state && !state.capabilities.authenticated ? (
 					<EmptyState
 						title="Welcome to Coder"

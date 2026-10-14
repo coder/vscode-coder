@@ -18,25 +18,13 @@ body {
 	padding-block: var(--ui-spacing-40);
 }
 
-.workspaces-header {
+.workspaces-filter-bar {
 	display: flex;
-	align-items: center;
-	gap: var(--ui-spacing-60);
-	padding: 0 var(--ui-spacing-120) var(--ui-spacing-40);
+	justify-content: center;
+	padding: var(--ui-spacing-40) var(--ui-spacing-120);
 }
 
-.workspaces-header h1 {
-	flex: 1;
-	min-width: 0;
-	margin: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	font-size: inherit;
-	font-weight: var(--ui-font-weight-semibold);
-}
-
-.workspaces-header .workspace-filter {
+.workspaces-filter-bar .workspace-filter {
 	flex: none;
 	width: 88px;
 }

@@ -90,9 +90,8 @@ class WatchedAgent {
 }
 
 /**
- * Watches agent metadata over SSE. The watched set is declared, not built up:
- * `watch` opens the sockets it is missing and releases the rest. Released
- * sockets stay open for a while, so watching an agent again is instant.
+ * Watches a declared set of agent metadata streams. `watch` opens missing streams
+ * and releases the rest. Released streams linger so re-expanding an agent reuses them.
  */
 export class AgentMetadataTracker implements vscode.Disposable {
 	private readonly changeEmitter = new vscode.EventEmitter<void>();

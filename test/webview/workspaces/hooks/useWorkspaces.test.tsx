@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { agentMetadata, workspace } from "@repo/mocks";
 import { WorkspacesApi, type WorkspacesState } from "@repo/shared";
 import { useWorkspaces } from "@repo/workspaces/hooks/useWorkspaces";
 
@@ -32,15 +33,19 @@ const push = (state: WorkspacesState) =>
 	act(async () => {
 		window.dispatchEvent(
 			new MessageEvent("message", {
-				data: { type: WorkspacesApi.stateChanged.method, data: state },
+				data: {
+					type: WorkspacesApi.stateChanged.method,
+					data: JSON.parse(JSON.stringify(state)),
+				},
 			}),
 		);
 		await Promise.resolve();
 	});
 
 describe("useWorkspaces", () => {
-	it("asks for the state, then replaces its own with each push", async () => {
-		const { sent, result } = setup();
+	it("asks for state once and keeps its commands stable across updates", async () => {
+		const { sent, result, rerender } = setup();
+		const api = result.current.api;
 		expect(sent).toEqual([
 			{ method: WorkspacesApi.ready.method, params: undefined },
 		]);
@@ -55,6 +60,44 @@ describe("useWorkspaces", () => {
 		};
 		await push(failed);
 		expect(result.current.state).toEqual(failed);
+		rerender();
+		expect(result.current.api).toBe(api);
+		expect(sent).toEqual([
+			{ method: WorkspacesApi.ready.method, params: undefined },
+		]);
+	});
+
+	it("shares unchanged JSON data while applying metadata and workspace changes", async () => {
+		const { result } = setup();
+		const first: WorkspacesState = {
+			...STATE,
+			workspaces: [
+				workspace({ id: "first", name: "first" }),
+				workspace({ id: "second", name: "second" }),
+			],
+		};
+		await push(first);
+		const initial = result.current.state;
+		await push(first);
+		expect(result.current.state).toBe(initial);
+
+		const metadata = {
+			"agent-1": { kind: "reported", metadata: [agentMetadata()] },
+		} as const;
+		await push({ ...first, metadata });
+		expect(result.current.state?.metadata).toEqual(metadata);
+		expect(result.current.state?.workspaces).toBe(initial?.workspaces);
+
+		const updated: WorkspacesState = {
+			...first,
+			metadata,
+			workspaces: first.workspaces.map((value) =>
+				value.id === "first" ? { ...value, name: "renamed" } : value,
+			),
+		};
+		await push(updated);
+		expect(result.current.state?.workspaces[0].name).toBe("renamed");
+		expect(result.current.state?.workspaces[1]).toBe(initial?.workspaces[1]);
 	});
 
 	it("stops applying pushes once unmounted", async () => {

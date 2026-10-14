@@ -19,4 +19,4 @@ To enable via settings.json:
 
 3. Reload VS Code
 
-A new activity bar icon labeled **"Coder Remote (New)"** will appear when the setting is enabled.
+The **Coder Remote** activity bar icon opens the **Workspaces** view when the setting is enabled.

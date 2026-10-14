@@ -335,7 +335,7 @@
 				},
 				{
 					"id": "coderExperimentalWorkspaces",
-					"title": "Coder Remote (New)",
+					"title": "Coder Remote",
 					"icon": "media/shorthand-logo.svg"
 				}
 			]
@@ -553,6 +553,12 @@
 				"icon": "$(refresh)"
 			},
 			{
+				"command": "coder.workspaces.refresh",
+				"title": "Refresh Workspaces",
+				"category": "Coder",
+				"icon": "$(refresh)"
+			},
+			{
 				"command": "coder.applyRecommendedSettings",
 				"title": "Apply Recommended SSH Settings",
 				"category": "Coder"
@@ -689,6 +695,10 @@
 					"when": "false"
 				},
 				{
+					"command": "coder.workspaces.refresh",
+					"when": "false"
+				},
+				{
 					"command": "coder.applyRecommendedSettings"
 				}
 			],
@@ -745,6 +755,11 @@
 				{
 					"command": "coder.tasks.refresh",
 					"when": "coder.authenticated && view == coder.tasksPanel",
+					"group": "navigation@1"
+				},
+				{
+					"command": "coder.workspaces.refresh",
+					"when": "coder.authenticated && view == coder.workspacesPanel",
 					"group": "navigation@1"
 				}
 			],

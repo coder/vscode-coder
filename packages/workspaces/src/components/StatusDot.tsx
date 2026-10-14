@@ -12,7 +12,7 @@ export function StatusDot({
 	return (
 		<Tooltip content={status}>
 			<Icon
-				name="circle-small-filled"
+				name="circle-filled"
 				aria-label={status}
 				className={`workspace-status workspace-status--${tone}`}
 			/>

@@ -316,12 +316,8 @@ describe("WorkspacesPanel", () => {
 	});
 
 	it("keeps the tree and its expansion while refreshing or after a failure", async () => {
-		const { user, drain } = await setup();
+		const { user } = await setup();
 		await user.click(row("alpha alice"));
-		await user.click(
-			screen.getByRole("button", { name: "Refresh workspaces" }),
-		);
-		expect(drain(WorkspacesApi.refresh.method)).toEqual([undefined]);
 
 		await push({ ...STATE, status: { kind: "loading" } });
 		expect(
