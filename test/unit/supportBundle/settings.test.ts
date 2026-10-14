@@ -48,6 +48,7 @@ describe("collectSettingsFile", () => {
 				"coder.defaultUrl": "https://coder.example.com",
 				"coder.proxyLogDirectory": "/home/user/.coder/logs",
 				"coder.insecure": true,
+				"coder.oauth.enabled": true,
 				"coder.httpClientLogLevel": "debug",
 			},
 			{
@@ -77,6 +78,7 @@ describe("collectSettingsFile", () => {
 					globalValue: "/home/user/.coder/logs",
 				},
 				"coder.insecure": { defaultValue: false, globalValue: true },
+				"coder.oauth.enabled": { defaultValue: false, globalValue: true },
 				"coder.httpClientLogLevel": {
 					defaultValue: "info",
 					globalValue: "debug",
@@ -110,6 +112,7 @@ describe("collectSettingsFile", () => {
 			"/home/user/.coder/logs",
 		);
 		expect(settings["coder.insecure"]?.effective).toBe(true);
+		expect(settings["coder.oauth.enabled"]?.effective).toBe(true);
 		expect(settings["coder.httpClientLogLevel"]?.effective).toBe("debug");
 	});
 

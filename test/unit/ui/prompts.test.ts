@@ -23,7 +23,7 @@ const client = { getAxiosInstance: vi.fn() } as unknown as CoderApi;
 describe("maybeAskAuthMethod", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		new MockConfigurationProvider().set("coder.experimental.oauth", true);
+		new MockConfigurationProvider().set("coder.oauth.enabled", true);
 	});
 
 	function mockSupport(support: OAuthSupport) {
@@ -47,6 +47,34 @@ describe("maybeAskAuthMethod", () => {
 		expect(await maybeAskAuthMethod(client, createMockLogger())).toBe("legacy");
 		expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
 	});
+
+	it.each([
+		{ enabled: undefined, oldEnabled: undefined, expected: "legacy" },
+		{ enabled: undefined, oldEnabled: false, expected: "legacy" },
+		{ enabled: undefined, oldEnabled: true, expected: "oauth" },
+		{ enabled: false, oldEnabled: true, expected: "legacy" },
+		{ enabled: true, oldEnabled: false, expected: "oauth" },
+	])(
+		"uses $expected with new=$enabled and old=$oldEnabled",
+		async ({ enabled, oldEnabled, expected }) => {
+			const config = new MockConfigurationProvider();
+			config.setDefault("coder.oauth.enabled", false);
+			config.set("coder.oauth.enabled", enabled);
+			config.set("coder.experimental.oauth", oldEnabled);
+			mockSupport("supported");
+			vi.mocked(vscode.window.showQuickPick).mockResolvedValue({
+				label: "OAuth (Recommended)",
+				value: "oauth",
+			} as vscode.QuickPickItem);
+
+			expect(await maybeAskAuthMethod(client, createMockLogger())).toBe(
+				expected,
+			);
+			expect(OAuthMetadataClient.checkOAuthSupport).toHaveBeenCalledTimes(
+				expected === "oauth" ? 1 : 0,
+			);
+		},
+	);
 
 	it("asks for the method when OAuth is supported", async () => {
 		mockSupport("supported");

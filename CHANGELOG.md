@@ -5,6 +5,14 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Changed
+
+- Rename `coder.experimental.oauth` to `coder.oauth.enabled` now that OAuth is
+  generally available. Existing values remain effective until the new setting is
+  explicitly set in user settings. OAuth remains disabled by default.
+
 ## [v1.17.0](https://github.com/coder/vscode-coder/releases/tag/v1.17.0) 2026-10-13
 
 ### Added
