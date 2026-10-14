@@ -1,1 +1,121 @@
-/* TODO */
+body {
+	margin: 0;
+	padding: 0;
+	font-family: var(--vscode-font-family, sans-serif);
+	font-size: var(--vscode-font-size, 13px);
+	color: var(--ui-foreground);
+	background: var(--ui-background);
+}
+
+.workspaces-panel {
+	box-sizing: border-box;
+	height: 100vh;
+	overflow-y: auto;
+	padding-block: 8px;
+}
+
+.workspaces-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0 12px 8px;
+}
+
+.workspaces-header h1 {
+	flex: 1;
+	margin: 0;
+	font-size: inherit;
+	font-weight: 600;
+}
+
+.workspaces-header .ui-select__trigger {
+	min-width: 72px;
+}
+
+.workspace-label {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	width: 100%;
+	padding-inline-start: 3px;
+}
+
+.workspace-name,
+.workspace-owner {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.workspace-name {
+	flex: 0 1 auto;
+}
+
+.workspace-owner {
+	flex: 0 1 auto;
+	color: var(--ui-description-foreground);
+}
+
+.workspace-agent-icon {
+	flex: none;
+	color: var(--ui-description-foreground);
+	font-size: 10px;
+}
+
+.workspace-status {
+	--workspace-status-color: var(--ui-description-foreground);
+	flex: none;
+	width: 6px;
+	height: 6px;
+	margin: 3px;
+	border-radius: 50%;
+	background: var(--workspace-status-color);
+	box-shadow: 0 0 0 3px
+		color-mix(in srgb, var(--workspace-status-color) 20%, transparent);
+}
+
+.workspace-status--running {
+	--workspace-status-color: var(
+		--vscode-testing-iconPassed,
+		var(--ui-status-success-accent)
+	);
+}
+
+.workspace-status--pending {
+	--workspace-status-color: var(
+		--vscode-testing-messagePeekBorder,
+		var(--ui-status-info-accent)
+	);
+}
+
+.workspace-status--error {
+	--workspace-status-color: var(
+		--vscode-testing-iconFailed,
+		var(--ui-status-danger-accent)
+	);
+}
+
+.workspace-metadata-heading {
+	color: var(--ui-description-foreground);
+	font-size: 0.95em;
+}
+
+.workspace-metadata {
+	display: flex;
+	justify-content: space-between;
+	gap: 16px;
+	width: 100%;
+	min-width: 0;
+}
+
+.workspace-metadata > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.workspace-metadata--error,
+.workspace-delete {
+	color: var(--ui-error-foreground);
+}

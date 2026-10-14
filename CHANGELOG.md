@@ -7,6 +7,11 @@
 
 ## [v1.17.1](https://github.com/coder/vscode-coder/releases/tag/v1.17.1) 2026-10-15
 
+### Added
+
+- Add a workspace tree, filters, inline actions, and live agent metadata to the
+  experimental Workspaces panel.
+
 ### Changed
 
 - Rename `coder.experimental.oauth` to `coder.oauth.enabled` now that OAuth is
