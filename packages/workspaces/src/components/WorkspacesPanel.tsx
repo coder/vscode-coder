@@ -1,13 +1,15 @@
 import {
+	Button,
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuTrigger,
 	EmptyState,
 	ErrorState,
+	Icon,
 	LoadingState,
+	MenuRadioGroup,
+	MenuRadioItem,
 	ProgressBar,
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
 	TooltipProvider,
 	Tree,
 	type TreeNode,
@@ -18,7 +20,7 @@ import { agentMetadataNodes } from "./AgentMetadataList";
 import { AgentRow } from "./AgentRow";
 import { appStatusNodes } from "./AppStatusRow";
 import { WorkspaceActions, type WorkspaceCommands } from "./WorkspaceActions";
-import { WorkspaceRow } from "./WorkspaceRow";
+import { WorkspaceRow, workspaceTooltip } from "./WorkspaceRow";
 
 import type { Workspace, WorkspaceAgent, WorkspacesState } from "@repo/shared";
 
@@ -45,6 +47,9 @@ export function WorkspacesPanel({
 	const [selectedItemId, setSelectedItemId] = useState<string>();
 	const workspaces = state?.capabilities.authenticated ? state.workspaces : [];
 	const showOwner = state?.filter !== "mine";
+	const filterLabel = FILTERS.find(
+		({ value }) => value === state?.filter,
+	)?.label;
 	const agentWorkspaces = new Set(state?.agentWorkspaceIds ?? []);
 	const watched: string[] = [];
 
@@ -62,6 +67,7 @@ export function WorkspacesPanel({
 			return {
 				id: agent.id,
 				textValue: agent.name || "Unknown",
+				tooltip: `Status: ${agent.status}`,
 				label: <AgentRow agent={agent} />,
 				action: (
 					<WorkspaceActions
@@ -98,6 +104,7 @@ export function WorkspacesPanel({
 		return {
 			id: workspace.id,
 			textValue: `${workspace.name || "Unknown"}${hasAgentChat ? " Agent" : ""}${showOwner ? ` ${workspace.owner_name || "Unknown"}` : ""}`,
+			tooltip: workspaceTooltip(workspace),
 			label: (
 				<WorkspaceRow
 					workspace={workspace}
@@ -109,6 +116,7 @@ export function WorkspacesPanel({
 				<WorkspaceActions
 					workspaceId={workspace.id}
 					name={workspace.name || "Unknown"}
+					status={workspace.latest_build.status}
 					api={api}
 				/>
 			),
@@ -134,32 +142,45 @@ export function WorkspacesPanel({
 			<section className="workspaces-panel" aria-label="Workspaces">
 				<div className="workspaces-filter-bar">
 					{state?.capabilities.authenticated && (
-						<Select
-							items={FILTERS}
-							value={state.filter}
-							onValueChange={(filter) => {
-								if (filter && state.capabilities.filters.includes(filter))
-									api.setFilter({ filter });
-							}}
-						>
-							<SelectTrigger
-								className="workspace-filter"
-								aria-label="Workspace filter"
-							>
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{FILTERS.map(({ value, label }) => (
-									<SelectItem
-										key={value}
-										value={value}
-										disabled={!state.capabilities.filters.includes(value)}
+						<DropdownMenu>
+							<DropdownMenuTrigger
+								render={
+									<Button
+										variant="secondary"
+										className="workspace-filter"
+										aria-label={`Workspace filter: ${filterLabel}`}
 									>
-										{label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+										{filterLabel}
+										<Icon name="chevron-down" />
+									</Button>
+								}
+							/>
+							<DropdownMenuContent align="center">
+								<MenuRadioGroup
+									value={state.filter}
+									onValueChange={(filter) => {
+										const choice = FILTERS.find(
+											({ value }) => value === filter,
+										);
+										if (
+											choice &&
+											state.capabilities.filters.includes(choice.value)
+										)
+											api.setFilter({ filter: choice.value });
+									}}
+								>
+									{FILTERS.map(({ value, label }) => (
+										<MenuRadioItem
+											key={value}
+											value={value}
+											disabled={!state.capabilities.filters.includes(value)}
+										>
+											{label}
+										</MenuRadioItem>
+									))}
+								</MenuRadioGroup>
+							</DropdownMenuContent>
+						</DropdownMenu>
 					)}
 				</div>
 				{state && !state.capabilities.authenticated ? (

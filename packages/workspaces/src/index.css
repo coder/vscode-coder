@@ -27,7 +27,15 @@ body {
 
 .workspaces-filter-bar .workspace-filter {
 	flex: none;
-	width: 88px;
+	height: 22px;
+	gap: var(--ui-spacing-60);
+	color: var(--ui-description-foreground);
+	background: transparent;
+	border-color: transparent;
+}
+
+.workspaces-filter-bar .workspace-filter:is(:hover, [data-popup-open]) {
+	background: var(--ui-toolbar-hover-background);
 }
 
 .workspaces-panel .workspaces-refresh-progress {

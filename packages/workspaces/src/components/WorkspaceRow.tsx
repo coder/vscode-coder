@@ -4,6 +4,11 @@ import { StatusDot, statusTone } from "./StatusDot";
 
 import type { Workspace } from "@repo/shared";
 
+export function workspaceTooltip(workspace: Workspace): string {
+	const status = workspace.latest_build.status;
+	return `Template: ${workspace.template_display_name || workspace.template_name || "Unknown"} • Status: ${status.charAt(0).toUpperCase() + status.slice(1)}`;
+}
+
 export function WorkspaceRow({
 	workspace,
 	showOwner = true,

@@ -180,9 +180,11 @@ export const MenuOpen: Story = {
 export const FilterOpen: Story = {
 	play: async ({ canvasElement }) => {
 		await userEvent.click(
-			within(canvasElement).getByRole("combobox", { name: "Workspace filter" }),
+			within(canvasElement).getByRole("button", {
+				name: "Workspace filter: Mine",
+			}),
 		);
-		await screen.findByRole("option", { name: "Shared" });
+		await screen.findByRole("menuitemradio", { name: "Shared" });
 	},
 };
 

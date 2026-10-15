@@ -8,6 +8,8 @@ import {
 	MenuSeparator,
 } from "@repo/ui";
 
+import type { Workspace } from "@repo/shared";
+
 import type { useWorkspaces } from "../hooks/useWorkspaces";
 
 export type WorkspaceCommands = Pick<
@@ -19,13 +21,23 @@ export function WorkspaceActions({
 	workspaceId,
 	name,
 	agentId,
+	status,
 	api,
 }: {
 	workspaceId: string;
 	name: string;
 	agentId?: string;
+	status?: Workspace["latest_build"]["status"];
 	api: WorkspaceCommands;
 }) {
+	const lifecycleActions =
+		status === "running"
+			? ["Stop", "Restart"]
+			: status === "stopped"
+				? ["Start"]
+				: status === "failed" || status === "canceled"
+					? ["Retry"]
+					: [];
 	return (
 		<>
 			<IconButton
@@ -57,19 +69,21 @@ export function WorkspaceActions({
 						align="end"
 						aria-description="Disabled actions are not supported by this panel."
 					>
-						<MenuItem disabled>
-							<Icon name="play" />
-							Start
-						</MenuItem>
-						<MenuItem disabled>
-							<Icon name="primitive-square" />
-							Stop
-						</MenuItem>
-						<MenuItem disabled>
-							<Icon name="debug-restart" />
-							Restart
-						</MenuItem>
-						<MenuSeparator />
+						{lifecycleActions.map((label) => (
+							<MenuItem key={label} disabled>
+								<Icon
+									name={
+										label === "Start"
+											? "play"
+											: label === "Stop"
+												? "primitive-square"
+												: "debug-restart"
+									}
+								/>
+								{label}
+							</MenuItem>
+						))}
+						{lifecycleActions.length > 0 && <MenuSeparator />}
 						<MenuItem
 							onClick={() =>
 								api.viewInDashboard({ workspaceId, page: "settings" })
@@ -81,6 +95,19 @@ export function WorkspaceActions({
 						<MenuItem disabled>
 							<Icon name="share" />
 							Share
+						</MenuItem>
+						<MenuSeparator />
+						<MenuItem disabled>
+							<Icon name="pulse" />
+							Ping
+						</MenuItem>
+						<MenuItem disabled>
+							<Icon name="dashboard" />
+							Speed Test
+						</MenuItem>
+						<MenuItem disabled>
+							<Icon name="archive" />
+							Support Bundle
 						</MenuItem>
 						<MenuSeparator />
 						<MenuItem disabled className="workspace-delete">

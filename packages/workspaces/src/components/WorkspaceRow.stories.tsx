@@ -14,7 +14,7 @@ import { agentMetadataNodes } from "./AgentMetadataList";
 import { AgentRow } from "./AgentRow";
 import { appStatusNodes } from "./AppStatusRow";
 import { WorkspaceActions } from "./WorkspaceActions";
-import { WorkspaceRow } from "./WorkspaceRow";
+import { WorkspaceRow, workspaceTooltip } from "./WorkspaceRow";
 
 import type {
 	AgentMetadataState,
@@ -85,6 +85,7 @@ function agentNode(
 	return {
 		id: value.id,
 		textValue: value.name,
+		tooltip: `Status: ${value.status}`,
 		label: <AgentRow agent={value} />,
 		action: (
 			<WorkspaceActions
@@ -120,11 +121,13 @@ function ComponentRows() {
 						children: WORKSPACES.map((ws) => ({
 							id: `ws:${ws.id}`,
 							textValue: `${ws.name || "Unknown"} ${ws.owner_name || "Unknown"}`,
+							tooltip: workspaceTooltip(ws),
 							label: <WorkspaceRow workspace={ws} />,
 							action: (
 								<WorkspaceActions
 									workspaceId={ws.id}
 									name={ws.name || "Unknown"}
+									status={ws.latest_build.status}
 									api={api}
 								/>
 							),
@@ -278,7 +281,7 @@ export const RowTooltip: Story = {
 			within(row).getByText("a-workspace-name-long-enough-to-truncate"),
 		);
 		await expect(await screen.findByRole("tooltip")).toHaveTextContent(
-			"an-owner-name-that-also-truncates",
+			"Template: Test Template • Status: Running",
 		);
 	},
 };

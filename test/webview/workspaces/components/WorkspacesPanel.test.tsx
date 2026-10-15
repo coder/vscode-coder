@@ -89,20 +89,27 @@ describe("WorkspacesPanel", () => {
 	it("offers only the filters the session allows", async () => {
 		const { user, drain } = await setup();
 		await user.click(
-			screen.getByRole("combobox", { name: "Workspace filter" }),
+			screen.getByRole("button", { name: "Workspace filter: Mine" }),
 		);
 
-		expect(await screen.findByRole("option", { name: "All" })).toHaveAttribute(
-			"aria-disabled",
-			"true",
-		);
-		await user.click(screen.getByRole("option", { name: "All" }));
+		expect(
+			await screen.findByRole("menuitemradio", { name: "All" }),
+		).toHaveAttribute("aria-disabled", "true");
+		await user.click(screen.getByRole("menuitemradio", { name: "All" }));
 		expect(drain(WorkspacesApi.setFilter.method)).toEqual([]);
 
-		await user.click(screen.getByRole("option", { name: "Shared" }));
+		expect(screen.getByRole("menuitemradio", { name: "Mine" })).toHaveAttribute(
+			"aria-checked",
+			"true",
+		);
+		await user.keyboard("{End}{Enter}");
 		expect(drain(WorkspacesApi.setFilter.method)).toEqual([
 			{ filter: "shared" },
 		]);
+		await push({ ...STATE, filter: "shared" });
+		expect(
+			screen.getByRole("button", { name: "Workspace filter: Shared" }),
+		).toBeVisible();
 	});
 
 	it("shows owners only in All and Shared, including after filter changes", async () => {
@@ -186,7 +193,14 @@ describe("WorkspacesPanel", () => {
 			screen.getByRole("button", { name: "More actions for beta" }),
 		);
 		const menu = await screen.findByRole("menu");
-		for (const name of ["Start", "Stop", "Restart", "Share", "Delete..."]) {
+		for (const name of [
+			"Start",
+			"Share",
+			"Ping",
+			"Speed Test",
+			"Support Bundle",
+			"Delete...",
+		]) {
 			expect(within(menu).getByRole("menuitem", { name })).toHaveAttribute(
 				"aria-disabled",
 				"true",
@@ -196,6 +210,67 @@ describe("WorkspacesPanel", () => {
 		expect(drain(WorkspacesApi.viewInDashboard.method)).toEqual([
 			{ workspaceId: "ws-beta", page: "settings" },
 		]);
+	});
+
+	it.each([
+		["running", ["Stop", "Restart"]],
+		["stopped", ["Start"]],
+		["failed", ["Retry"]],
+		["canceled", ["Retry"]],
+		["starting", []],
+		["stopping", []],
+		["pending", []],
+		["canceling", []],
+		["deleting", []],
+		["deleted", []],
+	] as const)(
+		"offers lifecycle actions appropriate to %s",
+		async (status, actions) => {
+			const { user } = await setup({
+				...STATE,
+				workspaces: [workspace({ latest_build: { status } })],
+			});
+			await user.click(
+				screen.getByRole("button", { name: "More actions for test-workspace" }),
+			);
+			const menu = await screen.findByRole("menu");
+			for (const name of ["Start", "Stop", "Restart", "Retry"]) {
+				const item = within(menu).queryByRole("menuitem", { name });
+				if (actions.some((action) => action === name)) {
+					expect(item).toHaveAttribute("aria-disabled", "true");
+				} else {
+					expect(item).not.toBeInTheDocument();
+				}
+			}
+		},
+	);
+
+	it("describes workspaces and agents through keyboard hover", async () => {
+		const boxes = vi
+			.spyOn(Element.prototype, "getBoundingClientRect")
+			.mockReturnValue(DOMRect.fromRect({ width: 200, height: 22 }));
+		onTestFinished(() => boxes.mockRestore());
+		const { user } = await setup({
+			...STATE,
+			workspaces: [
+				workspace({
+					template_display_name: "Go",
+					template_name: "go-template",
+					agents: [agent({ name: "primary", status: "connecting" })],
+				}),
+			],
+		});
+		await user.click(row("test-workspace"));
+		await user.keyboard("{Control>}k{/Control}{Control>}i{/Control}");
+		expect(await screen.findByRole("tooltip")).toHaveTextContent(
+			"Template: Go • Status: Running",
+		);
+		await user.keyboard("{Escape}");
+		await user.click(row("primary"));
+		await user.keyboard("{Control>}k{/Control}{Control>}i{/Control}");
+		expect(await screen.findByRole("tooltip")).toHaveTextContent(
+			"Status: connecting",
+		);
 	});
 
 	it("watches metadata only for the agents whose metadata is visible", async () => {
@@ -321,7 +396,9 @@ describe("WorkspacesPanel", () => {
 		expect(screen.queryByRole("tree")).not.toBeInTheDocument();
 		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 		if (state && !state.capabilities.authenticated) {
-			expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+			expect(
+				screen.queryByRole("button", { name: /^Workspace filter:/ }),
+			).not.toBeInTheDocument();
 		}
 	});
 
