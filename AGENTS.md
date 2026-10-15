@@ -75,8 +75,8 @@ deployment. Treat them as untrusted:
 - Validate names with `src/common/validation.ts` before they reach SSH hosts,
   paths, or the CLI.
 - In SSH `ProxyCommand` (the one shell context), build flags with
-  `getGlobalShellFlags`, which validates the URL and quotes it with
-  `escapeShellArg`.
+  `getGlobalShellFlags`, which validates the URL and quotes values with
+  `escapeProxyCommandArg` (open-remote-ssh splits it without a shell).
 
 ## Code style
 
