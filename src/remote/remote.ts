@@ -18,7 +18,7 @@ import { HttpStatusCode } from "../api/httpStatusCode";
 import { extractAgents } from "../api/models";
 import { version as cliVersion } from "../cli/cliExec";
 import { expandPath } from "../common/fs";
-import { escapeCommandArg } from "../common/strings";
+import { escapeCommandArg, escapeProxyCommandPath } from "../common/strings";
 import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
 	watchConfigurationChanges,
@@ -865,7 +865,7 @@ export class Remote {
 		}
 		await fs.mkdir(logDir, { recursive: true });
 		this.logger.info("SSH proxy diagnostics are being written to", logDir);
-		return ["--log-dir", escapeCommandArg(logDir), "-v"];
+		return ["--log-dir", escapeProxyCommandPath(logDir), "-v"];
 	}
 
 	private getMainSshConfigPath(): string {
@@ -1114,7 +1114,7 @@ function coderCommand(
 		vscode.workspace.getConfiguration(),
 		options.cliAuth,
 	);
-	return `${escapeCommandArg(options.binaryPath)} ${globalFlags.join(" ")} ${subcommand} ${flags.join(" ")}`;
+	return `${escapeProxyCommandPath(options.binaryPath)} ${globalFlags.join(" ")} ${subcommand} ${flags.join(" ")}`;
 }
 
 /** ProxyCommand for CLIs that support wildcard hosts. */
@@ -1126,7 +1126,7 @@ export function buildSshProxyCommand(
 		"--stdio",
 		`--usage-app=${escapeCommandArg(options.sessionApp)}`,
 		"--network-info-dir",
-		escapeCommandArg(options.pathResolver.getNetworkInfoPath()),
+		escapeProxyCommandPath(options.pathResolver.getNetworkInfoPath()),
 		...options.logArgs,
 		"--ssh-host-prefix",
 		options.hostPrefix,
@@ -1145,12 +1145,12 @@ function buildVscodeSshProxyCommand(
 	const { pathResolver, label } = options;
 	return coderCommand(options, "vscodessh", [
 		"--network-info-dir",
-		escapeCommandArg(pathResolver.getNetworkInfoPath()),
+		escapeProxyCommandPath(pathResolver.getNetworkInfoPath()),
 		...options.logArgs,
 		"--session-token-file",
-		escapeCommandArg(pathResolver.getSessionTokenPath(label)),
+		escapeProxyCommandPath(pathResolver.getSessionTokenPath(label)),
 		"--url-file",
-		escapeCommandArg(pathResolver.getUrlPath(label)),
+		escapeProxyCommandPath(pathResolver.getUrlPath(label)),
 		"%h",
 	]);
 }

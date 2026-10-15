@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	escapeCommandArg,
 	escapeProxyCommandArg,
+	escapeProxyCommandPath,
 	escapeShellArg,
 } from "@/common/strings";
 
@@ -121,5 +122,24 @@ describe("escapeProxyCommandArg", () => {
 		["line\nbreak", escapeShellArg],
 	])("quotes %j", (value, escape) => {
 		expect(escapeProxyCommandArg(value)).toBe(escape(value));
+	});
+});
+
+describe("escapeProxyCommandPath", () => {
+	const platformSpy = vi.spyOn(os, "platform");
+	afterEach(() => platformSpy.mockReset());
+
+	it.each([
+		[
+			"win32",
+			String.raw`C:\Users\John Doe\coder.exe`,
+			'"C:/Users/John Doe/coder.exe"',
+		],
+		["win32", String.raw`d:\a\b`, "d:/a/b"],
+		["win32", String.raw`\\server\share\x`, String.raw`"\\server\share\x"`],
+		["linux", String.raw`C:\x`, String.raw`'C:\x'`],
+	] as const)("on %s writes %j as %s", (platform, value, expected) => {
+		platformSpy.mockReturnValue(platform);
+		expect(escapeProxyCommandPath(value)).toBe(expected);
 	});
 });

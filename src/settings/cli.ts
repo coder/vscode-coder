@@ -1,7 +1,11 @@
 import os from "node:os";
 
 import { expandPath } from "../common/fs";
-import { escapeCommandArg, escapeProxyCommandArg } from "../common/strings";
+import {
+	escapeCommandArg,
+	escapeProxyCommandArg,
+	escapeProxyCommandPath,
+} from "../common/strings";
 import { validateDeploymentUrl } from "../common/validation";
 
 import { getHeaderArgs } from "./headers";
@@ -52,7 +56,13 @@ export function getGlobalShellFlags(
 	validateDeploymentUrl(auth.url);
 	return [
 		escapeCommandArg("--token="),
-		...buildGlobalFlags(configs, auth, escapeCommandArg, escapeProxyCommandArg),
+		...buildGlobalFlags(
+			configs,
+			auth,
+			escapeCommandArg,
+			escapeProxyCommandArg,
+			escapeProxyCommandPath,
+		),
 	];
 }
 
@@ -61,7 +71,7 @@ export function getGlobalFlags(
 	configs: Pick<WorkspaceConfiguration, "get">,
 	auth: CliAuth,
 ): string[] {
-	return buildGlobalFlags(configs, auth, identity, identity);
+	return buildGlobalFlags(configs, auth, identity, identity, identity);
 }
 
 const identity = (s: string) => s;
@@ -88,6 +98,7 @@ function buildGlobalFlags(
 	auth: CliAuth,
 	escUserFlag: (s: string) => string,
 	escValue: (s: string) => string,
+	escPath: (s: string) => string,
 ): string[] {
 	// Escape after stripping so expansion whitespace stays in one shell token.
 	// User flags keep shell expansion (e.g. `$VAR`); the auth values and
@@ -97,7 +108,7 @@ function buildGlobalFlags(
 		auth.store === "extension",
 	).map(escUserFlag);
 	if (auth.store === "extension") {
-		flags.push("--global-config", escValue(auth.configDir));
+		flags.push("--global-config", escPath(auth.configDir));
 	}
 	flags.push("--url", escValue(auth.url));
 	if (auth.useKeyring !== undefined) {

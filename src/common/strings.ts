@@ -57,3 +57,15 @@ export function escapeShellArg(arg: string): string {
 export function escapeProxyCommandArg(arg: string): string {
 	return /[$`\\%\r\n]/.test(arg) ? escapeShellArg(arg) : escapeCommandArg(arg);
 }
+
+/**
+ * {@link escapeProxyCommandArg} for a local path. Windows drive paths use `/`,
+ * which every runner accepts; open-remote-ssh 0.4.0 strips `\` as an escape.
+ */
+export function escapeProxyCommandPath(filePath: string): string {
+	const portable =
+		os.platform() === "win32" && /^[a-z]:\\/i.test(filePath)
+			? filePath.replaceAll("\\", "/")
+			: filePath;
+	return escapeProxyCommandArg(portable);
+}

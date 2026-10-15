@@ -403,7 +403,10 @@ describe("Remote", () => {
 		// OpenSSH runs the command with `sh -c` on Unix; Win32-OpenSSH passes it
 		// to CreateProcessW, so the program's argv parser splits it.
 		it("reaches the CLI unchanged through this platform's OpenSSH", () => {
-			const configDir = "/Users/me/Library/Application Support/coder";
+			// A drive path on Windows reaches the CLI with `/`.
+			const configDir = isWindows()
+				? String.raw`C:\Users\John Doe\AppData\coder`
+				: "/Users/me/Library/Application Support/coder";
 			const headerCommand = 'echo "X: $TOKEN" "C:\\a b\\" `id`';
 			const pathResolver = new PathResolver("/mock/global", "/mock/log");
 			new MockConfigurationProvider().set("coder.headerCommand", headerCommand);
@@ -435,7 +438,7 @@ describe("Remote", () => {
 			expect(JSON.parse(result.stdout)).toStrictEqual([
 				"--token=",
 				"--global-config",
-				configDir,
+				configDir.replaceAll("\\", "/"),
 				"--url",
 				CLI_AUTH.url,
 				"--header-command",
