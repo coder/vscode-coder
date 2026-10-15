@@ -28,6 +28,9 @@ jobs:
 
       - run: pnpm format:check
 
+      - name: Check vendored Coder client
+        run: pnpm sync:coder && git diff --exit-code vendor/coder
+
       - run: pnpm lint
 
       - run: pnpm build

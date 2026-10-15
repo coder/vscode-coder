@@ -17,7 +17,8 @@
 		"**/vite.config*.ts",
 		".vscode-test/**",
 		"test/fixtures/scripts/**",
-		"storybook-static/**"
+		"storybook-static/**",
+		"vendor/coder/site/**"
 	],
 	"overrides": [
 		{

@@ -25,6 +25,7 @@ export default defineConfig(
 		".vscode-test/**",
 		"test/fixtures/scripts/**",
 		"storybook-static/**",
+		"vendor/coder/site/**",
 	]),
 
 	// Parse TypeScript without the type-aware programs; Oxlint owns typed rules.
@@ -42,6 +43,7 @@ export default defineConfig(
 				createTypeScriptImportResolver({ project: "./tsconfig.json" }),
 			],
 			"import-x/internal-regex": "^@/",
+			"import-x/external-module-folders": ["node_modules", "vendor"],
 		},
 		rules: {
 			"import-x/order": [
