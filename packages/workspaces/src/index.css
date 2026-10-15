@@ -54,6 +54,10 @@ body {
 	color: var(--ui-description-foreground);
 }
 
+.workspace-agent-badge {
+	flex: none;
+}
+
 .workspace-label > .ui-spinner {
 	flex: none;
 }
@@ -130,7 +134,12 @@ body {
 }
 
 .ui-tree-item[aria-selected="true"]
-	:is(.workspace-owner, .workspace-agent-icon, .workspace-metadata--error) {
+	:is(
+		.workspace-owner,
+		.workspace-agent-icon,
+		.workspace-metadata--error,
+		.workspace-agent-badge
+	) {
 	color: inherit;
 }
 

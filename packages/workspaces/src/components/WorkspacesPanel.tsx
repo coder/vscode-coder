@@ -44,6 +44,7 @@ export function WorkspacesPanel({
 	const [expandedIds, setExpandedIds] = useState<readonly string[]>([]);
 	const [selectedItemId, setSelectedItemId] = useState<string>();
 	const workspaces = state?.capabilities.authenticated ? state.workspaces : [];
+	const agentWorkspaces = new Set(state?.agentWorkspaceIds ?? []);
 	const watched: string[] = [];
 
 	const nodes: TreeNode[] = workspaces.map((workspace) => {
@@ -92,10 +93,11 @@ export function WorkspacesPanel({
 					!agents.some((parent) => parent.id === agent.parent_id),
 			)
 			.map((agent) => agentNode(agent, expandedIds.includes(workspace.id)));
+		const hasAgentChat = agentWorkspaces.has(workspace.id);
 		return {
 			id: workspace.id,
-			textValue: `${workspace.name || "Unknown"} ${workspace.owner_name || "Unknown"}`,
-			label: <WorkspaceRow workspace={workspace} />,
+			textValue: `${workspace.name || "Unknown"}${hasAgentChat ? " Agent" : ""} ${workspace.owner_name || "Unknown"}`,
+			label: <WorkspaceRow workspace={workspace} hasAgentChat={hasAgentChat} />,
 			action: (
 				<WorkspaceActions
 					workspaceId={workspace.id}

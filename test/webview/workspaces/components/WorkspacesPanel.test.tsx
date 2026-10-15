@@ -121,6 +121,16 @@ describe("WorkspacesPanel", () => {
 		},
 	);
 
+	it("marks workspaces associated with Agent chats", async () => {
+		await setup({ ...STATE, agentWorkspaceIds: [ALPHA.id] });
+		expect(
+			within(row("alpha Agent alice")).getByText("Agent", { exact: true }),
+		).toBeVisible();
+		expect(
+			within(row("beta bob")).queryByText("Agent", { exact: true }),
+		).not.toBeInTheDocument();
+	});
+
 	it("sends row actions for their own row without toggling it", async () => {
 		const { user, drain } = await setup();
 		await user.click(

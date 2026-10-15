@@ -58,6 +58,7 @@ const WORKSPACES = [
 const READY: WorkspacesState = {
 	capabilities: { authenticated: true, filters: ["mine", "shared", "all"] },
 	filter: "mine",
+	agentWorkspaceIds: ["ws-api"],
 	workspaces: WORKSPACES,
 	status: { kind: "ready" },
 	metadata: {
