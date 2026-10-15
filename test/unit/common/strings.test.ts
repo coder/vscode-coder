@@ -96,20 +96,15 @@ describe("escapeShellArg", () => {
 			expect(escapeShellArg("env=dev")).toBe('"env=dev"');
 		});
 
-		it('doubles embedded `"`', () => {
-			expect(escapeShellArg('regions=["us","eu"]')).toBe(
-				'"regions=[""us"",""eu""]"',
-			);
+		it.each([
+			['regions=["us","eu"]', String.raw`"regions=[\"us\",\"eu\"]"`],
+			['C:\\a b\\ \\"x\\', '"C:\\a b\\ \\\\\\"x\\\\"'],
+		])('escapes `"` and the backslashes before it in %j', (value, expected) => {
+			expect(escapeShellArg(value)).toBe(expected);
 		});
 
 		it("doubles `%` so OpenSSH token expansion keeps it literal", () => {
 			expect(escapeShellArg("%PATH%")).toBe('"%%PATH%%"');
-		});
-
-		it("keeps cmd metachars inside the quoted region", () => {
-			expect(escapeShellArg('foo" & calc.exe & "x')).toBe(
-				'"foo"" & calc.exe & ""x"',
-			);
 		});
 	});
 });

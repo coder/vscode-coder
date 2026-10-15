@@ -404,7 +404,7 @@ describe("Remote", () => {
 		// to CreateProcessW, so the program's argv parser splits it.
 		it("reaches the CLI unchanged through this platform's OpenSSH", () => {
 			const configDir = "/Users/me/Library/Application Support/coder";
-			const headerCommand = `get-headers --profile 'prod' | jq "$TOKEN"`;
+			const headerCommand = 'echo "X: $TOKEN" "C:\\a b\\" `id`';
 			const pathResolver = new PathResolver("/mock/global", "/mock/log");
 			new MockConfigurationProvider().set("coder.headerCommand", headerCommand);
 			const proxyCommand = buildSshProxyCommand({

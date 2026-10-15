@@ -21,6 +21,8 @@
   editors pass to the CLI, and `--token=` merged with the next argument.
 - `coder.headerCommand` now works with `open-remote-ssh` unless it contains `$`,
   a backtick, `\`, `%` or a line break.
+- On Windows, a `coder.headerCommand` containing `"` was split into several
+  arguments before it reached the CLI.
 
 ## [v1.17.0](https://github.com/coder/vscode-coder/releases/tag/v1.17.0) 2026-10-13
 

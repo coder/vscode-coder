@@ -31,13 +31,20 @@ export function escapeCommandArg(arg: string): string {
 /**
  * Cross-platform shell quoting that blocks variable expansion. Use for
  * values from outside the user's local settings (e.g. server-controlled).
- * The win32 branch targets Windows OpenSSH, which runs `ProxyCommand`
- * without a shell and turns `%%` back into `%`. A shell such as cmd.exe or
- * Git Bash's `sh` still expands inside those quotes.
+ * The win32 branch targets Windows OpenSSH, which starts `ProxyCommand`
+ * without a shell: `%%` becomes `%` and the CLI splits the line with the
+ * Windows argv rules (`\"`). Git Bash's `sh` still expands `$` inside.
  */
 export function escapeShellArg(arg: string): string {
 	if (os.platform() === "win32") {
-		const escaped = arg.replace(/"/g, '""').replace(/%/g, "%%");
+		// `\\+` consumes backslash runs not before a quote, keeping this linear.
+		const escaped = arg
+			.replace(/(\\*)("|$)|\\+/g, (run, slashes?: string, quote?: string) =>
+				slashes === undefined
+					? run
+					: `${slashes}${slashes}${quote ? '\\"' : ""}`,
+			)
+			.replace(/%/g, "%%");
 		return `"${escaped}"`;
 	}
 	return `'${arg.replace(/'/g, "'\\''")}'`;
