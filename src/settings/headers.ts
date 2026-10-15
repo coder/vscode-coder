@@ -11,7 +11,7 @@ export function getHeaderCommand(
 	return cmd || undefined;
 }
 
-/** Returns `--header-command` args; shell callers pass `escapeShellArg` as `esc`. */
+/** Returns `--header-command` args, quoted with `esc`. */
 export function getHeaderArgs(
 	config: Pick<WorkspaceConfiguration, "get">,
 	esc: (s: string) => string = (s) => s,

@@ -1,5 +1,6 @@
 import { Api } from "coder/site/src/api/api";
 import { vol } from "memfs";
+import { spawnSync } from "node:child_process";
 import * as semver from "semver";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
@@ -28,7 +29,7 @@ import {
 	MockUserInteraction,
 	useEditor,
 } from "../../mocks/testHelpers";
-import { quoteCommand } from "../../utils/platform";
+import { isWindows } from "../../utils/platform";
 
 import type { CliManager } from "@/cli/cliManager";
 import type { Commands } from "@/commands";
@@ -395,8 +396,60 @@ describe("Remote", () => {
 			});
 
 			expect(elideNetworkInfoDir(proxyCommand)).toBe(
-				`/mock/coder --token= --global-config ${quoteCommand("/mock/global")} --url ${quoteCommand("https://coder.example.com")} ${expected}`,
+				`/mock/coder "--token=" --global-config /mock/global --url https://coder.example.com ${expected}`,
 			);
+		});
+
+		// OpenSSH runs the command with `sh -c` on Unix; Win32-OpenSSH passes it
+		// to CreateProcessW, so the program's argv parser splits it.
+		it("reaches the CLI unchanged through this platform's OpenSSH", () => {
+			const configDir = "/Users/me/Library/Application Support/coder";
+			const headerCommand = `get-headers --profile 'prod' | jq "$TOKEN"`;
+			const pathResolver = new PathResolver("/mock/global", "/mock/log");
+			new MockConfigurationProvider().set("coder.headerCommand", headerCommand);
+			const proxyCommand = buildSshProxyCommand({
+				pathResolver,
+				binaryPath: "coder",
+				cliAuth: { ...CLI_AUTH, configDir },
+				logArgs: [],
+				sessionApp: "vscode",
+				hostPrefix: "coder-vscode.coder.example.com--",
+			});
+
+			// Swap the CLI for Node printing the arguments it receives.
+			const printArgv = proxyCommand.replace(
+				/^coder /,
+				`-p "JSON.stringify(process.argv.slice(1))" -- `,
+			);
+			const result = isWindows()
+				? spawnSync(process.execPath, [printArgv], {
+						argv0: "node",
+						encoding: "utf8",
+						windowsVerbatimArguments: true,
+					})
+				: spawnSync("sh", ["-c", `"$NODE" ${printArgv}`], {
+						encoding: "utf8",
+						env: { ...process.env, NODE: process.execPath },
+					});
+
+			expect(JSON.parse(result.stdout)).toStrictEqual([
+				"--token=",
+				"--global-config",
+				configDir,
+				"--url",
+				CLI_AUTH.url,
+				"--header-command",
+				headerCommand,
+				"ssh",
+				"--disable-autostart",
+				"--stdio",
+				"--usage-app=vscode",
+				"--network-info-dir",
+				pathResolver.getNetworkInfoPath(),
+				"--ssh-host-prefix",
+				"coder-vscode.coder.example.com--",
+				"%h",
+			]);
 		});
 	});
 });

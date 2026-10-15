@@ -1,7 +1,7 @@
 import os from "node:os";
 
 import { expandPath } from "../common/fs";
-import { escapeCommandArg, escapeShellArg } from "../common/strings";
+import { escapeCommandArg, escapeProxyCommandArg } from "../common/strings";
 import { validateDeploymentUrl } from "../common/validation";
 
 import { getHeaderArgs } from "./headers";
@@ -51,8 +51,8 @@ export function getGlobalShellFlags(
 	// covers URLs that reach storage some other way.
 	validateDeploymentUrl(auth.url);
 	return [
-		"--token=",
-		...buildGlobalFlags(configs, auth, escapeCommandArg, escapeShellArg),
+		escapeCommandArg("--token="),
+		...buildGlobalFlags(configs, auth, escapeCommandArg, escapeProxyCommandArg),
 	];
 }
 

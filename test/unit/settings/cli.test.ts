@@ -19,7 +19,7 @@ import {
 	INVALID_DEPLOYMENT_URLS,
 	MockConfigurationProvider,
 } from "../../mocks/testHelpers";
-import { isWindows, quoteCommand } from "../../utils/platform";
+import { isWindows } from "../../utils/platform";
 
 vi.mock("node:os");
 
@@ -43,14 +43,6 @@ const cliStoreAuth: CliAuth = {
 
 const EXTENSION_FLAGS = ["--global-config", EXT_DIR, "--url", URL] as const;
 const CLI_FLAGS = ["--url", URL] as const;
-// Shell contexts quote the auth values literally.
-const EXTENSION_SHELL_FLAGS = [
-	"--global-config",
-	`'${EXT_DIR}'`,
-	"--url",
-	`'${URL}'`,
-] as const;
-const CLI_SHELL_FLAGS = ["--url", `'${URL}'`] as const;
 
 describe("cliConfig", () => {
 	describe("getGlobalShellFlags", () => {
@@ -64,23 +56,23 @@ describe("cliConfig", () => {
 			{
 				scenario: "extension store",
 				auth: extensionStoreAuth,
-				expected: EXTENSION_SHELL_FLAGS,
+				expected: EXTENSION_FLAGS,
 			},
-			{ scenario: "CLI store", auth: cliStoreAuth, expected: CLI_SHELL_FLAGS },
+			{ scenario: "CLI store", auth: cliStoreAuth, expected: CLI_FLAGS },
 			{
 				scenario: "extension store with keyring off",
 				auth: { ...extensionStoreAuth, useKeyring: false },
-				expected: [...EXTENSION_SHELL_FLAGS, "--use-keyring=false"],
+				expected: [...EXTENSION_FLAGS, "--use-keyring=false"],
 			},
 			{
 				scenario: "CLI store with keyring on",
 				auth: { ...cliStoreAuth, useKeyring: true },
-				expected: [...CLI_SHELL_FLAGS, "--use-keyring=true"],
+				expected: [...CLI_FLAGS, "--use-keyring=true"],
 			},
 		])("emits auth flags for a $scenario", ({ auth, expected }) => {
 			const config = new MockConfigurationProvider();
 			expect(getGlobalShellFlags(config, auth)).toStrictEqual([
-				"--token=",
+				'"--token="',
 				...expected,
 			]);
 		});
@@ -101,10 +93,10 @@ describe("cliConfig", () => {
 			config.set("coder.globalFlags", ["--verbose", "--global-configs"]);
 
 			expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
-				"--token=",
+				'"--token="',
 				"--verbose",
 				"--global-configs", // similar prefixes are not managed flags
-				...EXTENSION_SHELL_FLAGS,
+				...EXTENSION_FLAGS,
 			]);
 		});
 
@@ -113,9 +105,9 @@ describe("cliConfig", () => {
 			config.set("coder.globalFlags", ["--verbose", "--use-keyring=false"]);
 
 			expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
-				"--token=",
+				'"--token="',
 				"--verbose",
-				...EXTENSION_SHELL_FLAGS,
+				...EXTENSION_FLAGS,
 			]);
 		});
 
@@ -124,9 +116,9 @@ describe("cliConfig", () => {
 			config.set("coder.globalFlags", ["--token=abc"]);
 
 			expect(getGlobalShellFlags(config, cliStoreAuth)).toStrictEqual([
-				"--token=",
+				'"--token="',
 				"--token=abc",
-				...CLI_SHELL_FLAGS,
+				...CLI_FLAGS,
 			]);
 		});
 
@@ -145,9 +137,9 @@ describe("cliConfig", () => {
 				config.set("coder.globalFlags", flags);
 
 				expect(getGlobalShellFlags(config, cliStoreAuth)).toStrictEqual([
-					"--token=",
+					'"--token="',
 					...flags,
-					...CLI_SHELL_FLAGS,
+					...CLI_FLAGS,
 				]);
 			},
 		);
@@ -165,9 +157,9 @@ describe("cliConfig", () => {
 				config.set("coder.globalFlags", flags);
 
 				expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
-					"--token=",
+					'"--token="',
 					"-v",
-					...EXTENSION_SHELL_FLAGS,
+					...EXTENSION_FLAGS,
 				]);
 			},
 		);
@@ -179,12 +171,12 @@ describe("cliConfig", () => {
 			config.set("coder.globalFlags", ["-v", "--header-command custom"]);
 
 			expect(getGlobalShellFlags(config, cliStoreAuth)).toStrictEqual([
-				"--token=",
+				'"--token="',
 				"-v",
 				'"--header-command custom"', // ignored by CLI
-				...CLI_SHELL_FLAGS,
+				...CLI_FLAGS,
 				"--header-command",
-				quoteCommand(headerCommand),
+				`"${headerCommand}"`,
 			]);
 		});
 
@@ -215,12 +207,12 @@ describe("cliConfig", () => {
 						configDir: "/home/$USER/%APPDATA%/coder",
 					}),
 				).toStrictEqual([
-					"--token=",
+					'"--token="',
 					'"--header=Authorization=$TOKEN"',
 					"--global-config",
 					configDir,
 					"--url",
-					quoteCommand(URL),
+					URL,
 					"--header-command",
 					headerCommand,
 				]);
@@ -234,9 +226,9 @@ describe("cliConfig", () => {
 
 			// Without per-entry escaping the space splits the shell command.
 			expect(getGlobalShellFlags(config, extensionStoreAuth)).toStrictEqual([
-				"--token=",
+				'"--token="',
 				'"--cfg=C:\\Users\\John Doe/coder"',
-				...EXTENSION_SHELL_FLAGS,
+				...EXTENSION_FLAGS,
 			]);
 		});
 	});

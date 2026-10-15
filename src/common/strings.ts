@@ -15,11 +15,14 @@ export function lowercase<T extends string>(value: T): Lowercase<T> {
  * Not a universal shell-escape: `$VAR` / `$(...)` / `%VAR%` still expand
  * inside `"..."`. For untrusted values use {@link escapeShellArg}.
  *
+ * A leading, trailing or doubled `=` is quoted too: open-remote-ssh's
+ * ssh-config@5 treats an unquoted `=` as a separator.
+ *
  * @see https://docs.python.org/3/library/shlex.html#shlex.quote
  * @see https://learn.microsoft.com/en-us/archive/blogs/twistylittlepassagesallalike/everyone-quotes-command-line-arguments-the-wrong-way
  */
 export function escapeCommandArg(arg: string): string {
-	if (arg !== "" && /^[\w@%+,=:./-]+$/.test(arg)) {
+	if (/^[\w@%+,:./-]+(?:=[\w@%+,:./-]+)*$/.test(arg)) {
 		return arg;
 	}
 	return `"${arg.replaceAll('"', String.raw`\"`)}"`;
@@ -38,4 +41,12 @@ export function escapeShellArg(arg: string): string {
 		return `"${escaped}"`;
 	}
 	return `'${arg.replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * Double quotes read the same in a shell and in open-remote-ssh, which splits
+ * `ProxyCommand` itself, unless the value needs escaping there.
+ */
+export function escapeProxyCommandArg(arg: string): string {
+	return /[$`\\%\r\n]/.test(arg) ? escapeShellArg(arg) : escapeCommandArg(arg);
 }

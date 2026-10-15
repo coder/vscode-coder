@@ -13,6 +13,15 @@
   generally available. Existing values remain effective until the new setting is
   explicitly set in user settings. OAuth remains disabled by default.
 
+### Fixed
+
+- Fix "Premature close" since v1.17.0 in Positron and other editors that use
+  the open source Remote - SSH extension (`open-remote-ssh`): the SSH
+  `ProxyCommand` single-quoted `--url` and `--global-config`, which these
+  editors pass to the CLI, and `--token=` merged with the next argument.
+- `coder.headerCommand` now works with `open-remote-ssh` unless it contains `$`,
+  a backtick, `\`, `%` or a line break.
+
 ## [v1.17.0](https://github.com/coder/vscode-coder/releases/tag/v1.17.0) 2026-10-13
 
 ### Added

@@ -115,15 +115,6 @@ export function shimExecFile<
 	return Object.assign({}, mod, { execFile });
 }
 
-/**
- * Wraps a value in the platform-appropriate quote character,
- * matching the escaping in {@link getHeaderArgs} from src/settings/headers.ts.
- */
-export function quoteCommand(value: string): string {
-	const quote = isWindows() ? '"' : "'";
-	return `${quote}${value}${quote}`;
-}
-
 export function expectPathsEqual(actual: string | undefined, expected: string) {
 	expect(actual).toBeDefined();
 	expect(normalizePath(actual!)).toBe(normalizePath(expected));
