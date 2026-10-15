@@ -5,7 +5,7 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
-## Unreleased
+## [v1.17.1](https://github.com/coder/vscode-coder/releases/tag/v1.17.1) 2026-10-15
 
 ### Changed
 
@@ -15,16 +15,17 @@
 
 ### Fixed
 
-- Fix "Premature close" since v1.17.0 in Positron and other editors that use
-  the open source Remote - SSH extension (`open-remote-ssh`): the SSH
-  `ProxyCommand` single-quoted `--url` and `--global-config`, which these
-  editors pass to the CLI, and `--token=` merged with the next argument.
+- Fix "Premature close" since v1.17.0 in Positron, VSCodium and other editors
+  that use the open source "Open Remote - SSH" extension (`open-remote-ssh`):
+  the SSH `ProxyCommand` single-quoted `--url` and `--global-config`, and these
+  editors passed the quotes to the CLI literally. `--token=` also merged with
+  the next argument.
 - `coder.headerCommand` now works with `open-remote-ssh` unless it contains `$`,
   a backtick, `\`, `%` or a line break.
 - On Windows, a `coder.headerCommand` containing `"` was split into several
   arguments before it reached the CLI.
-- On Windows, the open source Remote - SSH extension 0.4.0 dropped every `\`
-  from the paths in the SSH `ProxyCommand`. Drive-letter paths are now written
+- On Windows, `open-remote-ssh` 0.4.0 dropped every `\` from the paths in the
+  SSH `ProxyCommand`, so connections failed. Drive-letter paths are now written
   with `/`.
 
 ## [v1.17.0](https://github.com/coder/vscode-coder/releases/tag/v1.17.0) 2026-10-13
