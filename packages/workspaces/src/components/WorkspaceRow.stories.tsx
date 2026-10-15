@@ -293,7 +293,7 @@ export const ActionTooltip: Story = {
 			within(row).getByRole("button", { name: "Open running in VS Code" }),
 		);
 		await expect(await screen.findByRole("tooltip")).toHaveTextContent(
-			"Open running in VS Code",
+			/^Open in VS Code$/,
 		);
 	},
 };

@@ -12,6 +12,7 @@ body {
 }
 
 .workspaces-panel {
+	position: relative;
 	box-sizing: border-box;
 	height: 100%;
 	overflow-y: auto;
@@ -21,12 +22,18 @@ body {
 .workspaces-filter-bar {
 	display: flex;
 	justify-content: center;
-	padding: var(--ui-spacing-40) var(--ui-spacing-120);
+	padding: var(--ui-spacing-40) var(--ui-spacing-120) var(--ui-spacing-120);
 }
 
 .workspaces-filter-bar .workspace-filter {
 	flex: none;
 	width: 88px;
+}
+
+.workspaces-panel .workspaces-refresh-progress {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline: 0;
 }
 
 .workspace-label {
@@ -151,15 +158,6 @@ body:is(
 	background: none;
 	outline: 1px solid var(--ui-contrast-border);
 	outline-offset: -1px;
-}
-
-.ui-tree-item[aria-selected="true"] .workspace-status {
-	outline: 1px solid var(--ui-list-inactive-selection-foreground);
-	outline-offset: -1px;
-}
-
-.ui-tree--focused .ui-tree-item[aria-selected="true"] .workspace-status {
-	outline-color: var(--ui-list-active-selection-foreground);
 }
 
 @media (forced-colors: active) {

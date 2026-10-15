@@ -24,7 +24,7 @@ import type { Workspace, WorkspaceAgent, WorkspacesState } from "@repo/shared";
 
 const FILTERS = [
 	{ value: "all", label: "All" },
-	{ value: "mine", label: "My" },
+	{ value: "mine", label: "Mine" },
 	{ value: "shared", label: "Shared" },
 ] as const;
 
@@ -44,6 +44,7 @@ export function WorkspacesPanel({
 	const [expandedIds, setExpandedIds] = useState<readonly string[]>([]);
 	const [selectedItemId, setSelectedItemId] = useState<string>();
 	const workspaces = state?.capabilities.authenticated ? state.workspaces : [];
+	const showOwner = state?.filter !== "mine";
 	const agentWorkspaces = new Set(state?.agentWorkspaceIds ?? []);
 	const watched: string[] = [];
 
@@ -96,8 +97,14 @@ export function WorkspacesPanel({
 		const hasAgentChat = agentWorkspaces.has(workspace.id);
 		return {
 			id: workspace.id,
-			textValue: `${workspace.name || "Unknown"}${hasAgentChat ? " Agent" : ""} ${workspace.owner_name || "Unknown"}`,
-			label: <WorkspaceRow workspace={workspace} hasAgentChat={hasAgentChat} />,
+			textValue: `${workspace.name || "Unknown"}${hasAgentChat ? " Agent" : ""}${showOwner ? ` ${workspace.owner_name || "Unknown"}` : ""}`,
+			label: (
+				<WorkspaceRow
+					workspace={workspace}
+					showOwner={showOwner}
+					hasAgentChat={hasAgentChat}
+				/>
+			),
 			action: (
 				<WorkspaceActions
 					workspaceId={workspace.id}
@@ -171,7 +178,12 @@ export function WorkspacesPanel({
 						)}
 						{nodes.length > 0 ? (
 							<>
-								{loading && <ProgressBar label="Refreshing workspaces" />}
+								{loading && (
+									<ProgressBar
+										className="workspaces-refresh-progress"
+										label="Refreshing workspaces"
+									/>
+								)}
 								<Tree
 									aria-label="Workspaces"
 									nodes={nodes}

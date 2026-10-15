@@ -1,5 +1,7 @@
 import { agent, agentMetadata, workspace } from "@repo/mocks";
-import { expect, fn, screen, userEvent, within } from "storybook/test";
+import { UPDATE_STORY_ARGS } from "storybook/internal/core-events";
+import { addons } from "storybook/preview-api";
+import { expect, fn, screen, userEvent, waitFor, within } from "storybook/test";
 
 import { WorkspacesPanel } from "./WorkspacesPanel";
 
@@ -122,11 +124,34 @@ const clickRows =
 		}
 	};
 
-export const Collapsed: Story = {};
+export const Collapsed: Story = {
+	play: async ({ canvasElement, id, args }) => {
+		const canvas = within(canvasElement);
+		const row = canvas.getByRole("treeitem", { name: "frontend" });
+		const top = row.getBoundingClientRect().top;
+		const channel = addons.getChannel();
+		channel.emit(UPDATE_STORY_ARGS, {
+			storyId: id,
+			updatedArgs: { state: { ...args.state, status: { kind: "loading" } } },
+		});
+		await canvas.findByRole("progressbar", { name: "Refreshing workspaces" });
+		await expect(row.getBoundingClientRect().top).toBe(top);
+		channel.emit(UPDATE_STORY_ARGS, {
+			storyId: id,
+			updatedArgs: { state: args.state },
+		});
+		await waitFor(() =>
+			expect(
+				canvas.queryByRole("progressbar", { name: "Refreshing workspaces" }),
+			).not.toBeInTheDocument(),
+		);
+		await expect(row.getBoundingClientRect().top).toBe(top);
+	},
+};
 
 export const Expanded: Story = {
 	play: async (context) => {
-		await clickRows("frontend alice")(context);
+		await clickRows("frontend")(context);
 		const canvas = within(context.canvasElement);
 
 		for (const heading of canvas.getAllByRole("treeitem", {
@@ -142,7 +167,7 @@ export const Expanded: Story = {
 
 export const MenuOpen: Story = {
 	play: async (context) => {
-		await clickRows("frontend alice")(context);
+		await clickRows("frontend")(context);
 		await userEvent.click(
 			within(context.canvasElement).getByRole("button", {
 				name: "More actions for frontend",

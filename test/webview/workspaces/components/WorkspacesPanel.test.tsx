@@ -105,6 +105,28 @@ describe("WorkspacesPanel", () => {
 		]);
 	});
 
+	it("shows owners only in All and Shared, including after filter changes", async () => {
+		await setup();
+		for (const filter of ["mine", "shared", "all", "mine"] as const) {
+			await push({
+				...STATE,
+				capabilities: {
+					authenticated: true,
+					filters: ["mine", "shared", "all"],
+				},
+				filter,
+			});
+			const workspaceRow = row(filter === "mine" ? "alpha" : "alpha alice");
+			if (filter === "mine") {
+				expect(
+					within(workspaceRow).queryByText("alice"),
+				).not.toBeInTheDocument();
+			} else {
+				expect(within(workspaceRow).getByText("alice")).toBeVisible();
+			}
+		}
+	});
+
 	it.each(["starting", "stopped"] as const)(
 		"shows %s despite health from a previous build",
 		async (status) => {
@@ -124,10 +146,10 @@ describe("WorkspacesPanel", () => {
 	it("marks workspaces associated with Agent chats", async () => {
 		await setup({ ...STATE, agentWorkspaceIds: [ALPHA.id] });
 		expect(
-			within(row("alpha Agent alice")).getByText("Agent", { exact: true }),
+			within(row("alpha Agent")).getByText("Agent", { exact: true }),
 		).toBeVisible();
 		expect(
-			within(row("beta bob")).queryByText("Agent", { exact: true }),
+			within(row("beta")).queryByText("Agent", { exact: true }),
 		).not.toBeInTheDocument();
 	});
 
@@ -139,9 +161,9 @@ describe("WorkspacesPanel", () => {
 		await user.click(
 			screen.getByRole("button", { name: "View alpha in dashboard" }),
 		);
-		expect(row("alpha alice")).toHaveAttribute("aria-expanded", "false");
+		expect(row("alpha")).toHaveAttribute("aria-expanded", "false");
 
-		await user.click(row("alpha alice"));
+		await user.click(row("alpha"));
 		await user.click(
 			screen.getByRole("button", { name: "Open dev in VS Code" }),
 		);
@@ -164,13 +186,7 @@ describe("WorkspacesPanel", () => {
 			screen.getByRole("button", { name: "More actions for beta" }),
 		);
 		const menu = await screen.findByRole("menu");
-		for (const name of [
-			"Stop",
-			"Restart",
-			"Change version",
-			"Share",
-			"Delete...",
-		]) {
+		for (const name of ["Start", "Stop", "Restart", "Share", "Delete..."]) {
 			expect(within(menu).getByRole("menuitem", { name })).toHaveAttribute(
 				"aria-disabled",
 				"true",
@@ -218,9 +234,9 @@ describe("WorkspacesPanel", () => {
 		await user.click(row("main"));
 		expect(watches()).toEqual([{ agentIds: ["agent-dev", "agent-main"] }]);
 
-		await user.click(row("alpha alice"));
+		await user.click(row("alpha"));
 		expect(watches()).toEqual([{ agentIds: [] }]);
-		await user.click(row("alpha alice"));
+		await user.click(row("alpha"));
 		expect(metadataRows()).toHaveLength(2);
 		expect(watches()).toEqual([{ agentIds: ["agent-dev", "agent-main"] }]);
 
@@ -241,7 +257,7 @@ describe("WorkspacesPanel", () => {
 				"agent-1": { kind: "reported", metadata: [agentMetadata()] },
 			},
 		});
-		await user.click(row("test-workspace testuser"));
+		await user.click(row("test-workspace"));
 		await user.click(row("Agent metadata"));
 		await user.click(row("CPU: 42"));
 		await user.keyboard("{Control>}k{/Control}{Control>}i{/Control}");
@@ -252,7 +268,7 @@ describe("WorkspacesPanel", () => {
 
 	it("lists an agent's app statuses under the agent", async () => {
 		const { user } = await setup();
-		await user.click(row("beta bob"));
+		await user.click(row("beta"));
 		expect(row("Claude Code: Running tests")).toHaveAttribute(
 			"aria-level",
 			"3",
@@ -264,7 +280,7 @@ describe("WorkspacesPanel", () => {
 			...STATE,
 			workspaces: [workspace({ name: "empty", owner_name: "alice" })],
 		});
-		await user.click(row("empty alice"));
+		await user.click(row("empty"));
 		expect(row("No agents available")).toBeInTheDocument();
 	});
 
@@ -327,7 +343,7 @@ describe("WorkspacesPanel", () => {
 
 	it("keeps the tree and its expansion while refreshing or after a failure", async () => {
 		const { user } = await setup();
-		await user.click(row("alpha alice"));
+		await user.click(row("alpha"));
 
 		await push({ ...STATE, status: { kind: "loading" } });
 		expect(

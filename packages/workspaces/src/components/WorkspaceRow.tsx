@@ -6,9 +6,11 @@ import type { Workspace } from "@repo/shared";
 
 export function WorkspaceRow({
 	workspace,
+	showOwner = true,
 	hasAgentChat = false,
 }: {
 	workspace: Workspace;
+	showOwner?: boolean;
 	hasAgentChat?: boolean;
 }) {
 	const buildStatus = workspace.latest_build.status;
@@ -25,9 +27,11 @@ export function WorkspaceRow({
 					Agent
 				</StatusPill>
 			)}
-			<span className="workspace-owner">
-				{workspace.owner_name || "Unknown"}
-			</span>
+			{showOwner && (
+				<span className="workspace-owner">
+					{workspace.owner_name || "Unknown"}
+				</span>
+			)}
 		</span>
 	);
 }

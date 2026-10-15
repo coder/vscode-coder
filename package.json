@@ -706,17 +706,17 @@
 				{
 					"command": "coder.logout",
 					"group": "deployment@2",
-					"when": "coder.authenticated && view == myWorkspaces"
+					"when": "coder.authenticated && (view == myWorkspaces || view == coder.workspacesPanel)"
 				},
 				{
 					"command": "coder.netcheck",
 					"group": "diagnostics@1",
-					"when": "coder.authenticated && view == myWorkspaces"
+					"when": "coder.authenticated && (view == myWorkspaces || view == coder.workspacesPanel)"
 				},
 				{
 					"command": "coder.switchDeployment",
 					"group": "deployment@1",
-					"when": "coder.authenticated && view == myWorkspaces"
+					"when": "coder.authenticated && (view == myWorkspaces || view == coder.workspacesPanel)"
 				},
 				{
 					"command": "coder.login",

@@ -31,6 +31,7 @@ export function WorkspaceActions({
 			<IconButton
 				icon="play"
 				label={`Open ${name} in VS Code`}
+				tooltip="Open in VS Code"
 				onClick={() =>
 					api.openWorkspace({ workspaceId, ...(agentId ? { agentId } : {}) })
 				}
@@ -38,19 +39,28 @@ export function WorkspaceActions({
 			<IconButton
 				icon="link-external"
 				label={`View ${name} in dashboard`}
+				tooltip="View in Dashboard"
 				onClick={() => api.viewInDashboard({ workspaceId, page: "workspace" })}
 			/>
 			{!agentId && (
 				<DropdownMenu>
 					<DropdownMenuTrigger
 						render={
-							<IconButton icon="more" label={`More actions for ${name}`} />
+							<IconButton
+								icon="more"
+								label={`More actions for ${name}`}
+								tooltip="More Actions"
+							/>
 						}
 					/>
 					<DropdownMenuContent
 						align="end"
 						aria-description="Disabled actions are not supported by this panel."
 					>
+						<MenuItem disabled>
+							<Icon name="play" />
+							Start
+						</MenuItem>
 						<MenuItem disabled>
 							<Icon name="primitive-square" />
 							Stop
@@ -59,6 +69,7 @@ export function WorkspaceActions({
 							<Icon name="debug-restart" />
 							Restart
 						</MenuItem>
+						<MenuSeparator />
 						<MenuItem
 							onClick={() =>
 								api.viewInDashboard({ workspaceId, page: "settings" })
@@ -66,10 +77,6 @@ export function WorkspaceActions({
 						>
 							<Icon name="gear" />
 							Settings
-						</MenuItem>
-						<MenuItem disabled>
-							<Icon name="history" />
-							Change version
 						</MenuItem>
 						<MenuItem disabled>
 							<Icon name="share" />
