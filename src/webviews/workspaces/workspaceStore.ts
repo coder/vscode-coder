@@ -1,6 +1,8 @@
+import { isAxiosError } from "axios";
 import { isDeepStrictEqual } from "node:util";
 import * as vscode from "vscode";
 
+import { HttpStatusCode } from "../../api/httpStatusCode";
 import { extractAllAgents } from "../../api/models";
 import { errToStr } from "../../error/normalize";
 import { AgentMetadataTracker } from "../../workspace/agentMetadataTracker";
@@ -26,6 +28,7 @@ import type { SessionState } from "../../deployment/sessionStore";
 import type { Logger } from "../../logging/logger";
 
 interface WorkspacesClient extends AgentMetadataClient {
+	readonly experimental: Pick<CoderApi["experimental"], "getChatsByWorkspace">;
 	getWorkspaces(
 		request: Parameters<CoderApi["getWorkspaces"]>[0],
 	): Promise<{ readonly workspaces: readonly Workspace[] }>;
@@ -62,6 +65,8 @@ export class WorkspaceStore implements vscode.Disposable {
 
 	private filter: WorkspaceFilter = DEFAULT_WORKSPACE_FILTER;
 	private workspaces: readonly Workspace[] = [];
+	private agentWorkspaceIds: readonly string[] = [];
+	private agentLookupSupported = true;
 	private status = LOADING;
 	/** Agents the webview is showing, listed or not. */
 	private requestedAgents: readonly string[] = [];
@@ -95,6 +100,9 @@ export class WorkspaceStore implements vscode.Disposable {
 			workspaces: this.workspaces,
 			status: this.status,
 			metadata: this.agents.metadata,
+			...(this.agentWorkspaceIds.length
+				? { agentWorkspaceIds: this.agentWorkspaceIds }
+				: {}),
 		};
 	}
 
@@ -125,6 +133,7 @@ export class WorkspaceStore implements vscode.Disposable {
 			return this.settled;
 		}
 		this.filter = filter;
+		this.agentLookupSupported = true;
 		return this.reload();
 	}
 
@@ -141,6 +150,7 @@ export class WorkspaceStore implements vscode.Disposable {
 			return this.settled;
 		}
 		this.unsupportedFilters.clear();
+		this.agentLookupSupported = true;
 		return this.reload(this.workspaces);
 	}
 
@@ -178,6 +188,7 @@ export class WorkspaceStore implements vscode.Disposable {
 				return "idle";
 			}
 			this.setList(workspaces);
+			await this.loadAgentWorkspaces(workspaces, token);
 			return this.visible && pollIntervalMs !== undefined
 				? { delayMs: pollIntervalMs }
 				: "idle";
@@ -201,6 +212,45 @@ export class WorkspaceStore implements vscode.Disposable {
 		}
 	}
 
+	private async loadAgentWorkspaces(
+		workspaces: readonly Workspace[],
+		token: vscode.CancellationToken,
+	): Promise<void> {
+		if (
+			!this.agentLookupSupported ||
+			!this.visible ||
+			token.isCancellationRequested ||
+			workspaces.length === 0
+		)
+			return;
+		try {
+			const chats = await this.client.experimental.getChatsByWorkspace(
+				workspaces.map((workspace) => workspace.id),
+			);
+			if (this.disposed || token.isCancellationRequested) return;
+			this.agentWorkspaceIds = workspaces
+				.filter(
+					(workspace) =>
+						Object.hasOwn(chats, workspace.id) && Boolean(chats[workspace.id]),
+				)
+				.map((workspace) => workspace.id);
+			this.publish();
+		} catch (error) {
+			if (this.disposed || token.isCancellationRequested) return;
+			const status = isAxiosError(error) ? error.response?.status : undefined;
+			if (
+				status === HttpStatusCode.FORBIDDEN ||
+				status === HttpStatusCode.NOT_FOUND
+			) {
+				this.agentLookupSupported = false;
+				this.agentWorkspaceIds = [];
+				this.publish();
+			} else {
+				this.logger.warn("Failed to look up Agent workspaces:", error);
+			}
+		}
+	}
+
 	/** Show `workspaces` as loading, then list again. */
 	private reload(workspaces: readonly Workspace[] = []): Promise<void> {
 		this.setList(workspaces, LOADING);
@@ -209,6 +259,9 @@ export class WorkspaceStore implements vscode.Disposable {
 
 	private setList(workspaces: readonly Workspace[], status = READY): void {
 		this.workspaces = workspaces;
+		this.agentWorkspaceIds = this.agentWorkspaceIds.filter((id) =>
+			workspaces.some((workspace) => workspace.id === id),
+		);
 		this.status = status;
 		void this.watchListedAgents();
 		this.publish();
@@ -236,6 +289,8 @@ export class WorkspaceStore implements vscode.Disposable {
 
 	private handleSessionChange(): void {
 		this.unsupportedFilters.clear();
+		this.agentLookupSupported = true;
+		this.agentWorkspaceIds = [];
 		this.requestedAgents = [];
 		if (!this.filters.includes(this.filter)) {
 			this.filter = DEFAULT_WORKSPACE_FILTER;

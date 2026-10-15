@@ -1,1 +1,177 @@
-/* TODO */
+body {
+	margin: 0;
+	padding: 0;
+	font-family: var(--ui-font-family, sans-serif);
+	font-size: var(--ui-font-size, 13px);
+	color: var(--ui-foreground);
+	background: var(--ui-background);
+}
+
+.workspaces-app {
+	height: 100vh;
+}
+
+.workspaces-panel {
+	position: relative;
+	box-sizing: border-box;
+	height: 100%;
+	overflow-y: auto;
+	padding-block: var(--ui-spacing-40);
+}
+
+.workspaces-filter-bar {
+	display: flex;
+	justify-content: center;
+	padding: var(--ui-spacing-40) var(--ui-spacing-120) var(--ui-spacing-120);
+}
+
+.workspaces-filter-bar .workspace-filter {
+	flex: none;
+	height: 22px;
+	gap: var(--ui-spacing-60);
+	color: var(--ui-description-foreground);
+	background: transparent;
+	border-color: transparent;
+}
+
+.workspaces-filter-bar .workspace-filter:is(:hover, [data-popup-open]) {
+	background: var(--ui-toolbar-hover-background);
+}
+
+.workspaces-panel .workspaces-refresh-progress {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline: 0;
+}
+
+.workspace-label {
+	display: flex;
+	align-items: center;
+	gap: var(--ui-spacing-60);
+	min-width: 0;
+	width: 100%;
+}
+
+.workspace-name,
+.workspace-owner {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.workspace-name {
+	flex: 0 1 auto;
+}
+
+.workspace-owner {
+	flex: 0 1 auto;
+	color: var(--ui-description-foreground);
+}
+
+.workspace-agent-badge {
+	flex: none;
+}
+
+.workspace-label > .ui-spinner {
+	flex: none;
+}
+
+.workspace-agent-icon {
+	flex: none;
+	color: var(--ui-description-foreground);
+}
+
+.workspace-status {
+	--workspace-status-color: var(--ui-description-foreground);
+	flex: none;
+	color: color-mix(
+		in srgb,
+		var(--workspace-status-color) 60%,
+		var(--ui-foreground)
+	);
+	border-radius: 50%;
+	background: radial-gradient(
+		circle,
+		color-mix(in srgb, var(--workspace-status-color) 20%, transparent) 6px,
+		transparent 6px
+	);
+}
+
+.workspace-status--running {
+	--workspace-status-color: var(
+		--vscode-testing-iconPassed,
+		var(--ui-status-success-accent)
+	);
+}
+
+.workspace-status--pending {
+	--workspace-status-color: var(
+		--vscode-testing-messagePeekBorder,
+		var(--ui-status-info-accent)
+	);
+}
+
+.workspace-status--error {
+	--workspace-status-color: var(
+		--vscode-testing-iconFailed,
+		var(--ui-status-danger-accent)
+	);
+}
+
+.workspace-metadata-heading {
+	color: var(--ui-description-foreground);
+}
+
+.workspace-metadata {
+	display: flex;
+	justify-content: space-between;
+	gap: var(--ui-spacing-120);
+	width: 100%;
+	min-width: 0;
+}
+
+.workspace-metadata > span {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.workspace-metadata > span:last-child {
+	max-width: 65%;
+	text-align: end;
+	font-variant-numeric: tabular-nums;
+}
+
+.workspace-metadata--error,
+.workspace-delete {
+	color: var(--ui-error-foreground);
+}
+
+.ui-tree-item[aria-selected="true"]
+	:is(
+		.workspace-owner,
+		.workspace-agent-icon,
+		.workspace-metadata--error,
+		.workspace-agent-badge
+	) {
+	color: inherit;
+}
+
+body:is(
+		[data-vscode-theme-kind="vscode-high-contrast"],
+		[data-vscode-theme-kind="vscode-high-contrast-light"]
+	)
+	.workspace-status {
+	background: none;
+	outline: 1px solid var(--ui-contrast-border);
+	outline-offset: -1px;
+}
+
+@media (forced-colors: active) {
+	.workspace-status {
+		color: CanvasText;
+		background: none;
+		outline: 1px solid CanvasText;
+	}
+}

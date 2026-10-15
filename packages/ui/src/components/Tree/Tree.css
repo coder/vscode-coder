@@ -175,6 +175,7 @@
 }
 
 .ui-tree-item__action {
+	--ui-toolbar-foreground: currentColor;
 	display: none;
 	align-items: center;
 	align-self: stretch;
@@ -185,7 +186,8 @@
 .ui-tree-item:is([aria-selected="true"], .ui-tree-item--focused)
 	> .ui-tree-item__row
 	.ui-tree-item__action,
-.ui-tree-item__row:is(:hover, :focus-within) .ui-tree-item__action {
+.ui-tree-item__row:is(:hover, :focus-within) .ui-tree-item__action,
+.ui-tree-item__row:has([data-popup-open]) .ui-tree-item__action {
 	display: inline-flex;
 }
 

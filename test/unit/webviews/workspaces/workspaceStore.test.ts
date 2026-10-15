@@ -209,6 +209,78 @@ describe("WorkspaceStore", () => {
 		});
 	});
 
+	describe("Agent workspace associations", () => {
+		it("batches listed workspaces and does not refetch for metadata reports", async () => {
+			const h = setup();
+			h.client.experimental.getChatsByWorkspace.mockResolvedValueOnce({
+				"workspace-1": "chat-1",
+				unlisted: "chat-2",
+			});
+			await h.show([withAgent(), workspace({ id: "second" })]);
+			expect(
+				h.client.experimental.getChatsByWorkspace,
+			).toHaveBeenCalledExactlyOnceWith(["workspace-1", "second"]);
+			expect(h.store.state.agentWorkspaceIds).toEqual(["workspace-1"]);
+			await h.store.watchAgents(["agent-1"]);
+			pushMetadata(h);
+			expect(h.client.experimental.getChatsByWorkspace).toHaveBeenCalledOnce();
+		});
+
+		it("shows the workspace list while associations are pending", async () => {
+			const h = setup();
+			const lookup = Promise.withResolvers<Record<string, string>>();
+			h.client.experimental.getChatsByWorkspace.mockReturnValueOnce(
+				lookup.promise,
+			);
+			const listing = h.show([withAgent()]);
+			await Promise.resolve();
+			expect(h.store.state.status).toEqual({ kind: "ready" });
+			expect(ids(h.store.state)).toEqual(["workspace-1"]);
+			lookup.resolve({ "workspace-1": "chat-1" });
+			await listing;
+			expect(h.store.state.agentWorkspaceIds).toEqual(["workspace-1"]);
+		});
+
+		it("stops unsupported lookups until a manual refresh", async () => {
+			vi.useFakeTimers();
+			onTestFinished(() => {
+				vi.useRealTimers();
+			});
+			const h = setup();
+			h.client.experimental.getChatsByWorkspace.mockRejectedValueOnce(
+				createAxiosError(404, "not found"),
+			);
+			await h.show([withAgent()], [withAgent()]);
+			await vi.advanceTimersByTimeAsync(5_000);
+			expect(h.client.getWorkspaces).toHaveBeenCalledTimes(2);
+			expect(h.client.experimental.getChatsByWorkspace).toHaveBeenCalledOnce();
+			h.client.respondOnce([withAgent()]);
+			h.client.experimental.getChatsByWorkspace.mockResolvedValueOnce({
+				"workspace-1": "chat-1",
+			});
+			await h.store.refresh();
+			expect(h.store.state.agentWorkspaceIds).toEqual(["workspace-1"]);
+		});
+
+		it("does not apply another session's association response", async () => {
+			const h = setup();
+			const lookup = Promise.withResolvers<Record<string, string>>();
+			h.client.experimental.getChatsByWorkspace.mockReturnValueOnce(
+				lookup.promise,
+			);
+			const listing = h.show([withAgent()]);
+			await Promise.resolve();
+			expect(
+				h.client.experimental.getChatsByWorkspace,
+			).toHaveBeenCalledExactlyOnceWith(["workspace-1"]);
+			h.session.signOut();
+			lookup.resolve({ "workspace-1": "chat-1" });
+			await listing;
+			expect(h.store.state.agentWorkspaceIds).toBeUndefined();
+			expect(h.store.state.capabilities.authenticated).toBe(false);
+		});
+	});
+
 	describe("agent metadata", () => {
 		it("watches the listed agents the webview asks for, and reports what arrives", async () => {
 			const h = await shown([withAgent()]);

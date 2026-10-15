@@ -47,6 +47,8 @@ export interface WorkspacesState {
 	readonly workspaces: readonly Workspace[];
 	readonly status: WorkspaceListStatus;
 	readonly metadata: AgentMetadataMap;
+	/** Listed workspace IDs associated with Agent chats. */
+	readonly agentWorkspaceIds?: readonly string[];
 }
 
 export interface OpenWorkspaceParams {

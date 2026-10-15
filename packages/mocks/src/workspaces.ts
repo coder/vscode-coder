@@ -7,6 +7,8 @@ import type {
 	Workspace,
 	WorkspaceAgent,
 	WorkspaceAgentMetadata,
+	WorkspaceApp,
+	WorkspaceAppStatus,
 	WorkspaceBuild,
 	WorkspaceResource,
 } from "coder/site/src/api/typesGenerated";
@@ -132,6 +134,42 @@ export function agent(overrides: Partial<WorkspaceAgent> = {}): WorkspaceAgent {
 		log_sources: [],
 		scripts: [],
 		startup_script_behavior: "non-blocking",
+		...overrides,
+	};
+}
+
+/** Create a workspace app with no reported statuses. */
+export function app(overrides: Partial<WorkspaceApp> = {}): WorkspaceApp {
+	return {
+		id: "app-1",
+		slug: "claude",
+		display_name: "Claude Code",
+		external: false,
+		subdomain: false,
+		sharing_level: "owner",
+		health: "healthy",
+		hidden: false,
+		open_in: "slim-window",
+		statuses: [],
+		...overrides,
+	};
+}
+
+/** Create a workspace app status with a running task message. */
+export function appStatus(
+	overrides: Partial<WorkspaceAppStatus> = {},
+): WorkspaceAppStatus {
+	return {
+		id: "status-1",
+		created_at: "2024-01-01T00:00:00Z",
+		workspace_id: "workspace-1",
+		agent_id: "agent-1",
+		app_id: "app-1",
+		state: "working",
+		message: "Running tests",
+		uri: "",
+		icon: "",
+		needs_user_attention: false,
 		...overrides,
 	};
 }
