@@ -50,6 +50,7 @@ test/
 ├── unit/           # Extension unit tests (mirrors src/)
 ├── webview/        # Webview unit tests (mirrors packages/<pkg>/src/, jsdom)
 ├── integration/    # Integration tests (real VS Code, Mocha)
+├── scopes/         # OAuth scopes against a live server
 ├── utils/          # Test utilities that are also tested
 └── mocks/          # Shared test mocks
 ```
@@ -71,6 +72,26 @@ command with `xvfb-run -a`.
 - The first run downloads each VS Code version into `.vscode-test/`. Tests
   run in that copy with its own user data directory, so an open VS Code
   doesn't interfere.
+
+## OAuth scope tests
+
+`test/scopes/` signs in and refreshes the token through the extension's OAuth
+flow against a live server, then probes each server call the extension makes.
+When `pnpm test` reports an unprobed method, add a probe to
+`test/scopes/probes.ts` and run the suite. It needs Docker and a fresh
+deployment, since it creates users and workspaces, and `pnpm test` leaves it
+out:
+
+```bash
+docker compose -f test/scopes/compose.yaml up -d --wait
+CODER_SCOPES_TEST_URL=http://localhost:7080 pnpm test:scopes
+docker compose -f test/scopes/compose.yaml down -v  # before the next run
+```
+
+Pull requests run against the Coder release pinned in `compose.yaml`, which
+must enforce requested scopes, as 2.38 does and 2.37 doesn't. The
+nightly run uses `coder-preview:latest` and reports failures in a "Nightly
+OAuth scope test failed" issue. Set `CODER_IMAGE` to test another image.
 
 ## Testing the open flow by hand
 
