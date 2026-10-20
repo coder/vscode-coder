@@ -41,8 +41,8 @@ export function normalizeUrl(value: string): string {
 
 /**
  * Return the URL for opening Coder pages in the browser.  Uses the
- * `coder.alternativeWebUrl` setting when configured, otherwise returns
- * the connection URL unchanged.
+ * `coder.alternativeWebUrl` setting when it is an http(s) URL, otherwise
+ * returns the connection URL unchanged.
  */
 export function resolveCoderDashboardUrl(connectionUrl: string): string {
 	const alt = normalizeUrl(
@@ -50,7 +50,8 @@ export function resolveCoderDashboardUrl(connectionUrl: string): string {
 			.getConfiguration("coder")
 			.get<string>("alternativeWebUrl") ?? "",
 	);
-	return alt || connectionUrl;
+	const protocol = URL.parse(alt)?.protocol;
+	return protocol === "http:" || protocol === "https:" ? alt : connectionUrl;
 }
 
 /**

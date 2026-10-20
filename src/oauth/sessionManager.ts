@@ -380,6 +380,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 						metadata.token_endpoint,
 						toUrlSearchParams(params),
 						{
+							maxRedirects: 0,
 							headers: {
 								"Content-Type": "application/x-www-form-urlencoded",
 							},

@@ -560,6 +560,25 @@ describe("OAuthSessionManager", () => {
 			expect(revoke).toHaveBeenCalledTimes(2);
 		});
 
+		it("refreshes and revokes without following redirects", async () => {
+			const { manager, setupForOAuthOperation } = createTestContext();
+			const token = vi.fn(() => createMockTokenResponse());
+			const revoke = vi.fn(() => ({}));
+			await setupForOAuthOperation({
+				"/oauth2/token": token,
+				"/oauth2/revoke": revoke,
+			});
+
+			await manager.refreshToken();
+			await manager.revokeTokens();
+
+			for (const route of [token, revoke]) {
+				expect(route).toHaveBeenCalledWith(
+					expect.objectContaining({ maxRedirects: 0 }),
+				);
+			}
+		});
+
 		it("does not throw when revocation fails", async () => {
 			const { manager, setupForOAuthOperation } = createTestContext();
 

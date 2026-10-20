@@ -52,6 +52,7 @@ export async function revokeOAuthTokens(
 					};
 					try {
 						await axiosInstance.post(endpoint, toUrlSearchParams(params), {
+							maxRedirects: 0,
 							headers: { "Content-Type": "application/x-www-form-urlencoded" },
 						});
 						logger.debug(`Revoked ${token_type_hint}`);
