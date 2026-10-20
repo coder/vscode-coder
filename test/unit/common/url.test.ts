@@ -133,6 +133,8 @@ describe("resolveCoderDashboardUrl", () => {
 	it.each([
 		{ name: "empty", value: "" },
 		{ name: "whitespace", value: "   " },
+		{ name: "not http(s)", value: "vscode://some.extension/path" },
+		{ name: "missing a scheme", value: "coder.example.com" },
 	])(
 		"returns the connection URL when the alternative is $name",
 		({ value }) => {
