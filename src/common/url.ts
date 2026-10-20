@@ -1,16 +1,34 @@
 import url from "node:url";
 import * as vscode from "vscode";
 
-import { parseDeploymentUrl, validateFilenameHostname } from "./validation";
+import {
+	InputValidationError,
+	parseDeploymentUrl,
+	validateFilenameHostname,
+} from "./validation";
 
 /**
- * Given a URL, return the host in a format that is safe to write.
+ * The URL's origin as a file- and SSH-safe label that keys per-deployment
+ * storage: `host` for HTTPS on 443, else `host_<scheme><port>` without `https`
+ * or a default port (`host_8443`, `host_http`). A hostname with `_` always gets
+ * a suffix (`my_host_https`), so labels never collide.
  */
 export function toSafeHost(rawUrl: string): string {
 	const u = parseDeploymentUrl(rawUrl);
+	if (u.protocol !== "https:" && u.protocol !== "http:") {
+		throw new InputValidationError(
+			"Invalid URL: the deployment URL must use http or https.",
+			u.protocol,
+		);
+	}
 	// If the host is invalid, an empty string is returned.  Although, `new URL`
 	// should already have thrown in that case.
-	return validateFilenameHostname(url.domainToASCII(u.hostname) || u.hostname);
+	const hostname = url.domainToASCII(u.hostname) || u.hostname;
+	let suffix = (u.protocol === "http:" ? "http" : "") + u.port;
+	if (!suffix && hostname.includes("_")) {
+		suffix = "https";
+	}
+	return validateFilenameHostname(suffix ? `${hostname}_${suffix}` : hostname);
 }
 
 export function removeTrailingSlashes(value: string): string {

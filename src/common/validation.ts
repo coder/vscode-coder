@@ -82,15 +82,16 @@ export function validateFilenameHostname(value: string): string {
 	return value;
 }
 
+/**
+ * A bracketed IPv6 host, optionally with a `toSafeHost` origin suffix
+ * (`_https`, `_http`, `_http8080`, `_8443`).
+ */
+const BRACKETED_IPV6_LABEL = /^\[([^\]%]+)\](?:_(?:https|http\d*|\d+))?$/;
+
 /** Shell-safe, literal SSH host characters; IP structure uses Node's parser. */
 export function isShellSafeHostname(value: string): boolean {
-	return (
-		/^[\w.-]+$/.test(value) ||
-		(value.startsWith("[") &&
-			value.endsWith("]") &&
-			!value.includes("%") &&
-			isIP(value.slice(1, -1)) === 6)
-	);
+	const ipv6 = BRACKETED_IPV6_LABEL.exec(value);
+	return /^[\w.-]+$/.test(value) || (ipv6 !== null && isIP(ipv6[1]) === 6);
 }
 
 export function validateShellSafeHostname(value: string): string {

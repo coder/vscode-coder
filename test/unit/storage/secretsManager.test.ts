@@ -12,6 +12,7 @@ import {
 	InMemorySecretStorage,
 	LogCollector,
 	createMockLogger,
+	flush,
 } from "../../mocks/testHelpers";
 
 describe("SecretsManager", () => {
@@ -48,16 +49,20 @@ describe("SecretsManager", () => {
 			expect(newAuth?.token).toBe("new-token");
 		});
 
-		it("should accept a URL port for a matching hostname", async () => {
-			await secretsManager.setSessionAuth("example.com", {
-				url: "https://example.com:8443",
-				token: "test-token",
-			});
+		it("keeps another origin of the hostname apart, change events included", async () => {
+			const listener = vi.fn();
+			secretsManager.onDidChangeSessionAuth("example.com", listener);
 
-			expect(await secretsManager.getSessionAuth("example.com")).toEqual({
+			await secretsManager.setSessionAuth("example.com_8443", {
 				url: "https://example.com:8443",
-				token: "test-token",
+				token: "port-token",
 			});
+			await flush();
+
+			expect(listener).not.toHaveBeenCalled();
+			expect(
+				await secretsManager.getSessionAuth("example.com"),
+			).toBeUndefined();
 		});
 
 		interface MismatchCase {
@@ -80,6 +85,13 @@ describe("SecretsManager", () => {
 				url: "https://other.example.com/private?token=secret",
 				error:
 					'Session auth hostname mismatch: expected "example.com", got "other.example.com"',
+			},
+			{
+				// Older versions keyed every origin of a hostname together.
+				name: "other origin of the hostname",
+				url: "http://example.com/private?token=secret",
+				error:
+					'Session auth hostname mismatch: expected "example.com", got "example.com_http"',
 			},
 		];
 
@@ -356,6 +368,18 @@ describe("SecretsManager", () => {
 				expect(await secretsManager.getCurrentDeployment()).toBeNull();
 			},
 		);
+
+		it("re-derives the label an older version stored as the bare hostname", async () => {
+			await secretsManager.setCurrentDeployment({
+				url: "http://coder.example.com",
+				safeHostname: "coder.example.com",
+			});
+
+			expect(await secretsManager.getCurrentDeployment()).toEqual({
+				url: "http://coder.example.com",
+				safeHostname: "coder.example.com_http",
+			});
+		});
 
 		it("should handle corrupted storage gracefully", async () => {
 			await secretStorage.store("coder.currentDeployment", "invalid-json{");

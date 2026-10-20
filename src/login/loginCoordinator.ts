@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import { CoderApi } from "../api/coderApi";
 import { needToken } from "../api/httpAgent";
 import { HttpStatusCode } from "../api/httpStatusCode";
-import { isSameOrigin, openInBrowser } from "../common/url";
+import { openInBrowser, toSafeHost } from "../common/url";
 import { CertificateError } from "../error/certificateError";
 import { CrossOriginRedirectError } from "../error/crossOriginRedirectError";
 import { OAuthAuthorizer } from "../oauth/authorizer";
@@ -76,10 +76,8 @@ interface LoginAttemptContext {
 	client: CoderApi;
 	deployment: Deployment;
 	isAutoLogin: boolean;
-	/** Stored session for the hostname, if any. */
+	/** Stored session for the deployment's origin, if any. */
 	auth: SessionAuth | undefined;
-	/** `auth`, but only when it matches the deployment's exact origin. */
-	sameOriginAuth: SessionAuth | undefined;
 }
 
 /**
@@ -170,6 +168,13 @@ export class LoginCoordinator implements vscode.Disposable {
 						if (!newUrl) {
 							return { success: false, reason: "no_url_provided" };
 						}
+						// Another origin's session belongs under another label.
+						if (toSafeHost(newUrl) !== safeHostname) {
+							vscode.window.showErrorMessage(
+								`${newUrl} is a different deployment from ${safeHostname}. Sign in from the Coder sidebar to use it.`,
+							);
+							return { success: false, reason: "no_url_provided" };
+						}
 
 						return this.attemptLogin(
 							{ url: newUrl, safeHostname },
@@ -200,16 +205,13 @@ export class LoginCoordinator implements vscode.Disposable {
 		registration: OAuth2ClientRegistrationResponse | undefined,
 	): Promise<void> {
 		const { safeHostname, url } = deployment;
-		const previous = await this.secretsManager.getSessionAuth(safeHostname);
+		const previous = await this.secretsManager.getSessionAuthForUrl(url);
 		const replaced = previous?.token === result.token ? undefined : previous;
 		// A refresh replaced the stored session during this login; keep it.
 		if (result.method === "stored_token" && replaced) {
 			return;
 		}
-		const reusedOAuth =
-			!replaced && previous && isSameOrigin(previous.url, url)
-				? previous.oauth
-				: undefined;
+		const reusedOAuth = replaced ? undefined : previous?.oauth;
 
 		// Empty token is valid for mTLS
 		await this.secretsManager.setSessionAuth(safeHostname, {
@@ -339,17 +341,12 @@ export class LoginCoordinator implements vscode.Disposable {
 			);
 		}
 
-		const auth = await this.secretsManager.getSessionAuth(
-			deployment.safeHostname,
-		);
+		const auth = await this.secretsManager.getSessionAuthForUrl(deployment.url);
 		const ctx: LoginAttemptContext = {
 			client,
 			deployment,
 			isAutoLogin,
 			auth,
-			// Only sent to its own origin, so a lookalike hostname cannot get it.
-			sameOriginAuth:
-				auth && isSameOrigin(auth.url, deployment.url) ? auth : undefined,
 		};
 
 		if (providedToken) {
@@ -380,7 +377,7 @@ export class LoginCoordinator implements vscode.Disposable {
 		providedToken: string,
 		tokenSignInConfirmed: boolean,
 	): Promise<LoginResult> {
-		const { client, deployment, isAutoLogin, auth, sameOriginAuth } = ctx;
+		const { client, deployment, isAutoLogin, auth } = ctx;
 		this.logger.debug("Trying provided token");
 		const result = await this.tryTokenAuth(client, providedToken, isAutoLogin);
 		if (result === "unauthorized") {
@@ -398,13 +395,13 @@ export class LoginCoordinator implements vscode.Disposable {
 			// Silent when the link repeats the same user on the same origin, or an
 			// earlier prompt confirmed a sign-in that replaces nothing.
 			const silent =
-				sameOriginAuth?.username === result.user.username ||
+				auth?.username === result.user.username ||
 				(auth === undefined && tokenSignInConfirmed);
 			if (!silent) {
 				// Checked silently, only to word the prompt.
 				const expired =
-					sameOriginAuth?.token !== undefined &&
-					(await this.tryTokenAuth(client, sameOriginAuth.token, true)) ===
+					auth?.token !== undefined &&
+					(await this.tryTokenAuth(client, auth.token, true)) ===
 						"unauthorized";
 				const confirmed = await this.confirmSignIn(
 					deployment.url,
@@ -422,20 +419,16 @@ export class LoginCoordinator implements vscode.Disposable {
 		return withLoginMethod("provided_token", result);
 	}
 
-	/** Stored session for the deployment's exact origin, if it still works. */
+	/** Stored session for the deployment's origin, if it still works. */
 	private async tryStoredSession(
 		ctx: LoginAttemptContext,
 	): Promise<LoginResult | undefined> {
-		const { client, isAutoLogin, sameOriginAuth } = ctx;
-		if (!sameOriginAuth?.token) {
+		const { client, isAutoLogin, auth } = ctx;
+		if (!auth?.token) {
 			return undefined;
 		}
 		this.logger.debug("Trying stored session token");
-		const result = await this.tryTokenAuth(
-			client,
-			sameOriginAuth.token,
-			isAutoLogin,
-		);
+		const result = await this.tryTokenAuth(client, auth.token, isAutoLogin);
 		if (result === "unauthorized") {
 			return undefined;
 		}
@@ -446,7 +439,7 @@ export class LoginCoordinator implements vscode.Disposable {
 	private async tryCliCredentials(
 		ctx: LoginAttemptContext,
 	): Promise<LoginResult | undefined> {
-		const { client, deployment, isAutoLogin, auth, sameOriginAuth } = ctx;
+		const { client, deployment, isAutoLogin, auth } = ctx;
 		const configs = vscode.workspace.getConfiguration();
 		if (
 			!(await this.cliCredentialManager.hasCliStore(deployment.url, configs))
@@ -482,8 +475,8 @@ export class LoginCoordinator implements vscode.Disposable {
 					title: "Sign in with the Coder CLI's session?",
 					detail: `The Coder CLI's session signs you in as "${result.user.username}"`,
 				},
-				// A same-origin session reached this point only because it failed.
-				{ username: auth.username, expired: sameOriginAuth !== undefined },
+				// The stored session reached this point only because it failed.
+				{ username: auth.username, expired: true },
 			);
 			if (!confirmed) {
 				return undefined;
