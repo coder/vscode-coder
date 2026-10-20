@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { isSameOrigin, toSafeHost } from "../common/url";
+import { toSafeHost } from "../common/url";
 import { isValidDeploymentUrl } from "../common/validation";
 import { DeploymentSchema, type Deployment } from "../deployment/types";
 
@@ -153,11 +153,15 @@ export class SecretsManager {
 			const deployment = result.success ? result.data.deployment : null;
 			// Treat an invalid URL stored by an older version as signed out, so the
 			// next sign-in replaces it.
-			if (deployment && !isValidDeploymentUrl(deployment.url)) {
+			if (!deployment) {
+				return null;
+			}
+			if (!isValidDeploymentUrl(deployment.url)) {
 				this.logger.warn("Ignoring current deployment with an invalid URL");
 				return null;
 			}
-			return deployment;
+			// Older versions stored the bare hostname for every origin.
+			return { ...deployment, safeHostname: toSafeHost(deployment.url) };
 		} catch {
 			return null;
 		}
@@ -208,6 +212,7 @@ export class SecretsManager {
 		});
 	}
 
+	/** By origin label; callers with a URL use `getSessionAuthForUrl`. */
 	public async getSessionAuth(
 		safeHostname: string,
 	): Promise<SessionAuth | undefined> {
@@ -240,8 +245,8 @@ export class SecretsManager {
 	}
 
 	/**
-	 * The stored session auth for `url`, only when recorded for the same
-	 * origin. Fails closed on an unparsable URL.
+	 * The stored session auth for `url`'s origin. Fails closed on an
+	 * unparsable URL.
 	 */
 	public async getSessionAuthForUrl(
 		url: string,
@@ -252,14 +257,7 @@ export class SecretsManager {
 		} catch {
 			return undefined;
 		}
-		const auth = await this.getSessionAuth(safeHostname);
-		if (auth && !isSameOrigin(auth.url, url)) {
-			this.logger.warn(
-				`Ignoring stored session auth for ${safeHostname}: recorded for ${new URL(auth.url).origin}, not ${new URL(url).origin}`,
-			);
-			return undefined;
-		}
-		return auth;
+		return this.getSessionAuth(safeHostname);
 	}
 
 	/**

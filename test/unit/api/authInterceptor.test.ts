@@ -332,7 +332,7 @@ describe("AuthInterceptor", () => {
 		it("does not retry with a token stored for another origin", async () => {
 			const { secretsManager, axiosInstance, createInterceptor } =
 				createTestContext();
-			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+			await secretsManager.setSessionAuth(`${TEST_HOSTNAME}_8443`, {
 				url: `${TEST_URL}:8443`,
 				token: "other-origin-token",
 			});

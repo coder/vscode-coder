@@ -148,12 +148,16 @@ describe("InputValidationError", () => {
 });
 
 describe("isShellSafeHostname", () => {
-	it.each(["dev.coder.com", "my--host.example.com", "127.0.0.1", "[::1]"])(
-		"accepts %j",
-		(input) => {
-			expect(isShellSafeHostname(input)).toBe(true);
-		},
-	);
+	it.each([
+		"dev.coder.com",
+		"my--host.example.com",
+		"127.0.0.1",
+		"[::1]",
+		"dev.coder.com_http8080",
+		"[::1]_8080",
+	])("accepts %j", (input) => {
+		expect(isShellSafeHostname(input)).toBe(true);
+	});
 
 	it.each(["", "a/b", "a\\b", "host name", "x$(id)", "host%h", "::1"])(
 		"rejects %j",
@@ -162,12 +166,16 @@ describe("isShellSafeHostname", () => {
 		},
 	);
 
-	it.each(["[::1%h]", "[fe80::1%eth0]", "[::not-ip]"])(
-		"rejects scoped or invalid bracketed IPv6 %j",
-		(input) => {
-			expect(isShellSafeHostname(input)).toBe(false);
-		},
-	);
+	it.each([
+		"[::1%h]",
+		"[fe80::1%eth0]",
+		"[::not-ip]",
+		"[::1]_$(id)",
+		"[::1]x",
+		"[::1]_ftp",
+	])("rejects scoped or invalid bracketed IPv6 %j", (input) => {
+		expect(isShellSafeHostname(input)).toBe(false);
+	});
 });
 
 describe("validateShellSafeHostname", () => {

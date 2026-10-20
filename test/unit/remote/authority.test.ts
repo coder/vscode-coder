@@ -179,6 +179,8 @@ describe("parseRemoteAuthority", () => {
 });
 
 describe("authority construction", () => {
+	afterEach(() => vi.restoreAllMocks());
+
 	it("preserves the editor URI scheme and integrates with toSafeHost", () => {
 		useEditor("cursor--dev");
 		expect(
@@ -206,6 +208,25 @@ describe("authority construction", () => {
 			});
 		},
 	);
+
+	it.each([
+		["http://dev.coder.com:8080", "dev.coder.com_http8080"],
+		["https://my_host", "my_host_https"],
+		["https://[::1]:8080", "[::1]_8080"],
+	])("round-trips the origin of %s as %s", (url, safeHostname) => {
+		vi.spyOn(os, "platform").mockReturnValue("linux");
+		const authority = toRemoteAuthority(url, "alice", "dev", "main");
+
+		expect(authority).toBe(
+			`ssh-remote+coder-vscode.${safeHostname}--alice--dev.main`,
+		);
+		expect(parseRemoteAuthority(authority)).toMatchObject({
+			safeHostname,
+			username: "alice",
+			workspace: "dev",
+			agent: "main",
+		});
+	});
 
 	it("omits an absent agent", () => {
 		expect(
