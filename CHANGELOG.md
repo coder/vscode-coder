@@ -5,6 +5,15 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Fixed
+
+- Fix a "settings changed. Reload window to apply." prompt for proxy settings
+  that returned after every reload when `http.useLocalProxyConfiguration` is
+  off. API requests now also keep using the local proxy settings after the
+  remote connects.
+
 ## [v1.17.1](https://github.com/coder/vscode-coder/releases/tag/v1.17.1) 2026-10-15
 
 ### Changed

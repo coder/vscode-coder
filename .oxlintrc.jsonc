@@ -334,6 +334,10 @@
 						"message": "env.remoteAuthority is a proposed API (resolvers) and throws through our own vscode module. Read it via vscodeProposed.env.remoteAuthority."
 					},
 					{
+						"selector": "CallExpression[callee.property.name=/^(get|inspect)$/][arguments.0.value=/^http\\.(proxy|proxySupport|noProxy|proxyAuthorization|proxyStrictSSL)$/]:not([callee.object.name='LocalProxySettings'])",
+						"message": "Do not read http.* proxy settings through VS Code's configuration. Use LocalProxySettings.get(), which keeps the local values once a remote window connects."
+					},
+					{
 						"selector": "JSXExpressionContainer > LogicalExpression[operator='&&'][left.property.name='length']",
 						"message": "Numeric '.length' as a JSX '&&' operand renders 0 when empty. Use '.length > 0' or a ternary."
 					},

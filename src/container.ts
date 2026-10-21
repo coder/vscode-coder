@@ -13,6 +13,7 @@ import {
 	CONNECTION_LOG_BUFFER_SIZE_SETTING,
 	readConnectionLogBufferSize,
 } from "./settings/logger";
+import { LocalProxySettings } from "./settings/proxy";
 import { MementoManager } from "./storage/mementoManager";
 import { PathResolver } from "./storage/pathResolver";
 import { SecretsManager } from "./storage/secretsManager";
@@ -33,6 +34,7 @@ import type { Logger } from "./logging/logger";
  * Centralizes the creation and management of all core services.
  */
 export class ServiceContainer implements vscode.Disposable {
+	private readonly localProxySettings: vscode.Disposable;
 	private readonly outputChannel: vscode.LogOutputChannel;
 	private readonly logger: FlightRecorder;
 	private readonly connectionLogBufferConfigSubscription: vscode.Disposable;
@@ -51,6 +53,7 @@ export class ServiceContainer implements vscode.Disposable {
 	private readonly commandManager: CommandManager;
 
 	constructor(context: vscode.ExtensionContext) {
+		this.localProxySettings = LocalProxySettings.initialize();
 		this.outputChannel = vscode.window.createOutputChannel("Coder", {
 			log: true,
 		});
@@ -215,6 +218,7 @@ export class ServiceContainer implements vscode.Disposable {
 		this.contextManager.dispose();
 		this.loginCoordinator.dispose();
 		this.connectionLogBufferConfigSubscription.dispose();
+		this.localProxySettings.dispose();
 		try {
 			await this.telemetryService.dispose();
 		} finally {

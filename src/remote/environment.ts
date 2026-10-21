@@ -1,4 +1,7 @@
+import * as vscode from "vscode";
+
 import { joinNoProxy } from "../api/proxy";
+import { LocalProxySettings } from "../settings/proxy";
 import { sessionId } from "../telemetry/ids";
 
 import type {
@@ -6,23 +9,41 @@ import type {
 	WorkspaceConfiguration,
 } from "vscode";
 
+import type { WatchedSetting } from "../configWatcher";
+
 type Environment = Record<string, string | undefined>;
 type SshProxyEnvironment = Partial<
 	Record<"HTTP_PROXY" | "HTTPS_PROXY" | "NO_PROXY", string>
 >;
 
 /**
- * The settings {@link getSshProxyEnvironment} reads, paired with display titles.
- * Watch these to prompt for a reload when the SSH proxy environment changes.
+ * The settings {@link getSshProxyEnvironment} reads, with a display title and a
+ * getter for each current value.
  */
-export const SSH_PROXY_SETTINGS: ReadonlyArray<{
-	setting: string;
-	title: string;
-}> = [
-	{ setting: "http.proxy", title: "HTTP Proxy" },
-	{ setting: "http.proxySupport", title: "HTTP Proxy Support" },
-	{ setting: "http.noProxy", title: "HTTP No Proxy" },
-	{ setting: "coder.proxyBypass", title: "Proxy Bypass" },
+export const SSH_PROXY_SETTINGS: ReadonlyArray<
+	WatchedSetting & { title: string }
+> = [
+	{
+		setting: "http.proxy",
+		title: "HTTP Proxy",
+		getValue: () => LocalProxySettings.get("http.proxy"),
+	},
+	{
+		setting: "http.proxySupport",
+		title: "HTTP Proxy Support",
+		getValue: () => LocalProxySettings.get("http.proxySupport"),
+	},
+	{
+		setting: "http.noProxy",
+		title: "HTTP No Proxy",
+		getValue: () => LocalProxySettings.get("http.noProxy"),
+	},
+	{
+		setting: "coder.proxyBypass",
+		title: "Proxy Bypass",
+		getValue: () =>
+			vscode.workspace.getConfiguration().get("coder.proxyBypass"),
+	},
 ];
 
 /**
@@ -71,14 +92,16 @@ export function applySshEnvironment(
 export function getSshProxyEnvironment(
 	cfg: Pick<WorkspaceConfiguration, "get">,
 ): SshProxyEnvironment {
-	if (cfg.get<string>("http.proxySupport") === "off") {
+	if (LocalProxySettings.get<string>("http.proxySupport") === "off") {
 		return {};
 	}
 
-	const httpProxy = trimmed(cfg.get<string | null>("http.proxy"));
+	const httpProxy = trimmed(
+		LocalProxySettings.get<string | null>("http.proxy"),
+	);
 	const noProxy =
 		trimmed(cfg.get<string | null>("coder.proxyBypass")) ??
-		joinNoProxy(cfg.get<string[]>("http.noProxy"));
+		joinNoProxy(LocalProxySettings.get<string[]>("http.noProxy"));
 
 	return {
 		HTTP_PROXY: httpProxy,
