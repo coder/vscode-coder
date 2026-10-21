@@ -1587,6 +1587,12 @@ export type MockMetadataStream = MockEventStream<{
  */
 export class MockWorkspacesClient {
 	readonly metadataStreams = new Map<string, MockMetadataStream>();
+	readonly experimental = {
+		getChatsByWorkspace: vi.fn(
+			(_ids: readonly string[]): Promise<Record<string, string>> =>
+				Promise.resolve({}),
+		),
+	};
 
 	readonly getWorkspaces = vi.fn(
 		(_req: { q: string }): Promise<WorkspacesResponse> =>

@@ -335,7 +335,7 @@
 				},
 				{
 					"id": "coderExperimentalWorkspaces",
-					"title": "Coder Remote (New)",
+					"title": "Coder Workspaces",
 					"icon": "media/shorthand-logo.svg"
 				}
 			]
@@ -385,9 +385,9 @@
 				{
 					"type": "webview",
 					"id": "coder.workspacesPanel",
-					"name": "Workspaces",
+					"name": "Coder Workspaces",
 					"icon": "media/shorthand-logo.svg",
-					"when": "coder.authenticated && coder.workspacesPanelEnabled"
+					"when": "coder.workspacesPanelEnabled"
 				}
 			]
 		},
@@ -553,6 +553,12 @@
 				"icon": "$(refresh)"
 			},
 			{
+				"command": "coder.workspaces.refresh",
+				"title": "Refresh Workspaces",
+				"category": "Coder",
+				"icon": "$(refresh)"
+			},
+			{
 				"command": "coder.applyRecommendedSettings",
 				"title": "Apply Recommended SSH Settings",
 				"category": "Coder"
@@ -689,6 +695,10 @@
 					"when": "false"
 				},
 				{
+					"command": "coder.workspaces.refresh",
+					"when": "false"
+				},
+				{
 					"command": "coder.applyRecommendedSettings"
 				}
 			],
@@ -696,21 +706,21 @@
 				{
 					"command": "coder.logout",
 					"group": "deployment@2",
-					"when": "coder.authenticated && view == myWorkspaces"
+					"when": "coder.authenticated && (view == myWorkspaces || view == coder.workspacesPanel)"
 				},
 				{
 					"command": "coder.netcheck",
 					"group": "diagnostics@1",
-					"when": "coder.authenticated && view == myWorkspaces"
+					"when": "coder.authenticated && (view == myWorkspaces || view == coder.workspacesPanel)"
 				},
 				{
 					"command": "coder.switchDeployment",
 					"group": "deployment@1",
-					"when": "coder.authenticated && view == myWorkspaces"
+					"when": "coder.authenticated && (view == myWorkspaces || view == coder.workspacesPanel)"
 				},
 				{
 					"command": "coder.login",
-					"when": "!coder.authenticated && view == myWorkspaces"
+					"when": "!coder.authenticated && (view == myWorkspaces || view == coder.workspacesPanel)"
 				},
 				{
 					"command": "coder.createWorkspace",
@@ -745,6 +755,11 @@
 				{
 					"command": "coder.tasks.refresh",
 					"when": "coder.authenticated && view == coder.tasksPanel",
+					"group": "navigation@1"
+				},
+				{
+					"command": "coder.workspaces.refresh",
+					"when": "coder.authenticated && view == coder.workspacesPanel",
 					"group": "navigation@1"
 				}
 			],
@@ -856,7 +871,7 @@
 		"coder": "link:vendor/coder",
 		"concurrently": "^10.0.6",
 		"cross-env": "^10.1.0",
-		"dayjs": "^1.11.23",
+		"dayjs": "catalog:",
 		"electron": "44.4.1",
 		"esbuild": "^0.28.2",
 		"eslint": "^10.12.0",

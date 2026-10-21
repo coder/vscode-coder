@@ -1,3 +1,5 @@
+import babel from "@rolldown/plugin-babel";
+import { reactCompilerPreset } from "@vitejs/plugin-react";
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 
@@ -36,6 +38,14 @@ export default defineConfig({
 			},
 			{
 				extends: true,
+				// Webview sources compile as in createReactWebviewConfig; tests stay
+				// uncompiled so their instrumentation is not memoized.
+				plugins: [
+					babel({
+						include: [/[\\/]packages[\\/].*\.tsx?$/],
+						presets: [reactCompilerPreset()],
+					}),
+				],
 				test: {
 					name: "webview",
 					include: ["test/webview/**/*.test.{ts,tsx}"],

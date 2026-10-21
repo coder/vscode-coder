@@ -1,3 +1,8 @@
+export {
+	Banner,
+	type BannerAction,
+	type BannerProps,
+} from "./components/Banner/Banner";
 export { Button, type ButtonProps } from "./components/Button/Button";
 export { Checkbox, type CheckboxProps } from "./components/Checkbox/Checkbox";
 export {

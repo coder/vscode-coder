@@ -55,5 +55,6 @@
 
 /* data-pixel is set in .storybook/preview.ts via isPixel(). */
 :root[data-pixel] .ui-progress-bar--indeterminate .ui-progress-bar__indicator {
+	inset-inline-start: 0;
 	animation: none;
 }
