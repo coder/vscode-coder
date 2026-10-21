@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getProxyForUrl } from "@/api/proxy";
 import {
 	applySshEnvironment,
 	getSshProxyEnvironment,
@@ -203,6 +204,22 @@ describe("applySshEnvironment", () => {
 
 		try {
 			expect(getProxyEnvFromChild()).toEqual({ http: proxy, https: proxy });
+		} finally {
+			applied.dispose();
+		}
+	});
+
+	it("keeps proxy variables out of the API's env proxy fallback", () => {
+		vi.stubEnv("HTTPS_PROXY", "");
+		vi.stubEnv("https_proxy", "");
+		const applied = applySshEnvironment(
+			config(withProxy()),
+			fakeEnvCollection(),
+		);
+
+		try {
+			expect(process.env.HTTPS_PROXY).toBe(proxy);
+			expect(getProxyForUrl("https://coder.example.com", null, null)).toBe("");
 		} finally {
 			applied.dispose();
 		}

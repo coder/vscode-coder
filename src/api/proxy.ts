@@ -12,6 +12,22 @@ const DEFAULT_PORTS: Record<string, number> = {
 	wss: 443,
 };
 
+/** Inherited values of variables this process overwrote, keyed in upper case. */
+const pinnedEnv = new Map<string, string>();
+
+/**
+ * Keep the env fallback on `key`'s current value after this process overwrites
+ * it for child processes. Returns a function that unpins it.
+ */
+export function pinEnv(key: string): () => void {
+	const upper = key.toUpperCase();
+	if (pinnedEnv.has(upper)) {
+		return () => undefined;
+	}
+	pinnedEnv.set(upper, getEnv(key));
+	return () => pinnedEnv.delete(upper);
+}
+
 /** Join a no-proxy list into a comma string, dropping blanks. */
 export function joinNoProxy(
 	entries: string[] | null | undefined,
@@ -131,5 +147,8 @@ function shouldProxy(
  * @private
  */
 function getEnv(key: string): string {
-	return process.env[key.toLowerCase()] || process.env[key.toUpperCase()] || "";
+	return (
+		pinnedEnv.get(key.toUpperCase()) ??
+		(process.env[key.toLowerCase()] || process.env[key.toUpperCase()] || "")
+	);
 }

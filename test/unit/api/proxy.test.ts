@@ -1,6 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+	describe,
+	it,
+	expect,
+	beforeEach,
+	afterEach,
+	onTestFinished,
+	vi,
+} from "vitest";
 
-import { getProxyForUrl } from "@/api/proxy";
+import { getProxyForUrl, pinEnv } from "@/api/proxy";
 
 describe("proxy", () => {
 	const proxy = "http://proxy.example.com:8080";
@@ -40,6 +48,16 @@ describe("proxy", () => {
 				proxyEnvVars.forEach((v) => vi.stubEnv(v, ""));
 
 				expect(getProxyForUrl("https://example.com", null, null)).toBe("");
+			});
+
+			it("keeps the pinned value after the variable changes", () => {
+				vi.stubEnv("HTTPS_PROXY", "http://inherited.example.com:8080");
+				onTestFinished(pinEnv("HTTPS_PROXY"));
+				vi.stubEnv("HTTPS_PROXY", "http://ssh.example.com:8080");
+
+				expect(getProxyForUrl("https://example.com", null, null)).toBe(
+					"http://inherited.example.com:8080",
+				);
 			});
 
 			it("returns empty string for invalid URLs", () => {

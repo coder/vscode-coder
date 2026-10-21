@@ -13,6 +13,9 @@
   that returned after every reload when `http.useLocalProxyConfiguration` is
   off. API requests now also keep using the local proxy settings after the
   remote connects.
+- Fix API requests that kept using the old proxy after you removed `http.proxy`
+  during a session. They no longer fall back to the proxy variables set for the
+  SSH connection.
 
 ## [v1.17.1](https://github.com/coder/vscode-coder/releases/tag/v1.17.1) 2026-10-15
 
