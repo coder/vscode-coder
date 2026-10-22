@@ -22,6 +22,7 @@ export default defineConfig({
 					exclude: ["**/node_modules/**", "**/out/**", "**/*.d.ts"],
 					environment: "node",
 					globals: true,
+					setupFiles: ["test/unit/setup.ts"],
 				},
 				resolve: {
 					alias: {

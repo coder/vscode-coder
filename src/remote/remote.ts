@@ -529,11 +529,7 @@ export class Remote {
 					title: "SSH Flags",
 					getValue: () => getSshFlags(vscode.workspace.getConfiguration()),
 				},
-				...SSH_PROXY_SETTINGS.map(({ setting, title }) => ({
-					setting,
-					title,
-					getValue: () => vscode.workspace.getConfiguration().get(setting),
-				})),
+				...SSH_PROXY_SETTINGS,
 			];
 			if (cliFeatures.proxyLogDirectory) {
 				settingsToWatch.push({

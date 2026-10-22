@@ -3,6 +3,7 @@ import { ProxyAgent } from "proxy-agent";
 import { type WorkspaceConfiguration } from "vscode";
 
 import { expandPath } from "../common/fs";
+import { LocalProxySettings, type LocalProxySetting } from "../settings/proxy";
 
 import { getProxyForUrl, joinNoProxy } from "./proxy";
 
@@ -27,16 +28,20 @@ export async function createHttpAgent(
 	cfg: Pick<WorkspaceConfiguration, "get">,
 ): Promise<ProxyAgent> {
 	const insecure = cfg.get<boolean>("coder.insecure", false);
-	const proxyStrictSSL = cfg.get<boolean>("http.proxyStrictSSL", true);
+	const proxyStrictSSL =
+		LocalProxySettings.get<boolean>("http.proxyStrictSSL") ?? true;
 	// "off" ignores VS Code proxy config; inherited env proxies still apply.
-	const proxyEnabled = cfg.get<string>("http.proxySupport") !== "off";
-	const proxySetting = <T>(key: string) =>
-		proxyEnabled ? cfg.get<T>(key) : undefined;
+	const proxyEnabled =
+		LocalProxySettings.get<string>("http.proxySupport") !== "off";
+	const proxySetting = <T>(key: LocalProxySetting) =>
+		proxyEnabled ? LocalProxySettings.get<T>(key) : undefined;
 	const proxyAuthorization = proxySetting<string | null>(
 		"http.proxyAuthorization",
 	);
 	const httpProxy = proxySetting<string | null>("http.proxy");
-	const coderProxyBypass = proxySetting<string | null>("coder.proxyBypass");
+	const coderProxyBypass = proxyEnabled
+		? cfg.get<string | null>("coder.proxyBypass")
+		: undefined;
 	const httpNoProxy = proxySetting<string[]>("http.noProxy");
 
 	const certFile = expandPath(
