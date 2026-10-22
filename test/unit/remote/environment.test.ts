@@ -9,6 +9,7 @@ import {
 import { sessionId } from "@/telemetry/ids";
 
 import {
+	clearProxyEnv,
 	config,
 	PROXY_URL as proxy,
 	withProxy,
@@ -210,8 +211,7 @@ describe("applySshEnvironment", () => {
 	});
 
 	it("keeps proxy variables out of the API's env proxy fallback", () => {
-		vi.stubEnv("HTTPS_PROXY", "");
-		vi.stubEnv("https_proxy", "");
+		clearProxyEnv();
 		const applied = applySshEnvironment(
 			config(withProxy()),
 			fakeEnvCollection(),

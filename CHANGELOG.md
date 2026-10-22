@@ -7,6 +7,13 @@
 
 ## Unreleased
 
+### Changed
+
+- API requests no longer read the `npm_config_proxy`, `npm_config_http_proxy`,
+  `npm_config_https_proxy` and `npm_config_no_proxy` environment variables. Set
+  `http.proxy`, `http.noProxy` or the standard `HTTP_PROXY`, `HTTPS_PROXY` and
+  `NO_PROXY` variables instead.
+
 ### Fixed
 
 - Fix a "settings changed. Reload window to apply." prompt for proxy settings
@@ -14,8 +21,7 @@
   off. API requests now also keep using the local proxy settings after the
   remote connects.
 - Fix API requests that kept using the old proxy after you removed `http.proxy`
-  during a session. They no longer fall back to the proxy variables set for the
-  SSH connection.
+  during a session.
 
 ## [v1.17.1](https://github.com/coder/vscode-coder/releases/tag/v1.17.1) 2026-10-15
 

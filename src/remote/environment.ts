@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { joinNoProxy, pinEnv } from "../api/proxy";
+import { joinNoProxy, pinProxyEnv } from "../api/proxy";
 import { LocalProxySettings } from "../settings/proxy";
 import { sessionId } from "../telemetry/ids";
 
@@ -121,9 +121,8 @@ function applyEnvironment(
 		if (value === undefined) {
 			continue;
 		}
-		// Keep the API's env proxy fallback on the inherited values.
 		if (env === process.env) {
-			unpins.push(pinEnv(key));
+			unpins.push(pinProxyEnv(key));
 		}
 		previous[key] = env[key];
 		env[key] = value;

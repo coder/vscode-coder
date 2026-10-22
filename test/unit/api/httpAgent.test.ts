@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createHttpAgent, needToken } from "@/api/httpAgent";
 
 import {
+	clearProxyEnv,
 	config,
 	PROXY_URL as proxy,
 	withProxy,
@@ -28,25 +29,6 @@ const proxyAuthorization = "Basic dXNlcjpwYXNz";
 // The request parameter exists to match proxy-agent's callback signature.
 const mockRequest = {} as http.ClientRequest;
 
-const proxyEnvVars = [
-	"HTTP_PROXY",
-	"http_proxy",
-	"HTTPS_PROXY",
-	"https_proxy",
-	"ALL_PROXY",
-	"all_proxy",
-	"npm_config_http_proxy",
-	"NPM_CONFIG_HTTP_PROXY",
-	"npm_config_https_proxy",
-	"NPM_CONFIG_HTTPS_PROXY",
-	"npm_config_proxy",
-	"NPM_CONFIG_PROXY",
-	"NO_PROXY",
-	"no_proxy",
-	"npm_config_no_proxy",
-	"NPM_CONFIG_NO_PROXY",
-];
-
 async function createAgentOptions(settings: Settings = {}) {
 	const agent = await createHttpAgent(config(settings));
 	return agent.connectOpts as AgentOpts | undefined;
@@ -64,12 +46,6 @@ async function proxyForUrl(
 ): Promise<string> {
 	const getProxy = await createProxyResolver(settings);
 	return await getProxy(url);
-}
-
-function clearProxyEnv(): void {
-	for (const envVar of proxyEnvVars) {
-		vi.stubEnv(envVar, "");
-	}
 }
 
 describe("needToken", () => {

@@ -220,6 +220,24 @@ export function config(settings: Settings = {}): MockConfigurationProvider {
 	return cfg;
 }
 
+const proxyEnvVars = [
+	"HTTP_PROXY",
+	"http_proxy",
+	"HTTPS_PROXY",
+	"https_proxy",
+	"ALL_PROXY",
+	"all_proxy",
+	"NO_PROXY",
+	"no_proxy",
+];
+
+/** Stub every proxy variable `getProxyForUrl` reads to empty. */
+export function clearProxyEnv(): void {
+	for (const envVar of proxyEnvVars) {
+		vi.stubEnv(envVar, "");
+	}
+}
+
 /** Settings with http.proxy set. */
 export function withProxy(settings: Settings = {}): Settings {
 	return { "http.proxy": PROXY_URL, ...settings };
