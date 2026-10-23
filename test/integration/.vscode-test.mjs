@@ -13,6 +13,7 @@ const baseConfig = {
 	launchArgs: ["--enable-proposed-api", "coder.coder-remote", "--disable-gpu"],
 	mocha: {
 		ui: "tdd",
+		require: ["../../out/test/integration/setup.js"],
 		timeout: 20000,
 	},
 };

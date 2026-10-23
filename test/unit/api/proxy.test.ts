@@ -1,6 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+	describe,
+	it,
+	expect,
+	beforeEach,
+	afterEach,
+	onTestFinished,
+	vi,
+} from "vitest";
 
-import { getProxyForUrl } from "@/api/proxy";
+import { getProxyForUrl, pinProxyEnv } from "@/api/proxy";
+
+import { clearProxyEnv } from "../../mocks/testHelpers";
 
 describe("proxy", () => {
 	const proxy = "http://proxy.example.com:8080";
@@ -27,19 +37,27 @@ describe("proxy", () => {
 			});
 
 			it("returns empty string when no proxy is configured", () => {
-				const proxyEnvVars = [
-					"HTTPS_PROXY",
-					"https_proxy",
-					"HTTP_PROXY",
-					"http_proxy",
-					"ALL_PROXY",
-					"all_proxy",
-					"npm_config_https_proxy",
-					"npm_config_proxy",
-				];
-				proxyEnvVars.forEach((v) => vi.stubEnv(v, ""));
+				clearProxyEnv();
+				expect(getProxyForUrl("https://example.com", null, null)).toBe("");
+			});
+
+			it("ignores npm_config proxy variables", () => {
+				clearProxyEnv();
+				vi.stubEnv("npm_config_https_proxy", proxy);
+				vi.stubEnv("npm_config_proxy", proxy);
 
 				expect(getProxyForUrl("https://example.com", null, null)).toBe("");
+			});
+
+			it("keeps the pinned value after the variable changes", () => {
+				clearProxyEnv();
+				vi.stubEnv("HTTPS_PROXY", "http://inherited.example.com:8080");
+				onTestFinished(pinProxyEnv("HTTPS_PROXY"));
+				vi.stubEnv("HTTPS_PROXY", "http://ssh.example.com:8080");
+
+				expect(getProxyForUrl("https://example.com", null, null)).toBe(
+					"http://inherited.example.com:8080",
+				);
 			});
 
 			it("returns empty string for invalid URLs", () => {
@@ -79,6 +97,11 @@ describe("proxy", () => {
 					name: "port-specific",
 					noProxy: "example.com:8443",
 					url: "https://example.com:8443",
+				},
+				{
+					name: "bracketed IPv6",
+					noProxy: "[::1]",
+					url: "http://[::1]:8080",
 				},
 			])(
 				"bypasses proxy when hostname matches noProxy ($name)",
@@ -151,15 +174,10 @@ describe("proxy", () => {
 			}
 
 			it.each<EnvVarFallbackCase>([
-				{ name: "npm_config_no_proxy", envVar: "npm_config_no_proxy" },
 				{ name: "NO_PROXY", envVar: "NO_PROXY" },
 				{ name: "no_proxy (lowercase)", envVar: "no_proxy" },
 			])("falls back to $name env var", ({ envVar }) => {
-				// Clear all no_proxy env vars first
-				vi.stubEnv("npm_config_no_proxy", "");
-				vi.stubEnv("NO_PROXY", "");
-				vi.stubEnv("no_proxy", "");
-
+				clearProxyEnv();
 				vi.stubEnv(envVar, targetHost);
 				expect(getProxyForUrl(targetUrl, proxy, null, null)).toBe("");
 			});

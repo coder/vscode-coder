@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { joinNoProxy } from "../api/proxy";
+import { joinNoProxy, pinProxyEnv } from "../api/proxy";
 import { LocalProxySettings } from "../settings/proxy";
 import { sessionId } from "../telemetry/ids";
 
@@ -116,9 +116,13 @@ function applyEnvironment(
 ): { dispose(): void } {
 	// Stored `undefined` means the key was absent and should be deleted on cleanup.
 	const previous: Environment = {};
+	const unpins: Array<() => void> = [];
 	for (const [key, value] of Object.entries(values)) {
 		if (value === undefined) {
 			continue;
+		}
+		if (env === process.env) {
+			unpins.push(pinProxyEnv(key));
 		}
 		previous[key] = env[key];
 		env[key] = value;
@@ -131,6 +135,7 @@ function applyEnvironment(
 				return;
 			}
 			disposed = true;
+			unpins.forEach((unpin) => unpin());
 			for (const [key, value] of Object.entries(previous)) {
 				if (value === undefined) {
 					delete env[key];

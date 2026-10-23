@@ -68,6 +68,9 @@ command with `xvfb-run -a`.
 
 - Tests use Mocha (VS Code test runner requirement), not Vitest.
 - Test files in `test/integration/` are compiled to `out/` before running.
+- Tests that import from `src/` get compiled copies that don't share state
+  with the running extension's bundle. `test/integration/setup.ts` initializes
+  what activation would for them.
 - The first run downloads each VS Code version into `.vscode-test/`. Tests
   run in that copy with its own user data directory, so an open VS Code
   doesn't interfere.
