@@ -53,14 +53,12 @@ export function getProxyForUrl(
 	noProxyFallback?: string | null,
 ): string {
 	const parsedUrl = URL.parse(url);
-	if (!parsedUrl?.host) {
+	if (!parsedUrl?.hostname) {
 		return ""; // Don't proxy URLs without a valid scheme or host.
 	}
 
-	const proto = parsedUrl.protocol.split(":", 1)[0];
-	// Stripping ports in this way instead of using parsedUrl.hostname to make
-	// sure that the brackets around IPv6 addresses are kept.
-	const hostname = parsedUrl.host.replace(/:\d*$/, "");
+	const proto = parsedUrl.protocol.slice(0, -1);
+	const hostname = parsedUrl.hostname;
 	const port = Number.parseInt(parsedUrl.port) || DEFAULT_PORTS[proto] || 0;
 	if (!shouldProxy(hostname, port, noProxy, noProxyFallback)) {
 		return ""; // Don't proxy URLs that match NO_PROXY.

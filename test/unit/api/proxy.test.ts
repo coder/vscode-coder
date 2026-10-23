@@ -98,6 +98,11 @@ describe("proxy", () => {
 					noProxy: "example.com:8443",
 					url: "https://example.com:8443",
 				},
+				{
+					name: "bracketed IPv6",
+					noProxy: "[::1]",
+					url: "http://[::1]:8080",
+				},
 			])(
 				"bypasses proxy when hostname matches noProxy ($name)",
 				({ noProxy, url }) => {
