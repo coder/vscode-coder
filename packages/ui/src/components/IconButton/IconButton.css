@@ -31,8 +31,9 @@
 	outline-style: solid;
 }
 
-/* Last: native's ring is an outline, the others border colors, so it wins */
-.ui-icon-button:focus {
+/* Last so focus wins over hover and toggled outlines. */
+.ui-icon-button:focus-visible,
+:where(:root[data-ui-style="stable"]) .ui-icon-button:focus {
 	outline-color: var(--ui-focus-border);
 	outline-style: solid;
 }

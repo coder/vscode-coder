@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+	Banner,
 	EmptyState,
 	ErrorState,
 	Icon,
@@ -133,5 +134,33 @@ describe("state panels", () => {
 		expect(screen.getByRole("alert")).toBeInTheDocument();
 		fireEvent.click(screen.getByRole("button", { name: "Try again" }));
 		expect(onRetry).toHaveBeenCalledOnce();
+	});
+});
+
+describe("Banner", () => {
+	it("announces warnings politely and runs each action", async () => {
+		const user = userEvent.setup();
+		const retry = vi.fn();
+		const details = vi.fn();
+		render(
+			<Banner
+				severity="warning"
+				actions={[
+					{ label: "Retry", onClick: retry },
+					{ label: "Details", onClick: details },
+				]}
+			>
+				Out of date
+			</Banner>,
+		);
+		expect(screen.getByRole("status")).toHaveTextContent("Out of date");
+		await user.click(screen.getByRole("button", { name: "Details" }));
+		expect(details).toHaveBeenCalledOnce();
+		expect(retry).not.toHaveBeenCalled();
+	});
+
+	it("announces errors as alerts", () => {
+		render(<Banner severity="error">Failed</Banner>);
+		expect(screen.getByRole("alert")).toHaveTextContent("Failed");
 	});
 });

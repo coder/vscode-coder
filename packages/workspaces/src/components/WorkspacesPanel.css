@@ -1,0 +1,21 @@
+.workspaces-panel {
+	position: relative;
+	box-sizing: border-box;
+	height: 100%;
+	overflow-y: auto;
+	padding-block: var(--ui-spacing-40);
+}
+
+.workspaces-refresh-progress.ui-progress-bar {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline: 0;
+}
+
+.workspaces-stale {
+	margin: 0 var(--ui-spacing-120) var(--ui-spacing-60);
+}
+
+.workspaces-stale__error {
+	color: var(--ui-description-foreground);
+}

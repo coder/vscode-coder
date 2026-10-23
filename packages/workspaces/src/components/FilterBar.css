@@ -1,0 +1,58 @@
+/* The start padding lines the picker's text up with the tree's chevrons. */
+.workspaces-filter-bar {
+	display: flex;
+	align-items: center;
+	padding: 0 var(--ui-spacing-120) var(--ui-spacing-40) 14px;
+	font-size: var(--ui-font-size-small);
+	color: var(--ui-description-foreground);
+	white-space: nowrap;
+}
+
+/* Sized and colored like a view toolbar action, not a button. */
+.workspaces-filter.ui-button {
+	height: 22px;
+	padding: 0 var(--ui-spacing-40);
+	gap: var(--ui-spacing-40);
+	font-size: inherit;
+	color: inherit;
+	background: transparent;
+	border-color: transparent;
+}
+
+.workspaces-filter.ui-button:is(:hover, [data-popup-open]) {
+	background: var(--ui-toolbar-hover-background);
+}
+
+:where(:root[data-ui-style="stable"]) .workspaces-filter-bar {
+	padding-inline-start: 10px;
+}
+
+:where(:root[data-ui-style="stable"]) .workspaces-filter.ui-button {
+	border-radius: var(--ui-radius-medium);
+}
+
+:where(:root:not([data-ui-style="stable"]))
+	.workspaces-filter.ui-button:focus:not(:focus-visible) {
+	outline: none;
+}
+
+.workspaces-filter > .ui-icon {
+	width: auto;
+	font-size: inherit;
+}
+
+/* The picker's end padding already spaces the dot from the chevron. */
+.workspaces-filter-bar__separator {
+	flex: none;
+	width: 4px;
+	height: 4px;
+	margin-inline-end: var(--ui-spacing-60);
+	border-radius: 50%;
+	background: currentColor;
+}
+
+.workspaces-filter-bar__updated {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}

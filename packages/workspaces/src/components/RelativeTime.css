@@ -1,0 +1,5 @@
+.workspace-relative-time:focus-visible,
+:where(:root[data-ui-style="stable"]) .workspace-relative-time:focus {
+	outline: 1px solid var(--ui-focus-border);
+	outline-offset: 2px;
+}

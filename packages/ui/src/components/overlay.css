@@ -23,15 +23,22 @@
 
 /* An open submenu keeps its parent row highlighted, like native; the
    selection border only resolves in high contrast. */
-.ui-overlay__item:is([data-highlighted], [data-popup-open]) {
+.ui-overlay__item:is([data-highlighted], [data-popup-open]):not(
+		[data-disabled]
+	) {
 	forced-color-adjust: none;
 	color: var(--ui-overlay-highlight-foreground);
 	background: var(--ui-overlay-highlight-background);
 	outline-color: var(--ui-overlay-highlight-outline, transparent);
 }
 
+/* Native menus never highlight a disabled item; keyboard focus keeps a ring. */
 .ui-overlay__item[data-disabled] {
 	color: var(--ui-disabled-foreground);
+}
+
+.ui-overlay__item[data-disabled]:focus-visible {
+	outline-color: var(--ui-focus-border);
 }
 
 @media (forced-colors: active) {
@@ -39,7 +46,9 @@
 		border-color: CanvasText;
 	}
 
-	.ui-overlay__item:is([data-highlighted], [data-popup-open]) {
+	.ui-overlay__item:is([data-highlighted], [data-popup-open]):not(
+			[data-disabled]
+		) {
 		color: HighlightText;
 		background: Highlight;
 	}

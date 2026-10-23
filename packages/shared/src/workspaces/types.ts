@@ -1,11 +1,25 @@
 import type {
 	Workspace,
 	WorkspaceAgent,
+	WorkspaceAgentLifecycle,
 	WorkspaceAgentMetadata,
+	WorkspaceAgentStatus,
+	WorkspaceAppStatus,
+	WorkspaceAppStatusState,
+	WorkspaceStatus,
 } from "coder/site/src/api/typesGenerated";
 
 // Re-export SDK types for convenience
-export type { Workspace, WorkspaceAgent, WorkspaceAgentMetadata };
+export type {
+	Workspace,
+	WorkspaceAgent,
+	WorkspaceAgentLifecycle,
+	WorkspaceAgentMetadata,
+	WorkspaceAgentStatus,
+	WorkspaceAppStatus,
+	WorkspaceAppStatusState,
+	WorkspaceStatus,
+};
 
 export type WorkspaceFilter = "mine" | "shared" | "all";
 
@@ -47,6 +61,10 @@ export interface WorkspacesState {
 	readonly workspaces: readonly Workspace[];
 	readonly status: WorkspaceListStatus;
 	readonly metadata: AgentMetadataMap;
+	/** Epoch milliseconds of the last successful list; null before the first. */
+	readonly listedAtMs: number | null;
+	/** Listed workspaces that have Agent chats. */
+	readonly chatWorkspaceIds: readonly string[];
 }
 
 export interface OpenWorkspaceParams {

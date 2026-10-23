@@ -28,6 +28,9 @@ const withAgent = () =>
 
 const ids = (state?: WorkspacesState) => state?.workspaces.map((w) => w.id);
 
+const many = (count: number) =>
+	Array.from({ length: count }, (_, i) => workspace({ id: `workspace-${i}` }));
+
 function setup() {
 	const client = new MockWorkspacesClient();
 	const session = new TestSessionStore();
@@ -82,24 +85,28 @@ describe("WorkspaceStore", () => {
 				workspaces: [expect.objectContaining({ id: "workspace-1" })],
 				status: { kind: "ready" },
 				metadata: {},
+				listedAtMs: expect.any(Number),
+				chatWorkspaceIds: [],
 			},
 		]);
 		expect(h.store.findWorkspace("workspace-1")).toBeDefined();
 		expect(h.store.findWorkspace("gone")).toBeUndefined();
 	});
 
-	it("polls the filters that poll, saying nothing when nothing changed", async () => {
-		vi.useFakeTimers();
+	it("polls the filters that poll, reporting when each list arrived", async () => {
+		vi.useFakeTimers({ now: 1_234 });
 		onTestFinished(() => {
 			vi.useRealTimers();
 		});
-		const second = () => [workspace({ id: "second" })];
-		const h = await shown([workspace({ id: "first" })], second(), second());
+		// Later polls list nothing, which still counts as listing.
+		const h = await shown([workspace({ id: "first" })]);
 
-		await vi.advanceTimersByTimeAsync(5_000);
-		expect(h.states.map(ids)).toEqual([["first"], ["second"]]);
-		await vi.advanceTimersByTimeAsync(5_000);
-		expect(h.states).toHaveLength(2);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(h.states.map((state) => [ids(state), state.listedAtMs])).toEqual([
+			[["first"], 1_234],
+			[[], 6_234],
+			[[], 11_234],
+		]);
 
 		await h.store.setFilter("shared");
 		const fetches = h.client.getWorkspaces.mock.calls.length;
@@ -163,17 +170,35 @@ describe("WorkspaceStore", () => {
 	});
 
 	describe("failed fetches", () => {
-		it("reports a failure, then clears it once a fetch succeeds", async () => {
+		it("keeps the last list through a failure, with when it was listed", async () => {
+			vi.useFakeTimers({ toFake: ["Date"] });
+			onTestFinished(() => {
+				vi.useRealTimers();
+			});
+			vi.setSystemTime(90_500);
 			const h = await shown([workspace({ id: "workspace-1" })]);
+			vi.setSystemTime(150_000);
 			h.client.getWorkspaces.mockRejectedValueOnce(new Error("network down"));
 			await h.store.refresh();
 			expect(h.last()).toMatchObject({
-				workspaces: [],
+				workspaces: [expect.objectContaining({ id: "workspace-1" })],
 				status: { kind: "failed", error: "network down" },
+				listedAtMs: 90_500,
 			});
 
 			await h.store.refresh();
 			expect(h.last()?.status).toEqual({ kind: "ready" });
+		});
+
+		it("reports a failure with nothing listed when there is no list to keep", async () => {
+			const h = setup();
+			h.client.getWorkspaces.mockRejectedValueOnce(new Error("network down"));
+			await h.show();
+			expect(h.store.state).toMatchObject({
+				workspaces: [],
+				status: { kind: "failed", error: "network down" },
+				listedAtMs: null,
+			});
 		});
 
 		it("stops offering a filter the deployment rejects, until a visible refresh", async () => {
@@ -206,6 +231,105 @@ describe("WorkspaceStore", () => {
 				capabilities: { filters: ["mine", "shared"] },
 				status: { kind: "failed", error: "invalid query" },
 			});
+		});
+	});
+
+	describe("Agent workspace associations", () => {
+		it("batches listed workspaces and does not refetch for metadata reports", async () => {
+			const h = setup();
+			h.client.experimental.getChatsByWorkspace.mockResolvedValueOnce({
+				"workspace-1": "chat-1",
+				unlisted: "chat-2",
+			});
+			await h.show([withAgent(), workspace({ id: "second" })]);
+			expect(
+				h.client.experimental.getChatsByWorkspace,
+			).toHaveBeenCalledExactlyOnceWith(["workspace-1", "second"]);
+			expect(h.store.state.chatWorkspaceIds).toEqual(["workspace-1"]);
+			await h.store.watchAgents(["agent-1"]);
+			pushMetadata(h);
+			expect(h.client.experimental.getChatsByWorkspace).toHaveBeenCalledOnce();
+		});
+
+		it("looks up long lists in batches, keeping the last associations unless every batch succeeds", async () => {
+			const h = setup();
+			const lookup = h.client.experimental.getChatsByWorkspace;
+			lookup
+				.mockResolvedValueOnce({ "workspace-3": "chat-1" })
+				.mockResolvedValueOnce({ "workspace-27": "chat-2" });
+			await h.show(many(30));
+			expect(lookup.mock.calls.map(([ids]) => ids.length)).toEqual([25, 5]);
+			expect(h.store.state.chatWorkspaceIds).toEqual([
+				"workspace-3",
+				"workspace-27",
+			]);
+
+			h.client.respondOnce(many(30));
+			lookup
+				.mockResolvedValueOnce({ "workspace-4": "chat-3" })
+				.mockRejectedValueOnce(new Error("network down"));
+			await h.store.refresh();
+			expect(h.store.state).toMatchObject({
+				status: { kind: "ready" },
+				chatWorkspaceIds: ["workspace-3", "workspace-27"],
+			});
+		});
+
+		it("shows the workspace list while associations are pending", async () => {
+			const h = setup();
+			const lookup = Promise.withResolvers<Record<string, string>>();
+			h.client.experimental.getChatsByWorkspace.mockReturnValueOnce(
+				lookup.promise,
+			);
+			const listing = h.show([withAgent()]);
+			await Promise.resolve();
+			expect(h.store.state.status).toEqual({ kind: "ready" });
+			expect(ids(h.store.state)).toEqual(["workspace-1"]);
+			lookup.resolve({ "workspace-1": "chat-1" });
+			await listing;
+			expect(h.store.state.chatWorkspaceIds).toEqual(["workspace-1"]);
+		});
+
+		it("stops unsupported lookups until a manual refresh", async () => {
+			vi.useFakeTimers();
+			onTestFinished(() => {
+				vi.useRealTimers();
+			});
+			const h = setup();
+			h.client.experimental.getChatsByWorkspace.mockRejectedValueOnce(
+				createAxiosError(404, "not found"),
+			);
+			await h.show([withAgent()], [withAgent()]);
+			await vi.advanceTimersByTimeAsync(5_000);
+			expect(h.client.getWorkspaces).toHaveBeenCalledTimes(2);
+			expect(h.client.experimental.getChatsByWorkspace).toHaveBeenCalledOnce();
+			h.client.respondOnce([withAgent()]);
+			h.client.experimental.getChatsByWorkspace.mockResolvedValueOnce({
+				"workspace-1": "chat-1",
+			});
+			await h.store.refresh();
+			expect(h.store.state.chatWorkspaceIds).toEqual(["workspace-1"]);
+		});
+
+		it("does not apply another session's associations, even partway through the batches", async () => {
+			const h = setup();
+			const lastBatch = Promise.withResolvers<Record<string, string>>();
+			const lastBatchStarted = Promise.withResolvers<void>();
+			h.client.experimental.getChatsByWorkspace
+				.mockResolvedValueOnce({ "workspace-3": "chat-1" })
+				.mockImplementationOnce(() => {
+					lastBatchStarted.resolve();
+					return lastBatch.promise;
+				});
+			const listing = h.show(many(30));
+			await lastBatchStarted.promise;
+			// Associations replace the last ones whole, not batch by batch.
+			expect(h.store.state.chatWorkspaceIds).toEqual([]);
+			h.session.signOut();
+			lastBatch.resolve({ "workspace-27": "chat-2" });
+			await listing;
+			expect(h.store.state.chatWorkspaceIds).toEqual([]);
+			expect(h.store.state.capabilities.authenticated).toBe(false);
 		});
 	});
 
@@ -249,12 +373,12 @@ describe("WorkspaceStore", () => {
 			});
 		});
 
-		it("releases agents a failed list drops, and closes them once the session ends", async () => {
+		it("keeps watching agents through a failed list, and closes them once the session ends", async () => {
 			const h = await watchingAgent();
 			const socket = h.client.metadataStream("agent-1");
 			h.client.getWorkspaces.mockRejectedValueOnce(new Error("offline"));
 			await h.store.refresh();
-			expect(h.store.state.metadata).toEqual({});
+			expect(h.store.state.metadata).toHaveProperty("agent-1");
 			expect(socket.close).not.toHaveBeenCalled();
 
 			h.session.signOut();

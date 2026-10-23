@@ -2,11 +2,13 @@
  * Test factories for Coder SDK workspace types.
  */
 
-import type { AgentMetadataState } from "@repo/shared";
+import type { AgentMetadataState, WorkspacesState } from "@repo/shared";
 import type {
 	Workspace,
 	WorkspaceAgent,
 	WorkspaceAgentMetadata,
+	WorkspaceApp,
+	WorkspaceAppStatus,
 	WorkspaceBuild,
 	WorkspaceResource,
 } from "coder/site/src/api/typesGenerated";
@@ -136,6 +138,42 @@ export function agent(overrides: Partial<WorkspaceAgent> = {}): WorkspaceAgent {
 	};
 }
 
+/** Create a workspace app with no reported statuses. */
+export function app(overrides: Partial<WorkspaceApp> = {}): WorkspaceApp {
+	return {
+		id: "app-1",
+		slug: "claude",
+		display_name: "Claude Code",
+		external: false,
+		subdomain: false,
+		sharing_level: "owner",
+		health: "healthy",
+		hidden: false,
+		open_in: "slim-window",
+		statuses: [],
+		...overrides,
+	};
+}
+
+/** Create a workspace app status with a running task message. */
+export function appStatus(
+	overrides: Partial<WorkspaceAppStatus> = {},
+): WorkspaceAppStatus {
+	return {
+		id: "status-1",
+		created_at: "2024-01-01T00:00:00Z",
+		workspace_id: "workspace-1",
+		agent_id: "agent-1",
+		app_id: "app-1",
+		state: "working",
+		message: "Running tests",
+		uri: "",
+		icon: "",
+		needs_user_attention: false,
+		...overrides,
+	};
+}
+
 /** Create a WorkspaceAgentMetadata report with sensible defaults. */
 export function agentMetadata(
 	overrides: {
@@ -170,6 +208,22 @@ export const REPORTED_METADATA: AgentMetadataState = {
 	kind: "reported",
 	metadata: [agentMetadata()],
 };
+
+/** A signed-in Workspaces panel state with an empty, ready Mine list. */
+export function workspacesState(
+	overrides: Partial<WorkspacesState> = {},
+): WorkspacesState {
+	return {
+		capabilities: { authenticated: true, filters: ["mine", "shared"] },
+		filter: "mine",
+		workspaces: [],
+		status: { kind: "ready" },
+		metadata: {},
+		listedAtMs: null,
+		chatWorkspaceIds: [],
+		...overrides,
+	};
+}
 
 /** Create a WorkspaceResource with sensible defaults. */
 export function resource(

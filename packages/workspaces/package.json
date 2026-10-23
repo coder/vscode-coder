@@ -11,11 +11,12 @@
 	},
 	"dependencies": {
 		"@repo/shared": "workspace:*",
+		"@repo/ui": "workspace:*",
 		"@repo/webview-shared": "workspace:*",
 		"@tanstack/react-query": "catalog:",
-		"@vscode-elements/react-elements": "catalog:",
 		"@vscode/codicons": "catalog:",
 		"date-fns": "catalog:",
+		"dayjs": "catalog:",
 		"react": "catalog:",
 		"react-dom": "catalog:"
 	},

@@ -36,3 +36,12 @@ export const States: Story = {
 		await userEvent.unhover(refreshButton);
 	},
 };
+
+export const MouseFocus: Story = {
+	parameters: { pseudo: { focus: [".ui-icon-button:not(:disabled)"] } },
+};
+
+export const MouseFocusStable: Story = {
+	...MouseFocus,
+	globals: { uiStyle: "stable" },
+};

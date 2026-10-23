@@ -1,0 +1,68 @@
+.ui-banner {
+	--ui-banner-accent: var(--ui-status-info-accent);
+	display: flex;
+	align-items: flex-start;
+	gap: var(--ui-spacing-60);
+	padding: var(--ui-spacing-40) var(--ui-spacing-60);
+	color: var(--ui-message-info-foreground);
+	background: var(--ui-message-info-background);
+	border: 1px solid var(--ui-message-info-border);
+	line-height: 18px;
+	overflow-wrap: anywhere;
+}
+
+.ui-banner--warning {
+	--ui-banner-accent: var(--ui-status-warning-accent);
+	color: var(--ui-message-warning-foreground);
+	background: var(--ui-message-warning-background);
+	border-color: var(--ui-message-warning-border);
+}
+
+.ui-banner--error {
+	--ui-banner-accent: var(--ui-status-danger-accent);
+	color: var(--ui-message-error-foreground);
+	background: var(--ui-message-error-background);
+	border-color: var(--ui-message-error-border);
+}
+
+.ui-banner__icon {
+	flex: none;
+	height: 18px;
+	color: var(--ui-banner-accent);
+}
+
+.ui-banner__message {
+	flex: 1;
+	min-width: 0;
+}
+
+.ui-banner__action {
+	margin-inline-start: 12px;
+	padding: 0 3px;
+	font: inherit;
+	color: inherit;
+	text-decoration: underline;
+	background: none;
+	border: none;
+	cursor: pointer;
+}
+
+.ui-banner__action:focus-visible,
+:where(:root[data-ui-style="stable"]) .ui-banner__action:focus {
+	outline: 1px solid var(--ui-focus-border);
+	outline-offset: 1px;
+}
+
+@media (forced-colors: active) {
+	.ui-banner {
+		border-color: CanvasText;
+	}
+
+	.ui-banner__icon {
+		color: CanvasText;
+	}
+
+	.ui-banner__action {
+		color: LinkText;
+	}
+}

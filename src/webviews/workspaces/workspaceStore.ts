@@ -1,6 +1,8 @@
+import { isAxiosError } from "axios";
 import { isDeepStrictEqual } from "node:util";
 import * as vscode from "vscode";
 
+import { HttpStatusCode } from "../../api/httpStatusCode";
 import { extractAllAgents } from "../../api/models";
 import { errToStr } from "../../error/normalize";
 import { AgentMetadataTracker } from "../../workspace/agentMetadataTracker";
@@ -26,6 +28,7 @@ import type { SessionState } from "../../deployment/sessionStore";
 import type { Logger } from "../../logging/logger";
 
 interface WorkspacesClient extends AgentMetadataClient {
+	readonly experimental: Pick<CoderApi["experimental"], "getChatsByWorkspace">;
 	getWorkspaces(
 		request: Parameters<CoderApi["getWorkspaces"]>[0],
 	): Promise<{ readonly workspaces: readonly Workspace[] }>;
@@ -34,17 +37,8 @@ interface WorkspacesClient extends AgentMetadataClient {
 const RETRY: RetryOptions = { initialDelayMs: 5_000, maxDelayMs: 60_000 };
 const LOADING: WorkspaceListStatus = { kind: "loading" };
 const READY: WorkspaceListStatus = { kind: "ready" };
-
-function listedAgentIds(
-	requested: readonly string[],
-	workspaces: readonly Workspace[],
-): readonly string[] {
-	if (requested.length === 0) {
-		return [];
-	}
-	const listed = new Set(extractAllAgents(workspaces).map((agent) => agent.id));
-	return requested.filter((agentId) => listed.has(agentId));
-}
+/** The deployment rejects chat lookups for more workspaces than this. */
+const CHAT_LOOKUP_BATCH_SIZE = 25;
 
 /**
  * Owns the state the Workspaces panel renders: lists the active filter while
@@ -62,6 +56,9 @@ export class WorkspaceStore implements vscode.Disposable {
 
 	private filter: WorkspaceFilter = DEFAULT_WORKSPACE_FILTER;
 	private workspaces: readonly Workspace[] = [];
+	private listedAtMs: number | null = null;
+	private chatWorkspaceIds: readonly string[] = [];
+	private chatLookupSupported = true;
 	private status = LOADING;
 	/** Agents the webview is showing, listed or not. */
 	private requestedAgents: readonly string[] = [];
@@ -95,6 +92,8 @@ export class WorkspaceStore implements vscode.Disposable {
 			workspaces: this.workspaces,
 			status: this.status,
 			metadata: this.agents.metadata,
+			listedAtMs: this.listedAtMs,
+			chatWorkspaceIds: this.chatWorkspaceIds,
 		};
 	}
 
@@ -125,7 +124,8 @@ export class WorkspaceStore implements vscode.Disposable {
 			return this.settled;
 		}
 		this.filter = filter;
-		return this.reload();
+		this.clearList();
+		return this.poller.run();
 	}
 
 	/** Watch exactly these agents, as far as the list has them. */
@@ -134,14 +134,16 @@ export class WorkspaceStore implements vscode.Disposable {
 		return this.watchListedAgents();
 	}
 
-	/** List now, keeping the list on show and offering rejected filters again. */
+	/** List now, keeping the list on show and retrying what was unsupported. */
 	public refresh(): Promise<void> {
 		// A hidden panel cannot re-validate a filter it offers again.
 		if (this.disposed || !this.visible) {
 			return this.settled;
 		}
 		this.unsupportedFilters.clear();
-		return this.reload(this.workspaces);
+		this.chatLookupSupported = true;
+		this.setList(this.workspaces, LOADING);
+		return this.poller.run();
 	}
 
 	public dispose(): void {
@@ -150,10 +152,6 @@ export class WorkspaceStore implements vscode.Disposable {
 			disposable.dispose();
 		}
 		this.changeEmitter.dispose();
-	}
-
-	private get filters(): readonly WorkspaceFilter[] {
-		return availableFilters(this.sessionState.current, this.unsupportedFilters);
 	}
 
 	private async list(token: vscode.CancellationToken): Promise<NextRun> {
@@ -177,7 +175,9 @@ export class WorkspaceStore implements vscode.Disposable {
 			if (token.isCancellationRequested) {
 				return "idle";
 			}
+			this.listedAtMs = Date.now();
 			this.setList(workspaces);
+			await this.loadChatWorkspaces(workspaces, token);
 			return this.visible && pollIntervalMs !== undefined
 				? { delayMs: pollIntervalMs }
 				: "idle";
@@ -189,22 +189,17 @@ export class WorkspaceStore implements vscode.Disposable {
 			if (this.filter !== DEFAULT_WORKSPACE_FILTER && isQueryRejected(error)) {
 				this.unsupportedFilters.add(this.filter);
 				this.filter = DEFAULT_WORKSPACE_FILTER;
-				this.setList([], LOADING);
+				this.clearList();
 				return this.list(token);
 			}
 			this.logger.warn("Failed to fetch workspaces:", error);
-			this.setList([], {
+			// Keep the last list for this filter and session, marked out of date.
+			this.setList(this.workspaces, {
 				kind: "failed",
 				error: errToStr(error, "Failed to fetch workspaces"),
 			});
 			return "retry";
 		}
-	}
-
-	/** Show `workspaces` as loading, then list again. */
-	private reload(workspaces: readonly Workspace[] = []): Promise<void> {
-		this.setList(workspaces, LOADING);
-		return this.poller.run();
 	}
 
 	private setList(workspaces: readonly Workspace[], status = READY): void {
@@ -234,14 +229,80 @@ export class WorkspaceStore implements vscode.Disposable {
 		}
 	}
 
+	/** Forget the list, so the next one shows as loading from scratch. */
+	private clearList(): void {
+		this.listedAtMs = null;
+		this.chatWorkspaceIds = [];
+		this.setList([], LOADING);
+	}
+
+	/** Replaces the chat associations only once every batch succeeds. */
+	private async loadChatWorkspaces(
+		workspaces: readonly Workspace[],
+		token: vscode.CancellationToken,
+	): Promise<void> {
+		if (!this.chatLookupSupported) {
+			return;
+		}
+		const workspaceIds = workspaces.map((workspace) => workspace.id);
+		const chatWorkspaceIds: string[] = [];
+		try {
+			for (let i = 0; i < workspaceIds.length; i += CHAT_LOOKUP_BATCH_SIZE) {
+				const batch = workspaceIds.slice(i, i + CHAT_LOOKUP_BATCH_SIZE);
+				const chats = await this.client.experimental.getChatsByWorkspace(batch);
+				if (token.isCancellationRequested) {
+					return;
+				}
+				chatWorkspaceIds.push(...batch.filter((id) => Boolean(chats[id])));
+			}
+			this.chatWorkspaceIds = chatWorkspaceIds;
+		} catch (error) {
+			if (token.isCancellationRequested) {
+				return;
+			}
+			if (!isUnsupported(error)) {
+				this.logger.warn("Failed to look up Agent chat workspaces:", error);
+				return;
+			}
+			this.chatLookupSupported = false;
+			this.chatWorkspaceIds = [];
+		}
+		this.publish();
+	}
+
 	private handleSessionChange(): void {
 		this.unsupportedFilters.clear();
+		this.chatLookupSupported = true;
 		this.requestedAgents = [];
 		if (!this.filters.includes(this.filter)) {
 			this.filter = DEFAULT_WORKSPACE_FILTER;
 		}
-		void this.reload();
+		this.clearList();
+		void this.poller.run();
 		// Another session's sockets must not linger.
 		this.agents.clear();
 	}
+
+	private get filters(): readonly WorkspaceFilter[] {
+		return availableFilters(this.sessionState.current, this.unsupportedFilters);
+	}
+}
+
+function listedAgentIds(
+	requested: readonly string[],
+	workspaces: readonly Workspace[],
+): readonly string[] {
+	if (requested.length === 0) {
+		return [];
+	}
+	const listed = new Set(extractAllAgents(workspaces).map((agent) => agent.id));
+	return requested.filter((agentId) => listed.has(agentId));
+}
+
+/** Deployments without Agent chats, or users without access to them. */
+function isUnsupported(error: unknown): boolean {
+	const status = isAxiosError(error) ? error.response?.status : undefined;
+	return (
+		status === HttpStatusCode.FORBIDDEN || status === HttpStatusCode.NOT_FOUND
+	);
 }
