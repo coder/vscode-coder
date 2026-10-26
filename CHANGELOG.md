@@ -9,6 +9,9 @@
 
 ### Changed
 
+- Prefix Coder output channel lines with the full session ID as
+  `[client_session_id=<id>]`, the same key the `coder` CLI, the agent and
+  JetBrains Toolbox log, so a search for the ID finds the session everywhere.
 - API requests no longer read the `npm_config_proxy`, `npm_config_http_proxy`,
   `npm_config_https_proxy` and `npm_config_no_proxy` environment variables. Set
   `http.proxy`, `http.noProxy` or the standard `HTTP_PROXY`, `HTTPS_PROXY` and
