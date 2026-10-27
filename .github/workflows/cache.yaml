@@ -1,0 +1,44 @@
+name: Cache
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The only workflow that saves caches.
+cache-mode: write
+
+jobs:
+  cache:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, name: Linux }
+          - { os: windows-2025-vs2026, name: Windows }
+          - { os: windows-11-arm, name: Windows ARM64 }
+          - { os: macos-15, name: macOS }
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup pnpm, Node.js, and dependencies
+        uses: ./.github/actions/setup
+        with:
+          save-cache: true
+
+      # Pixel runs on Linux only.
+      - name: Install Chromium
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/playwright-chromium
+        with:
+          save-cache: true

@@ -1,0 +1,35 @@
+name: Playwright Chromium
+description: Install Playwright's Chromium, restored from the cache when possible.
+
+inputs:
+  save-cache:
+    description: Save Chromium to the cache on a miss.
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Get Playwright version
+      id: version
+      shell: bash
+      run: echo "version=$(pnpm exec playwright-core --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+    # Avoids relying on azure.archive.ubuntu.com, which can be flaky.
+    - name: Restore Chromium cache
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-chromium-${{ runner.os }}-${{ steps.version.outputs.version }}
+
+    # Composite steps can't set timeout-minutes.
+    - name: Install Chromium
+      shell: bash
+      run: timeout 5m pnpm exec playwright-core install chromium
+
+    - name: Save Chromium cache
+      if: inputs.save-cache == 'true' && steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ steps.restore.outputs.cache-primary-key }}

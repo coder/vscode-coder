@@ -26,7 +26,13 @@ overrides:
 minimumReleaseAge: 0
 YAML
 
-pnpm --dir "$RUNNER_DIR" add "electron@$ELECTRON_VERSION"
+# Electron's own binary download never retries, so skip it and retry here.
+ELECTRON_SKIP_BINARY_DOWNLOAD=1 pnpm --dir "$RUNNER_DIR" add "electron@$ELECTRON_VERSION"
+for attempt in 1 2 3; do
+  node "$RUNNER_DIR/node_modules/electron/install.js" && break
+  [ "$attempt" -lt 3 ] || exit 1
+  sleep 10
+done
 
 echo "Running tests with Electron $ELECTRON_VERSION..."
 ELECTRON_RUN_AS_NODE=1 \

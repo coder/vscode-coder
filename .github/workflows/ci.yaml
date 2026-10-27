@@ -12,10 +12,18 @@ on:
 permissions:
   contents: read
 
+cache-mode: read
+
+# Cancel superseded PR runs; main pushes each get their own group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -38,6 +46,7 @@ jobs:
   test-unit:
     name: Unit Test (${{ matrix.name }}, Electron ${{ matrix.electron-version }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -49,11 +58,6 @@ jobs:
           - {
               os: windows-2025-vs2026,
               name: Windows,
-              electron-version: "latest",
-            }
-          - {
-              os: windows-11-arm,
-              name: Windows ARM64,
               electron-version: "latest",
             }
           - { os: macos-15, name: macOS, electron-version: "latest" }
@@ -72,9 +76,31 @@ jobs:
           CI: true
           EXPECTED_ARCH: ${{ runner.arch }}
 
+  test-unit-arm64:
+    name: Unit Test (Windows ARM64, Electron latest)
+    # Installing on windows-11-arm adds minutes to every PR, so PRs skip it.
+    # Run it on a branch with workflow_dispatch.
+    if: github.event_name != 'pull_request'
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup pnpm, Node.js, and dependencies
+        uses: ./.github/actions/setup
+
+      - name: Run tests with Electron latest
+        run: ./scripts/test-electron.sh latest
+        shell: bash
+        env:
+          CI: true
+          EXPECTED_ARCH: ${{ runner.arch }}
+
   test-integration:
     name: Integration Test (${{ matrix.name }}, VS Code ${{ matrix.vscode-version }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -101,6 +127,7 @@ jobs:
   pixel:
     name: Pixel
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     # Forks and Dependabot can't read the PIXEL_KEY secret.
     if: github.repository_owner == 'coder' && github.actor != 'dependabot[bot]'
     steps:
@@ -110,30 +137,8 @@ jobs:
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/setup
 
-      - name: Get Playwright version
-        id: playwright-version
-        run: echo "version=$(pnpm exec playwright-core --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
-
-      # Cache the browser to avoid relying on azure.archive.ubuntu.com, which
-      # can be flaky. Only the default branch is trusted to write the cache,
-      # so PR runs cannot poison it.
-      - name: Restore Chromium cache
-        id: playwright-chromium-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
-
       - name: Install Chromium
-        run: pnpm exec playwright-core install chromium
-        timeout-minutes: 5
-
-      - name: Save Chromium cache
-        if: github.ref == 'refs/heads/main' && steps.playwright-chromium-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ steps.playwright-chromium-cache.outputs.cache-primary-key }}
+        uses: ./.github/actions/playwright-chromium
 
       # Builds the Storybook (buildCommand in pixel.jsonc) and snapshots it.
       - name: Snapshot
@@ -148,6 +153,7 @@ jobs:
   package:
     name: Package
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -179,7 +185,7 @@ jobs:
 
       - name: Upload artifact (PR)
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           path: ${{ steps.setup.outputs.packageName }}
           if-no-files-found: error
@@ -188,7 +194,7 @@ jobs:
 
       - name: Upload artifact (main)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           path: ${{ steps.setup.outputs.packageName }}
           if-no-files-found: error
