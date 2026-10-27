@@ -32,7 +32,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
-        uses: ./.github/actions/setup
+        uses: ./.github/actions/pnpm-setup
         with:
           save-cache: true
 

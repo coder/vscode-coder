@@ -1,4 +1,4 @@
-name: Setup
+name: pnpm Setup
 description: Install pnpm, Node.js, and project dependencies.
 
 inputs:
