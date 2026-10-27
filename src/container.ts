@@ -5,7 +5,6 @@ import { CliManager } from "./cli/cliManager";
 import { watchConfigurationChanges } from "./configWatcher";
 import { AuthTelemetry } from "./instrumentation/auth";
 import { FlightRecorder } from "./logging/flightRecorder";
-import { shortId } from "./logging/ids";
 import { prefixLogger } from "./logging/prefixLogger";
 import { LoginCoordinator } from "./login/loginCoordinator";
 import { OAuthCallback } from "./oauth/oauthCallback";
@@ -60,7 +59,7 @@ export class ServiceContainer implements vscode.Disposable {
 		const readSize = () =>
 			readConnectionLogBufferSize(vscode.workspace.getConfiguration());
 		this.logger = new FlightRecorder(
-			prefixLogger(this.outputChannel, `[session ${shortId(sessionId)}]`),
+			prefixLogger(this.outputChannel, `[client_session_id=${sessionId}]`),
 			this.outputChannel,
 			readSize(),
 		);
