@@ -12,17 +12,25 @@ on:
 permissions:
   contents: read
 
+cache-mode: read
+
+# Cancel superseded PR runs; main pushes each get their own group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
-        uses: ./.github/actions/setup
+        uses: ./.github/actions/pnpm-setup
 
       - run: pnpm typecheck
 
@@ -33,11 +41,10 @@ jobs:
 
       - run: pnpm lint
 
-      - run: pnpm build
-
   test-unit:
     name: Unit Test (${{ matrix.name }}, Electron ${{ matrix.electron-version }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -51,11 +58,6 @@ jobs:
               name: Windows,
               electron-version: "latest",
             }
-          - {
-              os: windows-11-arm,
-              name: Windows ARM64,
-              electron-version: "latest",
-            }
           - { os: macos-15, name: macOS, electron-version: "latest" }
 
     steps:
@@ -63,7 +65,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
-        uses: ./.github/actions/setup
+        uses: ./.github/actions/pnpm-setup
 
       - name: Run tests with Electron ${{ matrix.electron-version }}
         run: ./scripts/test-electron.sh ${{ matrix.electron-version }}
@@ -75,6 +77,7 @@ jobs:
   test-integration:
     name: Integration Test (${{ matrix.name }}, VS Code ${{ matrix.vscode-version }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -89,7 +92,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
-        uses: ./.github/actions/setup
+        uses: ./.github/actions/pnpm-setup
 
       - run: pnpm build
 
@@ -101,6 +104,7 @@ jobs:
   pixel:
     name: Pixel
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     # Forks and Dependabot can't read the PIXEL_KEY secret.
     if: github.repository_owner == 'coder' && github.actor != 'dependabot[bot]'
     steps:
@@ -108,32 +112,10 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
-        uses: ./.github/actions/setup
-
-      - name: Get Playwright version
-        id: playwright-version
-        run: echo "version=$(pnpm exec playwright-core --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
-
-      # Cache the browser to avoid relying on azure.archive.ubuntu.com, which
-      # can be flaky. Only the default branch is trusted to write the cache,
-      # so PR runs cannot poison it.
-      - name: Restore Chromium cache
-        id: playwright-chromium-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+        uses: ./.github/actions/pnpm-setup
 
       - name: Install Chromium
-        run: pnpm exec playwright-core install chromium
-        timeout-minutes: 5
-
-      - name: Save Chromium cache
-        if: github.ref == 'refs/heads/main' && steps.playwright-chromium-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ steps.playwright-chromium-cache.outputs.cache-primary-key }}
+        uses: ./.github/actions/playwright-chromium
 
       # Builds the Storybook (buildCommand in pixel.jsonc) and snapshots it.
       - name: Snapshot
@@ -148,48 +130,29 @@ jobs:
   package:
     name: Package
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Setup pnpm, Node.js, and dependencies
-        uses: ./.github/actions/setup
-
-      - name: Get version from package.json
-        id: version
-        run: |
-          VERSION=$(node -e "console.log(require('./package.json').version)")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
-
-      - name: Setup package path
-        id: setup
-        run: |
-          EXTENSION_NAME=$(node -e "console.log(require('./package.json').name)")
-          # Add commit SHA for CI builds
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          PACKAGE_NAME="${EXTENSION_NAME}-${{ steps.version.outputs.version }}-${SHORT_SHA}.vsix"
-          echo "packageName=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+        uses: ./.github/actions/pnpm-setup
 
       - name: Build extension
         run: pnpm build:production
 
       - name: Package extension
-        run: pnpm vsce package --no-dependencies --out "${{ steps.setup.outputs.packageName }}"
+        id: package
+        run: |
+          VSIX="$(node -p "const p = require('./package.json'); p.name + '-' + p.version")-$(git rev-parse --short HEAD).vsix"
+          pnpm vsce package --no-dependencies --out "$VSIX"
+          echo "vsix=$VSIX" >> "$GITHUB_OUTPUT"
 
-      - name: Upload artifact (PR)
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      # Builds from main keep the default retention.
+      - name: Upload VSIX
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          path: ${{ steps.setup.outputs.packageName }}
+          path: ${{ steps.package.outputs.vsix }}
           if-no-files-found: error
-          retention-days: 7
-          archive: false
-
-      - name: Upload artifact (main)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          path: ${{ steps.setup.outputs.packageName }}
-          if-no-files-found: error
+          retention-days: ${{ github.ref != 'refs/heads/main' && 7 || 0 }}
           archive: false

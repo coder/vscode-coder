@@ -1,19 +1,28 @@
 name: Release
+run-name: ${{ endsWith(github.ref_name, '-pre') && 'Pre-Release' || 'Release' }} ${{ github.ref_name }}
+
 on:
   push:
     tags:
       - "v*"
-      - "!v*-pre"
 
 permissions:
   contents: read
+
+# Build releases from a clean install.
+cache-mode: none
+
+env:
+  PRE_RELEASE_FLAG: ${{ endsWith(github.ref_name, '-pre') && '--pre-release' || '' }}
 
 jobs:
   package:
     name: Package
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     outputs:
-      version: ${{ steps.version.outputs.version }}
+      vsix: ${{ steps.package.outputs.vsix }}
+      vsce-version: ${{ steps.package.outputs.vsce-version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -21,6 +30,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify tag is on main
+        if: env.PRE_RELEASE_FLAG == ''
         run: |
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
             echo "Error: Release tags must be pushed from the main branch"
@@ -28,59 +38,137 @@ jobs:
           fi
 
       - name: Setup pnpm, Node.js, and dependencies
-        uses: ./.github/actions/setup
-
-      - name: Extract version from tag
-        id: version
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Release version: $VERSION"
+        uses: ./.github/actions/pnpm-setup
 
       - name: Validate version matches package.json
         run: |
-          TAG_VERSION="${{ steps.version.outputs.version }}"
-          PACKAGE_VERSION=$(node -e "console.log(require('./package.json').version)")
-
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          TAG_VERSION="${TAG_VERSION%-pre}"
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
           if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
             echo "Error: Tag version ($TAG_VERSION) does not match package.json version ($PACKAGE_VERSION)"
-            echo "Please ensure the tag version matches the version in package.json"
             exit 1
           fi
-
-          echo "Version validation successful: $TAG_VERSION"
-
-      - name: Setup package path
-        id: setup
-        run: |
-          EXTENSION_NAME=$(node -e "console.log(require('./package.json').name)")
-          PACKAGE_NAME="${EXTENSION_NAME}-${{ steps.version.outputs.version }}.vsix"
-          echo "packageName=$PACKAGE_NAME" >> $GITHUB_OUTPUT
 
       - name: Build extension
         run: pnpm build:production
 
       - name: Package extension
-        run: pnpm vsce package --no-dependencies --out "${{ steps.setup.outputs.packageName }}"
+        id: package
+        run: |
+          VSIX="$(node -p "require('./package.json').name")-${GITHUB_REF_NAME#v}.vsix"
+          pnpm vsce package --no-dependencies $PRE_RELEASE_FLAG --out "$VSIX"
+          echo "vsix=$VSIX" >> "$GITHUB_OUTPUT"
+          echo "vsce-version=$(pnpm exec vsce --version)" >> "$GITHUB_OUTPUT"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Upload VSIX
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: extension-${{ steps.version.outputs.version }}
-          path: ${{ steps.setup.outputs.packageName }}
+          name: ${{ steps.package.outputs.vsix }}
+          path: ${{ steps.package.outputs.vsix }}
           if-no-files-found: error
 
-  publish:
-    name: Publish Extension and Create Release
+  # Job-level `if` can't read secrets, and the package job runs dependency
+  # code, so a separate job reports which marketplace tokens are set.
+  tokens:
+    name: Check Marketplace Tokens
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      vsce: ${{ steps.check.outputs.vsce }}
+      ovsx: ${{ steps.check.outputs.ovsx }}
+    steps:
+      - name: Check which tokens are set
+        id: check
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          echo "vsce=$([ -n "$VSCE_PAT" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "ovsx=$([ -n "$OVSX_PAT" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  publish-vscode:
+    name: Publish to VS Marketplace
+    needs: [package, tokens]
+    if: needs.tokens.outputs.vsce == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: publish
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      # Only accept a plain version: this value comes from a job that ran dependency code.
+      - name: Install vsce
+        env:
+          VSCE_VERSION: ${{ needs.package.outputs.vsce-version }}
+        run: |
+          if [[ ! "$VSCE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "Error: unexpected vsce version '$VSCE_VERSION'"
+            exit 1
+          fi
+          npm install -g "@vscode/vsce@${VSCE_VERSION}"
+
+      - name: Download VSIX
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.package.outputs.vsix }}
+
+      - name: Publish to VS Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          VSIX: ${{ needs.package.outputs.vsix }}
+        run: vsce publish $PRE_RELEASE_FLAG --packagePath "$VSIX"
+
+  publish-ovsx:
+    name: Publish to Open VSX
+    needs: [package, tokens]
+    if: needs.tokens.outputs.ovsx == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: publish
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Install ovsx
+        run: npm install -g ovsx@1.2.0
+
+      - name: Download VSIX
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.package.outputs.vsix }}
+
+      - name: Publish to Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+          VSIX: ${{ needs.package.outputs.vsix }}
+        run: ovsx publish "$VSIX" $PRE_RELEASE_FLAG
+
+  publish-github:
+    name: Create GitHub ${{ endsWith(github.ref_name, '-pre') && 'Pre-Release' || 'Release' }}
     needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
-      # Required to create the GitHub release
+      # Required to create the release and generate release notes
       contents: write
       pull-requests: read
-    uses: ./.github/workflows/publish-extension.yaml
-    with:
-      version: ${{ needs.package.outputs.version }}
-      isPreRelease: false
-    secrets:
-      VSCE_PAT: ${{ secrets.VSCE_PAT }}
-      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    steps:
+      - name: Download VSIX
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.package.outputs.vsix }}
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          prerelease: ${{ env.PRE_RELEASE_FLAG != '' }}
+          draft: true
+          files: ${{ needs.package.outputs.vsix }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true

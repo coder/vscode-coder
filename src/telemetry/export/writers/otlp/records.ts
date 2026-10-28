@@ -1,5 +1,4 @@
-import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
-import { SeverityNumber } from "@opentelemetry/api-logs";
+import { SeverityNumber, SpanKind, SpanStatusCode } from "@opentelemetry/api";
 
 import { type MetricDescriptor, type MetricMeasurement } from "../../metrics";
 import { parseTelemetryTimestampMs } from "../../range";

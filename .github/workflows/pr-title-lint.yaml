@@ -7,6 +7,8 @@ on:
 permissions:
   contents: read
 
+cache-mode: none
+
 jobs:
   title:
     runs-on: ubuntu-24.04

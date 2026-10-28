@@ -45,6 +45,10 @@ function isNumericEnumEntry(
 	return typeof entry[1] === "number";
 }
 
+function isClientCertAlert(code: number): code is CLIENT_CERT_ALERT {
+	return code in CLIENT_CERT_ALERT;
+}
+
 /**
  * Patterns to match SSL alert types in error messages (case-insensitive).
  */
@@ -146,7 +150,7 @@ export class ClientCertificateError extends CertificateError {
 		const alertMatch = /ssl alert number (\d+)/.exec(message);
 		if (alertMatch) {
 			const alertNumber = Number.parseInt(alertMatch[1], 10);
-			if (alertNumber in CLIENT_CERT_ALERT) {
+			if (isClientCertAlert(alertNumber)) {
 				return alertNumber;
 			}
 		}

@@ -1,0 +1,19 @@
+name: pnpm Setup
+description: Install pnpm, Node.js, and project dependencies.
+
+inputs:
+  save-cache:
+    # pnpm/setup prunes the store even when cache-mode blocks the save.
+    description: Save the pnpm store.
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+      with:
+        runtime: node@22
+        require-lockfile: true
+        # Falls back to the platform's last store, so a bump fetches only the diff.
+        cache: true
+        save-cache: ${{ inputs.save-cache }}

@@ -1,0 +1,34 @@
+name: Windows ARM64
+
+# Installing on windows-11-arm adds minutes to every PR, so this lives outside
+# CI to stay off PR checks. Run it on a branch with workflow_dispatch.
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+cache-mode: read
+
+jobs:
+  test-unit:
+    name: Unit Test (Windows ARM64, Electron latest)
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup pnpm, Node.js, and dependencies
+        uses: ./.github/actions/pnpm-setup
+
+      - name: Run tests with Electron latest
+        run: ./scripts/test-electron.sh latest
+        shell: bash
+        env:
+          CI: true
+          EXPECTED_ARCH: ${{ runner.arch }}
