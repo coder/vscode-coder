@@ -14,6 +14,7 @@ import { OAuthAuthorizer, type OAuthLoginResult } from "@/oauth/authorizer";
 import { OAuthCallback } from "@/oauth/oauthCallback";
 import { OAuthSessionManager } from "@/oauth/sessionManager";
 import { buildOAuthTokenData } from "@/oauth/tokens";
+import { LocalProxySettings } from "@/settings/proxy";
 import { MementoManager } from "@/storage/mementoManager";
 import { SecretsManager } from "@/storage/secretsManager";
 
@@ -96,6 +97,8 @@ resource "terraform_data" "dev" {
 export async function setUpDeployment(url: string): Promise<Deployment> {
 	// Default settings for the extension code that setup and the probes run.
 	new MockConfigurationProvider();
+	// The service container creates this on activation; the probes skip it.
+	LocalProxySettings.initialize();
 	const admin = createClient(url);
 	if (await admin.hasFirstUser()) {
 		throw new Error(
