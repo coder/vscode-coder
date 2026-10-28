@@ -71,6 +71,7 @@ jobs:
   publish-vscode:
     name: Publish to VS Marketplace
     needs: package
+    if: github.repository == 'coder/vscode-coder'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: publish
@@ -106,6 +107,7 @@ jobs:
   publish-ovsx:
     name: Publish to Open VSX
     needs: package
+    if: github.repository == 'coder/vscode-coder'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: publish
