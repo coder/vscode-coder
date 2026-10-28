@@ -68,22 +68,6 @@ jobs:
           path: ${{ steps.package.outputs.vsix }}
           if-no-files-found: error
 
-  # Job-level `if` can't read secrets, and the package job runs dependency
-  # code, so a separate job reports which marketplace tokens are set.
-  tokens:
-    name: Check Marketplace Tokens
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      ovsx: ${{ steps.check.outputs.ovsx }}
-    steps:
-      - name: Check which tokens are set
-        id: check
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: |
-          echo "ovsx=$([ -n "$OVSX_PAT" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-
   publish-vscode:
     name: Publish to VS Marketplace
     needs: package
@@ -121,8 +105,7 @@ jobs:
 
   publish-ovsx:
     name: Publish to Open VSX
-    needs: [package, tokens]
-    if: needs.tokens.outputs.ovsx == 'true'
+    needs: package
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: publish
