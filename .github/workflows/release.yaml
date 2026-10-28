@@ -75,25 +75,23 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      vsce: ${{ steps.check.outputs.vsce }}
       ovsx: ${{ steps.check.outputs.ovsx }}
     steps:
       - name: Check which tokens are set
         id: check
         env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
-          echo "vsce=$([ -n "$VSCE_PAT" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "ovsx=$([ -n "$OVSX_PAT" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
   publish-vscode:
     name: Publish to VS Marketplace
-    needs: [package, tokens]
-    if: needs.tokens.outputs.vsce == 'true'
+    needs: package
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: publish
+    permissions:
+      id-token: write
     steps:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -118,9 +116,8 @@ jobs:
 
       - name: Publish to VS Marketplace
         env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
           VSIX: ${{ needs.package.outputs.vsix }}
-        run: vsce publish $PRE_RELEASE_FLAG --packagePath "$VSIX"
+        run: vsce publish $PRE_RELEASE_FLAG --packagePath "$VSIX" --oidc
 
   publish-ovsx:
     name: Publish to Open VSX
