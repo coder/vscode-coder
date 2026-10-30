@@ -61,6 +61,9 @@ describe("Headers", () => {
 		await expect(
 			getHeaders("localhost", printCommand("foo="), logger),
 		).resolves.toStrictEqual({ foo: "" });
+		await expect(
+			getHeaders("localhost", printCommand("\ufefffoo=bar"), logger),
+		).resolves.toStrictEqual({ foo: "bar" });
 	});
 
 	it("should error on malformed or empty lines", async () => {
@@ -85,6 +88,11 @@ describe("Headers", () => {
 		await expect(
 			getHeaders("localhost", printCommand("foo  foo=bar"), logger),
 		).rejects.toThrow(/Malformed/);
+		for (const key of ["\tfoo", "foo\t", "foo\r", "foo:bar", "föo"]) {
+			await expect(
+				getHeaders("localhost", printCommand(`${key}=bar`), logger),
+			).rejects.toThrow(/Malformed/);
+		}
 	});
 
 	it("should not include command output in parse errors", async () => {

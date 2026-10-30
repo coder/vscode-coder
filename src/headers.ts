@@ -1,6 +1,9 @@
 import { execCommand } from "./command/exec";
 import { type Logger } from "./logging/logger";
 
+/** RFC 9110 header name. */
+const HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
 /**
  * Executes the header command and parses headers from stdout.
  * Throws on non-zero exit or malformed output. Returns empty headers if no
@@ -37,12 +40,16 @@ export async function getHeaders(
 			// Allow no output for parity with the Coder CLI.
 			return headers;
 		}
-		const lines = result.stdout.replace(/\r?\n$/, "").split(/\r?\n/);
+		const lines = result.stdout
+			.replace(/^\ufeff/, "")
+			.replace(/\r?\n$/, "")
+			.split(/\r?\n/);
 		for (const [index, line] of lines.entries()) {
 			const [key, value] = line.split(/=(.*)/);
-			// Header names cannot be blank or contain whitespace and the Coder CLI
-			// requires that there be an equals sign (the value can be blank though).
-			if (key.length === 0 || key.includes(" ") || value === undefined) {
+			// Log redaction matches these names, but axios trims some characters
+			// before sending. Fail instead of trimming here, so the command author
+			// sees the malformed output.
+			if (!HEADER_NAME.test(key) || value === undefined) {
 				// The output can carry credentials; reference the line by number only.
 				throw new Error(
 					`Malformed line ${index + 1} from header command output`,

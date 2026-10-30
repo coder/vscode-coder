@@ -11,6 +11,10 @@
 
 - Fix WebSocket connections that hung when the server never finished the
   handshake. They now time out after 60 seconds and retry.
+- `coder.headerCommand` header names may only contain letters, digits and
+  ``!#$%&'*+-.^_`|~``. Any other character, such as a space, tab or `:`, now
+  causes an error instead of being sent. An invisible byte order mark that some
+  Windows tools add at the start of the output is ignored.
 
 ## [v1.17.2](https://github.com/coder/vscode-coder/releases/tag/v1.17.2) 2026-10-28
 
