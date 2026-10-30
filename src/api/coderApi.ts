@@ -407,6 +407,8 @@ export class CoderApi extends Api implements vscode.Disposable {
 				...configs.options,
 				agent: httpAgent,
 				followRedirects: true,
+				// A stalled handshake would otherwise never error or retry.
+				handshakeTimeout: DEFAULT_REQUEST_TIMEOUT_MS,
 				headers,
 			},
 		});
