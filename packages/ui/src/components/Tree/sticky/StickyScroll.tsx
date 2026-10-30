@@ -74,6 +74,7 @@ export function StickyScroll({
 		.filter((row) => row !== undefined);
 	const pinnedHeight = pinnedRows.length * ROW_HEIGHT_PX + state.pushOffset;
 	const [requestedIndex, setRequestedIndex] = useState(0);
+	const [hasFocus, setHasFocus] = useState(false);
 	const focusedIndex = Math.max(
 		0,
 		Math.min(requestedIndex, pinnedRows.length - 1),
@@ -113,9 +114,16 @@ export function StickyScroll({
 			ref={widgetRef}
 			tabIndex={pinnedRows.length > 0 ? 0 : -1}
 			onFocus={(event) => {
-				if (event.target === event.currentTarget)
+				if (event.target === event.currentTarget) {
 					setRequestedIndex(focusedIndex);
+					setHasFocus(true);
+				}
 			}}
+			onBlur={(event) => {
+				if (event.target === event.currentTarget) setHasFocus(false);
+			}}
+			// Like native, a press leaves focus where it was; the click moves it.
+			onMouseDown={(event) => event.preventDefault()}
 			onKeyDown={(event) => {
 				const row = pinnedRows[focusedIndex];
 				if (!row) return;
@@ -184,7 +192,7 @@ export function StickyScroll({
 							<TreeRow
 								key={row.node.id}
 								row={row}
-								focused={index === focusedIndex}
+								focused={hasFocus && index === focusedIndex}
 								style={{
 									top:
 										index * ROW_HEIGHT_PX +

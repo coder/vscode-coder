@@ -1,17 +1,10 @@
-import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { renderHook } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 
 import { WorkspacesApi, type WorkspacesState } from "@repo/shared";
 import { useWorkspaces } from "@repo/workspaces/hooks/useWorkspaces";
 
-// The webview may acquire the VS Code API once per page, so one stub serves
-// every test and forwards to the sink the current test installed.
-let sink: unknown[] = [];
-vi.stubGlobal("acquireVsCodeApi", () => ({
-	postMessage: (message: unknown) => sink.push(message),
-	getState: () => undefined,
-	setState: () => {},
-}));
+import { captureSent, pushState } from "../ipc";
 
 const STATE: WorkspacesState = {
 	capabilities: { authenticated: true, filters: ["mine"] },
@@ -22,46 +15,40 @@ const STATE: WorkspacesState = {
 };
 
 function setup() {
-	const sent: unknown[] = [];
-	sink = sent;
+	const sent = captureSent();
 	return { sent, ...renderHook(() => useWorkspaces()) };
 }
 
-/** Push the state the way the extension does. */
-const push = (state: WorkspacesState) =>
-	act(async () => {
-		window.dispatchEvent(
-			new MessageEvent("message", {
-				data: { type: WorkspacesApi.stateChanged.method, data: state },
-			}),
-		);
-		await Promise.resolve();
-	});
-
 describe("useWorkspaces", () => {
-	it("asks for the state, then replaces its own with each push", async () => {
-		const { sent, result } = setup();
+	it("asks for state once and keeps its commands stable across updates", async () => {
+		const { sent, result, rerender } = setup();
+		const api = result.current.api;
 		expect(sent).toEqual([
 			{ method: WorkspacesApi.ready.method, params: undefined },
 		]);
 		expect(result.current.state).toBeUndefined();
 
-		await push(STATE);
+		await pushState(STATE);
 		expect(result.current.state).toEqual(STATE);
 
 		const failed: WorkspacesState = {
 			...STATE,
 			status: { kind: "failed", error: "down" },
 		};
-		await push(failed);
+		await pushState(failed);
 		expect(result.current.state).toEqual(failed);
+		rerender();
+		expect(result.current.api).toBe(api);
+		expect(sent).toEqual([
+			{ method: WorkspacesApi.ready.method, params: undefined },
+		]);
 	});
 
 	it("stops applying pushes once unmounted", async () => {
 		const { result, unmount } = setup();
-		await push(STATE);
+		await pushState(STATE);
 		unmount();
-		await push({ ...STATE, filter: "shared" });
+		await pushState({ ...STATE, filter: "shared" });
 		expect(result.current.state).toEqual(STATE);
 	});
 });

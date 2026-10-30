@@ -68,6 +68,11 @@
 	background: var(--ui-menu-separator);
 }
 
+/* A hidden trigger otherwise drops the closing menu into the corner. */
+[data-anchor-hidden] > .ui-menu {
+	visibility: hidden;
+}
+
 /* Modern UI menu motion (contextview.ts). The positioner supplies the
    anchor-corner origin, and holds unmount until the close animation ends. */
 @media (prefers-reduced-motion: no-preference) {

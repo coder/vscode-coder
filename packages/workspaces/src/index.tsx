@@ -1,3 +1,5 @@
+import "@repo/ui/codicon.css";
+import "@repo/ui/tokens.css";
 import { ErrorBoundary } from "@repo/webview-shared/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";

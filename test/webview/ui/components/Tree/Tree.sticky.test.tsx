@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { Tree } from "@repo/ui";
@@ -71,6 +71,19 @@ describe("Tree sticky scroll", () => {
 		expect(pinned[0]).toHaveAttribute("aria-setsize", "1");
 		expect(pinned[0]).toHaveAttribute("aria-selected", "false");
 		expect(pinned[1]).toHaveAttribute("aria-expanded", "true");
+		const focusMarks = (): boolean[] =>
+			pinned.map((row) => row.classList.contains("ui-tree-item--focused"));
+		const tree = screen.getByRole("tree");
+		expect(focusMarks()).toEqual([false, false]);
+		act(() => tree.focus());
+		expect(tree).toHaveClass("ui-tree--focused");
+		act(() => widget.focus());
+		expect(focusMarks()).toEqual([true, false]);
+		expect(tree).not.toHaveClass("ui-tree--focused");
+		act(() => tree.focus());
+		expect(focusMarks()).toEqual([false, false]);
+		expect(tree).toHaveClass("ui-tree--focused");
+		expect(fireEvent.mouseDown(widget)).toBe(false);
 		const twistie = pinned[1]?.querySelector(".ui-tree-item__chevron");
 		expect(twistie).not.toBeNull();
 		fireEvent.click(twistie!);

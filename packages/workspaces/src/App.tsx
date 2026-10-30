@@ -1,11 +1,16 @@
+import { WorkspacesPanel } from "./components/WorkspacesPanel";
 import { useWorkspaces } from "./hooks/useWorkspaces";
 
-/** Placeholder: renders the pushed state until the panel UI lands. */
 export default function App() {
-	const { state } = useWorkspaces();
-
-	if (!state) {
-		return <p>Loading workspaces...</p>;
-	}
-	return <pre>{JSON.stringify(state, null, 2)}</pre>;
+	const { state, api } = useWorkspaces();
+	return (
+		<div
+			className="workspaces-app"
+			data-vscode-context={JSON.stringify({
+				preventDefaultContextMenuItems: true,
+			})}
+		>
+			<WorkspacesPanel state={state} api={api} />
+		</div>
+	);
 }
