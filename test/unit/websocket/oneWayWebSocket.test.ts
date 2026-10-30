@@ -1,11 +1,20 @@
-import http from "node:http";
 import { type AddressInfo } from "node:net";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	onTestFinished,
+} from "vitest";
 import { WebSocketServer } from "ws";
 
+import { CrossOriginRedirectError } from "@/error/crossOriginRedirectError";
 import { toError } from "@/error/normalize";
 import { WebSocketCloseCode } from "@/websocket/codes";
 import { OneWayWebSocket } from "@/websocket/oneWayWebSocket";
+
+import { startRecordingServer } from "../../mocks/recordingServer";
 
 describe("OneWayWebSocket", () => {
 	let server: WebSocketServer;
@@ -20,32 +29,6 @@ describe("OneWayWebSocket", () => {
 
 	afterEach(async () => {
 		await new Promise<void>((resolve) => server.close(() => resolve()));
-	});
-
-	it("follows redirects without treating them as handshake failures", async () => {
-		const redirect = http.createServer((_req, res) => {
-			res.writeHead(302, { Location: `ws://${host}` });
-			res.end();
-		});
-		await new Promise<void>((resolve) =>
-			redirect.listen(0, "127.0.0.1", resolve),
-		);
-		const { port } = redirect.address() as AddressInfo;
-		const ws = new OneWayWebSocket({
-			location: { protocol: "http:", host: `127.0.0.1:${port}` },
-			apiRoute: "/",
-			options: { followRedirects: true },
-		});
-		try {
-			await new Promise<void>((resolve, reject) => {
-				ws.addEventListener("open", () => resolve());
-				ws.addEventListener("error", (event) => reject(toError(event.error)));
-			});
-			expect(ws.url).toBe(`ws://${host}/`);
-		} finally {
-			ws.close();
-			await new Promise<void>((resolve) => redirect.close(() => resolve()));
-		}
 	});
 
 	it("delivers a DOM CloseEvent with code and reason to close listeners", async () => {
@@ -69,5 +52,54 @@ describe("OneWayWebSocket", () => {
 		expect(event.code).toBe(WebSocketCloseCode.PROTOCOL_ERROR);
 		expect(event.reason).toBe("protocol error");
 		ws.close();
+	});
+});
+
+function connect(host: string) {
+	const socket = new OneWayWebSocket({
+		location: { protocol: "http:", host },
+		apiRoute: "/old",
+		options: {
+			followRedirects: true,
+			headers: { "Coder-Session-Token": "session-token" },
+		},
+	});
+	onTestFinished(() => socket.close());
+	const opened = new Promise<void>((resolve, reject) => {
+		socket.addEventListener("open", () => resolve());
+		socket.addEventListener("error", (event) => reject(toError(event.error)));
+	});
+	return { socket, opened };
+}
+
+describe("OneWayWebSocket redirects", () => {
+	it("follows same-origin redirects with caller headers", async () => {
+		const deployment = await startRecordingServer((path) =>
+			path === "/old" ? "/new" : undefined,
+		);
+
+		const { socket, opened } = connect(deployment.host);
+		await opened;
+
+		expect(socket.url).toBe(`ws://${deployment.host}/new`);
+		expect(
+			deployment.requests.map((headers) => headers["coder-session-token"]),
+		).toEqual(["session-token", "session-token"]);
+	});
+
+	it.each([
+		["another origin", (host: string, other: string) => `ws://${other}/api`],
+		["added credentials", (host: string) => `ws://user:pass@${host}/api`],
+	])("refuses a redirect to %s", async (_name, location) => {
+		const other = await startRecordingServer();
+		const deployment = await startRecordingServer(() =>
+			location(deployment.host, other.host),
+		);
+
+		await expect(connect(deployment.host).opened).rejects.toThrow(
+			CrossOriginRedirectError,
+		);
+		expect(deployment.requests).toHaveLength(1);
+		expect(other.requests).toHaveLength(0);
 	});
 });

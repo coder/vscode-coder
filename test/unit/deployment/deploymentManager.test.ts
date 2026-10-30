@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CoderApi } from "@/api/coderApi";
 import { CONFIG_CHANGE_DEBOUNCE_MS } from "@/configWatcher";
 import { DeploymentManager } from "@/deployment/deploymentManager";
+import { CrossOriginRedirectError } from "@/error/crossOriginRedirectError";
 import { MementoManager } from "@/storage/mementoManager";
 import { SecretsManager } from "@/storage/secretsManager";
 
@@ -18,6 +19,7 @@ import {
 	MockConfigurationProvider,
 	MockContextManager,
 	MockOAuthSessionManager,
+	MockUserInteraction,
 } from "../../mocks/testHelpers";
 
 import type { OAuthSessionManager } from "@/oauth/sessionManager";
@@ -295,6 +297,28 @@ describe("DeploymentManager", () => {
 			expect(manager.getCurrentDeployment()).toBeNull();
 			expect(currentUserId(manager)).toBeUndefined();
 			expect(manager.isAuthenticated()).toBe(false);
+		});
+
+		it("tells the user when the deployment redirects to another origin", async () => {
+			const { validationMockClient, manager } = createTestContext();
+			const userInteraction = new MockUserInteraction();
+			validationMockClient.setAuthenticatedUserResponse(
+				new CrossOriginRedirectError("https://moved.example.com/api/v2"),
+			);
+
+			const result = await manager.verifyAndApplySession({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				token: "test-token",
+			});
+
+			expect(result).toBe(false);
+			expect(userInteraction.getMessageCalls()).toContainEqual(
+				expect.objectContaining({
+					message: expect.stringContaining(`Could not sign in to ${TEST_URL}`),
+					items: ["Sign In to https://moved.example.com"],
+				}),
+			);
 		});
 
 		it("handles empty string token (mTLS) correctly", async () => {

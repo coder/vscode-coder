@@ -32,13 +32,13 @@ const extensionStoreAuth: CliAuth = {
 	url: URL,
 	configDir: EXT_DIR,
 	useKeyring: undefined,
-	allowRedirects: false,
+	refuseRedirects: false,
 };
 const cliStoreAuth: CliAuth = {
 	store: "cli",
 	url: URL,
 	useKeyring: undefined,
-	allowRedirects: false,
+	refuseRedirects: false,
 };
 
 const EXTENSION_FLAGS = ["--global-config", EXT_DIR, "--url", URL] as const;
@@ -439,7 +439,7 @@ describe("cliConfig", () => {
 				expected: ["--verbose", ...CLI_FLAGS, "--use-keyring=true"],
 			},
 			{
-				scenario: "follows redirects on 2.38+",
+				scenario: "refuses redirects on 2.38+",
 				platform: "darwin",
 				override: "none",
 				version: "2.38.0",
@@ -447,7 +447,7 @@ describe("cliConfig", () => {
 					"--verbose",
 					...CLI_FLAGS,
 					"--use-keyring=true",
-					"--allow-redirects",
+					"--allow-redirects=false",
 				],
 			},
 			{
@@ -526,6 +526,33 @@ describe("cliConfig", () => {
 			expect(getGlobalFlags(config, resolve(config, version))).toStrictEqual(
 				expected,
 			);
+		});
+
+		it.each([
+			["2.38.0", "http://dev.coder.com", false],
+			["2.38.0", "https://dev.coder.com", true],
+			["2.39.0", "http://dev.coder.com", true],
+		])("CLI %s uses the keyring for %s: %s", (version, url, expected) => {
+			vi.mocked(os.platform).mockReturnValue("darwin");
+			const config = new MockConfigurationProvider();
+			const featureSet = cliFeatureSet(semver.parse(version));
+
+			expect(resolveCliAuth(config, featureSet, url, EXT_DIR).useKeyring).toBe(
+				expected,
+			);
+		});
+
+		it("overrides a user --allow-redirects, which comes first", () => {
+			vi.mocked(os.platform).mockReturnValue("linux");
+			const config = new MockConfigurationProvider();
+			config.set("coder.globalFlags", ["--allow-redirects"]);
+
+			expect(getGlobalFlags(config, resolve(config, "2.38.0"))).toStrictEqual([
+				"--allow-redirects",
+				...EXTENSION_FLAGS,
+				"--use-keyring=false",
+				"--allow-redirects=false",
+			]);
 		});
 	});
 });

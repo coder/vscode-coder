@@ -15,6 +15,7 @@ import { InputValidationError } from "./common/validation";
 import { ServiceContainer } from "./container";
 import { DeploymentManager } from "./deployment/deploymentManager";
 import { CertificateError } from "./error/certificateError";
+import { CrossOriginRedirectError } from "./error/crossOriginRedirectError";
 import { reportInputValidationError } from "./error/inputValidationError";
 import { errToStr, getErrorDetail, toError } from "./error/normalize";
 import { serverFeatureSet } from "./featureSet";
@@ -100,7 +101,7 @@ async function doActivate(
 		serviceContainer.getTelemetryService().setDeploymentUrl(deployment.url);
 	}
 	const deploymentSessionAuth = deployment
-		? await secretsManager.getSessionAuth(deployment.safeHostname)
+		? await secretsManager.getSessionAuthForUrl(deployment.url)
 		: undefined;
 	tracer.setAuthState(deploymentSessionAuth ? "stored" : "none");
 
@@ -485,6 +486,9 @@ async function doActivate(
 				await ex.showNotification("Failed to open workspace", {
 					modal: true,
 				});
+			} else if (ex instanceof CrossOriginRedirectError) {
+				output.warn(ex.message);
+				await ex.showNotification("Failed to open workspace");
 			} else if (ex instanceof InputValidationError) {
 				await reportInputValidationError(
 					ex,

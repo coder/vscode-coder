@@ -13,7 +13,8 @@ export interface CliFeatureSet {
 	sshTty: boolean;
 	supportBundle: boolean;
 	supportBundleWorkspaceFiles: boolean;
-	allowRedirects: boolean;
+	allowRedirectsFlag: boolean;
+	keyringByOrigin: boolean;
 	customSessionAppNames: boolean;
 }
 
@@ -54,6 +55,8 @@ export function cliFeatureSet(version: semver.SemVer | null): CliFeatureSet {
 		cliUpdate: versionAtLeast(version, "2.24.0"),
 		// Keyring-backed token storage via `coder login`
 		keyringAuth: versionAtLeast(version, "2.29.0"),
+		// Keyring entries keyed by origin rather than host (coder/coder#29764)
+		keyringByOrigin: versionAtLeast(version, "2.39.0"),
 		// `coder login token`; from 2.32 file mode also checks the URL it stored.
 		tokenRead: versionAtLeast(version, "2.32.0"),
 		// `coder ssh <workspace> -- <command>` one-shot remote commands
@@ -64,8 +67,8 @@ export function cliFeatureSet(version: semver.SemVer | null): CliFeatureSet {
 		supportBundle: versionAtLeast(version, "2.10.0"),
 		// --workspace-file flag for `coder support bundle`
 		supportBundleWorkspaceFiles: versionAtLeast(version, "2.36.0"),
-		// --allow-redirects; from 2.38 the CLI otherwise errors on a redirected URL.
-		allowRedirects: versionAtLeast(version, "2.38.0"),
+		// --allow-redirects
+		allowRedirectsFlag: versionAtLeast(version, "2.38.0"),
 		customSessionAppNames: versionAtLeast(version, "2.38.0"),
 	};
 }

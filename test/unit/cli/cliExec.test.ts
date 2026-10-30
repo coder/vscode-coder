@@ -45,14 +45,14 @@ const sharedAuth = (url: string): CliEnv["auth"] => ({
 	store: "cli",
 	url,
 	useKeyring: undefined,
-	allowRedirects: false,
+	refuseRedirects: false,
 });
 const privateAuth = (url: string, configDir: string): CliEnv["auth"] => ({
 	store: "extension",
 	url,
 	configDir,
 	useKeyring: undefined,
-	allowRedirects: false,
+	refuseRedirects: false,
 });
 
 describe("cliExec", () => {

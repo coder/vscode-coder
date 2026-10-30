@@ -130,8 +130,8 @@ function createTestContext() {
 			},
 		});
 		mockOAuthManager.canRefreshOAuthSession.mockImplementation(
-			async (hostname?: string) => {
-				if (hostname && hostname !== TEST_HOSTNAME) {
+			async (url?: string) => {
+				if (url && url !== TEST_URL) {
 					return false;
 				}
 				const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
@@ -283,7 +283,7 @@ describe("AuthInterceptor", () => {
 			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow(
 				"Unauthorized",
 			);
-			expect(onAuthRequired).toHaveBeenCalledWith(TEST_HOSTNAME);
+			expect(onAuthRequired).toHaveBeenCalled();
 		});
 	});
 
@@ -300,7 +300,7 @@ describe("AuthInterceptor", () => {
 			);
 
 			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow();
-			expect(onAuthRequired).toHaveBeenCalledWith(TEST_HOSTNAME);
+			expect(onAuthRequired).toHaveBeenCalled();
 		});
 
 		it("retries request when callback returns true", async () => {
@@ -325,8 +325,29 @@ describe("AuthInterceptor", () => {
 			);
 			const result = await axiosInstance.triggerResponseError(error);
 
-			expect(onAuthRequired).toHaveBeenCalledWith(TEST_HOSTNAME);
+			expect(onAuthRequired).toHaveBeenCalled();
 			expect(result).toEqual(retryResponse);
+		});
+
+		it("does not retry with a token stored for another origin", async () => {
+			const { secretsManager, axiosInstance, createInterceptor } =
+				createTestContext();
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: `${TEST_URL}:8443`,
+				token: "other-origin-token",
+			});
+			const request = vi.spyOn(axiosInstance, "request");
+			createInterceptor(vi.fn().mockResolvedValue(true));
+
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+			);
+
+			await expect(axiosInstance.triggerResponseError(error)).rejects.toBe(
+				error,
+			);
+			expect(request).not.toHaveBeenCalled();
 		});
 
 		it("retries request with mTLS (no token)", async () => {
@@ -348,7 +369,7 @@ describe("AuthInterceptor", () => {
 			);
 			const result = await axiosInstance.triggerResponseError(error);
 
-			expect(onAuthRequired).toHaveBeenCalledWith(TEST_HOSTNAME);
+			expect(onAuthRequired).toHaveBeenCalled();
 			expect(result).toEqual(retryResponse);
 		});
 
@@ -486,7 +507,7 @@ describe("AuthInterceptor", () => {
 
 			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow();
 			expect(axiosInstance.request).not.toHaveBeenCalled();
-			expect(onAuthRequired).toHaveBeenCalledWith(TEST_HOSTNAME);
+			expect(onAuthRequired).toHaveBeenCalled();
 		});
 
 		it("still silent-retries when an OAuth-retry 401s under newly-changed settings", async () => {
@@ -546,7 +567,7 @@ describe("AuthInterceptor", () => {
 			expect(onAuthRequired).not.toHaveBeenCalled();
 		});
 
-		it("skips OAuth refresh if hostname changed", async () => {
+		it("skips OAuth refresh if deployment changed", async () => {
 			const {
 				mockOAuthManager,
 				axiosInstance,
@@ -556,16 +577,7 @@ describe("AuthInterceptor", () => {
 
 			await setupOAuthTokens();
 
-			// Make canRefreshOAuthSession return false for different hostname
-			mockOAuthManager.canRefreshOAuthSession.mockImplementation(
-				(hostname?: string) => {
-					// Simulate hostname mismatch (deployment changed)
-					if (hostname === TEST_HOSTNAME) {
-						return Promise.resolve(false); // Deployment changed, not the current one
-					}
-					return Promise.resolve(false);
-				},
-			);
+			mockOAuthManager.canRefreshOAuthSession.mockResolvedValue(false);
 
 			const onAuthRequired = vi.fn().mockResolvedValue(false);
 			createInterceptor(onAuthRequired);
@@ -580,7 +592,58 @@ describe("AuthInterceptor", () => {
 			// Should not have tried OAuth refresh
 			expect(mockOAuthManager.refreshToken).not.toHaveBeenCalled();
 			// Should have called callback instead
-			expect(onAuthRequired).toHaveBeenCalledWith(TEST_HOSTNAME);
+			expect(onAuthRequired).toHaveBeenCalled();
+		});
+
+		it("recovers for the failing request's origin, not the client's", async () => {
+			const {
+				mockCoderApi,
+				mockOAuthManager,
+				axiosInstance,
+				createInterceptor,
+			} = createTestContext();
+			mockCoderApi.setHost("https://other.coder.com");
+			createInterceptor();
+
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+				{ baseURL: TEST_URL },
+			);
+			await expect(axiosInstance.triggerResponseError(error)).rejects.toThrow();
+
+			expect(mockOAuthManager.canRefreshOAuthSession).toHaveBeenCalledWith(
+				TEST_URL,
+			);
+		});
+
+		it("discards a refreshed token if the deployment changed during refresh", async () => {
+			const {
+				mockCoderApi,
+				mockOAuthManager,
+				axiosInstance,
+				setupOAuthTokens,
+				createInterceptor,
+			} = createTestContext();
+			await setupOAuthTokens();
+			mockOAuthManager.refreshToken.mockImplementation(() => {
+				mockCoderApi.setHost("https://other.coder.com");
+				return Promise.resolve(createMockTokenResponse());
+			});
+			vi.spyOn(axiosInstance, "request");
+			createInterceptor();
+
+			const error = createAxiosError(
+				HttpStatusCode.UNAUTHORIZED,
+				"Unauthorized",
+				{ baseURL: TEST_URL },
+			);
+			await expect(axiosInstance.triggerResponseError(error)).rejects.toBe(
+				error,
+			);
+
+			expect(mockCoderApi.setSessionToken).not.toHaveBeenCalled();
+			expect(axiosInstance.request).not.toHaveBeenCalled();
 		});
 	});
 

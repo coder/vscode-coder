@@ -10,7 +10,8 @@
 import { type WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
 import Ws, { type ClientOptions, type RawData } from "ws";
 
-import { getQueryString } from "../common/url";
+import { getQueryString, isSameOrigin } from "../common/url";
+import { CrossOriginRedirectError } from "../error/crossOriginRedirectError";
 import { toError } from "../error/normalize";
 
 import { HandshakeError } from "./codes";
@@ -53,6 +54,18 @@ export class OneWayWebSocket<
 			this.#handshakeStatus = response.statusCode;
 			// Handling this event suppresses ws's automatic handshake cleanup.
 			this.#socket.terminate();
+		});
+
+		// Fires after the hop's request is built; destroying it sends nothing.
+		this.#socket.on("redirect", (target, request) => {
+			const targetUrl = new URL(target);
+			if (
+				!isSameOrigin(target, url) ||
+				targetUrl.username ||
+				targetUrl.password
+			) {
+				request.destroy(new CrossOriginRedirectError(target));
+			}
 		});
 	}
 

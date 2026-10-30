@@ -2,9 +2,14 @@ import * as os from "node:os";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { showStoreCredentialsError } from "@/login/credentials";
+import {
+	notifyKeyringSkipped,
+	showStoreCredentialsError,
+} from "@/login/credentials";
 
 import { createMockLogger } from "../../mocks/testHelpers";
+
+import type { CliAuth } from "@/settings/cli";
 
 vi.mock("node:os");
 
@@ -61,5 +66,47 @@ describe("showStoreCredentialsError", () => {
 			"workbench.action.openSettings",
 			"coder.useKeyring",
 		);
+	});
+});
+
+describe("notifyKeyringSkipped", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(os.platform).mockReturnValue("darwin");
+	});
+
+	const url = "http://coder.example.com";
+	it.each<[string, CliAuth, number]>([
+		[
+			"skipped",
+			{
+				store: "extension",
+				url,
+				configDir: "/d",
+				useKeyring: false,
+				refuseRedirects: true,
+			},
+			1,
+		],
+		[
+			"user config dir",
+			{ store: "cli", url, useKeyring: false, refuseRedirects: true },
+			0,
+		],
+		[
+			"CLI without keyring support",
+			{
+				store: "extension",
+				url,
+				configDir: "/d",
+				useKeyring: undefined,
+				refuseRedirects: true,
+			},
+			0,
+		],
+	])("%s shows %i notices", (_name, auth, notices) => {
+		notifyKeyringSkipped(auth, configs);
+
+		expect(vscode.window.showInformationMessage).toHaveBeenCalledTimes(notices);
 	});
 });

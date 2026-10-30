@@ -97,10 +97,10 @@ function setup(options: SetupOptions = {}) {
 
 	const secretsManager: Pick<
 		SecretsManager,
-		"getCurrentDeployment" | "getSessionAuth" | "clearAllAuthData"
+		"getCurrentDeployment" | "getSessionAuthForUrl" | "clearAllAuthData"
 	> = {
 		getCurrentDeployment: vi.fn(() => Promise.resolve(null)),
-		getSessionAuth: vi.fn(() => Promise.resolve(TEST_SESSION)),
+		getSessionAuthForUrl: vi.fn(() => Promise.resolve(TEST_SESSION)),
 		clearAllAuthData: vi.fn(() => {
 			if (options.clearAllAuthDataError) {
 				return Promise.reject(options.clearAllAuthDataError);
@@ -310,7 +310,9 @@ describe("Commands", () => {
 				});
 				vi.mocked(mocks.cliManager.holdsToken).mockResolvedValueOnce(true);
 				if (oauth) {
-					vi.mocked(mocks.secretsManager.getSessionAuth).mockResolvedValueOnce({
+					vi.mocked(
+						mocks.secretsManager.getSessionAuthForUrl,
+					).mockResolvedValueOnce({
 						...TEST_SESSION,
 						oauth: { scope: "workspace:read", expiry_timestamp: 1 },
 					});

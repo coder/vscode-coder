@@ -709,9 +709,7 @@ export class Commands {
 			return { success: false, reason: "not_authenticated" };
 		}
 
-		const auth = await this.secretsManager.getSessionAuth(
-			deployment.safeHostname,
-		);
+		const auth = await this.secretsManager.getSessionAuthForUrl(deployment.url);
 		const signOutCli = await this.askSignOutCli(auth);
 		if (signOutCli === undefined) {
 			return { success: false, reason: "user_dismissed" };

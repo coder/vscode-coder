@@ -59,13 +59,13 @@ export class CliCredentialManager {
 		this.credentialTelemetry = new CredentialTelemetry(telemetry);
 	}
 
-	/** Stores a token via `coder login`. Skipped until the CLI is downloaded; throws when the CLI fails. */
+	/** Stores a token via `coder login` and returns the store used. Skipped until the CLI is downloaded; throws when the CLI fails. */
 	public storeToken(
 		url: string,
 		token: string,
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
-	): Promise<void> {
+	): Promise<CliAuth | undefined> {
 		return this.credentialTelemetry.traceStore(configs, async (span) => {
 			const cli = await this.resolveCli(url, configs);
 			if (!cli) {
@@ -82,6 +82,7 @@ export class CliCredentialManager {
 			});
 			span.setProperty("outcome", "stored");
 			this.logger.info("Stored token via CLI for", url);
+			return cli.auth;
 		});
 	}
 

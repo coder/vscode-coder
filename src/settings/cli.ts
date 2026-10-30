@@ -17,8 +17,8 @@ import type { CliFeatureSet } from "../featureSet";
 /** The CLI's own store (its config directory or the keyring, shared with the terminal), or a directory private to the extension. */
 export type CliAuth = {
 	url: string;
-	/** The extension follows redirects itself; from 2.38 the CLI needs the flag to match. */
-	allowRedirects: boolean;
+	/** Pass `--allow-redirects=false`, overriding user flags and env. */
+	refuseRedirects: boolean;
 } & (
 	| { store: "cli"; useKeyring: boolean | undefined }
 	| { store: "extension"; configDir: string; useKeyring: false | undefined }
@@ -114,8 +114,8 @@ function buildGlobalFlags(
 	if (auth.useKeyring !== undefined) {
 		flags.push(`--use-keyring=${auth.useKeyring}`);
 	}
-	if (auth.allowRedirects) {
-		flags.push("--allow-redirects");
+	if (auth.refuseRedirects) {
+		flags.push("--allow-redirects=false");
 	}
 	return [...flags, ...getHeaderArgs(configs, escValue)];
 }
@@ -168,6 +168,18 @@ export function mayUseCliStore(
 	return isKeyringEnabled(configs) || hasUserConfigDir(configs);
 }
 
+/** Below 2.39 the CLI keys keyring entries by host, so only HTTPS may use it. */
+export function shouldUseKeyring(
+	configs: Pick<WorkspaceConfiguration, "get">,
+	featureSet: CliFeatureSet,
+	url: string,
+): boolean {
+	return (
+		isKeyringEnabled(configs) &&
+		(featureSet.keyringByOrigin || URL.parse(url)?.protocol === "https:")
+	);
+}
+
 /** Uses the CLI's own store when the keyring is on or the user set a config directory. */
 export function resolveCliAuth(
 	configs: Pick<WorkspaceConfiguration, "get">,
@@ -177,11 +189,11 @@ export function resolveCliAuth(
 ): CliAuth {
 	// Below 2.29 the CLI lacks --use-keyring.
 	const useKeyring = featureSet.keyringAuth
-		? isKeyringEnabled(configs)
+		? shouldUseKeyring(configs, featureSet, url)
 		: undefined;
 	// A user directory is honored on 2.32+, where the CLI reports its token.
 	const userDir = hasUserConfigDir(configs) && featureSet.tokenRead;
-	const common = { url, allowRedirects: featureSet.allowRedirects };
+	const common = { url, refuseRedirects: featureSet.allowRedirectsFlag };
 	if (useKeyring || userDir) {
 		return { ...common, store: "cli", useKeyring };
 	}

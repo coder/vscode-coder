@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { isSameOrigin, toSafeHost } from "../common/url";
+import { toSafeHost } from "../common/url";
 import { InputValidationError } from "../common/validation";
 import { reportInputValidationError } from "../error/inputValidationError";
 import { errToStr } from "../error/normalize";
@@ -197,11 +197,10 @@ async function setupDeployment(
 	const token: string | undefined = params.get("token") ?? undefined;
 
 	// A deployment is known once a login stored a session for the same origin.
-	const existingAuth = await secretsManager.getSessionAuth(safeHostname);
-	const knownDeployment =
-		existingAuth !== undefined && isSameOrigin(existingAuth.url, linkUrl);
+	const existingAuth = await secretsManager.getSessionAuthForUrl(linkUrl);
+	const knownDeployment = existingAuth !== undefined;
 	// A link picks the deployment but never rewrites a known deployment's URL.
-	const url = knownDeployment ? existingAuth.url : linkUrl;
+	const url = existingAuth?.url ?? linkUrl;
 
 	// Set once the trust prompt has disclosed the token sign-in and the user
 	// agreed, so the login flow does not ask again.

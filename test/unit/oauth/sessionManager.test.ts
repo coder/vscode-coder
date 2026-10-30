@@ -183,6 +183,16 @@ describe("OAuthSessionManager", () => {
 			const result = await manager.canRefreshOAuthSession();
 			expect(result).toBe(expected);
 		});
+
+		it.each([
+			[TEST_URL, true],
+			[`${TEST_URL}:8443`, false],
+		])("canRefreshOAuthSession(%j) returns %j", async (url, expected) => {
+			const { manager, setupOAuthSession } = createTestContext();
+			await setupOAuthSession();
+
+			expect(await manager.canRefreshOAuthSession(url)).toBe(expected);
+		});
 	});
 
 	describe("refreshToken", () => {

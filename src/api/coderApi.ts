@@ -8,11 +8,13 @@ import {
 import { Api } from "coder/site/src/api/api";
 import * as vscode from "vscode";
 
+import { isSameOrigin } from "../common/url";
 import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
 	watchConfigurationChanges,
 } from "../configWatcher";
 import { ClientCertificateError } from "../error/clientCertificateError";
+import { CrossOriginRedirectError } from "../error/crossOriginRedirectError";
 import { toError } from "../error/normalize";
 import { ServerCertificateError } from "../error/serverCertificateError";
 import { getHeaders } from "../headers";
@@ -595,12 +597,24 @@ function setupInterceptors(
 			config.headers.delete(key);
 		}
 
-		const baseUrl = client.getAxiosInstance().defaults.baseURL;
-		const headers = await getHeaders(
-			baseUrl,
-			getHeaderCommand(vscode.workspace.getConfiguration()),
-			output,
-		);
+		const axiosInstance = client.getAxiosInstance();
+		const baseUrl = axiosInstance.defaults.baseURL;
+		let headers: Record<string, string> = {};
+		if (baseUrl && isSameOrigin(axiosInstance.getUri(config), baseUrl)) {
+			headers = await getHeaders(
+				baseUrl,
+				getHeaderCommand(vscode.workspace.getConfiguration()),
+				output,
+			);
+			config.beforeRedirect = (options) => {
+				const target: unknown = options.href;
+				if (typeof target !== "string" || !isSameOrigin(target, baseUrl)) {
+					throw new CrossOriginRedirectError(String(target));
+				}
+			};
+		} else {
+			config.headers.delete(coderSessionTokenHeader);
+		}
 		const retrying =
 			config._retryAttempted === true ||
 			config._authConfigRetryAttempted === true;
@@ -641,6 +655,11 @@ function setupInterceptors(
 			);
 			if (retryResponse) {
 				return retryResponse;
+			}
+
+			const redirect = CrossOriginRedirectError.find(err);
+			if (redirect) {
+				throw redirect;
 			}
 
 			// Handle other certificate errors.

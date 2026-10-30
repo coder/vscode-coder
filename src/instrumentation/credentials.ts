@@ -18,10 +18,10 @@ type CredentialEvent = "auth.credential.store" | "auth.credential.clear";
 export class CredentialTelemetry {
 	public constructor(private readonly telemetry: TelemetryReporter) {}
 
-	public traceStore(
+	public traceStore<T>(
 		configs: Pick<WorkspaceConfiguration, "get">,
-		fn: (span: Span) => Promise<void>,
-	): Promise<void> {
+		fn: (span: Span) => Promise<T>,
+	): Promise<T> {
 		return this.trace("auth.credential.store", configs, fn);
 	}
 
