@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { toSafeHost } from "../common/url";
+import { isSameOrigin, toSafeHost } from "../common/url";
 import { isValidDeploymentUrl } from "../common/validation";
 import { DeploymentSchema, type Deployment } from "../deployment/types";
 
@@ -237,6 +237,29 @@ export class SecretsManager {
 			return undefined;
 		}
 		return result.data;
+	}
+
+	/**
+	 * The stored session auth for `url`, only when recorded for the same
+	 * origin. Fails closed on an unparsable URL.
+	 */
+	public async getSessionAuthForUrl(
+		url: string,
+	): Promise<SessionAuth | undefined> {
+		let safeHostname: string;
+		try {
+			safeHostname = toSafeHost(url);
+		} catch {
+			return undefined;
+		}
+		const auth = await this.getSessionAuth(safeHostname);
+		if (auth && !isSameOrigin(auth.url, url)) {
+			this.logger.warn(
+				`Ignoring stored session auth for ${safeHostname}: recorded for ${new URL(auth.url).origin}, not ${new URL(url).origin}`,
+			);
+			return undefined;
+		}
+		return auth;
 	}
 
 	/**

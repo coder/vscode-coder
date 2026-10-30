@@ -123,7 +123,7 @@ function setup(
 			store: "cli",
 			url: "https://test.coder.com",
 			useKeyring: undefined,
-			allowRedirects: false,
+			refuseRedirects: false,
 		},
 		createMockServiceContainer({ telemetry, logger: createMockLogger() }),
 	);

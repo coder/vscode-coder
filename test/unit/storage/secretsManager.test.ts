@@ -166,6 +166,23 @@ describe("SecretsManager", () => {
 			).toBeUndefined();
 		});
 
+		it.each([
+			["https://example.com", "test-token"],
+			["https://example.com:443/", "test-token"],
+			["http://example.com", undefined],
+			["https://example.com:8443", undefined],
+			["not a url", undefined],
+		])("getSessionAuthForUrl(%j) returns %j", async (url, expected) => {
+			await secretsManager.setSessionAuth("example.com", {
+				url: "https://example.com",
+				token: "test-token",
+			});
+
+			expect((await secretsManager.getSessionAuthForUrl(url))?.token).toBe(
+				expected,
+			);
+		});
+
 		it("should track known safe hostnames", async () => {
 			expect(await secretsManager.getKnownSafeHostnames()).toEqual([]);
 

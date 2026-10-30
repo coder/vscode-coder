@@ -77,9 +77,16 @@ describe("check version support", () => {
 			["v2.10.0", "v2.10.1", "v2.11.0", "v3.0.0"],
 		);
 	});
+	it("keyring by origin", () => {
+		expectFlag(
+			"keyringByOrigin",
+			["v2.38.4", "v2.38.0", "v2.29.0"],
+			["v2.39.0", "v2.39.1", "v3.0.0"],
+		);
+	});
 	it("allow redirects", () => {
 		expectFlag(
-			"allowRedirects",
+			"allowRedirectsFlag",
 			["v2.37.1", "v2.37.0", "v2.36.5", "v1.0.0"],
 			["v2.38.0", "v2.38.1", "v2.39.0", "v3.0.0"],
 		);

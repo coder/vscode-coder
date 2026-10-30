@@ -7,6 +7,7 @@ import { needToken } from "../api/httpAgent";
 import { HttpStatusCode } from "../api/httpStatusCode";
 import { isSameOrigin, openInBrowser } from "../common/url";
 import { CertificateError } from "../error/certificateError";
+import { CrossOriginRedirectError } from "../error/crossOriginRedirectError";
 import { OAuthAuthorizer } from "../oauth/authorizer";
 import { revokeOAuthTokens } from "../oauth/revocation";
 import { buildOAuthTokenData } from "../oauth/tokens";
@@ -14,7 +15,7 @@ import { withCancellableProgress } from "../ui/progress";
 import { maybeAskAuthMethod, maybeAskUrl } from "../ui/prompts";
 import { vscodeProposed } from "../vscode/proposed";
 
-import { showStoreCredentialsError } from "./credentials";
+import { notifyKeyringSkipped, showStoreCredentialsError } from "./credentials";
 
 import type {
 	User,
@@ -227,6 +228,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			const configs = vscode.workspace.getConfiguration();
 			this.cliCredentialManager
 				.storeToken(url, result.token, configs)
+				.then((auth) => notifyKeyringSkipped(auth, configs))
 				.catch((error) =>
 					showStoreCredentialsError(error, configs, this.logger),
 				);
@@ -583,6 +585,8 @@ export class LoginCoordinator implements vscode.Disposable {
 			void err.showNotification("Failed to log in to Coder server", {
 				modal: true,
 			});
+		} else if (err instanceof CrossOriginRedirectError) {
+			void err.showNotification("Failed to log in to Coder server");
 		} else {
 			void vscodeProposed.window.showErrorMessage(
 				"Failed to log in to Coder server",

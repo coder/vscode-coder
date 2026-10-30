@@ -1,6 +1,6 @@
 import { type AxiosError, isAxiosError } from "axios";
 
-import { toSafeHost } from "../common/url";
+import { isSameOrigin } from "../common/url";
 import { AuthTelemetry } from "../instrumentation/auth";
 import { OAuthError } from "../oauth/errors";
 
@@ -21,7 +21,7 @@ const coderSessionTokenHeader = "Coder-Session-Token";
  * Callback invoked when authentication is required.
  * Returns true if user successfully re-authenticated.
  */
-export type AuthRequiredHandler = (hostname: string) => Promise<boolean>;
+export type AuthRequiredHandler = () => Promise<boolean>;
 
 /**
  * Intercepts 401 responses and handles re-authentication.
@@ -63,18 +63,18 @@ export class AuthInterceptor implements vscode.Disposable {
 			throw error;
 		}
 
-		const baseUrl = this.client.getHost();
+		// The client may have switched deployments since.
+		const baseUrl = error.config?.baseURL ?? this.client.getHost();
 		if (!baseUrl) {
 			throw error;
 		}
-		const hostname = toSafeHost(baseUrl);
 
-		return this.recoverFromUnauthorized(error, hostname);
+		return this.recoverFromUnauthorized(error, baseUrl);
 	}
 
 	private recoverFromUnauthorized(
 		error: AxiosError,
-		hostname: string,
+		url: string,
 	): Promise<unknown> {
 		const config = error.config;
 
@@ -102,11 +102,17 @@ export class AuthInterceptor implements vscode.Disposable {
 
 			// 1) OAuth refresh path.
 			const isOAuth =
-				await this.oauthSessionManager.canRefreshOAuthSession(hostname);
+				await this.oauthSessionManager.canRefreshOAuthSession(url);
 			recorder.setRefreshAttempted(isOAuth);
 			if (isOAuth) {
 				const newToken = await this.tryOAuthRefresh();
 				if (newToken) {
+					// Switched deployments mid-refresh.
+					if (!isSameOrigin(this.client.getHost() ?? "", url)) {
+						recorder.setRecovery("none");
+						throw error;
+					}
+					this.client.setSessionToken(newToken);
 					recorder.setRecovery("refresh_success");
 					return this.retryRequest(error, newToken);
 				}
@@ -118,9 +124,9 @@ export class AuthInterceptor implements vscode.Disposable {
 				throw error;
 			}
 			recorder.setRecovery("login_required");
-			const success = await this.executeAuthRequired(hostname);
+			const success = await this.executeAuthRequired();
 			const auth = success
-				? await this.secretsManager.getSessionAuth(hostname)
+				? await this.secretsManager.getSessionAuthForUrl(url)
 				: undefined;
 			if (!auth) {
 				throw error;
@@ -134,7 +140,6 @@ export class AuthInterceptor implements vscode.Disposable {
 	private async tryOAuthRefresh(): Promise<string | undefined> {
 		try {
 			const newTokens = await this.oauthSessionManager.refreshToken();
-			this.client.setSessionToken(newTokens.access_token);
 			this.logger.debug("Token refresh successful");
 			return newTokens.access_token;
 		} catch (refreshError) {
@@ -153,7 +158,7 @@ export class AuthInterceptor implements vscode.Disposable {
 	 * Execute auth required callback with deduplication.
 	 * Multiple concurrent 401s will share the same promise.
 	 */
-	private async executeAuthRequired(hostname: string): Promise<boolean> {
+	private async executeAuthRequired(): Promise<boolean> {
 		if (this.authRequiredPromise) {
 			this.logger.debug(
 				"Auth callback already in progress, waiting for result",
@@ -166,7 +171,7 @@ export class AuthInterceptor implements vscode.Disposable {
 		}
 
 		this.logger.debug("Triggering re-authentication");
-		this.authRequiredPromise = this.onAuthRequired(hostname);
+		this.authRequiredPromise = this.onAuthRequired();
 
 		try {
 			return await this.authRequiredPromise;

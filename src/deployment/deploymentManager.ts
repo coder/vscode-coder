@@ -5,6 +5,7 @@ import {
 	watchConfigurationChanges,
 } from "../configWatcher";
 import { type ServiceContainer } from "../container";
+import { CrossOriginRedirectError } from "../error/crossOriginRedirectError";
 import {
 	DeploymentTelemetry,
 	type DeploymentRecoveryTrigger,
@@ -118,8 +119,7 @@ export class DeploymentManager implements vscode.Disposable {
 		const sessionBefore = this.#sessionStore.current;
 		const token =
 			deployment.token ??
-			(await this.secretsManager.getSessionAuth(deployment.safeHostname))
-				?.token;
+			(await this.secretsManager.getSessionAuthForUrl(deployment.url))?.token;
 
 		try {
 			const user = await this.#verifyCredentials(deployment.url, token);
@@ -130,6 +130,15 @@ export class DeploymentManager implements vscode.Disposable {
 			return true;
 		} catch (e) {
 			this.logger.warn("Failed to authenticate with deployment:", e);
+			// Otherwise a moved deployment silently signs the user out.
+			if (
+				e instanceof CrossOriginRedirectError &&
+				!this.#hasStateChangedSince(sessionBefore)
+			) {
+				void e.showNotification(`Could not sign in to ${deployment.url}`, {
+					modal: false,
+				});
+			}
 			return false;
 		}
 	}

@@ -1,4 +1,5 @@
 import { CoderApi } from "../api/coderApi";
+import { isSameOrigin } from "../common/url";
 import {
 	AuthTelemetry,
 	type AuthTokenRefreshTrigger,
@@ -95,26 +96,17 @@ export class OAuthSessionManager implements vscode.Disposable {
 	/**
 	 * Get stored tokens fresh from secrets manager.
 	 * Always reads from storage to ensure cross-window synchronization.
-	 * Returns undefined for tokens of another deployment URL.
+	 * Returns undefined for tokens of another deployment origin.
 	 */
 	private async getStoredTokens(): Promise<StoredTokens | undefined> {
 		if (!this.deployment) {
 			return undefined;
 		}
 
-		const auth = await this.secretsManager.getSessionAuth(
-			this.deployment.safeHostname,
+		const auth = await this.secretsManager.getSessionAuthForUrl(
+			this.deployment.url,
 		);
 		if (!auth?.oauth) {
-			return undefined;
-		}
-
-		// Validate deployment URL matches
-		if (auth.url !== this.deployment.url) {
-			this.logger.warn("Stored tokens have mismatched deployment URL", {
-				stored: auth.url,
-				current: this.deployment.url,
-			});
 			return undefined;
 		}
 
@@ -443,8 +435,8 @@ export class OAuthSessionManager implements vscode.Disposable {
 			return (await client.getAuthenticatedUser()).username;
 		} catch (error) {
 			this.logger.warn("Failed to fetch the user after token refresh:", error);
-			const auth = await this.secretsManager.getSessionAuth(
-				deployment.safeHostname,
+			const auth = await this.secretsManager.getSessionAuthForUrl(
+				deployment.url,
 			);
 			return auth?.username;
 		} finally {
@@ -459,10 +451,8 @@ export class OAuthSessionManager implements vscode.Disposable {
 			return;
 		}
 		// Includes tokens lacking a required scope, which still work on the server.
-		const auth = await this.secretsManager.getSessionAuth(
-			deployment.safeHostname,
-		);
-		if (auth?.url !== deployment.url) {
+		const auth = await this.secretsManager.getSessionAuthForUrl(deployment.url);
+		if (!auth) {
 			return;
 		}
 		const registration = await this.secretsManager.getOAuthClientRegistration(
@@ -475,11 +465,10 @@ export class OAuthSessionManager implements vscode.Disposable {
 	 * Whether the deployment's OAuth tokens carry every required scope, so they
 	 * may refresh. Reads secrets each time to stay in sync across windows.
 	 *
-	 * @param hostname Optional hostname to validate against current deployment.
-	 *                 If provided and doesn't match, returns false (race-safety).
+	 * @param url Returns false if not the current deployment's origin (race-safety).
 	 */
-	public async canRefreshOAuthSession(hostname?: string): Promise<boolean> {
-		if (hostname && hostname !== this.deployment?.safeHostname) {
+	public async canRefreshOAuthSession(url?: string): Promise<boolean> {
+		if (url && this.deployment && !isSameOrigin(url, this.deployment.url)) {
 			return false;
 		}
 		const storedTokens = await this.getTokensWithRequiredScopes();

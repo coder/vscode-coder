@@ -3,6 +3,7 @@ import { describe, expect, it, vi, type Mock } from "vitest";
 import * as vscode from "vscode";
 
 import { HttpStatusCode } from "@/api/httpStatusCode";
+import { CrossOriginRedirectError } from "@/error/crossOriginRedirectError";
 import { getHeaders } from "@/headers";
 import { AuthTelemetry } from "@/instrumentation/auth";
 import { LoginCoordinator, type LoginMethod } from "@/login/loginCoordinator";
@@ -399,6 +400,35 @@ describe("LoginCoordinator", () => {
 
 			// Should NOT prompt for token
 			expect(vscode.window.showInputBox).not.toHaveBeenCalled();
+		});
+
+		it("offers to sign in at the URL a deployment redirected to", async () => {
+			const { mockConfig, userInteraction, coordinator } = createTestContext();
+			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
+			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
+			mockGetAuthenticatedUser.mockRejectedValue(
+				new CrossOriginRedirectError("https://dogfood.cdr.dev/api"),
+			);
+			userInteraction.setResponse(
+				"Failed to log in to Coder server",
+				"Sign In to https://dogfood.cdr.dev",
+			);
+
+			await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+			});
+
+			expect(userInteraction.getMessageCalls()).toContainEqual(
+				expect.objectContaining({
+					message: "Failed to log in to Coder server",
+					items: ["Sign In to https://dogfood.cdr.dev"],
+				}),
+			);
+			expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+				"coder.login",
+				{ url: "https://dogfood.cdr.dev" },
+			);
 		});
 
 		it("shows error and returns failure when mTLS fails", async () => {

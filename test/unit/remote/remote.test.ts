@@ -70,7 +70,7 @@ const CLI_AUTH: CliAuth = {
 	url: "https://coder.example.com",
 	configDir: "/mock/global",
 	useKeyring: undefined,
-	allowRedirects: false,
+	refuseRedirects: false,
 };
 
 function createRemote(logger: Logger = createMockLogger()) {
@@ -331,7 +331,7 @@ describe("Remote", () => {
 				"2.38.0",
 			);
 			expect(sessionApp).toBe("vscode");
-			expect(cliFeatures.allowRedirects).toBe(true);
+			expect(cliFeatures.allowRedirectsFlag).toBe(true);
 		});
 
 		async function writeConfig(cli = "2.38.0", setEnv = true) {

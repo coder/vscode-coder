@@ -7,8 +7,24 @@
 
 ## Unreleased
 
+### Changed
+
+- **Breaking:** the extension no longer follows a redirect to a different
+  scheme, host or port, and passes `--allow-redirects=false` to Coder CLI 2.38
+  or later even if `coder.globalFlags` or `CODER_ALLOW_REDIRECTS` allow
+  redirects. If your deployment URL redirects, for example after a domain move
+  or from `http://` to `https://`, sign in with the new URL. The error and a
+  notice at startup offer a **Sign In to …** button.
+
 ### Fixed
 
+- A session saved for one URL is no longer used for a URL on the same host with
+  a different scheme or port.
+- The session token and `coder.headerCommand` headers are now only sent to the
+  deployment, not to other servers such as a `coder.binarySource` host.
+- Sessions for `http://` deployments are saved to the OS keyring only with Coder
+  CLI 2.39 or later, which keeps them apart from `https://` sessions on the same
+  host. Signing in with an older CLI shows a notice.
 - Fix WebSocket connections that hung when the server never finished the
   handshake. They now time out after 60 seconds and retry.
 - `coder.headerCommand` output with an invalid header name is now an error and

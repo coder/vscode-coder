@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import {
+	isSameOrigin,
 	normalizeUrl,
 	openInBrowser,
 	removeTrailingSlashes,
@@ -43,6 +44,20 @@ describe("toSafeHost", () => {
 
 	it("throws for invalid URLs", () => {
 		expect(() => toSafeHost("invalid url")).toThrow("Invalid URL");
+	});
+});
+
+describe("isSameOrigin", () => {
+	it.each([
+		["https://coder.example.com:443/path", "https://coder.example.com", true],
+		["https://coder.example.com", "http://coder.example.com", false],
+		["https://coder.example.com", "https://coder.example.com:8443", false],
+		["https://coder.example.com", "https://evil.example.com", false],
+		["not a url", "https://coder.example.com", false],
+		// Opaque origins are never comparable.
+		["data:text/plain,x", "data:text/plain,x", false],
+	])("isSameOrigin(%j, %j) === %j", (a, b, expected) => {
+		expect(isSameOrigin(a, b)).toBe(expected);
 	});
 });
 
