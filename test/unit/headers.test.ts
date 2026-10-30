@@ -61,6 +61,7 @@ describe("Headers", () => {
 		await expect(
 			getHeaders("localhost", printCommand("foo="), logger),
 		).resolves.toStrictEqual({ foo: "" });
+		// Windows scripts often start with a byte order mark.
 		await expect(
 			getHeaders("localhost", printCommand("\ufefffoo=bar"), logger),
 		).resolves.toStrictEqual({ foo: "bar" });
