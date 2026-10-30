@@ -214,6 +214,38 @@ describe("CliCredentialManager", () => {
 			expect(execCalls()[0]).not.toContain("my-secret-token");
 		});
 
+		it.each([
+			{ scenario: "extension directory", platform: "linux", cfg: configs },
+			{ scenario: "keyring", platform: "darwin", cfg: configs },
+			{
+				scenario: "user --global-config directory",
+				platform: "linux",
+				cfg: userDirConfigs,
+			},
+		] as const)(
+			"drops only the extension's stored token for an empty token with the $scenario",
+			async ({ platform, cfg }) => {
+				vi.mocked(os.platform).mockReturnValue(platform);
+				stubExecFile();
+				writeCredentialFiles();
+				vol.mkdirSync(USER_DIR, { recursive: true });
+				memfs.writeFileSync(`${USER_DIR}/session`, "cli-token");
+				const { manager, sink } = setup();
+
+				await manager.storeToken(TEST_URL, "", cfg);
+
+				expect(execFile).not.toHaveBeenCalled();
+				expect(memfs.existsSync(`${CRED_DIR}/session`)).toBe(false);
+				expect(memfs.readFileSync(`${CRED_DIR}/url`, "utf8")).toBe(TEST_URL);
+				expect(memfs.readFileSync(`${USER_DIR}/session`, "utf8")).toBe(
+					"cli-token",
+				);
+				expect(sink.expectOne("auth.credential.store")).toMatchObject({
+					properties: { outcome: "empty_token", result: "success" },
+				});
+			},
+		);
+
 		interface CliErrorCase {
 			scenario: string;
 			error: Error;
@@ -298,6 +330,7 @@ describe("CliCredentialManager", () => {
 			scenario: string;
 			platform: NodeJS.Platform;
 			version?: string;
+			token?: string;
 			cliToken?: string;
 			expected: boolean;
 		}
@@ -322,11 +355,19 @@ describe("CliCredentialManager", () => {
 				cliToken: "other",
 				expected: true,
 			},
+			{
+				scenario: "an empty token, which the CLI store never holds",
+				platform: "darwin",
+				version: "2.31.0",
+				token: "",
+				expected: false,
+			},
 		])(
 			"is $expected for $scenario",
 			async ({
 				platform,
 				version = "2.32.0",
+				token = "my-token",
 				cliToken = "my-token",
 				expected,
 			}) => {
@@ -334,9 +375,9 @@ describe("CliCredentialManager", () => {
 				vi.mocked(cliExec.version).mockResolvedValue(version);
 				stubExecFile({ token: cliToken });
 
-				expect(
-					await setup().manager.holdsToken(TEST_URL, "my-token", configs),
-				).toBe(expected);
+				expect(await setup().manager.holdsToken(TEST_URL, token, configs)).toBe(
+					expected,
+				);
 			},
 		);
 	});
