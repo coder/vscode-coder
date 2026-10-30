@@ -32,6 +32,9 @@
   ``!#$%&'*+-.^_`|~``, so whitespace (including tabs and carriage returns) and
   `:` are not allowed. An invisible byte order mark at the start of the output,
   which some Windows editors and PowerShell add, is ignored.
+- Treat TLS client certificates as transport configuration only. An empty
+  session token follows the same authentication path as any other token, with
+  stored or CLI credentials and OAuth or token prompts available after a 401.
 
 ## [v1.17.2](https://github.com/coder/vscode-coder/releases/tag/v1.17.2) 2026-10-28
 

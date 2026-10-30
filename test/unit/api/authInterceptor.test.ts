@@ -148,8 +148,8 @@ function createTestContext() {
 		});
 	};
 
-	/** Sets up mTLS auth (no token) */
-	const setupMTLSAuth = async () => {
+	/** Sets up an empty session token */
+	const setupEmptyToken = async () => {
 		await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 			url: TEST_URL,
 			token: "",
@@ -177,7 +177,7 @@ function createTestContext() {
 			MockOAuthSessionManager,
 		setupOAuthTokens,
 		setupSessionToken,
-		setupMTLSAuth,
+		setupEmptyToken,
 		createInterceptor,
 	};
 }
@@ -350,12 +350,11 @@ describe("AuthInterceptor", () => {
 			expect(request).not.toHaveBeenCalled();
 		});
 
-		it("retries request with mTLS (no token)", async () => {
-			const { axiosInstance, setupMTLSAuth, createInterceptor } =
+		it("retries request with an empty token", async () => {
+			const { axiosInstance, setupEmptyToken, createInterceptor } =
 				createTestContext();
 
-			// Setup mTLS auth - callback will "re-authenticate" but there's no token
-			await setupMTLSAuth();
+			await setupEmptyToken();
 
 			const retryResponse = { data: "success", status: 200 };
 			vi.spyOn(axiosInstance, "request").mockResolvedValue(retryResponse);

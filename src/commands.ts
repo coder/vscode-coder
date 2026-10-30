@@ -760,10 +760,7 @@ export class Commands {
 	private async askSignOutCli(
 		auth: SessionAuth | undefined,
 	): Promise<boolean | undefined> {
-		if (
-			!auth?.token ||
-			!(await this.cliManager.holdsToken(auth.url, auth.token))
-		) {
+		if (!auth || !(await this.cliManager.holdsToken(auth.url, auth.token))) {
 			return false;
 		}
 		// The CLI cannot refresh an OAuth token and logout revokes it, so there is nothing to keep.

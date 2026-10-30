@@ -321,7 +321,7 @@ describe("DeploymentManager", () => {
 			);
 		});
 
-		it("handles empty string token (mTLS) correctly", async () => {
+		it("handles an empty token", async () => {
 			const { mockClient, validationMockClient, manager } = createTestContext();
 			const user = createMockUser();
 			validationMockClient.setAuthenticatedUserResponse(user);
@@ -461,7 +461,7 @@ describe("DeploymentManager", () => {
 			});
 		});
 
-		it("handles mTLS deployment (empty token) from other window", async () => {
+		it("handles an empty token from another window", async () => {
 			const { mockClient, validationMockClient, secretsManager } =
 				createTestContext();
 			const user = createMockUser();

@@ -13,7 +13,6 @@ import {
 } from "../api/agentMetadata";
 import { AuthInterceptor } from "../api/authInterceptor";
 import { CoderApi } from "../api/coderApi";
-import { needToken } from "../api/httpAgent";
 import { HttpStatusCode } from "../api/httpStatusCode";
 import { extractAgents } from "../api/models";
 import { version as cliVersion } from "../cli/cliExec";
@@ -246,10 +245,7 @@ export class Remote {
 			disposables: [],
 		};
 
-		if (
-			!context.baseUrl ||
-			(!context.token && needToken(vscode.workspace.getConfiguration()))
-		) {
+		if (!context.baseUrl || context.token === undefined) {
 			return this.ensureLoggedInAndRetry(
 				context,
 				"You are not logged in...",

@@ -14,10 +14,10 @@ describe("AuthTelemetry", () => {
 		it.each([
 			{
 				name: "records success with the returned method",
-				outcome: { success: true, method: "mtls" } as const,
+				outcome: { success: true, method: "stored_token" } as const,
 				properties: {
 					source: "uri",
-					method: "mtls",
+					method: "stored_token",
 					result: "success",
 				},
 			},
