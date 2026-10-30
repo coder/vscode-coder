@@ -5,7 +5,7 @@ import type { User } from "coder/site/src/api/typesGenerated";
 /**
  * Represents a Coder deployment with its URL and hostname.
  * The safeHostname is used as a unique identifier for storing credentials and configuration.
- * It is derived from the URL hostname (via toSafeHost) or from SSH host parsing.
+ * It is the URL's origin label (via toSafeHost) or comes from SSH host parsing.
  */
 export const DeploymentSchema = z.object({
 	url: z.string(),

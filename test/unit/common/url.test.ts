@@ -24,7 +24,7 @@ describe("toSafeHost", () => {
 
 	it("preserves the IPv6 deployment key on POSIX but rejects it on Windows", () => {
 		vi.spyOn(os, "platform").mockReturnValue("linux");
-		expect(toSafeHost("https://[::1]:8080")).toBe("[::1]");
+		expect(toSafeHost("https://[::1]:8080")).toBe("[::1]_8080");
 		vi.spyOn(os, "platform").mockReturnValue("win32");
 		expect(() => toSafeHost("https://[::1]:8080")).toThrow(
 			/Cannot connect on Windows/,
@@ -32,14 +32,47 @@ describe("toSafeHost", () => {
 	});
 
 	it.each([
-		["https://foobar:8080", "foobar"],
+		["https://foobar", "foobar"],
+		["https://foobar:443", "foobar"],
+		["https://foobar:8080", "foobar_8080"],
+		["http://foobar", "foobar_http"],
+		["http://foobar:80", "foobar_http"],
+		["http://foobar:8080", "foobar_http8080"],
+		["https://foobar:80", "foobar_80"],
+		["http://foobar:443", "foobar_http443"],
+		["https://my_host", "my_host_https"],
+		["https://my_host:8443", "my_host_8443"],
 		["https://ほげ", "xn--18j4d"],
 		["https://عربي", "xn--ngbrx4e"],
 		["https://test.😉.invalid", "test.xn--n28h.invalid"],
 		["https://dev.😉-coder.com", "dev.xn---coder-vx74e.com"],
-		["http://ignore-port.com:8080", "ignore-port.com"],
 	])("returns %s for %s", (input, expected) => {
 		expect(toSafeHost(input)).toBe(expected);
+	});
+
+	it("gives two URLs the same label exactly when they share an origin", () => {
+		const hosts = ["host", "HOST", "host.com", "my_host", "xn--n3h.com"];
+		// Hostnames that look like another origin's label.
+		hosts.push("host_80", "host_http", "host_https", "host_http8080");
+		const urls = hosts.flatMap((host) =>
+			["http", "https"].flatMap((scheme) =>
+				["", ":80", ":443", ":8080"].map(
+					(port) => `${scheme}://${host}${port}`,
+				),
+			),
+		);
+
+		for (const a of urls) {
+			for (const b of urls) {
+				expect(toSafeHost(a) === toSafeHost(b), `${a} vs ${b}`).toBe(
+					new URL(a).origin === new URL(b).origin,
+				);
+			}
+		}
+	});
+
+	it("rejects schemes other than http and https", () => {
+		expect(() => toSafeHost("ftp://host")).toThrow("must use http or https");
 	});
 
 	it("throws for invalid URLs", () => {

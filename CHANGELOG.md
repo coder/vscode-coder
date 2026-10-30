@@ -20,6 +20,11 @@
 
 - A session saved for one URL is no longer used for a URL on the same host with
   a different scheme or port.
+- Each deployment origin (scheme, host, and port) now has its own stored
+  session, CLI credentials, SSH hosts, and CLI binary cache, so two origins on
+  one host no longer overwrite each other or connect a window to the wrong
+  deployment. HTTPS on the default port is unchanged; other origins need one
+  new login and a fresh CLI download.
 - The session token and `coder.headerCommand` headers are now only sent to the
   deployment, not to other servers such as a `coder.binarySource` host.
 - Sessions for `http://` deployments are saved to the OS keyring only with Coder

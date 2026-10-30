@@ -3,6 +3,7 @@ import { describe, expect, it, vi, type Mock } from "vitest";
 import * as vscode from "vscode";
 
 import { HttpStatusCode } from "@/api/httpStatusCode";
+import { toSafeHost } from "@/common/url";
 import { CrossOriginRedirectError } from "@/error/crossOriginRedirectError";
 import { getHeaders } from "@/headers";
 import { AuthTelemetry } from "@/instrumentation/auth";
@@ -213,7 +214,7 @@ function createSignInTestContext(
 			}
 		},
 		storeSession: (auth: { token: string; username?: string; url?: string }) =>
-			ctx.secretsManager.setSessionAuth(TEST_HOSTNAME, {
+			ctx.secretsManager.setSessionAuth(toSafeHost(auth.url ?? TEST_URL), {
 				url: TEST_URL,
 				...auth,
 			}),
@@ -489,6 +490,23 @@ describe("LoginCoordinator", () => {
 
 			expect(result.success).toBe(false);
 		});
+
+		it("refuses another origin of the hostname without signing in", async () => {
+			const { userInteraction, coordinator, mockSuccessfulAuth } =
+				createTestContext();
+			mockSuccessfulAuth();
+			vi.mocked(maybeAskUrl).mockResolvedValue("http://coder.example.com");
+			userInteraction.setResponse("Authentication Required", "Login");
+
+			const result = await coordinator.ensureLoggedInWithDialog({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				trigger: "auth_required",
+			});
+
+			expect(result).toEqual({ success: false, reason: "no_url_provided" });
+			expect(mockGetAuthenticatedUser).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("token fallback order", () => {
@@ -566,11 +584,8 @@ describe("LoginCoordinator", () => {
 			expect(await t.login()).toEqual(DISMISSED);
 			// The stored token is never sent to a different origin.
 			expect(mockGetAuthenticatedUser).toHaveBeenCalledTimes(1);
-			// The unchecked session is not called expired.
-			t.expectSignInPrompt(
-				user.username,
-				`current session for "${user.username}"`,
-			);
+			// Another origin's session is not the one being replaced.
+			t.expectSignInPrompt(user.username);
 		});
 
 		it("confirms a first-time link sign-in, naming the user", async () => {
@@ -663,16 +678,6 @@ describe("LoginCoordinator", () => {
 					createMockUser({ username: "user-a" }),
 				],
 				session: { token: "valid-stored-token", username: "user-a" },
-			},
-			{
-				name: "was pre-confirmed but replaces another origin's session",
-				auth: [createMockUser()],
-				session: {
-					url: "http://coder.example.com",
-					token: "other-origin-token",
-					username: "someone-else",
-				},
-				preConfirmed: true,
 			},
 			{
 				name: "was pre-confirmed but replaces an expired session",

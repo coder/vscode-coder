@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { toSafeHost } from "@/common/url";
 import { OPEN_CODER_OUTPUT_ACTION } from "@/error/inputValidationError";
 import { CALLBACK_PATH } from "@/oauth/constants";
 import { OAuthCallback } from "@/oauth/oauthCallback";
@@ -157,7 +158,7 @@ function createTestContext() {
 
 		/** Store a session, which is what makes a deployment known. */
 		storeSession: (auth?: { url?: string; token?: string }) =>
-			secretsManager.setSessionAuth(TEST_HOSTNAME, {
+			secretsManager.setSessionAuth(toSafeHost(auth?.url ?? TEST_URL), {
 				url: TEST_URL,
 				token: "known-token",
 				...auth,
