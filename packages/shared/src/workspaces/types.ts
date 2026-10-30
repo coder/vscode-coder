@@ -4,6 +4,8 @@ import type {
 	WorkspaceAgentMetadata,
 } from "coder/site/src/api/typesGenerated";
 
+import type { AgentDiagnostic } from "./diagnostics";
+
 // Re-export SDK types for convenience
 export type { Workspace, WorkspaceAgent, WorkspaceAgentMetadata };
 
@@ -65,6 +67,12 @@ export interface OpenWorkspaceParams {
 export interface ViewInDashboardParams {
 	readonly workspaceId: string;
 	readonly page: DashboardPage;
+}
+
+export interface AgentDiagnosticParams {
+	readonly workspaceId: string;
+	readonly agentId: string;
+	readonly diagnostic: AgentDiagnostic;
 }
 
 export interface SetFilterParams {

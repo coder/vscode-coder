@@ -5,6 +5,12 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import {
+	agentDiagnostics,
+	type AgentDiagnostic,
+	type DashboardPage,
+} from "@repo/shared";
+
+import {
 	extractAgents,
 	createWorkspaceIdentifier,
 	workspaceStatusLabel,
@@ -12,6 +18,7 @@ import {
 import * as cliExec from "./cli/cliExec";
 import { runDiagnosticCli } from "./command/diagnosticFlow";
 import { openInBrowser, toSafeHost } from "./common/url";
+import { validateAgentName } from "./common/validation";
 import { raceWithAbort } from "./error/abort";
 import { CertificateError } from "./error/certificateError";
 import { toError } from "./error/normalize";
@@ -76,8 +83,6 @@ import type {
 	WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
 
-import type { DashboardPage } from "@repo/shared";
-
 import type { CoderApi } from "./api/coderApi";
 import type { CliManager } from "./cli/cliManager";
 import type { ServiceContainer } from "./container";
@@ -121,6 +126,12 @@ interface LoginArgs {
 	readonly autoLogin?: boolean;
 }
 
+/** A workspace, and optionally the agent within it, that a command acts on. */
+interface WorkspaceTarget {
+	readonly workspace: Workspace;
+	readonly agent?: WorkspaceAgent;
+}
+
 type WorkspaceResolution =
 	| {
 			readonly status: "selected";
@@ -131,6 +142,8 @@ type WorkspaceResolution =
 			readonly remoteAuthority?: string;
 	  }
 	| { readonly status: "cancelled" }
+	/** The target changed and can no longer run this. */
+	| { readonly status: "unavailable" }
 	| {
 			readonly status: "failed";
 			readonly category: WorkspacePickerErrorCategory;
@@ -149,6 +162,22 @@ class SupportBundleUnsupportedCliError extends Error {
 }
 
 const UPDATE_AND_RESTART_ACTION = "Update and Restart";
+
+const DIAGNOSTIC_VERBS: Readonly<Record<AgentDiagnostic, string>> = {
+	ping: "ping",
+	speedTest: "run a speed test on",
+	supportBundle: "create a support bundle for",
+};
+
+/** `owner/name.agent` for CLI commands that target one agent. */
+function toAgentIdentifier(resolved: {
+	readonly workspaceId: string;
+	readonly agentName?: string;
+}): string {
+	return resolved.agentName
+		? `${resolved.workspaceId}.${validateAgentName(resolved.agentName)}`
+		: resolved.workspaceId;
+}
 
 const openDefaults = {
 	openRecent: false,
@@ -303,19 +332,23 @@ export class Commands {
 	 * Run a speed test against a workspace and display the results in a new
 	 * editor document.  Can be triggered from the sidebar or command palette.
 	 */
-	public async speedTest(item?: OpenableTreeItem): Promise<void> {
+	public async speedTest(target?: WorkspaceTarget): Promise<void> {
 		await this.diagnosticTelemetry.trace("speed_test", (telemetry) =>
-			this.runSpeedTest(item, telemetry),
+			this.runSpeedTest(target, telemetry),
 		);
 	}
 
 	private async runSpeedTest(
-		item: OpenableTreeItem | undefined,
+		target: WorkspaceTarget | undefined,
 		telemetry: DiagnosticTrace,
 	): Promise<void> {
-		const resolved = await this.resolveClientAndWorkspace(item);
+		const resolved = await this.resolveClientAndWorkspace(target, "speedTest");
 		if (resolved.status === "cancelled") {
 			telemetry.abort("workspace_picker");
+			return;
+		}
+		if (resolved.status === "unavailable") {
+			telemetry.abort("unavailable");
 			return;
 		}
 		if (resolved.status === "failed") {
@@ -323,7 +356,8 @@ export class Commands {
 			return;
 		}
 
-		const { client, workspaceId } = resolved;
+		const { client } = resolved;
+		const agentId = toAgentIdentifier(resolved);
 
 		const input = await vscode.window.showInputBox({
 			title: "Speed Test Duration",
@@ -348,7 +382,7 @@ export class Commands {
 			telemetry,
 			logger: this.logger,
 			name: "Speed test",
-			progressTitle: `Running speed test for ${workspaceId}`,
+			progressTitle: `Running speed test for ${agentId}`,
 			exec: async ({ signal, progress }) => {
 				progress.report({ message: "Connecting..." });
 				const env = await this.resolveCliEnv(client);
@@ -362,12 +396,7 @@ export class Commands {
 							: `${Math.floor(elapsedMs / 1000)}s / ${seconds}s`,
 				});
 				try {
-					return await cliExec.speedtest(
-						env,
-						workspaceId,
-						`${seconds}s`,
-						signal,
-					);
+					return await cliExec.speedtest(env, agentId, `${seconds}s`, signal);
 				} finally {
 					stopProgress();
 				}
@@ -377,7 +406,7 @@ export class Commands {
 				this.speedtestPanelFactory.show({
 					result: parsed,
 					rawJson,
-					workspaceId,
+					workspaceId: agentId,
 				});
 				// Record success after the panel shows, so a display failure is an
 				// error rather than a contradictory success span.
@@ -433,19 +462,26 @@ export class Commands {
 		});
 	}
 
-	public async supportBundle(item?: OpenableTreeItem): Promise<void> {
+	public async supportBundle(target?: WorkspaceTarget): Promise<void> {
 		await this.diagnosticTelemetry.trace("support_bundle", (telemetry) =>
-			this.runSupportBundle(item, telemetry),
+			this.runSupportBundle(target, telemetry),
 		);
 	}
 
 	private async runSupportBundle(
-		item: OpenableTreeItem | undefined,
+		target: WorkspaceTarget | undefined,
 		telemetry: DiagnosticTrace,
 	): Promise<void> {
-		const resolved = await this.resolveClientAndWorkspace(item);
+		const resolved = await this.resolveClientAndWorkspace(
+			target,
+			"supportBundle",
+		);
 		if (resolved.status === "cancelled") {
 			telemetry.abort("workspace_picker");
+			return;
+		}
+		if (resolved.status === "unavailable") {
+			telemetry.abort("unavailable");
 			return;
 		}
 		if (resolved.status === "failed") {
@@ -1371,46 +1407,67 @@ export class Commands {
 		await vscode.commands.executeCommand("workbench.action.reloadWindow");
 	}
 
-	public async pingWorkspace(item?: OpenableTreeItem): Promise<void> {
-		const resolved = await this.resolveClientAndWorkspace(item);
+	public async pingWorkspace(target?: WorkspaceTarget): Promise<void> {
+		const resolved = await this.resolveClientAndWorkspace(target, "ping");
 		if (resolved.status !== "selected") {
 			return;
 		}
 
-		const { client, workspaceId } = resolved;
+		const { client } = resolved;
+		const agentId = toAgentIdentifier(resolved);
 		return withProgress(
 			{
 				location: vscode.ProgressLocation.Notification,
-				title: `Starting ping for ${workspaceId}...`,
+				title: `Starting ping for ${agentId}...`,
 			},
 			async (progress) => {
 				progress.report({ message: "Resolving CLI..." });
 				const env = await this.resolveCliEnv(client);
 				progress.report({ message: "Starting..." });
-				cliExec.ping(env, workspaceId);
+				cliExec.ping(env, agentId);
 			},
 		);
 	}
 
 	/**
-	 * Resolve the API client and workspace identifier from a sidebar item,
+	 * Resolve the API client and workspace identifier from a target,
 	 * the currently connected workspace, or by prompting the user to pick one.
 	 * Returns cancelled/failed if the user cancels the picker or the picker cannot load.
 	 */
 	private async resolveClientAndWorkspace(
-		item?: OpenableTreeItem,
+		target: WorkspaceTarget | undefined,
+		diagnostic: AgentDiagnostic,
 	): Promise<WorkspaceResolution> {
-		if (item) {
-			const agentName =
-				item instanceof AgentTreeItem ? item.agent.name : undefined;
+		if (target) {
+			// The caller's copy may be stale.
+			const workspace = await this.extensionClient.getWorkspace(
+				target.workspace.id,
+			);
+			const workspaceId = createWorkspaceIdentifier(workspace);
+			let agentName = target.agent?.name;
+			if (target.agent) {
+				const agentId = target.agent.id;
+				const agent = extractAgents(workspace.latest_build.resources).find(
+					(candidate) => candidate.id === agentId,
+				);
+				if (!agent || !agentDiagnostics(agent).includes(diagnostic)) {
+					void vscode.window.showInformationMessage(
+						agent
+							? `Cannot ${DIAGNOSTIC_VERBS[diagnostic]} ${workspaceId}.${agent.name} while it is ${agent.status}.`
+							: `${workspaceId}'s selected agent is no longer available. Refresh and try again.`,
+					);
+					return { status: "unavailable" };
+				}
+				agentName = agent.name;
+			}
 			return {
 				status: "selected",
 				agentName,
 				client: this.extensionClient,
-				workspaceId: createWorkspaceIdentifier(item.workspace),
+				workspaceId,
 				remoteAuthority: await this.toWorkspaceAuthority(
 					this.extensionClient,
-					item.workspace,
+					workspace,
 					agentName,
 				),
 			};

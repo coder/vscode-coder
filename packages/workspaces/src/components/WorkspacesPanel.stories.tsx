@@ -161,6 +161,7 @@ const api = {
 	login: fn(),
 	openWorkspace: fn(),
 	viewInDashboard: fn(),
+	runAgentDiagnostic: fn(),
 	refresh: fn(),
 	setFilter: fn(),
 	watchAgents: fn(),
@@ -219,6 +220,21 @@ export const MenuOpen: Story = {
 			canvas.getByRole("button", { name: "More actions for frontend" }),
 		);
 		await screen.findByRole("menu");
+	},
+};
+
+export const AgentMenuOpen: Story = {
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.click(
+			canvas.getByRole("treeitem", { name: "frontend alice" }),
+		);
+		// Row actions stay hidden until the row is focused, selected or hovered.
+		await userEvent.keyboard("{ArrowDown}");
+		await userEvent.click(
+			await canvas.findByRole("button", { name: "More actions for main" }),
+		);
+		await screen.findByRole("menuitem", { name: "Ping" });
 	},
 };
 

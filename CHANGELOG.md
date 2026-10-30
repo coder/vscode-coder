@@ -11,6 +11,14 @@
 
 - The experimental Workspaces panel lists workspace agents, metadata and app
   status. Updated times expose the full date and time on hover or keyboard focus.
+- The experimental Workspaces panel can run ping, speed test and support
+  bundle on an agent. Each diagnostic checks the agent's current status first
+  and explains when it no longer applies.
+
+### Fixed
+
+- Ping and speed test from an agent in the sidebar now target that agent
+  instead of the workspace's first agent.
 
 ### Changed
 

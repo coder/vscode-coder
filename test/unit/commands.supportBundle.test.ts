@@ -54,7 +54,14 @@ const TEST_WORKSPACE = workspace({
 	name: "ws",
 	latest_build: {
 		status: "running",
-		resources: [resource({ agents: [agent({ name: "main" })] })],
+		resources: [
+			resource({
+				agents: [
+					agent({ id: "agent-main", name: "main" }),
+					agent({ id: "agent-dev", name: "dev" }),
+				],
+			}),
+		],
 	},
 });
 
@@ -63,7 +70,7 @@ function setup(options: { cliVersion?: string } = {}) {
 	new MockProgressReporter();
 	config({});
 	setRemoteAuthority(undefined);
-	const { service } = createTelemetryHarness();
+	const { sink, service } = createTelemetryHarness();
 
 	vi.mocked(vscode.window.showSaveDialog).mockResolvedValue(
 		vscode.Uri.file(OUTPUT_PATH),
@@ -104,6 +111,7 @@ function setup(options: { cliVersion?: string } = {}) {
 	const client = createTestCoderApi({
 		baseUrl: "https://coder.test",
 		token: "token",
+		overrides: { getWorkspace: vi.fn(() => Promise.resolve(TEST_WORKSPACE)) },
 	});
 
 	const commands = new Commands(
@@ -112,7 +120,7 @@ function setup(options: { cliVersion?: string } = {}) {
 		{} as DeploymentManager,
 	);
 
-	return { commands, client, logger, interaction };
+	return { commands, client, logger, interaction, sink };
 }
 
 function setRemoteAuthority(value: string | undefined): void {
@@ -120,7 +128,10 @@ function setRemoteAuthority(value: string | undefined): void {
 }
 
 function agentItem(agentName: string): AgentTreeItem {
-	return new AgentTreeItem(agent({ name: agentName }), TEST_WORKSPACE);
+	return new AgentTreeItem(
+		agent({ id: `agent-${agentName}`, name: agentName }),
+		TEST_WORKSPACE,
+	);
 }
 
 function connectToWorkspace(
@@ -165,6 +176,47 @@ describe("Commands.supportBundle", () => {
 			expect.objectContaining({
 				remoteAuthority: "ssh-remote+coder-vscode.coder.test--owner--ws.dev",
 			}),
+		);
+	});
+
+	it("skips an agent the workspace no longer has", async () => {
+		const { commands, sink } = setup();
+
+		await commands.supportBundle(agentItem("gone"));
+
+		expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+			"owner/ws's selected agent is no longer available. Refresh and try again.",
+		);
+		expect(cliExec.supportBundle).not.toHaveBeenCalled();
+		expect(
+			sink.eventsNamed("command.diagnostic.completed")[0].properties,
+		).toMatchObject({ abort_stage: "unavailable", result: "aborted" });
+	});
+
+	it("collects from an agent that is no longer connected", async () => {
+		const { commands, client } = setup();
+		vi.mocked(client.getWorkspace).mockResolvedValueOnce(
+			workspace({
+				...TEST_WORKSPACE,
+				latest_build: {
+					status: "running",
+					resources: [
+						resource({
+							agents: [
+								agent({ id: "agent-dev", name: "dev", status: "disconnected" }),
+							],
+						}),
+					],
+				},
+			}),
+		);
+
+		await commands.supportBundle(agentItem("dev"));
+
+		expect(cliExec.supportBundle).toHaveBeenCalledWith(
+			expect.anything(),
+			"owner/ws",
+			expect.objectContaining({ agentName: "dev" }),
 		);
 	});
 
