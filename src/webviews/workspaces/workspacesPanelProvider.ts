@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import {
 	buildCommandHandlers,
 	WorkspacesApi,
+	type AgentDiagnosticParams,
 	type OpenWorkspaceParams,
 } from "@repo/shared";
 
@@ -14,7 +15,10 @@ import {
 } from "../dispatch";
 import { getWebviewHtml } from "../html";
 
-import type { Workspace } from "coder/site/src/api/typesGenerated";
+import type {
+	Workspace,
+	WorkspaceAgent,
+} from "coder/site/src/api/typesGenerated";
 
 import type { Commands } from "../../commands";
 import type { Logger } from "../../logging/logger";
@@ -25,7 +29,28 @@ import type { WorkspaceStore } from "./workspaceStore";
 const USER_ACTION_METHODS: ReadonlySet<string> = new Set([
 	WorkspacesApi.openWorkspace.method,
 	WorkspacesApi.viewInDashboard.method,
+	WorkspacesApi.runAgentDiagnostic.method,
 ]);
+
+function requireAgent(workspace: Workspace, agentId: string): WorkspaceAgent {
+	const agent = extractAgents(workspace.latest_build.resources).find(
+		(candidate) => candidate.id === agentId,
+	);
+	if (!agent) {
+		throw new Error("Agent is no longer available");
+	}
+	return agent;
+}
+
+type PanelCommands = Pick<
+	Commands,
+	| "login"
+	| "openWorkspaceFromSidebar"
+	| "openWorkspaceInDashboard"
+	| "pingWorkspace"
+	| "speedTest"
+	| "supportBundle"
+>;
 
 /**
  * Renders the workspaces of the current deployment in a webview. All state
@@ -55,6 +80,7 @@ export class WorkspacesPanelProvider
 					this.requireWorkspace(p.workspaceId),
 					p.page,
 				),
+			runAgentDiagnostic: (p) => this.runAgentDiagnostic(p),
 		}),
 	};
 
@@ -64,10 +90,7 @@ export class WorkspacesPanelProvider
 	constructor(
 		private readonly extensionUri: vscode.Uri,
 		private readonly store: WorkspaceStore,
-		private readonly commands: Pick<
-			Commands,
-			"login" | "openWorkspaceFromSidebar" | "openWorkspaceInDashboard"
-		>,
+		private readonly commands: PanelCommands,
 		private readonly logger: Logger,
 	) {}
 
@@ -151,13 +174,25 @@ export class WorkspacesPanelProvider
 		agentId,
 	}: OpenWorkspaceParams): Promise<void> {
 		const workspace = this.requireWorkspace(workspaceId);
-		const agent = extractAgents(workspace.latest_build.resources).find(
-			(candidate) => candidate.id === agentId,
-		);
-		if (agentId && !agent) {
-			throw new Error("Agent is no longer available");
-		}
+		const agent = agentId ? requireAgent(workspace, agentId) : undefined;
 		await this.commands.openWorkspaceFromSidebar(workspace, agent);
+	}
+
+	private async runAgentDiagnostic({
+		workspaceId,
+		agentId,
+		diagnostic,
+	}: AgentDiagnosticParams): Promise<void> {
+		const workspace = this.requireWorkspace(workspaceId);
+		const agent = requireAgent(workspace, agentId);
+		switch (diagnostic) {
+			case "ping":
+				return this.commands.pingWorkspace({ workspace, agent });
+			case "speedTest":
+				return this.commands.speedTest({ workspace, agent });
+			case "supportBundle":
+				return this.commands.supportBundle({ workspace, agent });
+		}
 	}
 
 	private requireWorkspace(workspaceId: string): Workspace {
