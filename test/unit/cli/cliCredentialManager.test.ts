@@ -128,13 +128,14 @@ const credentialFilesExist = () =>
 
 function setup(resolver: BinaryResolver = vi.fn().mockResolvedValue(TEST_BIN)) {
 	const sink = new TestSink();
+	const logger = createMockLogger();
 	const manager = new CliCredentialManager(
-		createMockLogger(),
+		logger,
 		resolver,
 		PATH_RESOLVER,
 		createTestTelemetryService(sink),
 	);
-	return { sink, manager };
+	return { sink, logger, manager };
 }
 
 describe("CliCredentialManager", () => {
@@ -246,19 +247,47 @@ describe("CliCredentialManager", () => {
 			},
 		);
 
-		it("still resolves for an empty token when the session file cannot be removed", async () => {
+		it("does not log for an empty token when no session file exists", async () => {
 			stubExecFile();
-			// A directory makes `rm` fail even with `force`, like a permission error.
-			vol.mkdirSync(`${CRED_DIR}/session/locked`, { recursive: true });
-			const { manager, sink } = setup();
+			const { manager, sink, logger } = setup();
 
-			await expect(
-				manager.storeToken(TEST_URL, "", configs),
-			).resolves.toBeUndefined();
+			await manager.storeToken(TEST_URL, "", configs);
+
 			expect(execFile).not.toHaveBeenCalled();
+			expect(logger.info).not.toHaveBeenCalled();
+			expect(logger.warn).not.toHaveBeenCalled();
 			expect(sink.expectOne("auth.credential.store")).toMatchObject({
 				properties: { outcome: "empty_token", result: "success" },
 			});
+		});
+
+		it("warns once per path when the session file cannot be removed", async () => {
+			stubExecFile();
+			// A directory makes `rm` fail, like a permission error.
+			vol.mkdirSync(`${CRED_DIR}/session/locked`, { recursive: true });
+			const first = setup();
+			const second = setup();
+
+			for (const { manager } of [first, first, second, second]) {
+				await expect(
+					manager.storeToken(TEST_URL, "", configs),
+				).resolves.toBeUndefined();
+			}
+
+			expect(execFile).not.toHaveBeenCalled();
+			expect(
+				vi.mocked(first.logger.warn).mock.calls.length +
+					vi.mocked(second.logger.warn).mock.calls.length,
+			).toBe(1);
+			expect(
+				first.sink.events.map((e) => [
+					e.properties.outcome,
+					e.properties.result,
+				]),
+			).toEqual([
+				["empty_token", "success"],
+				["empty_token", "success"],
+			]);
 		});
 
 		interface CliErrorCase {
