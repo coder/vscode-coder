@@ -2,7 +2,12 @@ import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { LazyStream, startWorkspace, updateWorkspace } from "@/api/workspace";
+import {
+	LazyStream,
+	restartWorkspace,
+	startWorkspace,
+	updateWorkspace,
+} from "@/api/workspace";
 
 import { workspace as createWorkspace } from "@repo/mocks";
 
@@ -75,6 +80,7 @@ function createUpdateCtx(
 		};
 		cliFeatures?: Partial<CliFeatureSet>;
 		serverFeatures?: Partial<ServerFeatureSet>;
+		check?: () => void;
 	} = {},
 ) {
 	vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
@@ -96,9 +102,7 @@ function createUpdateCtx(
 			.fn()
 			.mockResolvedValue({ ...workspace.latest_build, status: "stopped" }),
 		startWorkspace: vi.fn().mockResolvedValue(workspace.latest_build),
-		getTemplate: vi
-			.fn()
-			.mockResolvedValue({ active_version_id: "active-version-id" }),
+
 		waitForBuild: vi.fn().mockResolvedValue({
 			...workspace.latest_build.job,
 			status: "succeeded",
@@ -115,6 +119,7 @@ function createUpdateCtx(
 		binPath: "/usr/bin/coder",
 		workspace,
 		write: vi.fn<(data: string) => void>(),
+		check: overrides.check,
 		cliFeatures: { ...CLI_FEATURES, ...overrides.cliFeatures },
 		serverFeatures: {
 			tasks: false,
@@ -357,7 +362,15 @@ describe("updateWorkspace", () => {
 		restClient.postWorkspaceBuild.mockResolvedValue(accepted);
 
 		await expect(
-			updateWorkspace(ctx, [{ name: "region", value: "us-east" }]),
+			updateWorkspace(
+				{
+					restClient,
+					workspace: ctx.workspace,
+					write: ctx.write,
+					serverFeatures: ctx.serverFeatures,
+				},
+				[{ name: "region", value: "us-east" }],
+			),
 		).resolves.toEqual({ ...ctx.workspace, latest_build: accepted });
 		expect(restClient.postWorkspaceBuild).toHaveBeenCalledWith(
 			ctx.workspace.id,
@@ -365,34 +378,118 @@ describe("updateWorkspace", () => {
 		);
 	});
 
+	it.each([
+		{
+			name: "from start to restart",
+			final: { latest_build: { status: "running" as const } },
+		},
+		{
+			name: "to another version",
+			final: {
+				latest_build: { status: "stopped" as const },
+				template_active_version_id: "another-version",
+			},
+		},
+	])(
+		"does not change a confirmed update $name on its final read",
+		async ({ final }) => {
+			const { ctx, restClient } = createUpdateCtx({
+				workspace: { latest_build: { status: "stopped" } },
+				serverFeatures: { onSuccessBuild: true },
+			});
+			restClient.getWorkspace.mockResolvedValue(
+				createWorkspace({ outdated: true, ...final }),
+			);
+
+			await expect(updateWorkspace(ctx, [])).rejects.toThrow("changed");
+
+			expect(restClient.postWorkspaceBuild).not.toHaveBeenCalled();
+		},
+	);
+
+	it("checks the session before submitting a reread update", async () => {
+		let active = true;
+		const { ctx, restClient } = createUpdateCtx({
+			serverFeatures: { onSuccessBuild: true },
+			check: () => {
+				if (!active) throw new Error("session changed");
+			},
+		});
+		restClient.getWorkspace.mockImplementationOnce(() => {
+			active = false;
+			return Promise.resolve(ctx.workspace);
+		});
+
+		await expect(updateWorkspace(ctx, [])).rejects.toThrow("session changed");
+
+		expect(restClient.postWorkspaceBuild).not.toHaveBeenCalled();
+	});
+
+	it("checks the session between the API update stop and start", async () => {
+		let active = true;
+		const { ctx, restClient } = createUpdateCtx({
+			cliFeatures: { cliUpdate: false },
+			check: () => {
+				if (!active) throw new Error("session changed");
+			},
+		});
+		restClient.waitForBuild.mockImplementationOnce(() => {
+			active = false;
+			return Promise.resolve({ status: "succeeded" });
+		});
+
+		await expect(updateWorkspace(ctx, [])).rejects.toThrow("session changed");
+
+		expect(restClient.startWorkspace).not.toHaveBeenCalled();
+	});
+
+	it.each(["version", "build"] as const)(
+		"does not start an API update after its confirmed $0 changes during the stop",
+		async (change) => {
+			const { ctx, restClient } = createUpdateCtx({
+				cliFeatures: { cliUpdate: false },
+			});
+			restClient.getWorkspace.mockResolvedValue({
+				...ctx.workspace,
+				template_active_version_id:
+					change === "version"
+						? "another-version"
+						: ctx.workspace.template_active_version_id,
+				latest_build: {
+					...ctx.workspace.latest_build,
+					id:
+						change === "build"
+							? "another-build"
+							: ctx.workspace.latest_build.id,
+					status: "stopped",
+				},
+			});
+
+			await expect(updateWorkspace(ctx, [])).rejects.toThrow("changed");
+
+			expect(restClient.startWorkspace).not.toHaveBeenCalled();
+		},
+	);
+
 	it("falls back to the API update path when coder update is unsupported", async () => {
 		const { ctx, restClient, finalWorkspace } = createUpdateCtx({
 			cliFeatures: { cliUpdate: false },
 		});
+		const parameters = [{ name: "region", value: "us-east" }];
+		restClient.getWorkspace.mockResolvedValueOnce({
+			...ctx.workspace,
+			latest_build: { ...ctx.workspace.latest_build, status: "stopped" },
+		});
 
-		await expect(updateWorkspace(ctx, [])).resolves.toBe(finalWorkspace);
+		await expect(updateWorkspace(ctx, parameters)).resolves.toBe(
+			finalWorkspace,
+		);
 
 		expect(spawn).not.toHaveBeenCalled();
 		expect(restClient.stopWorkspace).toHaveBeenCalledWith(ctx.workspace.id);
 		expect(restClient.startWorkspace).toHaveBeenCalledWith(
 			ctx.workspace.id,
-			"active-version-id",
-			undefined,
-			[],
-		);
-	});
-
-	it("passes collected parameters when using the API fallback", async () => {
-		const { ctx, restClient } = createUpdateCtx({
-			cliFeatures: { cliUpdate: false },
-		});
-		const parameters = [{ name: "region", value: "us-east" }];
-
-		await updateWorkspace(ctx, parameters);
-
-		expect(restClient.startWorkspace).toHaveBeenCalledWith(
-			ctx.workspace.id,
-			"active-version-id",
+			"version-1",
 			undefined,
 			parameters,
 		);
@@ -403,13 +500,14 @@ describe("updateWorkspace", () => {
 			workspace: { latest_build: { status: "stopped", transition: "stop" } },
 			cliFeatures: { cliUpdate: false },
 		});
+		restClient.getWorkspace.mockResolvedValueOnce(ctx.workspace);
 
 		await updateWorkspace(ctx, []);
 
 		expect(restClient.stopWorkspace).not.toHaveBeenCalled();
 		expect(restClient.startWorkspace).toHaveBeenCalledWith(
 			ctx.workspace.id,
-			"active-version-id",
+			"version-1",
 			undefined,
 			[],
 		);
@@ -458,6 +556,19 @@ describe("startWorkspace", () => {
 		expect(restClient.getWorkspace).toHaveBeenCalledWith(ctx.workspace.id);
 	});
 
+	it("runs coder start when the last build was canceled", async () => {
+		const { ctx } = createUpdateCtx({
+			workspace: { latest_build: { status: "canceled", transition: "start" } },
+		});
+		const sp = controlSpawn();
+
+		const result = startWorkspace(ctx);
+		await sp.close(0);
+		await result;
+
+		expect(spawnedArgs()).toContain("start");
+	});
+
 	it("no-ops when the workspace is already running", async () => {
 		const { ctx, restClient } = createUpdateCtx();
 		await expect(startWorkspace(ctx)).resolves.toBe(ctx.workspace);
@@ -483,5 +594,133 @@ describe("startWorkspace", () => {
 			"--",
 			"testuser/test-workspace",
 		]);
+	});
+});
+
+interface StopFailureCase {
+	name: string;
+	waitForBuild: () => Promise<unknown>;
+}
+
+describe("restartWorkspace", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("waits for its stop, then preserves the version despite an active-version change", async () => {
+		const { ctx, restClient } = createUpdateCtx({
+			workspace: {
+				outdated: false,
+				template_active_version_id: "v-original",
+				latest_build: { template_version_id: "v-original" },
+			},
+			serverFeatures: { onSuccessBuild: true },
+		});
+		const stopBuild = { ...ctx.workspace.latest_build, id: "stop-build" };
+		restClient.postWorkspaceBuild.mockResolvedValueOnce(stopBuild);
+		restClient.getWorkspace.mockResolvedValue({
+			...ctx.workspace,
+			outdated: true,
+			template_active_version_id: "v-new",
+			latest_build: { ...stopBuild, status: "stopped", transition: "stop" },
+		});
+		const waiting = Promise.withResolvers<void>();
+		const job = Promise.withResolvers<{ status: string }>();
+		restClient.waitForBuild.mockImplementationOnce(() => {
+			waiting.resolve();
+			return job.promise;
+		});
+
+		const restarting = restartWorkspace(restClient, ctx.workspace);
+		await waiting.promise;
+		expect(restClient.postWorkspaceBuild).toHaveBeenCalledOnce();
+
+		job.resolve({ status: "succeeded" });
+		await restarting;
+
+		expect(restClient.postWorkspaceBuild.mock.calls).toEqual([
+			[ctx.workspace.id, { transition: "stop" }],
+			[
+				ctx.workspace.id,
+				{ transition: "start", template_version_id: "v-original" },
+			],
+		]);
+	});
+
+	it("does not restart over a build that superseded its stop", async () => {
+		const { ctx, restClient } = createUpdateCtx();
+		const stopBuild = { ...ctx.workspace.latest_build, id: "stop-build" };
+		restClient.postWorkspaceBuild.mockResolvedValueOnce(stopBuild);
+		restClient.getWorkspace.mockResolvedValue(
+			createWorkspace({
+				latest_build: { id: "another-build", status: "stopped" },
+			}),
+		);
+
+		await expect(restartWorkspace(restClient, ctx.workspace)).rejects.toThrow(
+			"changed",
+		);
+
+		expect(restClient.postWorkspaceBuild).toHaveBeenCalledOnce();
+	});
+
+	it("does not start after its session changes while waiting for the stop", async () => {
+		const { ctx, restClient } = createUpdateCtx();
+		const stopBuild = { ...ctx.workspace.latest_build, id: "stop-build" };
+		restClient.postWorkspaceBuild.mockResolvedValueOnce(stopBuild);
+		let active = true;
+		const check = () => {
+			if (!active) throw new Error("session changed");
+		};
+		restClient.waitForBuild.mockImplementationOnce(() => {
+			active = false;
+			return Promise.resolve({ status: "succeeded" });
+		});
+
+		await expect(
+			restartWorkspace(restClient, ctx.workspace, check),
+		).rejects.toThrow("session changed");
+
+		expect(restClient.postWorkspaceBuild).toHaveBeenCalledOnce();
+		expect(restClient.getWorkspace).not.toHaveBeenCalled();
+	});
+
+	it("does not retry an ambiguous start failure and explains how to recover", async () => {
+		const { ctx, restClient } = createUpdateCtx();
+		const stopBuild = { ...ctx.workspace.latest_build, id: "stop-build" };
+		restClient.postWorkspaceBuild
+			.mockResolvedValueOnce(stopBuild)
+			.mockRejectedValueOnce(new Error("connection lost"));
+		restClient.getWorkspace.mockResolvedValue({
+			...ctx.workspace,
+			latest_build: { ...stopBuild, status: "stopped", transition: "stop" },
+		});
+
+		await expect(restartWorkspace(restClient, ctx.workspace)).rejects.toThrow(
+			"Check its status before retrying",
+		);
+
+		expect(restClient.postWorkspaceBuild).toHaveBeenCalledTimes(2);
+	});
+
+	it.each<StopFailureCase>([
+		{
+			name: "fails",
+			waitForBuild: () => Promise.reject(new Error("job failed")),
+		},
+		{
+			name: "is canceled",
+			waitForBuild: () => Promise.resolve({ status: "canceled" }),
+		},
+	])("does not start when the stop $name", async ({ name, waitForBuild }) => {
+		const { ctx, restClient } = createUpdateCtx();
+		restClient.waitForBuild.mockImplementation(waitForBuild);
+
+		await expect(restartWorkspace(restClient, ctx.workspace)).rejects.toThrow(
+			name === "fails"
+				? "job failed"
+				: "Failed to stop testuser/test-workspace, so it was not started again",
+		);
+		expect(restClient.postWorkspaceBuild).toHaveBeenCalledOnce();
 	});
 });

@@ -37,6 +37,7 @@ export type WorkspaceCommands = Pick<
 	| "login"
 	| "openWorkspace"
 	| "viewInDashboard"
+	| "runWorkspaceAction"
 	| "refresh"
 	| "setFilter"
 	| "watchAgents"
@@ -86,12 +87,7 @@ export function WorkspacesPanel({
 				tooltip: <AgentHover agent={agent} />,
 				label: <AgentRow agent={agent} />,
 				action: (
-					<WorkspaceActions
-						workspaceId={workspace.id}
-						name={name}
-						agentId={agent.id}
-						api={api}
-					/>
+					<WorkspaceActions workspace={workspace} agent={agent} api={api} />
 				),
 				children: [
 					...appStatusNodes(agent),
@@ -116,22 +112,29 @@ export function WorkspacesPanel({
 			.map((agent) => agentNode(agent, expandedIds.includes(workspace.id)));
 		const name = workspace.name || "Unknown";
 		const hasAgentChat = agentWorkspaces.has(workspace.id);
+		const pendingAction = state?.pendingActions?.[workspace.id];
 		return {
 			id: workspace.id,
 			textValue: `${name}${hasAgentChat ? " Agent" : ""}${showOwner ? ` ${workspace.owner_name || "Unknown"}` : ""}`,
-			tooltip: <WorkspaceHover workspace={workspace} showOwner={showOwner} />,
+			tooltip: (
+				<WorkspaceHover
+					workspace={workspace}
+					showOwner={showOwner}
+					pendingAction={pendingAction}
+				/>
+			),
 			label: (
 				<WorkspaceRow
 					workspace={workspace}
 					showOwner={showOwner}
 					hasAgentChat={hasAgentChat}
+					pendingAction={pendingAction}
 				/>
 			),
 			action: (
 				<WorkspaceActions
-					workspaceId={workspace.id}
-					name={name}
-					status={workspace.latest_build.status}
+					workspace={workspace}
+					pendingAction={pendingAction}
 					api={api}
 				/>
 			),

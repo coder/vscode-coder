@@ -4,6 +4,7 @@ import {
 	buildCommandHandlers,
 	WorkspacesApi,
 	type OpenWorkspaceParams,
+	type WorkspaceActionParams,
 } from "@repo/shared";
 
 import { extractAgents } from "../../api/models";
@@ -25,7 +26,20 @@ import type { WorkspaceStore } from "./workspaceStore";
 const USER_ACTION_METHODS: ReadonlySet<string> = new Set([
 	WorkspacesApi.openWorkspace.method,
 	WorkspacesApi.viewInDashboard.method,
+	WorkspacesApi.runWorkspaceAction.method,
 ]);
+
+type PanelCommands = Pick<
+	Commands,
+	| "login"
+	| "openWorkspaceFromSidebar"
+	| "openWorkspaceInDashboard"
+	| "startWorkspace"
+	| "stopWorkspace"
+	| "restartWorkspace"
+	| "updateWorkspace"
+	| "deleteWorkspace"
+>;
 
 /**
  * Renders the workspaces of the current deployment in a webview. All state
@@ -55,6 +69,10 @@ export class WorkspacesPanelProvider
 					this.requireWorkspace(p.workspaceId),
 					p.page,
 				),
+			runWorkspaceAction: (p) =>
+				this.store.followAction(p.workspaceId, p.action, () =>
+					this.runWorkspaceAction(p),
+				),
 		}),
 	};
 
@@ -64,10 +82,7 @@ export class WorkspacesPanelProvider
 	constructor(
 		private readonly extensionUri: vscode.Uri,
 		private readonly store: WorkspaceStore,
-		private readonly commands: Pick<
-			Commands,
-			"login" | "openWorkspaceFromSidebar" | "openWorkspaceInDashboard"
-		>,
+		private readonly commands: PanelCommands,
 		private readonly logger: Logger,
 	) {}
 
@@ -158,6 +173,26 @@ export class WorkspacesPanelProvider
 			throw new Error("Agent is no longer available");
 		}
 		await this.commands.openWorkspaceFromSidebar(workspace, agent);
+	}
+
+	/** Commands re-read the workspace before acting. */
+	private async runWorkspaceAction({
+		workspaceId,
+		action,
+	}: WorkspaceActionParams): Promise<void> {
+		const workspace = this.requireWorkspace(workspaceId);
+		switch (action) {
+			case "start":
+				return this.commands.startWorkspace(workspace);
+			case "stop":
+				return this.commands.stopWorkspace(workspace);
+			case "restart":
+				return this.commands.restartWorkspace(workspace);
+			case "update":
+				return this.commands.updateWorkspace(workspace);
+			case "delete":
+				return this.commands.deleteWorkspace(workspace);
+		}
 	}
 
 	private requireWorkspace(workspaceId: string): Workspace {

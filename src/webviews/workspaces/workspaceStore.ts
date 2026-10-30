@@ -2,6 +2,15 @@ import { isAxiosError } from "axios";
 import { isDeepStrictEqual } from "node:util";
 import * as vscode from "vscode";
 
+import {
+	isWorkspaceBusy,
+	type Workspace,
+	type WorkspaceAction,
+	type WorkspaceFilter,
+	type WorkspaceListStatus,
+	type WorkspacesState,
+} from "@repo/shared";
+
 import { HttpStatusCode } from "../../api/httpStatusCode";
 import { extractAllAgents } from "../../api/models";
 import { errToStr } from "../../error/normalize";
@@ -15,13 +24,6 @@ import {
 
 import { Poller, type NextRun, type RetryOptions } from "./poller";
 
-import type {
-	Workspace,
-	WorkspaceFilter,
-	WorkspaceListStatus,
-	WorkspacesState,
-} from "@repo/shared";
-
 import type { AgentMetadataClient } from "../../api/agentMetadata";
 import type { CoderApi } from "../../api/coderApi";
 import type { SessionState } from "../../deployment/sessionStore";
@@ -29,6 +31,7 @@ import type { Logger } from "../../logging/logger";
 
 interface WorkspacesClient extends AgentMetadataClient {
 	readonly experimental: Pick<CoderApi["experimental"], "getChatsByWorkspace">;
+	getWorkspace(workspaceId: string): Promise<Workspace>;
 	getWorkspaces(
 		request: Parameters<CoderApi["getWorkspaces"]>[0],
 	): Promise<{ readonly workspaces: readonly Workspace[] }>;
@@ -38,6 +41,7 @@ const RETRY: RetryOptions = { initialDelayMs: 5_000, maxDelayMs: 60_000 };
 const LOADING: WorkspaceListStatus = { kind: "loading" };
 const READY: WorkspaceListStatus = { kind: "ready" };
 const MINUTE_MS = 60_000;
+const FOLLOW_INTERVAL_MS = 5_000;
 
 function listedAgentIds(
 	requested: readonly string[],
@@ -73,6 +77,10 @@ export class WorkspaceStore implements vscode.Disposable {
 	/** Agents the webview is showing, listed or not. */
 	private requestedAgents: readonly string[] = [];
 	private lastEmitted: WorkspacesState | undefined;
+	/** Re-read workspaces acted on, since their filter may not poll. */
+	private readonly followers = new Map<string, Poller>();
+	/** Actions running, which may not have queued their build yet. */
+	private readonly acting = new Map<string, WorkspaceAction>();
 	private visible = false;
 	private disposed = false;
 
@@ -105,6 +113,9 @@ export class WorkspaceStore implements vscode.Disposable {
 			...(this.listedAt === undefined ? {} : { listedAt: this.listedAt }),
 			...(this.agentWorkspaceIds.length
 				? { agentWorkspaceIds: this.agentWorkspaceIds }
+				: {}),
+			...(this.acting.size
+				? { pendingActions: Object.fromEntries(this.acting) }
 				: {}),
 		};
 	}
@@ -147,6 +158,43 @@ export class WorkspaceStore implements vscode.Disposable {
 		return this.watchListedAgents();
 	}
 
+	/**
+	 * Report `action` as pending while `run` performs it, and keep the row
+	 * current until its build settles. Ignored while another action runs there.
+	 */
+	public async followAction(
+		workspaceId: string,
+		action: WorkspaceAction,
+		run: () => Promise<void>,
+	): Promise<void> {
+		if (this.disposed) {
+			return;
+		}
+		const session = this.sessionState.current;
+		const pending = this.acting.get(workspaceId);
+		if (pending) {
+			this.logger.warn(
+				`Ignoring ${action} on workspace ${workspaceId} while ${pending} runs`,
+			);
+			return;
+		}
+		this.acting.set(workspaceId, action);
+		this.publish();
+		void this.follow(workspaceId);
+		try {
+			await run();
+		} finally {
+			if (!this.disposed && this.sessionState.current === session) {
+				// Re-read first, so the old actions never reappear.
+				await this.follow(workspaceId);
+				if (!this.disposed && this.sessionState.current === session) {
+					this.acting.delete(workspaceId);
+					this.publish();
+				}
+			}
+		}
+	}
+
 	/** List now, keeping the list on show and offering rejected filters again. */
 	public refresh(): Promise<void> {
 		// A hidden panel cannot re-validate a filter it offers again.
@@ -160,6 +208,8 @@ export class WorkspaceStore implements vscode.Disposable {
 
 	public dispose(): void {
 		this.disposed = true;
+		this.acting.clear();
+		this.stopFollowing();
 		for (const disposable of this.disposables) {
 			disposable.dispose();
 		}
@@ -260,6 +310,58 @@ export class WorkspaceStore implements vscode.Disposable {
 		}
 	}
 
+	private follow(workspaceId: string): Promise<void> {
+		let follower = this.followers.get(workspaceId);
+		if (!follower) {
+			follower = new Poller(
+				(token) => this.refreshWorkspace(workspaceId, token),
+				RETRY,
+				this.logger,
+			);
+			this.followers.set(workspaceId, follower);
+		}
+		return follower.run();
+	}
+
+	private async refreshWorkspace(
+		workspaceId: string,
+		token: vscode.CancellationToken,
+	): Promise<NextRun> {
+		let workspace: Workspace;
+		try {
+			workspace = await this.client.getWorkspace(workspaceId);
+		} catch (error) {
+			if (this.disposed || token.isCancellationRequested) {
+				return "idle";
+			}
+			// A deleted workspace is gone, so list again to drop it.
+			this.logger.warn("Failed to refresh workspace:", error);
+			void this.poller.run();
+			return "idle";
+		}
+		if (this.disposed || token.isCancellationRequested) {
+			return "idle";
+		}
+		if (this.findWorkspace(workspaceId)) {
+			this.setList(
+				this.workspaces.map((listed) =>
+					listed.id === workspaceId ? workspace : listed,
+				),
+				this.status,
+			);
+		}
+		return this.acting.has(workspaceId) || isWorkspaceBusy(workspace)
+			? { delayMs: FOLLOW_INTERVAL_MS }
+			: "idle";
+	}
+
+	private stopFollowing(): void {
+		for (const follower of this.followers.values()) {
+			follower.dispose();
+		}
+		this.followers.clear();
+	}
+
 	/** Show `workspaces` as loading, then list again. */
 	private reload(workspaces: readonly Workspace[] = []): Promise<void> {
 		this.setList(workspaces, LOADING);
@@ -302,6 +404,8 @@ export class WorkspaceStore implements vscode.Disposable {
 		this.agentLookupSupported = true;
 		this.agentWorkspaceIds = [];
 		this.requestedAgents = [];
+		this.acting.clear();
+		this.stopFollowing();
 		if (!this.filters.includes(this.filter)) {
 			this.filter = DEFAULT_WORKSPACE_FILTER;
 		}

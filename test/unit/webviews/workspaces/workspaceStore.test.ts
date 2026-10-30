@@ -18,6 +18,8 @@ import {
 	userWithRoles,
 } from "../../../mocks/testHelpers";
 
+import type { WorkspaceStatus } from "coder/site/src/api/typesGenerated";
+
 import type { Workspace, WorkspacesState } from "@repo/shared";
 
 /** The 400 a deployment answers with when it cannot run a filter's query. */
@@ -353,6 +355,167 @@ describe("WorkspaceStore", () => {
 
 			h.session.signOut();
 			expect(socket.close).toHaveBeenCalledOnce();
+		});
+	});
+
+	describe("following an action", () => {
+		const withStatus = (status: WorkspaceStatus) =>
+			workspace({ id: "workspace-1", latest_build: { status } });
+
+		/** Shown under "shared", which lists only on demand. */
+		async function onDemand() {
+			vi.useFakeTimers();
+			onTestFinished(() => {
+				vi.useRealTimers();
+			});
+			const h = await shown([]);
+			h.client.respondOnce([withStatus("running")]);
+			await h.store.setFilter("shared");
+			return h;
+		}
+
+		const status = (h: Store) => h.last()?.workspaces[0].latest_build.status;
+
+		/** Start a stop on workspace-1; the returned function completes it. */
+		function stopUntilFinished(h: Store): () => Promise<void> {
+			const stop = Promise.withResolvers<void>();
+			const stopping = h.store.followAction(
+				"workspace-1",
+				"stop",
+				() => stop.promise,
+			);
+			return () => {
+				stop.resolve();
+				return stopping;
+			};
+		}
+
+		it("re-reads the workspace while the action runs and until its build settles", async () => {
+			const h = await onDemand();
+			const lists = h.client.getWorkspaces.mock.calls.length;
+			const action = Promise.withResolvers<void>();
+			h.client.getWorkspace
+				.mockResolvedValueOnce(withStatus("running"))
+				.mockResolvedValueOnce(withStatus("stopping"))
+				.mockResolvedValueOnce(withStatus("stopping"))
+				.mockResolvedValueOnce(withStatus("stopped"));
+
+			const following = h.store.followAction(
+				"workspace-1",
+				"stop",
+				() => action.promise,
+			);
+			await vi.advanceTimersByTimeAsync(5_000);
+			expect(status(h)).toBe("stopping");
+
+			action.resolve();
+			await following;
+			await vi.advanceTimersByTimeAsync(5_000);
+			expect(status(h)).toBe("stopped");
+
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(h.client.getWorkspace).toHaveBeenCalledTimes(4);
+			expect(h.client.getWorkspaces).toHaveBeenCalledTimes(lists);
+		});
+
+		it("reports the action as pending until the row is re-read after it", async () => {
+			const h = await onDemand();
+			const before = h.states.length;
+			h.client.getWorkspace
+				.mockResolvedValueOnce(withStatus("running"))
+				.mockResolvedValue(withStatus("stopping"));
+
+			await h.store.followAction("workspace-1", "stop", () =>
+				Promise.resolve(),
+			);
+
+			expect(
+				h.states
+					.slice(before)
+					.map((state) => [
+						state.pendingActions,
+						state.workspaces[0].latest_build.status,
+					]),
+			).toEqual([
+				[{ "workspace-1": "stop" }, "running"],
+				[{ "workspace-1": "stop" }, "stopping"],
+				[undefined, "stopping"],
+			]);
+		});
+
+		it("clears the pending action when it fails", async () => {
+			const h = await onDemand();
+			h.client.getWorkspace.mockResolvedValue(withStatus("running"));
+
+			await expect(
+				h.store.followAction("workspace-1", "stop", () =>
+					Promise.reject(new Error("denied")),
+				),
+			).rejects.toThrow("denied");
+
+			expect(h.store.state.pendingActions).toBeUndefined();
+		});
+
+		it("ignores another action on the workspace while one runs", async () => {
+			const h = await onDemand();
+			h.client.getWorkspace.mockResolvedValue(withStatus("running"));
+			const finishStop = stopUntilFinished(h);
+			const remove = vi.fn(() => Promise.resolve());
+
+			await h.store.followAction("workspace-1", "delete", remove);
+
+			expect(remove).not.toHaveBeenCalled();
+			expect(h.store.state.pendingActions).toEqual({ "workspace-1": "stop" });
+			await finishStop();
+		});
+
+		it("isolates pending actions and their completions across sessions", async () => {
+			const h = await onDemand();
+			h.client.getWorkspace.mockResolvedValue(withStatus("running"));
+			const finishStop = stopUntilFinished(h);
+
+			h.session.signInAs("someone-else");
+			await h.store.settled;
+			expect(h.store.state.pendingActions).toBeUndefined();
+
+			const start = Promise.withResolvers<void>();
+			const run = vi.fn(() => start.promise);
+			const starting = h.store.followAction("workspace-1", "start", run);
+			expect(run).toHaveBeenCalledOnce();
+			const fetches = h.client.getWorkspace.mock.calls.length;
+
+			await finishStop();
+			expect(h.client.getWorkspace).toHaveBeenCalledTimes(fetches);
+			expect(h.store.state.pendingActions).toEqual({ "workspace-1": "start" });
+
+			start.resolve();
+			await starting;
+			expect(h.store.state.pendingActions).toBeUndefined();
+		});
+
+		it("does not resume following when an action outlives disposal", async () => {
+			const h = await onDemand();
+			const finishStop = stopUntilFinished(h);
+			h.store.dispose();
+			const fetches = h.client.getWorkspace.mock.calls.length;
+
+			await finishStop();
+
+			expect(h.client.getWorkspace).toHaveBeenCalledTimes(fetches);
+			expect(h.store.state.pendingActions).toBeUndefined();
+		});
+
+		it("lists again when the workspace cannot be read, as after a delete", async () => {
+			const h = await onDemand();
+			h.client.getWorkspace.mockRejectedValue(createAxiosError(410, "gone"));
+			h.client.respondOnce([]);
+
+			await h.store.followAction("workspace-1", "delete", () =>
+				Promise.resolve(),
+			);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(ids(h.last())).toEqual([]);
 		});
 	});
 

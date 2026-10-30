@@ -42,6 +42,7 @@ import { WebSocketCloseCode, HandshakeError } from "@/websocket/codes";
 import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
 
 import {
+	createAxiosError,
 	createMockLogger,
 	createMockUser,
 	MockConfigurationProvider,
@@ -1059,6 +1060,128 @@ describe("CoderApi", () => {
 			await expect(api.waitForBuild(BUILD)).rejects.toBeInstanceOf(
 				InvalidApiResponseError,
 			);
+		});
+
+		it("retries transient read failures only when requested", async () => {
+			vi.useFakeTimers();
+			api = createApi();
+			mockAdapter.mockRejectedValueOnce(
+				new AxiosError("network down", AxiosError.ERR_NETWORK),
+			);
+			mockAdapter.mockRejectedValueOnce(
+				createAxiosError(HttpStatusCode.INTERNAL_SERVER_ERROR, "HTTP 500"),
+			);
+			mockPoll({ status: "succeeded" });
+
+			const waiting = api.waitForBuild(BUILD, {
+				retryTransientErrors: true,
+			});
+			const assertion = expect(waiting).resolves.toEqual({
+				status: "succeeded",
+			});
+			await vi.advanceTimersByTimeAsync(2000);
+
+			await assertion;
+			expect(mockAdapter).toHaveBeenCalledTimes(3);
+		});
+
+		it("does not retry transient failures by default", async () => {
+			api = createApi();
+			mockAdapter.mockRejectedValueOnce(
+				new AxiosError("network down", AxiosError.ERR_NETWORK),
+			);
+
+			await expect(api.waitForBuild(BUILD)).rejects.toThrow("network down");
+			expect(mockAdapter).toHaveBeenCalledTimes(1);
+		});
+
+		it("stops after three consecutive transient retries", async () => {
+			vi.useFakeTimers();
+			api = createApi();
+			mockAdapter.mockRejectedValue(
+				new AxiosError("network down", AxiosError.ERR_NETWORK),
+			);
+
+			const waiting = api.waitForBuild(BUILD, {
+				retryTransientErrors: true,
+			});
+			const assertion = expect(waiting).rejects.toThrow("network down");
+			await vi.advanceTimersByTimeAsync(3000);
+
+			await assertion;
+			expect(mockAdapter).toHaveBeenCalledTimes(4);
+		});
+
+		it("does not retry canceled requests", async () => {
+			vi.useFakeTimers();
+			api = createApi();
+			const controller = new AbortController();
+			const canceled = new AxiosError("canceled", AxiosError.ERR_CANCELED, {
+				headers: new AxiosHeaders(),
+				signal: controller.signal,
+			});
+			mockAdapter.mockRejectedValueOnce(canceled);
+
+			await expect(
+				api.waitForBuild(BUILD, { retryTransientErrors: true }),
+			).rejects.toBe(canceled);
+			expect(mockAdapter).toHaveBeenCalledTimes(1);
+		});
+
+		it("does not retry after cancellation during a transient failure", async () => {
+			api = createApi();
+			let active = true;
+			mockAdapter.mockImplementationOnce(() => {
+				active = false;
+				return Promise.reject(
+					new AxiosError("network down", AxiosError.ERR_NETWORK),
+				);
+			});
+			const check = () => {
+				if (!active) throw new Error("session changed");
+			};
+
+			await expect(
+				api.waitForBuild(BUILD, { check, retryTransientErrors: true }),
+			).rejects.toThrow("session changed");
+			expect(mockAdapter).toHaveBeenCalledTimes(1);
+		});
+
+		it("does not retry auth or schema errors when transient retries are enabled", async () => {
+			api = createApi();
+			mockAdapter.mockRejectedValueOnce(
+				createAxiosError(HttpStatusCode.UNAUTHORIZED, "HTTP 401"),
+			);
+			await expect(
+				api.waitForBuild(BUILD, { retryTransientErrors: true }),
+			).rejects.toThrow("HTTP 401");
+			expect(mockAdapter).toHaveBeenCalledTimes(1);
+
+			mockPoll({});
+			await expect(
+				api.waitForBuild(BUILD, { retryTransientErrors: true }),
+			).rejects.toBeInstanceOf(InvalidApiResponseError);
+			expect(mockAdapter).toHaveBeenCalledTimes(2);
+		});
+
+		it("checks cancellation around reads and polling sleeps", async () => {
+			vi.useFakeTimers();
+			api = createApi();
+			let active = true;
+			const check = () => {
+				if (!active) throw new Error("session changed");
+			};
+			mockPoll({ status: "running" });
+			mockPoll({ status: "succeeded" });
+
+			const waiting = api.waitForBuild(BUILD, { check });
+			const assertion = expect(waiting).rejects.toThrow("session changed");
+			await vi.advanceTimersByTimeAsync(0);
+			active = false;
+			await vi.advanceTimersByTimeAsync(1000);
+
+			await assertion;
+			expect(mockAdapter).toHaveBeenCalledTimes(1);
 		});
 	});
 

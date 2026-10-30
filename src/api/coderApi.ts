@@ -1,4 +1,5 @@
 import {
+	AxiosError,
 	isAxiosError,
 	type AxiosHeaders,
 	type AxiosInstance,
@@ -81,6 +82,24 @@ import type {
 } from "../websocket/eventStreamConnection";
 
 const coderSessionTokenHeader = "Coder-Session-Token";
+const TRANSIENT_NETWORK_ERRORS = new Set([
+	AxiosError.ERR_NETWORK,
+	AxiosError.ECONNABORTED,
+	AxiosError.ETIMEDOUT,
+	"ECONNRESET",
+	"ECONNREFUSED",
+	"EPIPE",
+	"EAI_AGAIN",
+]);
+
+function isTransientBuildReadError(error: unknown): boolean {
+	if (!isAxiosError(error) || error.code === AxiosError.ERR_CANCELED) {
+		return false;
+	}
+	return error.response
+		? error.response.status >= 500 && error.response.status < 600
+		: TRANSIENT_NETWORK_ERRORS.has(error.code ?? "");
+}
 
 /** W3C baggage header used to propagate the session ID to the server. */
 const BAGGAGE_HEADER = "baggage";
@@ -178,20 +197,42 @@ export class CoderApi extends Api implements vscode.Disposable {
 	 */
 	override waitForBuild = async (
 		build: WorkspaceBuild,
+		options?: { check?: () => void; retryTransientErrors?: boolean },
 	): Promise<ProvisionerJob | undefined> => {
+		const check = () => options?.check?.();
+		const sleep = () => new Promise((resolve) => setTimeout(resolve, 1000));
+		let retries = 0;
 		while (true) {
-			const { job } = await this.getWorkspaceBuildByNumber(
-				build.workspace_owner_name,
-				build.workspace_name,
-				build.build_number,
-			);
+			check();
+			let job: ProvisionerJob;
+			try {
+				({ job } = await this.getWorkspaceBuildByNumber(
+					build.workspace_owner_name,
+					build.workspace_name,
+					build.build_number,
+				));
+			} catch (error) {
+				check();
+				if (
+					!options?.retryTransientErrors ||
+					retries >= 3 ||
+					!isTransientBuildReadError(error)
+				) {
+					throw error;
+				}
+				retries++;
+				await sleep();
+				continue;
+			}
+			check();
+			retries = 0;
 			if (job.status === "failed") {
 				throw new Error(`Build ${build.build_number} failed`);
 			}
 			if (job.status === "succeeded" || job.status === "canceled") {
 				return job;
 			}
-			await new Promise((resolve) => setTimeout(resolve, 1000));
+			await sleep();
 		}
 	};
 

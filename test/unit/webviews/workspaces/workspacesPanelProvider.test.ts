@@ -15,6 +15,7 @@ import {
 	WorkspacesApi,
 	type CommandDef,
 	type OpenWorkspaceParams,
+	type WorkspaceAction,
 	type WorkspacesState,
 } from "@repo/shared";
 
@@ -29,8 +30,6 @@ import {
 } from "../../../mocks/testHelpers";
 
 import type { Workspace } from "coder/site/src/api/typesGenerated";
-
-import type { Commands } from "@/commands";
 
 const alice = () =>
 	workspace({
@@ -60,10 +59,12 @@ function setup() {
 		login: vi.fn(() => Promise.resolve()),
 		openWorkspaceFromSidebar: vi.fn(() => Promise.resolve()),
 		openWorkspaceInDashboard: vi.fn(() => Promise.resolve()),
-	} satisfies Pick<
-		Commands,
-		"login" | "openWorkspaceFromSidebar" | "openWorkspaceInDashboard"
-	>;
+		startWorkspace: vi.fn(() => Promise.resolve()),
+		stopWorkspace: vi.fn(() => Promise.resolve()),
+		restartWorkspace: vi.fn(() => Promise.resolve()),
+		updateWorkspace: vi.fn(() => Promise.resolve()),
+		deleteWorkspace: vi.fn(() => Promise.resolve()),
+	} satisfies ConstructorParameters<typeof WorkspacesPanelProvider>[2];
 	const provider = new WorkspacesPanelProvider(
 		vscode.Uri.file("/test"),
 		store,
@@ -279,6 +280,32 @@ describe("WorkspacesPanelProvider", () => {
 			agentName && expect.objectContaining({ name: agentName }),
 		);
 	});
+
+	interface ActionCase {
+		action: WorkspaceAction;
+		command: keyof Panel["commands"];
+	}
+
+	it.each<ActionCase>([
+		{ action: "start", command: "startWorkspace" },
+		{ action: "stop", command: "stopWorkspace" },
+		{ action: "restart", command: "restartWorkspace" },
+		{ action: "update", command: "updateWorkspace" },
+		{ action: "delete", command: "deleteWorkspace" },
+	])(
+		"runs $action through Commands and follows the workspace",
+		async ({ action, command }) => {
+			const h = await shown([alice()]);
+			await h.send(WorkspacesApi.runWorkspaceAction, {
+				workspaceId: "workspace-1",
+				action,
+			});
+			expect(h.commands[command]).toHaveBeenCalledWith(
+				expect.objectContaining({ id: "workspace-1" }),
+			);
+			expect(h.client.getWorkspace).toHaveBeenCalledWith("workspace-1");
+		},
+	);
 
 	interface FailedOpenCase {
 		name: string;

@@ -1617,6 +1617,10 @@ export class MockWorkspacesClient {
 			Promise.resolve({ workspaces: [], count: 0 }),
 	);
 
+	readonly getWorkspace = vi.fn((id: string): Promise<Workspace> =>
+		Promise.resolve(createWorkspace({ id })),
+	);
+
 	readonly getHost = vi.fn((): string | undefined => TEST_DEPLOYMENT.url);
 
 	watchAgentMetadata(agentId: string) {
