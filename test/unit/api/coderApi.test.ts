@@ -120,6 +120,18 @@ describe("CoderApi", () => {
 		return CoderApi.create(url, token, mockLogger, telemetry);
 	};
 
+	async function pendingUserRequest(client: CoderApi) {
+		const headers = Promise.withResolvers<Record<string, string>>();
+		const started = Promise.withResolvers<void>();
+		vi.mocked(getHeaders).mockImplementationOnce(() => {
+			started.resolve();
+			return headers.promise;
+		});
+		const request = client.getAuthenticatedUser();
+		await started.promise;
+		return { headers, request };
+	}
+
 	beforeEach(() => {
 		vi.resetAllMocks();
 
@@ -166,6 +178,63 @@ describe("CoderApi", () => {
 			const response = await api.getAxiosInstance().get("/api/v2/users/me");
 
 			expect(response.config.timeout).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+		});
+
+		it.each([
+			["setCredentials", "https://new.example.com", "new-token"],
+			["setCredentials", CODER_URL, "new-token"],
+			["setCredentials", CODER_URL, "old-token"],
+			["setCredentials", undefined, undefined],
+			["setHost", CODER_URL, "old-token"],
+			["setHost", undefined, "old-token"],
+		] as const)(
+			"%s cancels pending requests when rebinding to %s with %s",
+			async (method, host, token) => {
+				api = createApi(CODER_URL, "old-token");
+				const { headers, request } = await pendingUserRequest(api);
+				const canceled = expect(request).rejects.toMatchObject({
+					code: "ERR_CANCELED",
+				});
+				if (method === "setHost") {
+					api.setHost(host);
+				} else {
+					api.setCredentials(host, token);
+				}
+				headers.resolve({});
+				await canceled;
+				expect(mockAdapter).not.toHaveBeenCalled();
+
+				if (host !== undefined) {
+					mockAdapter.mockResolvedValueOnce({
+						data: createMockUser(),
+						status: 200,
+						statusText: "OK",
+						headers: {},
+						config: {},
+					});
+					await api.getAuthenticatedUser();
+					const response = mockAdapter.mock.calls[0][0];
+					expect(response.baseURL).toBe(host);
+					expect(response.headers["Coder-Session-Token"]).toBe(token);
+				}
+			},
+		);
+
+		it("preserves pending requests during token refresh", async () => {
+			api = createApi();
+			mockAdapter.mockResolvedValueOnce({
+				data: createMockUser(),
+				status: 200,
+				statusText: "OK",
+				headers: {},
+				config: {},
+			});
+			const { headers, request } = await pendingUserRequest(api);
+			api.setSessionToken("refreshed-token");
+			headers.resolve({});
+			await request;
+			expect(mockAdapter).toHaveBeenCalledOnce();
+			expect(api.getSessionToken()).toBe("refreshed-token");
 		});
 
 		it("allows per-request timeout overrides", async () => {
@@ -1072,6 +1141,20 @@ describe("CoderApi", () => {
 	});
 
 	describe("dispose", () => {
+		it("aborts pending requests on disposal", async () => {
+			api = createApi();
+			const { headers, request } = await pendingUserRequest(api);
+			const canceled = expect(request).rejects.toMatchObject({
+				code: "ERR_CANCELED",
+			});
+
+			api.dispose();
+			headers.resolve({});
+
+			await canceled;
+			expect(mockAdapter).not.toHaveBeenCalled();
+		});
+
 		it("disposes all tracked reconnecting sockets", async () => {
 			const sockets: Array<Partial<Ws>> = [];
 			vi.mocked(Ws).mockImplementation(function (url: string | URL) {

@@ -359,7 +359,13 @@ export class Remote {
 			}
 
 			// Listen for token changes for this deployment
-			disposables.push(this.watchRemoteSessionAuth(context, workspaceClient));
+			disposables.push(
+				this.watchRemoteSessionAuth(
+					parts.safeHostname,
+					workspaceClient,
+					remoteOAuthManager,
+				),
+			);
 
 			// Next is to find the workspace from the URI scheme provided.
 			const foundWorkspace = await tracer.phase("workspace_lookup", () =>
@@ -810,18 +816,54 @@ export class Remote {
 	}
 
 	private watchRemoteSessionAuth(
-		context: RemoteSetupContext,
+		safeHostname: string,
 		workspaceClient: CoderApi,
+		oauth: OAuthSessionManager,
 	): vscode.Disposable {
-		return this.secretsManager.onDidChangeSessionAuth(
-			context.parts.safeHostname,
+		// This lookup may itself refresh OAuth, so token notifications must let it finish.
+		let identity = workspaceClient.getAuthenticatedUser().then(
+			(user) => user.id,
+			() => undefined,
+		);
+		let revision = 0;
+		let disposed = false;
+		let verification: CoderApi | undefined;
+		const listener = this.secretsManager.onDidChangeSessionAuth(
+			safeHostname,
 			async (auth) => {
-				workspaceClient.setCredentials(auth?.url, auth?.token);
-				if (!auth?.url) {
+				if (disposed) {
+					return;
+				}
+				const ourRevision = ++revision;
+				verification?.dispose();
+				if (!auth) {
+					identity = Promise.resolve(undefined);
+					workspaceClient.setCredentials(undefined, undefined);
+					oauth.clearDeployment();
 					return;
 				}
 
+				const client = CoderApi.create(auth.url, auth.token, this.logger);
+				verification = client;
 				try {
+					const [previousId, user] = await Promise.all([
+						identity,
+						client.getAuthenticatedUser(),
+					]);
+					if (revision !== ourRevision) {
+						return;
+					}
+					identity = Promise.resolve(user.id);
+					if (
+						auth.url === workspaceClient.getHost() &&
+						previousId === user.id
+					) {
+						workspaceClient.setSessionToken(auth.token);
+					} else {
+						workspaceClient.setCredentials(auth.url, auth.token);
+						await oauth.setDeployment({ url: auth.url, safeHostname });
+						if (revision !== ourRevision) return;
+					}
 					await this.cliManager.configure(auth.url, auth.token, {
 						silent: true,
 					});
@@ -829,13 +871,28 @@ export class Remote {
 						"Updated CLI config with new token for remote deployment",
 					);
 				} catch (error) {
-					this.logger.error(
-						"Failed to update CLI config for remote deployment",
-						error,
-					);
+					if (revision === ourRevision) {
+						this.logger.error(
+							"Failed to update credentials for remote deployment",
+							toError(error).message,
+						);
+					}
+				} finally {
+					client.dispose();
+					if (verification === client) {
+						verification = undefined;
+					}
 				}
 			},
 		);
+		return {
+			dispose: () => {
+				disposed = true;
+				revision++;
+				listener.dispose();
+				verification?.dispose();
+			},
+		};
 	}
 
 	/**

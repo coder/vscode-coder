@@ -32,6 +32,10 @@
   ``!#$%&'*+-.^_`|~``, so whitespace (including tabs and carriage returns) and
   `:` are not allowed. An invisible byte order mark at the start of the output,
   which some Windows editors and PowerShell add, is ignored.
+- Pending HTTP requests are canceled when the Coder deployment or account changes,
+  but preserved during verified same-account token refreshes, including remote windows.
+- Canceled OAuth refreshes no longer overwrite replacement credentials or
+  reopen sign-in prompts.
 
 ## [v1.17.2](https://github.com/coder/vscode-coder/releases/tag/v1.17.2) 2026-10-28
 
