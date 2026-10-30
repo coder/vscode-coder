@@ -415,15 +415,15 @@ describe("LoginCoordinator", () => {
 		});
 	});
 
-	describe("mTLS authentication", () => {
-		it("succeeds without prompt and returns token=''", async () => {
-			const { mockConfig, secretsManager, coordinator, mockSuccessfulAuth } =
+	describe("empty-token authentication", () => {
+		it("succeeds without prompt and persists the session", async () => {
+			const { secretsManager, coordinator, mockSuccessfulAuth } =
 				createTestContext();
-			// Configure mTLS via certs (no token needed)
-			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
-			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
-
 			const user = mockSuccessfulAuth();
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "",
+			});
 
 			const result = await coordinator.ensureLoggedIn({
 				url: TEST_URL,
@@ -432,16 +432,13 @@ describe("LoginCoordinator", () => {
 
 			expect(result).toEqual({
 				success: true,
-				method: "mtls",
+				method: "stored_token",
 				user,
 				token: "",
 			});
-
-			// Verify empty string token was persisted
-			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
-			expect(auth?.token).toBe("");
-
-			// Should NOT prompt for token
+			expect((await secretsManager.getSessionAuth(TEST_HOSTNAME))?.token).toBe(
+				"",
+			);
 			expect(vscode.window.showInputBox).not.toHaveBeenCalled();
 		});
 
@@ -451,10 +448,12 @@ describe("LoginCoordinator", () => {
 		])(
 			"offers to sign in at the URL the $request request redirected to",
 			async ({ mockRequest }) => {
-				const { mockConfig, userInteraction, coordinator } =
+				const { secretsManager, userInteraction, coordinator } =
 					createTestContext();
-				mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
-				mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
+				await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+					url: TEST_URL,
+					token: "",
+				});
 				mockRequest.mockRejectedValue(
 					new CrossOriginRedirectError("https://dogfood.cdr.dev/api"),
 				);
@@ -504,33 +503,70 @@ describe("LoginCoordinator", () => {
 			);
 		});
 
-		it("shows error and returns failure when mTLS fails", async () => {
-			const { mockConfig, coordinator, mockAuthFailure } = createTestContext();
-			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
-			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
-			mockAuthFailure("Certificate error");
+		it("falls back to token authentication on 401", async () => {
+			const {
+				secretsManager,
+				coordinator,
+				userInteraction,
+				mockSuccessfulAuth,
+			} = createTestContext();
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "",
+			});
+			mockGetAuthenticatedUser.mockRejectedValueOnce(
+				createAxiosError(HttpStatusCode.UNAUTHORIZED, "Unauthorized"),
+			);
+			const user = mockSuccessfulAuth();
+			userInteraction.setInputBoxValue("new-token");
 
 			const result = await coordinator.ensureLoggedIn({
 				url: TEST_URL,
 				safeHostname: TEST_HOSTNAME,
 			});
 
-			expect(result.success).toBe(false);
-			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-				"Failed to log in to Coder server",
-				expect.objectContaining({ modal: true }),
-			);
-
-			// Should NOT prompt for token since it's mTLS
-			expect(vscode.window.showInputBox).not.toHaveBeenCalled();
+			expect(result).toEqual({
+				success: true,
+				method: "cli_token",
+				user,
+				token: "new-token",
+			});
+			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
 		});
 
-		it("logs warning instead of showing dialog for autoLogin", async () => {
-			const { mockConfig, logger, coordinator, mockAuthFailure } =
+		it("does not reach the interactive token prompt during autoLogin", async () => {
+			const { secretsManager, coordinator, mockAuthFailure, userInteraction } =
 				createTestContext();
-			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
-			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
-			mockAuthFailure("Certificate error");
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "",
+			});
+			mockAuthFailure();
+			userInteraction.setInputBoxValue(undefined);
+
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				autoLogin: true,
+			});
+
+			expect(result).toEqual({
+				success: false,
+				method: "cli_token",
+				reason: "user_dismissed",
+			});
+			expect(vscode.window.showInputBox).toHaveBeenCalledOnce();
+		});
+
+		it("logs a warning instead of showing a dialog for autoLogin", async () => {
+			const { secretsManager, logger, coordinator } = createTestContext();
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "stored-token",
+			});
+			mockGetAuthenticatedUser.mockRejectedValue(
+				createAxiosError(HttpStatusCode.INTERNAL_SERVER_ERROR, "Server error"),
+			);
 
 			const result = await coordinator.ensureLoggedIn({
 				url: TEST_URL,
@@ -546,11 +582,7 @@ describe("LoginCoordinator", () => {
 
 	describe("ensureLoggedInWithDialog", () => {
 		it("returns success false when user dismisses dialog", async () => {
-			const { mockConfig, userInteraction, coordinator } = createTestContext();
-			// Use mTLS for simpler dialog test
-			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
-			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
-
+			const { userInteraction, coordinator } = createTestContext();
 			// User dismisses dialog (returns undefined instead of "Login")
 			userInteraction.setResponse("Authentication Required", undefined);
 
@@ -846,15 +878,17 @@ describe("LoginCoordinator", () => {
 			);
 		});
 
-		it("does not call storeToken for mTLS (empty token)", async () => {
+		it("stores an empty token after successful login", async () => {
 			const {
-				mockConfig,
+				secretsManager,
 				coordinator,
 				mockCredentialManager,
 				mockSuccessfulAuth,
 			} = createTestContext();
-			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
-			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "",
+			});
 			mockSuccessfulAuth();
 
 			await coordinator.ensureLoggedIn({
@@ -862,7 +896,11 @@ describe("LoginCoordinator", () => {
 				safeHostname: TEST_HOSTNAME,
 			});
 
-			expect(mockCredentialManager.storeToken).not.toHaveBeenCalled();
+			expect(mockCredentialManager.storeToken).toHaveBeenCalledWith(
+				TEST_URL,
+				"",
+				expect.anything(),
+			);
 		});
 
 		it("login succeeds even when CLI credential synchronization fails", async () => {
@@ -1096,14 +1134,17 @@ describe("LoginCoordinator", () => {
 			trigger,
 		});
 
-		const enableMTLS = (mockConfig: MockConfigurationProvider) => {
-			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
-			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
-		};
+		const storeSession = async (ctx: ReturnType<typeof createTestContext>) =>
+			await ctx.secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "stored-token",
+			});
 
 		interface PromptCase {
 			name: string;
-			arrange: (ctx: ReturnType<typeof createTestContext>) => void;
+			arrange: (
+				ctx: ReturnType<typeof createTestContext>,
+			) => void | Promise<void>;
 			trigger: "auth_required" | "missing_session";
 			expected: {
 				result: "success" | "aborted" | "error";
@@ -1115,16 +1156,22 @@ describe("LoginCoordinator", () => {
 		it.each<PromptCase>([
 			{
 				name: "user dismisses the dialog: aborted + user_dismissed",
-				arrange: (ctx) =>
-					ctx.userInteraction.setResponse("Authentication Required", undefined),
+				arrange: (ctx) => {
+					ctx.userInteraction.setResponse("Authentication Required", undefined);
+				},
 				trigger: "missing_session",
 				expected: { result: "aborted", reason: "user_dismissed" },
 			},
 			{
 				name: "authentication fails: error + auth_failed",
-				arrange: (ctx) => {
-					enableMTLS(ctx.mockConfig);
-					ctx.mockAuthFailure("Certificate error");
+				arrange: async (ctx) => {
+					await storeSession(ctx);
+					mockGetAuthenticatedUser.mockRejectedValue(
+						createAxiosError(
+							HttpStatusCode.INTERNAL_SERVER_ERROR,
+							"Server error",
+						),
+					);
 					vi.mocked(maybeAskUrl).mockResolvedValue(TEST_URL);
 					ctx.userInteraction.setResponse("Authentication Required", "Login");
 				},
@@ -1134,7 +1181,6 @@ describe("LoginCoordinator", () => {
 			{
 				name: "user cancels URL prompt: aborted + no_url_provided",
 				arrange: (ctx) => {
-					enableMTLS(ctx.mockConfig);
 					vi.mocked(maybeAskUrl).mockResolvedValue(undefined);
 					ctx.userInteraction.setResponse("Authentication Required", "Login");
 				},
@@ -1143,8 +1189,8 @@ describe("LoginCoordinator", () => {
 			},
 			{
 				name: "happy path: success and no reason",
-				arrange: (ctx) => {
-					enableMTLS(ctx.mockConfig);
+				arrange: async (ctx) => {
+					await storeSession(ctx);
 					ctx.mockSuccessfulAuth();
 					vi.mocked(maybeAskUrl).mockResolvedValue(TEST_URL);
 					ctx.userInteraction.setResponse("Authentication Required", "Login");
@@ -1155,7 +1201,7 @@ describe("LoginCoordinator", () => {
 		])("$name", async ({ arrange, trigger, expected }) => {
 			const sink = new TestSink();
 			const ctx = createTestContext(createTestTelemetryService(sink));
-			arrange(ctx);
+			await arrange(ctx);
 
 			await ctx.coordinator.ensureLoggedInWithDialog(dialogOptions(trigger));
 

@@ -1,7 +1,7 @@
 import { vol } from "memfs";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { createHttpAgent, needToken } from "@/api/httpAgent";
+import { createHttpAgent } from "@/api/httpAgent";
 
 import {
 	clearProxyEnv,
@@ -47,38 +47,6 @@ async function proxyForUrl(
 	const getProxy = await createProxyResolver(settings);
 	return await getProxy(url);
 }
-
-describe("needToken", () => {
-	interface NeedTokenCase {
-		name: string;
-		settings: Settings;
-		expected: boolean;
-	}
-
-	it.each<NeedTokenCase>([
-		{ name: "no mTLS certificates", settings: {}, expected: true },
-		{
-			name: "cert file configured",
-			settings: { "coder.tlsCertFile": "/cert.pem" },
-			expected: false,
-		},
-		{
-			name: "key file configured",
-			settings: { "coder.tlsKeyFile": "/key.pem" },
-			expected: false,
-		},
-		{
-			name: "both cert and key configured",
-			settings: {
-				"coder.tlsCertFile": "/cert.pem",
-				"coder.tlsKeyFile": "/key.pem",
-			},
-			expected: false,
-		},
-	])("returns $expected when $name", ({ settings, expected }) => {
-		expect(needToken(config(settings))).toBe(expected);
-	});
-});
 
 describe("createHttpAgent", () => {
 	beforeEach(() => {

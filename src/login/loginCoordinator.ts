@@ -3,7 +3,6 @@ import { getErrorMessage } from "coder/site/src/api/errors";
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
-import { needToken } from "../api/httpAgent";
 import { HttpStatusCode } from "../api/httpStatusCode";
 import { openInBrowser, toSafeHost } from "../common/url";
 import { CertificateError } from "../error/certificateError";
@@ -40,7 +39,6 @@ import type {
 } from "../storage/secretsManager";
 
 export type LoginMethod =
-	| "mtls"
 	| "provided_token"
 	| "stored_token"
 	| "cli_token"
@@ -214,7 +212,6 @@ export class LoginCoordinator implements vscode.Disposable {
 		}
 		const reusedOAuth = replaced ? undefined : previous?.oauth;
 
-		// Empty token is valid for mTLS
 		await this.secretsManager.setSessionAuth(safeHostname, {
 			url,
 			token: result.token,
@@ -227,15 +224,11 @@ export class LoginCoordinator implements vscode.Disposable {
 			void revokeOAuthTokens(replaced, registration, this.logger);
 		}
 
-		if (result.token) {
-			const configs = vscode.workspace.getConfiguration();
-			this.cliCredentialManager
-				.storeToken(url, result.token, configs)
-				.then((auth) => notifyKeyringSkipped(auth, configs))
-				.catch((error) =>
-					showStoreCredentialsError(error, configs, this.logger),
-				);
-		}
+		const configs = vscode.workspace.getConfiguration();
+		this.cliCredentialManager
+			.storeToken(url, result.token, configs)
+			.then((auth) => notifyKeyringSkipped(auth, configs))
+			.catch((error) => showStoreCredentialsError(error, configs, this.logger));
 	}
 
 	/**
@@ -264,7 +257,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			disposable = this.secretsManager.onDidChangeSessionAuth(
 				safeHostname,
 				async (auth) => {
-					if (auth?.token) {
+					if (auth) {
 						const client = CoderApi.create(auth.url, auth.token, this.logger);
 						try {
 							const user = await client.getAuthenticatedUser();
@@ -290,7 +283,7 @@ export class LoginCoordinator implements vscode.Disposable {
 	}
 
 	/**
-	 * Authenticate via OAuth, token, or mTLS, prompting as needed. On success,
+	 * Authenticate via OAuth or a token, prompting as needed. On success,
 	 * persists the session and revokes the OAuth session it replaces.
 	 */
 	private async attemptLogin(
@@ -330,9 +323,8 @@ export class LoginCoordinator implements vscode.Disposable {
 	}
 
 	/**
-	 * Try each token source in turn. A source returns undefined on 401 to hand
-	 * over to the next one; any other failure is terminal since retrying more
-	 * tokens against an erroring server would just repeat the error.
+	 * A 401 hands over to the next token source; any other failure is terminal
+	 * since retrying more tokens against an erroring server would repeat it.
 	 */
 	private async runLoginAttempts(
 		client: CoderApi,
@@ -341,14 +333,6 @@ export class LoginCoordinator implements vscode.Disposable {
 		providedToken: string | undefined,
 		tokenSignInConfirmed: boolean,
 	): Promise<LoginResult> {
-		if (!needToken(vscode.workspace.getConfiguration())) {
-			this.logger.debug("Attempting mTLS authentication (no token required)");
-			return withLoginMethod(
-				"mtls",
-				await this.tryMtlsAuth(client, isAutoLogin),
-			);
-		}
-
 		const auth = await this.secretsManager.getSessionAuthForUrl(deployment.url);
 		const ctx: LoginAttemptContext = {
 			client,
@@ -432,7 +416,7 @@ export class LoginCoordinator implements vscode.Disposable {
 		ctx: LoginAttemptContext,
 	): Promise<LoginResult | undefined> {
 		const { client, isAutoLogin, auth } = ctx;
-		if (!auth?.token) {
+		if (auth === undefined) {
 			return undefined;
 		}
 		this.logger.debug("Trying stored session token");
@@ -536,19 +520,6 @@ export class LoginCoordinator implements vscode.Disposable {
 			"Sign In",
 		);
 		return action === "Sign In";
-	}
-
-	private async tryMtlsAuth(
-		client: CoderApi,
-		isAutoLogin: boolean,
-	): Promise<LoginAttemptResult> {
-		try {
-			const user = await client.getAuthenticatedUser();
-			return { success: true, token: "", user };
-		} catch (err) {
-			this.showAuthError(err, isAutoLogin);
-			return { success: false, reason: "auth_failed" };
-		}
 	}
 
 	/**

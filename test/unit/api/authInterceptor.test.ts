@@ -345,7 +345,7 @@ describe("AuthInterceptor", () => {
 				token: "new-token-after-login",
 				canceled: false,
 			},
-			{ name: "mTLS", token: "", canceled: false },
+			{ name: "an empty token", token: "", canceled: false },
 			{ name: "a canceled login", token: "replacement-token", canceled: true },
 		])("handles re-authentication with $name", async ({ token, canceled }) => {
 			const { secretsManager, axiosInstance, createInterceptor } =
