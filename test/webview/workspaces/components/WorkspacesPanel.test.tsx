@@ -4,7 +4,11 @@ import { format, formatISO } from "date-fns";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { agent, agentMetadata, app, appStatus, workspace } from "@repo/mocks";
-import { WorkspacesApi, type WorkspacesState } from "@repo/shared";
+import {
+	WorkspacesApi,
+	type Workspace,
+	type WorkspacesState,
+} from "@repo/shared";
 import App from "@repo/workspaces/App";
 
 import {
@@ -185,44 +189,141 @@ describe("WorkspacesPanel", () => {
 		]);
 	});
 
-	it("opens workspace settings from the menu", async () => {
-		const { user, drain } = await setup();
+	/** Open a row's "More actions" menu. */
+	async function openMenu(
+		user: ReturnType<typeof userEvent.setup>,
+		name: string,
+	) {
 		await user.click(
-			screen.getByRole("button", { name: "More actions for beta" }),
+			screen.getByRole("button", { name: `More actions for ${name}` }),
 		);
-		const menu = await screen.findByRole("menu");
-		await user.click(within(menu).getByRole("menuitem", { name: "Settings" }));
-		expect(drain(WorkspacesApi.viewInDashboard.method)).toEqual([
-			{ workspaceId: "ws-beta", page: "settings" },
-		]);
+		return screen.findByRole("menu");
+	}
+
+	const enabledLabels = (menu: HTMLElement) =>
+		within(menu)
+			.getAllByRole("menuitem")
+			.filter((item) => item.getAttribute("aria-disabled") !== "true")
+			.map((item) => item.textContent);
+
+	interface MenuCase {
+		name: string;
+		build: Partial<Workspace["latest_build"]>;
+		outdated?: boolean;
+		items: string[];
+	}
+
+	it.each<MenuCase>([
+		{
+			name: "running",
+			build: { status: "running" },
+			items: ["Stop", "Restart", "Share", "Settings", "Delete..."],
+		},
+		{
+			name: "outdated and stopped",
+			build: { status: "stopped" },
+			outdated: true,
+			items: ["Update", "Start", "Share", "Settings", "Delete..."],
+		},
+		{
+			name: "a failed start",
+			build: { status: "failed", transition: "start" },
+			items: ["Retry", "Share", "Settings", "Delete..."],
+		},
+		{
+			name: "starting",
+			build: { status: "starting" },
+			items: ["Share", "Settings"],
+		},
+	])("offers the actions $name allows", async ({ build, outdated, items }) => {
+		const { user } = await setup({
+			...STATE,
+			workspaces: [workspace({ outdated, latest_build: build })],
+		});
+		const menu = await openMenu(user, "test-workspace");
+		expect(enabledLabels(menu)).toEqual(items);
 	});
 
-	it.each([
-		["running", ["Stop", "Restart"]],
-		["stopped", ["Start"]],
-		["canceled", ["Retry"]],
-		["starting", []],
-	] as const)(
-		"offers lifecycle actions appropriate to %s",
-		async (status, actions) => {
-			const { user } = await setup({
-				...STATE,
-				workspaces: [workspace({ latest_build: { status } })],
-			});
-			await user.click(
-				screen.getByRole("button", { name: "More actions for test-workspace" }),
-			);
-			const menu = await screen.findByRole("menu");
-			for (const name of ["Start", "Stop", "Restart", "Retry"]) {
-				const item = within(menu).queryByRole("menuitem", { name });
-				if (actions.some((action) => action === name)) {
-					expect(item).toHaveAttribute("aria-disabled", "true");
-				} else {
-					expect(item).not.toBeInTheDocument();
-				}
-			}
+	interface SendCase {
+		name: string;
+		build: Partial<Workspace["latest_build"]>;
+		item: string;
+		method: string;
+		params: object;
+	}
+
+	it.each<SendCase>([
+		{
+			name: "stops",
+			build: { status: "running" },
+			item: "Stop",
+			method: WorkspacesApi.runWorkspaceAction.method,
+			params: { workspaceId: "workspace-1", action: "stop" },
 		},
-	);
+		{
+			name: "retries a failed stop by stopping",
+			build: { status: "failed", transition: "stop" },
+			item: "Retry",
+			method: WorkspacesApi.runWorkspaceAction.method,
+			params: { workspaceId: "workspace-1", action: "stop" },
+		},
+		{
+			name: "deletes",
+			build: { status: "stopped" },
+			item: "Delete...",
+			method: WorkspacesApi.runWorkspaceAction.method,
+			params: { workspaceId: "workspace-1", action: "delete" },
+		},
+		{
+			name: "shares in the dashboard",
+			build: { status: "running" },
+			item: "Share",
+			method: WorkspacesApi.viewInDashboard.method,
+			params: { workspaceId: "workspace-1", page: "sharing" },
+		},
+		{
+			name: "opens settings in the dashboard",
+			build: { status: "running" },
+			item: "Settings",
+			method: WorkspacesApi.viewInDashboard.method,
+			params: { workspaceId: "workspace-1", page: "settings" },
+		},
+	])("$name from the menu", async ({ build, item, method, params }) => {
+		const { user, drain } = await setup({
+			...STATE,
+			workspaces: [workspace({ latest_build: build })],
+		});
+		const menu = await openMenu(user, "test-workspace");
+		await user.click(within(menu).getByRole("menuitem", { name: item }));
+		expect(drain(method)).toEqual([params]);
+	});
+
+	it("shows a pending action and disables the lifecycle actions", async () => {
+		stubElementBoxes();
+		const { user, drain } = await setup({
+			...STATE,
+			pendingActions: { [ALPHA.id]: "stop" },
+		});
+		expect(
+			within(row("alpha")).getByRole("status", { name: "Stopping" }),
+		).toBeInTheDocument();
+		expect(within(row("beta")).queryByRole("status")).not.toBeInTheDocument();
+
+		await user.click(row("alpha"));
+		expect(hoverDetails(await showHover(user))).toContainEqual([
+			"Status",
+			"Stopping",
+		]);
+		await user.keyboard("{Escape}");
+
+		const menu = await openMenu(user, "alpha");
+		expect(menu).toHaveAccessibleDescription(
+			"Ping, Speed Test and Support Bundle are not supported by this panel yet.",
+		);
+		expect(enabledLabels(menu)).toEqual(["Share", "Settings"]);
+		await user.click(within(menu).getByRole("menuitem", { name: "Stop" }));
+		expect(drain(WorkspacesApi.runWorkspaceAction.method)).toEqual([]);
+	});
 
 	it("describes workspaces, workspace agents and metadata on hover", async () => {
 		stubElementBoxes();
