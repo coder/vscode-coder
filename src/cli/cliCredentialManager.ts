@@ -34,6 +34,9 @@ const execFileAsync = promisify(execFile);
 const EXEC_TIMEOUT_MS = 60_000;
 const EXEC_LOG_INTERVAL_MS = 5_000;
 
+/** Session files whose removal already warned, to avoid repeated warnings. */
+const warnedSessionPaths = new Set<string>();
+
 interface ResolvedCli {
 	binPath: string;
 	featureSet: CliFeatureSet;
@@ -74,20 +77,8 @@ export class CliCredentialManager {
 			// `coder login` would wait for a pasted token. Drop only the
 			// extension's own stored token so the CLI sends an empty one.
 			if (!token) {
-				const sessionPath = this.pathResolver.getSessionTokenPath(
-					toSafeHost(url),
-				);
 				span.setProperty("outcome", "empty_token");
-				try {
-					await fs.rm(sessionPath, { force: true });
-					this.logger.info("Removed the stored CLI token for an empty token");
-				} catch (error) {
-					this.logger.warn(
-						"Failed to remove the stored CLI token",
-						sessionPath,
-						error,
-					);
-				}
+				await this.removeSessionFile(url);
 				return;
 			}
 			const cli = await this.resolveCli(url, configs);
@@ -274,6 +265,27 @@ export class CliCredentialManager {
 			throw new CredentialCliError(error);
 		} finally {
 			clearInterval(timer);
+		}
+	}
+
+	/** Removes the extension directory's session file. Silent when absent; warns once per path on failure. */
+	private async removeSessionFile(url: string): Promise<void> {
+		const sessionPath = this.pathResolver.getSessionTokenPath(toSafeHost(url));
+		try {
+			await fs.rm(sessionPath);
+		} catch (error) {
+			if (
+				(error as NodeJS.ErrnoException).code === "ENOENT" ||
+				warnedSessionPaths.has(sessionPath)
+			) {
+				return;
+			}
+			warnedSessionPaths.add(sessionPath);
+			this.logger.warn(
+				"Failed to remove the stored CLI token",
+				sessionPath,
+				error,
+			);
 		}
 	}
 
