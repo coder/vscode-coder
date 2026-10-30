@@ -61,8 +61,8 @@ export class CliCredentialManager {
 
 	/**
 	 * Stores a token via `coder login` and returns the store used. An empty
-	 * token instead removes the extension directory's session file. Skipped
-	 * until the CLI is downloaded; throws when the CLI or the removal fails.
+	 * token instead removes the extension directory's session file,
+	 * best-effort. Skipped until the CLI is downloaded; throws when the CLI fails.
 	 */
 	public storeToken(
 		url: string,
@@ -74,11 +74,20 @@ export class CliCredentialManager {
 			// `coder login` would wait for a pasted token. Drop only the
 			// extension's own stored token so the CLI sends an empty one.
 			if (!token) {
-				await fs.rm(this.pathResolver.getSessionTokenPath(toSafeHost(url)), {
-					force: true,
-				});
+				const sessionPath = this.pathResolver.getSessionTokenPath(
+					toSafeHost(url),
+				);
 				span.setProperty("outcome", "empty_token");
-				this.logger.info("Removed the stored CLI token for an empty token");
+				try {
+					await fs.rm(sessionPath, { force: true });
+					this.logger.info("Removed the stored CLI token for an empty token");
+				} catch (error) {
+					this.logger.warn(
+						"Failed to remove the stored CLI token",
+						sessionPath,
+						error,
+					);
+				}
 				return;
 			}
 			const cli = await this.resolveCli(url, configs);
