@@ -246,6 +246,21 @@ describe("CliCredentialManager", () => {
 			},
 		);
 
+		it("still resolves for an empty token when the session file cannot be removed", async () => {
+			stubExecFile();
+			// A directory makes `rm` fail even with `force`, like a permission error.
+			vol.mkdirSync(`${CRED_DIR}/session/locked`, { recursive: true });
+			const { manager, sink } = setup();
+
+			await expect(
+				manager.storeToken(TEST_URL, "", configs),
+			).resolves.toBeUndefined();
+			expect(execFile).not.toHaveBeenCalled();
+			expect(sink.expectOne("auth.credential.store")).toMatchObject({
+				properties: { outcome: "empty_token", result: "success" },
+			});
+		});
+
 		interface CliErrorCase {
 			scenario: string;
 			error: Error;
