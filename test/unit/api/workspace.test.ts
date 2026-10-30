@@ -120,6 +120,7 @@ function createUpdateCtx(
 			tasks: false,
 			onSuccessBuild: false,
 			customSessionAppNames: false,
+			dynamicParameters: false,
 			...overrides.serverFeatures,
 		},
 	};

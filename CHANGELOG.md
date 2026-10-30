@@ -7,6 +7,14 @@
 
 ## Unreleased
 
+### Added
+
+- Updating a workspace whose template uses dynamic parameters works like the
+  dashboard: the update goes ahead when the current values are still valid, and
+  a form asks only for missing or invalid ones. Servers before v2.24 keep the
+  classic prompts.
+- The update prompts show the new template version's message.
+
 ### Changed
 
 - **Breaking:** the extension no longer follows a redirect to a different
@@ -32,6 +40,8 @@
   ``!#$%&'*+-.^_`|~``, so whitespace (including tabs and carriage returns) and
   `:` are not allowed. An invisible byte order mark at the start of the output,
   which some Windows editors and PowerShell add, is ignored.
+- A failed workspace update shows the server's error detail instead of the HTTP
+  status.
 
 ## [v1.17.2](https://github.com/coder/vscode-coder/releases/tag/v1.17.2) 2026-10-28
 

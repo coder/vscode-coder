@@ -17,7 +17,8 @@
 			"@repo/ui/*": ["../packages/ui/src/*"],
 			"@repo/netcheck/*": ["../packages/netcheck/src/*"],
 			"@repo/speedtest/*": ["../packages/speedtest/src/*"],
-			"@repo/workspaces/*": ["../packages/workspaces/src/*"]
+			"@repo/workspaces/*": ["../packages/workspaces/src/*"],
+			"@repo/workspace-update/*": ["../packages/workspace-update/src/*"]
 		}
 	},
 	"include": [".", "../src", "../vitest.config.mts"]
