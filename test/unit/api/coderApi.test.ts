@@ -476,6 +476,7 @@ describe("CoderApi", () => {
 			expect(Ws).toHaveBeenCalledWith(wsUrl, undefined, {
 				agent: mockAgent,
 				followRedirects: true,
+				handshakeTimeout: DEFAULT_REQUEST_TIMEOUT_MS,
 				headers: {
 					"X-Custom-Header": "custom-value",
 					"Coder-Session-Token": AXIOS_TOKEN,
@@ -491,6 +492,7 @@ describe("CoderApi", () => {
 			expect(Ws).toHaveBeenCalledWith(wsUrl, undefined, {
 				agent: undefined,
 				followRedirects: true,
+				handshakeTimeout: DEFAULT_REQUEST_TIMEOUT_MS,
 				headers: {
 					"Coder-Session-Token": AXIOS_TOKEN,
 					baggage: `client_session_id=${sessionId}`,
@@ -508,6 +510,7 @@ describe("CoderApi", () => {
 			expect(Ws).toHaveBeenCalledWith(wsUrl, undefined, {
 				agent: undefined,
 				followRedirects: true,
+				handshakeTimeout: DEFAULT_REQUEST_TIMEOUT_MS,
 				headers: {
 					"Coder-Session-Token": "from-config",
 					"X-Config-Header": "config-value",
@@ -529,6 +532,7 @@ describe("CoderApi", () => {
 			expect(Ws).toHaveBeenCalledWith(wsUrl, undefined, {
 				agent: undefined,
 				followRedirects: true,
+				handshakeTimeout: DEFAULT_REQUEST_TIMEOUT_MS,
 				headers: {
 					"Coder-Session-Token": "from-header-command",
 					baggage: `client_session_id=${sessionId}`,
