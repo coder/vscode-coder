@@ -206,12 +206,12 @@ Secret-storage session read during remote setup. No custom attributes.
 
 #### `auth.credential.store` / `auth.credential.clear`
 
-| Attribute         | Values                                                                   |
-| ----------------- | ------------------------------------------------------------------------ |
-| `keyring_enabled` | `true`, `false` (from settings)                                          |
-| `store`           | `cli` (the CLI's own store), `extension` (the extension's directory)     |
-| `outcome`         | `stored`, `no_binary` (store); `logged_out`, `kept`, `no_binary` (clear) |
-| `error.type`      | `binary`, `cli`                                                          |
+| Attribute         | Values                                                                                  |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| `keyring_enabled` | `true`, `false` (from settings)                                                         |
+| `store`           | `cli` (the CLI's own store), `extension` (the extension's directory)                    |
+| `outcome`         | `stored`, `no_binary`, `empty_token` (store); `logged_out`, `kept`, `no_binary` (clear) |
+| `error.type`      | `binary`, `cli`                                                                         |
 
 ### Logs
 

@@ -59,7 +59,11 @@ export class CliCredentialManager {
 		this.credentialTelemetry = new CredentialTelemetry(telemetry);
 	}
 
-	/** Stores a token via `coder login` and returns the store used. Skipped until the CLI is downloaded; throws when the CLI fails. */
+	/**
+	 * Stores a token via `coder login` and returns the store used. An empty
+	 * token instead removes the extension directory's session file. Skipped
+	 * until the CLI is downloaded; throws when the CLI or the removal fails.
+	 */
 	public storeToken(
 		url: string,
 		token: string,
@@ -67,6 +71,16 @@ export class CliCredentialManager {
 		options?: { signal?: AbortSignal },
 	): Promise<CliAuth | undefined> {
 		return this.credentialTelemetry.traceStore(configs, async (span) => {
+			// `coder login` would wait for a pasted token. Drop only the
+			// extension's own stored token so the CLI sends an empty one.
+			if (!token) {
+				await fs.rm(this.pathResolver.getSessionTokenPath(toSafeHost(url)), {
+					force: true,
+				});
+				span.setProperty("outcome", "empty_token");
+				this.logger.info("Removed the stored CLI token for an empty token");
+				return;
+			}
 			const cli = await this.resolveCli(url, configs);
 			if (!cli) {
 				span.setProperty("outcome", "no_binary");
@@ -125,7 +139,8 @@ export class CliCredentialManager {
 
 	/**
 	 * True when the CLI's own store holds `token`. Below CLI 2.32 the token
-	 * cannot be read back, so the CLI's store counts as holding it. False without a working CLI.
+	 * cannot be read back, so the CLI's store counts as holding it. False without a working CLI
+	 * and for an empty token, which is never stored.
 	 */
 	public async holdsToken(
 		url: string,
@@ -133,6 +148,9 @@ export class CliCredentialManager {
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
 	): Promise<boolean> {
+		if (!token) {
+			return false;
+		}
 		try {
 			const cli = await this.resolveCli(url, configs);
 			if (cli?.auth.store !== "cli") {

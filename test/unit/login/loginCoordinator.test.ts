@@ -534,7 +534,7 @@ describe("LoginCoordinator", () => {
 			expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
 		});
 
-		it("does not reach the interactive token prompt during autoLogin", async () => {
+		it("falls through to the token prompt during autoLogin after a 401", async () => {
 			const { secretsManager, coordinator, mockAuthFailure, userInteraction } =
 				createTestContext();
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
@@ -610,6 +610,34 @@ describe("LoginCoordinator", () => {
 
 			expect(result).toEqual({ success: false, reason: "no_url_provided" });
 			expect(mockGetAuthenticatedUser).not.toHaveBeenCalled();
+		});
+
+		it("accepts an empty-token session signed in from another window", async () => {
+			const { secretsManager, coordinator, mockSuccessfulAuth } =
+				createTestContext();
+			const user = mockSuccessfulAuth();
+			vi.mocked(vscode.window.showErrorMessage).mockReturnValueOnce(
+				new Promise(() => {}),
+			);
+
+			const result = coordinator.ensureLoggedInWithDialog({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+				trigger: "auth_required",
+			});
+			await vi.waitFor(() =>
+				expect(vscode.window.showErrorMessage).toHaveBeenCalled(),
+			);
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "",
+			});
+
+			await expect(result).resolves.toEqual({
+				success: true,
+				token: "",
+				user,
+			});
 		});
 	});
 
@@ -878,7 +906,7 @@ describe("LoginCoordinator", () => {
 			);
 		});
 
-		it("stores an empty token after successful login", async () => {
+		it("passes an empty token to the CLI after successful login", async () => {
 			const {
 				secretsManager,
 				coordinator,
