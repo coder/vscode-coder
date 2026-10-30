@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+	Banner,
 	EmptyState,
 	ErrorState,
 	Icon,
@@ -49,6 +50,22 @@ describe("IconButton", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
 		expect(onClick).toHaveBeenCalledOnce();
 	});
+
+	it("leaves focus where it was when clicked", async () => {
+		const user = userEvent.setup();
+		const onClick = vi.fn();
+		render(
+			<>
+				<input aria-label="Search" />
+				<IconButton icon="refresh" label="Refresh" onClick={onClick} />
+			</>,
+		);
+		await user.click(screen.getByRole("textbox", { name: "Search" }));
+		await user.click(screen.getByRole("button", { name: "Refresh" }));
+		expect(onClick).toHaveBeenCalledOnce();
+		expect(screen.getByRole("textbox", { name: "Search" })).toHaveFocus();
+	});
+
 	it("hovers with the label unless opted out", async () => {
 		const hoverText = async (
 			tooltip?: string | null,
@@ -133,5 +150,25 @@ describe("state panels", () => {
 		expect(screen.getByRole("alert")).toBeInTheDocument();
 		fireEvent.click(screen.getByRole("button", { name: "Try again" }));
 		expect(onRetry).toHaveBeenCalledOnce();
+	});
+});
+
+describe("Banner", () => {
+	it("announces warnings politely and runs its action", async () => {
+		const user = userEvent.setup();
+		const onAction = vi.fn();
+		render(
+			<Banner severity="warning" actionLabel="Retry" onAction={onAction}>
+				Out of date
+			</Banner>,
+		);
+		expect(screen.getByRole("status")).toHaveTextContent("Out of date");
+		await user.click(screen.getByRole("button", { name: "Retry" }));
+		expect(onAction).toHaveBeenCalledOnce();
+	});
+
+	it("announces errors as alerts", () => {
+		render(<Banner severity="error">Failed</Banner>);
+		expect(screen.getByRole("alert")).toHaveTextContent("Failed");
 	});
 });

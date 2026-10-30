@@ -26,7 +26,10 @@ export interface WorkspacesCapabilities {
 export type WorkspaceListStatus =
 	| { readonly kind: "loading" }
 	| { readonly kind: "ready" }
-	| { readonly kind: "failed"; readonly error: string };
+	| {
+			readonly kind: "failed";
+			readonly error: string;
+	  };
 
 /** What one agent reports. A failure replaces its metadata in the UI. */
 export type AgentMetadataState =
@@ -47,6 +50,10 @@ export interface WorkspacesState {
 	readonly workspaces: readonly Workspace[];
 	readonly status: WorkspaceListStatus;
 	readonly metadata: AgentMetadataMap;
+	/** Epoch ms, rounded down to the minute; unset before the first list. */
+	readonly listedAt?: number;
+	/** Listed workspace IDs associated with Agent chats. */
+	readonly agentWorkspaceIds?: readonly string[];
 }
 
 export interface OpenWorkspaceParams {

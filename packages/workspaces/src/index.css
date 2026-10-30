@@ -1,1 +1,191 @@
-/* TODO */
+body {
+	margin: 0;
+	padding: 0;
+	font-family: var(--ui-font-family, sans-serif);
+	font-size: var(--ui-font-size, 13px);
+	color: var(--ui-foreground);
+	background: var(--ui-background);
+}
+
+.workspaces-app {
+	height: 100vh;
+}
+
+.workspaces-panel {
+	position: relative;
+	box-sizing: border-box;
+	height: 100%;
+	overflow-y: auto;
+	padding-block: var(--ui-spacing-40);
+}
+
+.workspaces-filter-bar,
+.workspaces-updated {
+	display: flex;
+	align-items: center;
+}
+
+.workspaces-filter-bar {
+	padding: 0 var(--ui-spacing-120) var(--ui-spacing-40) 14px;
+	color: var(--ui-description-foreground);
+	white-space: nowrap;
+}
+
+.workspaces-filter-bar .workspace-filter {
+	flex: none;
+	height: 22px;
+	padding: 0 var(--ui-spacing-40);
+	gap: 2px;
+	font-size: 12px;
+	color: inherit;
+	background: transparent;
+	border-color: transparent;
+}
+
+.workspaces-filter-bar .workspace-filter:is(:hover, [data-popup-open]) {
+	background: var(--ui-toolbar-hover-background);
+}
+
+.workspaces-filter-bar .workspace-filter:focus:not(:focus-visible) {
+	outline: none;
+}
+
+.workspaces-filter-bar .workspace-filter > .ui-icon {
+	width: 12px;
+	font-size: 12px;
+}
+
+.workspaces-updated {
+	gap: var(--ui-spacing-60);
+	min-width: 0;
+	font-size: var(--ui-font-size-small);
+}
+
+.workspaces-updated__text {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.workspaces-updated__separator {
+	width: 4px;
+	height: 4px;
+	margin-inline: var(--ui-spacing-40);
+	flex: none;
+	border-radius: 50%;
+	background: currentColor;
+}
+
+.workspaces-panel .workspaces-refresh-progress {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline: 0;
+}
+
+.workspaces-stale {
+	margin: 0 var(--ui-spacing-120) var(--ui-spacing-60);
+}
+
+.workspace-label {
+	display: flex;
+	align-items: center;
+	gap: var(--ui-spacing-60);
+	min-width: 0;
+	width: 100%;
+}
+
+.workspace-name,
+.workspace-owner {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.workspaces-stale__error,
+.workspace-owner,
+.workspace-agent-icon,
+.workspace-status,
+.workspace-metadata-heading,
+.workspace-hover__details > dt {
+	color: var(--ui-description-foreground);
+}
+
+.workspace-agent-badge,
+.workspace-label > .ui-spinner,
+.workspace-agent-icon,
+.workspace-status {
+	flex: none;
+}
+
+.workspace-status--running {
+	color: var(--vscode-testing-iconPassed, var(--ui-status-success-accent));
+}
+
+.workspace-status--pending {
+	color: var(--vscode-testing-messagePeekBorder, var(--ui-status-info-accent));
+}
+
+.workspace-status--error {
+	color: var(--vscode-testing-iconFailed, var(--ui-status-danger-accent));
+}
+
+.workspace-metadata {
+	display: flex;
+	justify-content: space-between;
+	gap: var(--ui-spacing-120);
+	width: 100%;
+	min-width: 0;
+}
+
+.workspace-metadata > span {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.workspace-metadata > span:last-child {
+	max-width: 65%;
+	text-align: end;
+	font-variant-numeric: tabular-nums;
+}
+
+.workspace-metadata--error,
+.workspace-delete {
+	color: var(--ui-error-foreground);
+}
+
+.ui-tree-item[aria-selected="true"]
+	:is(
+		.workspace-owner,
+		.workspace-agent-icon,
+		.workspace-metadata--error,
+		.workspace-agent-badge
+	) {
+	color: inherit;
+}
+
+@media (forced-colors: active) {
+	.workspace-status {
+		color: CanvasText;
+	}
+}
+
+.workspace-hover {
+	max-width: 280px;
+}
+
+.workspace-hover__title {
+	font-weight: var(--ui-font-weight-semibold);
+}
+
+.workspace-hover__details {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	column-gap: var(--ui-spacing-120);
+	margin: 0;
+}
+
+.workspace-hover__details > dd {
+	margin: 0;
+	min-width: 0;
+}

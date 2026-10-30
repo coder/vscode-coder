@@ -82,24 +82,28 @@ describe("WorkspaceStore", () => {
 				workspaces: [expect.objectContaining({ id: "workspace-1" })],
 				status: { kind: "ready" },
 				metadata: {},
+				listedAt: expect.any(Number),
 			},
 		]);
 		expect(h.store.findWorkspace("workspace-1")).toBeDefined();
 		expect(h.store.findWorkspace("gone")).toBeUndefined();
 	});
 
-	it("polls the filters that poll, saying nothing when nothing changed", async () => {
-		vi.useFakeTimers();
+	it("polls the filters that poll, saying nothing until the list or the minute changes", async () => {
+		vi.useFakeTimers({ now: 0 });
 		onTestFinished(() => {
 			vi.useRealTimers();
 		});
-		const second = () => [workspace({ id: "second" })];
-		const h = await shown([workspace({ id: "first" })], second(), second());
+		const h = await shown([workspace({ id: "first" })]);
+		const second = [workspace({ id: "second" })];
+		h.client.getWorkspaces.mockResolvedValue({ workspaces: second, count: 1 });
 
 		await vi.advanceTimersByTimeAsync(5_000);
 		expect(h.states.map(ids)).toEqual([["first"], ["second"]]);
 		await vi.advanceTimersByTimeAsync(5_000);
 		expect(h.states).toHaveLength(2);
+		await vi.advanceTimersByTimeAsync(50_000);
+		expect(h.states.map((state) => state.listedAt)).toEqual([0, 0, 60_000]);
 
 		await h.store.setFilter("shared");
 		const fetches = h.client.getWorkspaces.mock.calls.length;
@@ -163,17 +167,35 @@ describe("WorkspaceStore", () => {
 	});
 
 	describe("failed fetches", () => {
-		it("reports a failure, then clears it once a fetch succeeds", async () => {
+		it("keeps the last list through a failure, with when it was listed", async () => {
+			vi.useFakeTimers({ toFake: ["Date"] });
+			onTestFinished(() => {
+				vi.useRealTimers();
+			});
+			vi.setSystemTime(90_000);
 			const h = await shown([workspace({ id: "workspace-1" })]);
+			vi.setSystemTime(150_000);
 			h.client.getWorkspaces.mockRejectedValueOnce(new Error("network down"));
 			await h.store.refresh();
 			expect(h.last()).toMatchObject({
-				workspaces: [],
+				workspaces: [expect.objectContaining({ id: "workspace-1" })],
 				status: { kind: "failed", error: "network down" },
+				listedAt: 60_000,
 			});
 
 			await h.store.refresh();
 			expect(h.last()?.status).toEqual({ kind: "ready" });
+		});
+
+		it("reports a failure with nothing listed when there is no list to keep", async () => {
+			const h = setup();
+			h.client.getWorkspaces.mockRejectedValueOnce(new Error("network down"));
+			await h.show();
+			expect(h.store.state).toMatchObject({
+				workspaces: [],
+				status: { kind: "failed", error: "network down" },
+			});
+			expect(h.store.state).not.toHaveProperty("listedAt");
 		});
 
 		it("stops offering a filter the deployment rejects, until a visible refresh", async () => {
@@ -206,6 +228,78 @@ describe("WorkspaceStore", () => {
 				capabilities: { filters: ["mine", "shared"] },
 				status: { kind: "failed", error: "invalid query" },
 			});
+		});
+	});
+
+	describe("Agent workspace associations", () => {
+		it("batches listed workspaces and does not refetch for metadata reports", async () => {
+			const h = setup();
+			h.client.experimental.getChatsByWorkspace.mockResolvedValueOnce({
+				"workspace-1": "chat-1",
+				unlisted: "chat-2",
+			});
+			await h.show([withAgent(), workspace({ id: "second" })]);
+			expect(
+				h.client.experimental.getChatsByWorkspace,
+			).toHaveBeenCalledExactlyOnceWith(["workspace-1", "second"]);
+			expect(h.store.state.agentWorkspaceIds).toEqual(["workspace-1"]);
+			await h.store.watchAgents(["agent-1"]);
+			pushMetadata(h);
+			expect(h.client.experimental.getChatsByWorkspace).toHaveBeenCalledOnce();
+		});
+
+		it("shows the workspace list while associations are pending", async () => {
+			const h = setup();
+			const lookup = Promise.withResolvers<Record<string, string>>();
+			h.client.experimental.getChatsByWorkspace.mockReturnValueOnce(
+				lookup.promise,
+			);
+			const listing = h.show([withAgent()]);
+			await Promise.resolve();
+			expect(h.store.state.status).toEqual({ kind: "ready" });
+			expect(ids(h.store.state)).toEqual(["workspace-1"]);
+			lookup.resolve({ "workspace-1": "chat-1" });
+			await listing;
+			expect(h.store.state.agentWorkspaceIds).toEqual(["workspace-1"]);
+		});
+
+		it("stops unsupported lookups until a manual refresh", async () => {
+			vi.useFakeTimers();
+			onTestFinished(() => {
+				vi.useRealTimers();
+			});
+			const h = setup();
+			h.client.experimental.getChatsByWorkspace.mockRejectedValueOnce(
+				createAxiosError(404, "not found"),
+			);
+			await h.show([withAgent()], [withAgent()]);
+			await vi.advanceTimersByTimeAsync(5_000);
+			expect(h.client.getWorkspaces).toHaveBeenCalledTimes(2);
+			expect(h.client.experimental.getChatsByWorkspace).toHaveBeenCalledOnce();
+			h.client.respondOnce([withAgent()]);
+			h.client.experimental.getChatsByWorkspace.mockResolvedValueOnce({
+				"workspace-1": "chat-1",
+			});
+			await h.store.refresh();
+			expect(h.store.state.agentWorkspaceIds).toEqual(["workspace-1"]);
+		});
+
+		it("does not apply another session's association response", async () => {
+			const h = setup();
+			const lookup = Promise.withResolvers<Record<string, string>>();
+			h.client.experimental.getChatsByWorkspace.mockReturnValueOnce(
+				lookup.promise,
+			);
+			const listing = h.show([withAgent()]);
+			await Promise.resolve();
+			expect(
+				h.client.experimental.getChatsByWorkspace,
+			).toHaveBeenCalledExactlyOnceWith(["workspace-1"]);
+			h.session.signOut();
+			lookup.resolve({ "workspace-1": "chat-1" });
+			await listing;
+			expect(h.store.state.agentWorkspaceIds).toBeUndefined();
+			expect(h.store.state.capabilities.authenticated).toBe(false);
 		});
 	});
 
@@ -249,12 +343,12 @@ describe("WorkspaceStore", () => {
 			});
 		});
 
-		it("releases agents a failed list drops, and closes them once the session ends", async () => {
+		it("keeps watching agents through a failed list, and closes them once the session ends", async () => {
 			const h = await watchingAgent();
 			const socket = h.client.metadataStream("agent-1");
 			h.client.getWorkspaces.mockRejectedValueOnce(new Error("offline"));
 			await h.store.refresh();
-			expect(h.store.state.metadata).toEqual({});
+			expect(h.store.state.metadata).toHaveProperty("agent-1");
 			expect(socket.close).not.toHaveBeenCalled();
 
 			h.session.signOut();

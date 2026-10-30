@@ -45,7 +45,8 @@ export class WorkspacesPanelProvider
 				void this.store.watchAgents([]);
 				this.pushState();
 			},
-			refresh: () => this.store.refresh(),
+			refresh: () => this.refresh(),
+			login: () => this.commands.login(),
 			setFilter: (p) => this.store.setFilter(p.filter),
 			watchAgents: (p) => this.store.watchAgents(p.agentIds),
 			openWorkspace: (p) => this.openWorkspace(p),
@@ -65,7 +66,7 @@ export class WorkspacesPanelProvider
 		private readonly store: WorkspaceStore,
 		private readonly commands: Pick<
 			Commands,
-			"openWorkspaceFromSidebar" | "openWorkspaceInDashboard"
+			"login" | "openWorkspaceFromSidebar" | "openWorkspaceInDashboard"
 		>,
 		private readonly logger: Logger,
 	) {}
@@ -124,6 +125,17 @@ export class WorkspacesPanelProvider
 	dispose(): void {
 		this.detachView();
 		this.syncVisibility();
+	}
+
+	/** List again, reporting a failure since the user asked for it. */
+	public async refresh(): Promise<void> {
+		await this.store.refresh();
+		const { status } = this.store.state;
+		if (status.kind === "failed") {
+			void vscode.window.showErrorMessage(
+				`Failed to refresh workspaces: ${status.error}`,
+			);
+		}
 	}
 
 	private syncVisibility(): void {

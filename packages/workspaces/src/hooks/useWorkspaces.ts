@@ -6,19 +6,17 @@ import {
 import { useIpc } from "@repo/webview-shared/react";
 import { useEffect, useState } from "react";
 
-/**
- * The state the extension pushes, and the commands to send back. The state is
- * undefined until the extension answers `ready`.
- */
+/** `state` is undefined until the extension answers `ready`. */
 export function useWorkspaces() {
-	const api = buildApiHook(WorkspacesApi, useIpc());
+	const ipc = useIpc();
+	const [api] = useState(() => buildApiHook(WorkspacesApi, ipc));
 	const [state, setState] = useState<WorkspacesState | undefined>();
 
 	useEffect(() => {
 		const unsubscribe = api.onStateChanged(setState);
 		api.ready();
 		return unsubscribe;
-	}, []);
+	}, [api]);
 
 	return { state, api };
 }
