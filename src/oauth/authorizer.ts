@@ -37,7 +37,7 @@ import type { SecretsManager } from "../storage/secretsManager";
 
 import type { OAuthCallback } from "./oauthCallback";
 
-interface OAuthLoginResult {
+export interface OAuthLoginResult {
 	tokenResponse: OAuth2TokenResponse;
 	user: User;
 	registration: OAuth2ClientRegistrationResponse;

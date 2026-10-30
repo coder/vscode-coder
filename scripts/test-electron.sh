@@ -36,4 +36,4 @@ done
 
 echo "Running tests with Electron $ELECTRON_VERSION..."
 ELECTRON_RUN_AS_NODE=1 \
-  "$RUNNER_DIR/node_modules/.bin/electron" node_modules/vitest/vitest.mjs
+  "$RUNNER_DIR/node_modules/.bin/electron" node_modules/vitest/vitest.mjs --project "!scopes"
