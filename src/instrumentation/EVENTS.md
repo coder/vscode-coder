@@ -159,12 +159,12 @@ Emitted by `AuthTelemetry`; the credential events by `CredentialTelemetry`.
 
 #### `auth.login`
 
-| Attribute    | Values                                                                                       |
-| ------------ | -------------------------------------------------------------------------------------------- |
-| `source`     | `auto_login`, `command`, `switch_deployment`, `uri`                                          |
-| `method`     | `mtls`, `provided_token`, `stored_token`, `cli_token`, `oauth`, `unknown` (starts `unknown`) |
-| `reason`     | `user_dismissed`, `no_url_provided` (aborted logins only)                                    |
-| `error.type` | `auth_failed`, `exception`                                                                   |
+| Attribute    | Values                                                                               |
+| ------------ | ------------------------------------------------------------------------------------ |
+| `source`     | `auto_login`, `command`, `switch_deployment`, `uri`                                  |
+| `method`     | `provided_token`, `stored_token`, `cli_token`, `oauth`, `unknown` (starts `unknown`) |
+| `reason`     | `user_dismissed`, `no_url_provided` (aborted logins only)                            |
+| `error.type` | `auth_failed`, `exception`                                                           |
 
 #### `auth.logout`
 
@@ -206,12 +206,12 @@ Secret-storage session read during remote setup. No custom attributes.
 
 #### `auth.credential.store` / `auth.credential.clear`
 
-| Attribute         | Values                                                                   |
-| ----------------- | ------------------------------------------------------------------------ |
-| `keyring_enabled` | `true`, `false` (from settings)                                          |
-| `store`           | `cli` (the CLI's own store), `extension` (the extension's directory)     |
-| `outcome`         | `stored`, `no_binary` (store); `logged_out`, `kept`, `no_binary` (clear) |
-| `error.type`      | `binary`, `cli`                                                          |
+| Attribute         | Values                                                                                  |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| `keyring_enabled` | `true`, `false` (from settings)                                                         |
+| `store`           | `cli` (the CLI's own store), `extension` (the extension's directory)                    |
+| `outcome`         | `stored`, `no_binary`, `empty_token` (store); `logged_out`, `kept`, `no_binary` (clear) |
+| `error.type`      | `binary`, `cli`                                                                         |
 
 ### Logs
 

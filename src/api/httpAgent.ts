@@ -8,19 +8,6 @@ import { LocalProxySettings, type LocalProxySetting } from "../settings/proxy";
 import { getProxyForUrl, joinNoProxy } from "./proxy";
 
 /**
- * Return whether the API will need a token for authorization.
- * If mTLS is in use (as specified by the cert or key files being set) then
- * token authorization is disabled. Otherwise, it is enabled.
- */
-export function needToken(cfg: Pick<WorkspaceConfiguration, "get">): boolean {
-	const certFile = expandPath(
-		String(cfg.get("coder.tlsCertFile") ?? "").trim(),
-	);
-	const keyFile = expandPath(String(cfg.get("coder.tlsKeyFile") ?? "").trim());
-	return !certFile && !keyFile;
-}
-
-/**
  * Create a new HTTP agent based on the current VS Code settings.
  * Configures proxy, TLS certificates, and security options.
  */

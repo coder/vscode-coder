@@ -61,7 +61,7 @@ describe("CliManager telemetry", () => {
 				props: { silent: "true", credential_source: "session_token" },
 			},
 			{
-				name: "empty token as mTLS",
+				name: "empty token",
 				token: "",
 				options: undefined,
 				props: { credential_source: "empty_token" },

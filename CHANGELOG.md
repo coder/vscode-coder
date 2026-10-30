@@ -32,6 +32,14 @@
   ``!#$%&'*+-.^_`|~``, so whitespace (including tabs and carriage returns) and
   `:` are not allowed. An invisible byte order mark at the start of the output,
   which some Windows editors and PowerShell add, is ignored.
+- Treat TLS client certificates as transport configuration only. An empty
+  session token follows the same authentication path as any other token, with
+  stored or CLI credentials and OAuth or token prompts available after a 401.
+- An empty session token is no longer passed to `coder login`, which waited a
+  minute for a pasted token and then failed the connection. It now clears the
+  token the extension stored for the Coder CLI, leaving the CLI's own session
+  and the keyring alone. Logging out with an empty token no longer offers to
+  sign out the Coder CLI.
 
 ## [v1.17.2](https://github.com/coder/vscode-coder/releases/tag/v1.17.2) 2026-10-28
 

@@ -128,13 +128,14 @@ const credentialFilesExist = () =>
 
 function setup(resolver: BinaryResolver = vi.fn().mockResolvedValue(TEST_BIN)) {
 	const sink = new TestSink();
+	const logger = createMockLogger();
 	const manager = new CliCredentialManager(
-		createMockLogger(),
+		logger,
 		resolver,
 		PATH_RESOLVER,
 		createTestTelemetryService(sink),
 	);
-	return { sink, manager };
+	return { sink, logger, manager };
 }
 
 describe("CliCredentialManager", () => {
@@ -212,6 +213,81 @@ describe("CliCredentialManager", () => {
 			expect(execOptions().env?.CODER_SESSION_TOKEN).toBe("my-secret-token");
 			expect(execOptions().env).not.toHaveProperty("coder_session_token");
 			expect(execCalls()[0]).not.toContain("my-secret-token");
+		});
+
+		it.each([
+			{ scenario: "extension directory", platform: "linux", cfg: configs },
+			{ scenario: "keyring", platform: "darwin", cfg: configs },
+			{
+				scenario: "user --global-config directory",
+				platform: "linux",
+				cfg: userDirConfigs,
+			},
+		] as const)(
+			"drops only the extension's stored token for an empty token with the $scenario",
+			async ({ platform, cfg }) => {
+				vi.mocked(os.platform).mockReturnValue(platform);
+				stubExecFile();
+				writeCredentialFiles();
+				vol.mkdirSync(USER_DIR, { recursive: true });
+				memfs.writeFileSync(`${USER_DIR}/session`, "cli-token");
+				const { manager, sink } = setup();
+
+				await manager.storeToken(TEST_URL, "", cfg);
+
+				expect(execFile).not.toHaveBeenCalled();
+				expect(memfs.existsSync(`${CRED_DIR}/session`)).toBe(false);
+				expect(memfs.readFileSync(`${CRED_DIR}/url`, "utf8")).toBe(TEST_URL);
+				expect(memfs.readFileSync(`${USER_DIR}/session`, "utf8")).toBe(
+					"cli-token",
+				);
+				expect(sink.expectOne("auth.credential.store")).toMatchObject({
+					properties: { outcome: "empty_token", result: "success" },
+				});
+			},
+		);
+
+		it("does not log for an empty token when no session file exists", async () => {
+			stubExecFile();
+			const { manager, sink, logger } = setup();
+
+			await manager.storeToken(TEST_URL, "", configs);
+
+			expect(execFile).not.toHaveBeenCalled();
+			expect(logger.info).not.toHaveBeenCalled();
+			expect(logger.warn).not.toHaveBeenCalled();
+			expect(sink.expectOne("auth.credential.store")).toMatchObject({
+				properties: { outcome: "empty_token", result: "success" },
+			});
+		});
+
+		it("warns once per path when the session file cannot be removed", async () => {
+			stubExecFile();
+			// A directory makes `rm` fail, like a permission error.
+			vol.mkdirSync(`${CRED_DIR}/session/locked`, { recursive: true });
+			const first = setup();
+			const second = setup();
+
+			for (const { manager } of [first, first, second, second]) {
+				await expect(
+					manager.storeToken(TEST_URL, "", configs),
+				).resolves.toBeUndefined();
+			}
+
+			expect(execFile).not.toHaveBeenCalled();
+			expect(
+				vi.mocked(first.logger.warn).mock.calls.length +
+					vi.mocked(second.logger.warn).mock.calls.length,
+			).toBe(1);
+			expect(
+				first.sink.events.map((e) => [
+					e.properties.outcome,
+					e.properties.result,
+				]),
+			).toEqual([
+				["empty_token", "success"],
+				["empty_token", "success"],
+			]);
 		});
 
 		interface CliErrorCase {
@@ -298,6 +374,7 @@ describe("CliCredentialManager", () => {
 			scenario: string;
 			platform: NodeJS.Platform;
 			version?: string;
+			token?: string;
 			cliToken?: string;
 			expected: boolean;
 		}
@@ -322,11 +399,19 @@ describe("CliCredentialManager", () => {
 				cliToken: "other",
 				expected: true,
 			},
+			{
+				scenario: "an empty token, which the CLI store never holds",
+				platform: "darwin",
+				version: "2.31.0",
+				token: "",
+				expected: false,
+			},
 		])(
 			"is $expected for $scenario",
 			async ({
 				platform,
 				version = "2.32.0",
+				token = "my-token",
 				cliToken = "my-token",
 				expected,
 			}) => {
@@ -334,9 +419,9 @@ describe("CliCredentialManager", () => {
 				vi.mocked(cliExec.version).mockResolvedValue(version);
 				stubExecFile({ token: cliToken });
 
-				expect(
-					await setup().manager.holdsToken(TEST_URL, "my-token", configs),
-				).toBe(expected);
+				expect(await setup().manager.holdsToken(TEST_URL, token, configs)).toBe(
+					expected,
+				);
 			},
 		);
 	});

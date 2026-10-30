@@ -426,7 +426,7 @@ describe("SecretsManager", () => {
 			expect(result).toBeUndefined();
 		});
 
-		it("migrates with empty token when only URL exists (mTLS)", async () => {
+		it("migrates with empty token when only URL exists", async () => {
 			await memento.update("url", "https://legacy.coder.com");
 
 			const result = await secretsManager.migrateFromLegacyStorage();
@@ -438,16 +438,16 @@ describe("SecretsManager", () => {
 		});
 	});
 
-	describe("session auth - empty token handling (mTLS)", () => {
+	describe("session auth - empty token handling", () => {
 		it("stores and retrieves empty string token", async () => {
-			await secretsManager.setSessionAuth("mtls.coder.com", {
-				url: "https://mtls.coder.com",
+			await secretsManager.setSessionAuth("empty.coder.com", {
+				url: "https://empty.coder.com",
 				token: "",
 			});
 
-			const auth = await secretsManager.getSessionAuth("mtls.coder.com");
+			const auth = await secretsManager.getSessionAuth("empty.coder.com");
 			expect(auth?.token).toBe("");
-			expect(auth?.url).toBe("https://mtls.coder.com");
+			expect(auth?.url).toBe("https://empty.coder.com");
 		});
 	});
 

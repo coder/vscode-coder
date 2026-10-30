@@ -998,8 +998,8 @@ export class CliManager {
 	 * Stores credentials via `coder login`: in the OS keyring when the setting is
 	 * enabled and the CLI supports it, otherwise file-based under --global-config.
 	 *
-	 * Both URL and token are required. Empty tokens are allowed (e.g. mTLS
-	 * authentication) but the URL must be a non-empty string.
+	 * Both URL and token are required. Empty tokens are allowed but the URL
+	 * must be a non-empty string.
 	 *
 	 * @param options.silent Suppress the progress notification only; failures
 	 *   still surface via {@link handleStoreError} (logged + error toast).
