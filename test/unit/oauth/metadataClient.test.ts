@@ -102,6 +102,29 @@ describe("OAuthMetadataClient", () => {
 			);
 		});
 
+		it.each([
+			["authorization_endpoint", "https://someone.example/oauth2/authorize"],
+			["token_endpoint", "https://someone.example/oauth2/token"],
+			["registration_endpoint", "https://someone.example/oauth2/register"],
+			["revocation_endpoint", "https://someone.example/oauth2/revoke"],
+			["token_endpoint", `${TEST_URL}/@someone/ws/apps/app/token`],
+			["token_endpoint", `${TEST_URL}/%40someone/ws/apps/app/token`],
+		])("rejects %s %s", async (field, endpoint) => {
+			const { mockAdapter, client } = createTestContext();
+			setupAxiosMockRoutes(mockAdapter, {
+				"/.well-known/oauth-authorization-server": createMockOAuthMetadata(
+					TEST_URL,
+					{ [field]: endpoint },
+				),
+			});
+
+			const result = client.getMetadata();
+			await expect(result).rejects.toThrow(
+				`${field} is outside the deployment`,
+			);
+			await expect(result).rejects.not.toThrow("someone");
+		});
+
 		describe("grant type validation", () => {
 			it("accepts metadata with required grant types", async () => {
 				const { mockAdapter, client } = createTestContext();

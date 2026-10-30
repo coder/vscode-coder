@@ -432,6 +432,29 @@ describe("LoginCoordinator", () => {
 			);
 		});
 
+		it("shows OAuth errors only in a modal's plain detail", async () => {
+			const { coordinator } = createTestContext();
+			const payload = "[Retry](command:workbench.action.terminal.new)";
+			vi.mocked(maybeAskAuthMethod).mockResolvedValue("oauth");
+			vi.spyOn(OAuthAuthorizer.prototype, "login").mockRejectedValue(
+				new Error(`OAuth error: ${payload}`),
+			);
+
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+			});
+
+			expect(result.success).toBe(false);
+			expect(vscode.window.showErrorMessage).toHaveBeenCalledExactlyOnceWith(
+				"OAuth authentication failed",
+				expect.objectContaining({
+					modal: true,
+					detail: `OAuth error: ${payload}`,
+				}),
+			);
+		});
+
 		it("shows error and returns failure when mTLS fails", async () => {
 			const { mockConfig, coordinator, mockAuthFailure } = createTestContext();
 			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");

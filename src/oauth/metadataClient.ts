@@ -1,5 +1,6 @@
 import { CoderApi } from "../api/coderApi";
 import { parseApiResponse } from "../api/responseValidation";
+import { isSameOrigin } from "../common/url";
 
 import {
 	AUTH_GRANT_TYPE,
@@ -21,6 +22,9 @@ import type {
 import type { Logger } from "../logging/logger";
 
 const OAUTH_DISCOVERY_ENDPOINT = "/.well-known/oauth-authorization-server";
+
+/** Path-based workspace apps (`/@user/...`) serve user content on our origin. */
+const WORKSPACE_APP_PATH = /\/(?:@|%40)/i;
 
 const REQUIRED_GRANT_TYPES: readonly OAuth2ProviderGrantType[] = [
 	AUTH_GRANT_TYPE,
@@ -97,6 +101,7 @@ export class OAuthMetadataClient {
 			this.axiosInstance.defaults.baseURL,
 		);
 
+		this.validateEndpoints(metadata);
 		this.validateGrantTypes(metadata);
 		this.validateResponseTypes(metadata);
 		this.validateAuthMethods(metadata);
@@ -110,6 +115,28 @@ export class OAuthMetadataClient {
 		});
 
 		return metadata;
+	}
+
+	/** Endpoints receive secrets, so they must belong to the deployment. */
+	private validateEndpoints(metadata: OAuth2AuthorizationServerMetadata): void {
+		const deploymentUrl = this.axiosInstance.defaults.baseURL ?? "";
+		for (const name of [
+			"authorization_endpoint",
+			"token_endpoint",
+			"registration_endpoint",
+			"revocation_endpoint",
+		] as const) {
+			const endpoint = metadata[name];
+			if (
+				endpoint &&
+				(!isSameOrigin(endpoint, deploymentUrl) ||
+					WORKSPACE_APP_PATH.test(new URL(endpoint).pathname))
+			) {
+				throw new Error(
+					`OAuth server metadata ${name} is outside the deployment`,
+				);
+			}
+		}
 	}
 
 	private validateGrantTypes(
