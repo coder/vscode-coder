@@ -486,6 +486,104 @@ describe("OAuthSessionManager", () => {
 			await expect(refreshPromise).rejects.toThrow("canceled");
 		});
 
+		it.each([
+			"clear",
+			"dispose",
+			"same deployment",
+			"different deployment",
+		] as const)(
+			"does not persist a refresh canceled during its user lookup by $0",
+			async (transition) => {
+				const {
+					manager,
+					secretsManager,
+					setupForOAuthOperation,
+					setupOAuthSession,
+				} = createTestContext();
+				const lookupStarted = Promise.withResolvers<void>();
+				const user = Promise.withResolvers<ReturnType<typeof createMockUser>>();
+				await setupForOAuthOperation({
+					"/oauth2/token": createMockTokenResponse({
+						access_token: "stale-token",
+					}),
+					"/api/v2/users/me": () => {
+						lookupStarted.resolve();
+						return user.promise;
+					},
+				});
+
+				const canceled = expect(manager.refreshToken()).rejects.toThrow(
+					/aborted|canceled/i,
+				);
+				await lookupStarted.promise;
+				switch (transition) {
+					case "clear":
+						manager.clearDeployment();
+						break;
+					case "dispose":
+						manager.dispose();
+						break;
+					case "same deployment":
+						await manager.setDeployment(createTestDeployment());
+						break;
+					case "different deployment":
+						await manager.setDeployment({
+							url: "https://replacement.example.com",
+							safeHostname: "replacement.example.com",
+						});
+						break;
+				}
+				await setupOAuthSession({
+					token: "replacement-token",
+					refreshToken: "replacement-refresh-token",
+				});
+				await canceled;
+				user.resolve(createMockUser());
+				expect(
+					(await secretsManager.getSessionAuth(TEST_HOSTNAME))?.token,
+				).toBe("replacement-token");
+			},
+		);
+
+		it("keeps the replacement refresh shared when a canceled refresh finishes", async () => {
+			const { manager, setupForOAuthOperation } = createTestContext();
+			const oldLookupStarted = Promise.withResolvers<void>();
+			const newLookupStarted = Promise.withResolvers<void>();
+			const oldUser =
+				Promise.withResolvers<ReturnType<typeof createMockUser>>();
+			const newUser =
+				Promise.withResolvers<ReturnType<typeof createMockUser>>();
+			const tokenEndpoint = vi.fn(() => createMockTokenResponse());
+			let lookups = 0;
+			await setupForOAuthOperation({
+				"/oauth2/token": tokenEndpoint,
+				"/api/v2/users/me": () => {
+					if (lookups++ === 0) {
+						oldLookupStarted.resolve();
+						return oldUser.promise;
+					}
+					newLookupStarted.resolve();
+					return newUser.promise;
+				},
+			});
+
+			const canceled = expect(manager.refreshToken()).rejects.toThrow(
+				/aborted|canceled/i,
+			);
+			await oldLookupStarted.promise;
+			await manager.setDeployment(createTestDeployment());
+			const newRefresh = manager.refreshToken();
+			await newLookupStarted.promise;
+			oldUser.resolve(createMockUser());
+			await canceled;
+
+			const joined = manager.refreshToken();
+			newUser.resolve(createMockUser());
+			await Promise.all([newRefresh, joined]);
+
+			expect(tokenEndpoint).toHaveBeenCalledTimes(2);
+		});
+
 		it.each<{ name: string; method: (m: OAuthSessionManager) => void }>([
 			{ name: "clearDeployment", method: (m) => m.clearDeployment() },
 			{ name: "dispose", method: (m) => m.dispose() },
