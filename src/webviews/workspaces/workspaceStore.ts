@@ -17,6 +17,7 @@ import { Poller, type NextRun, type RetryOptions } from "./poller";
 
 import type {
 	Workspace,
+	WorkspaceAction,
 	WorkspaceFilter,
 	WorkspaceListStatus,
 	WorkspacesState,
@@ -73,6 +74,8 @@ export class WorkspaceStore implements vscode.Disposable {
 	/** Agents the webview is showing, listed or not. */
 	private requestedAgents: readonly string[] = [];
 	private lastEmitted: WorkspacesState | undefined;
+	/** Actions running, which may not have queued their build yet. */
+	private readonly acting = new Map<string, WorkspaceAction>();
 	private visible = false;
 	private disposed = false;
 
@@ -105,6 +108,9 @@ export class WorkspaceStore implements vscode.Disposable {
 			...(this.listedAt === undefined ? {} : { listedAt: this.listedAt }),
 			...(this.agentWorkspaceIds.length
 				? { agentWorkspaceIds: this.agentWorkspaceIds }
+				: {}),
+			...(this.acting.size
+				? { pendingActions: Object.fromEntries(this.acting) }
 				: {}),
 		};
 	}
@@ -147,6 +153,43 @@ export class WorkspaceStore implements vscode.Disposable {
 		return this.watchListedAgents();
 	}
 
+	/**
+	 * Report `action` as pending while `run` performs it, then list again.
+	 * Ignored while another action runs on the workspace.
+	 */
+	public async followAction(
+		workspaceId: string,
+		action: WorkspaceAction,
+		run: () => Promise<void>,
+	): Promise<void> {
+		if (this.disposed) {
+			return;
+		}
+		const pending = this.acting.get(workspaceId);
+		if (pending) {
+			this.logger.warn(
+				`Ignoring ${action} on workspace ${workspaceId} while ${pending} runs`,
+			);
+			return;
+		}
+		const session = this.sessionState.current;
+		this.acting.set(workspaceId, action);
+		this.publish();
+		try {
+			await run();
+		} finally {
+			// List first, so the row never shows its old actions again.
+			if (!this.disposed && this.sessionState.current === session) {
+				await this.poller.run();
+			}
+			// A session change or disposal already cleared it.
+			if (!this.disposed && this.sessionState.current === session) {
+				this.acting.delete(workspaceId);
+				this.publish();
+			}
+		}
+	}
+
 	/** List now, keeping the list on show and offering rejected filters again. */
 	public refresh(): Promise<void> {
 		// A hidden panel cannot re-validate a filter it offers again.
@@ -160,6 +203,7 @@ export class WorkspaceStore implements vscode.Disposable {
 
 	public dispose(): void {
 		this.disposed = true;
+		this.acting.clear();
 		for (const disposable of this.disposables) {
 			disposable.dispose();
 		}
@@ -302,6 +346,7 @@ export class WorkspaceStore implements vscode.Disposable {
 		this.agentLookupSupported = true;
 		this.agentWorkspaceIds = [];
 		this.requestedAgents = [];
+		this.acting.clear();
 		if (!this.filters.includes(this.filter)) {
 			this.filter = DEFAULT_WORKSPACE_FILTER;
 		}

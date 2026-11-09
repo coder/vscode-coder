@@ -1,3 +1,4 @@
+import { AxiosError, isAxiosError } from "axios";
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 
@@ -17,6 +18,7 @@ import type {
 	Workspace,
 	WorkspaceAgentLog,
 	WorkspaceBuildParameter,
+	WorkspaceStatus,
 } from "coder/site/src/api/typesGenerated";
 
 import type { CliFeatureSet, ServerFeatureSet } from "../featureSet";
@@ -25,6 +27,12 @@ import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
 import type { CoderApi } from "./coderApi";
 
 const BUILD_REASON = "vscode_connection";
+
+const STARTABLE_STATUSES: ReadonlySet<WorkspaceStatus> = new Set([
+	"stopped",
+	"failed",
+	"canceled",
+]);
 
 /** Opens a stream once; subsequent open() calls are no-ops until closed. */
 export class LazyStream<T> {
@@ -118,11 +126,11 @@ function runCliCommand(ctx: CliContext, args: string[]): Promise<void> {
 }
 
 /**
- * Start a stopped or failed workspace using `coder start`.
+ * Start a stopped, failed or canceled workspace using `coder start`.
  * No-ops if the workspace is already running.
  */
 export async function startWorkspace(ctx: CliContext): Promise<Workspace> {
-	if (!["stopped", "failed"].includes(ctx.workspace.latest_build.status)) {
+	if (!STARTABLE_STATUSES.has(ctx.workspace.latest_build.status)) {
 		return ctx.workspace;
 	}
 
@@ -217,6 +225,83 @@ async function updateWorkspaceViaApi(
 		parameters,
 	);
 	return ctx.restClient.getWorkspace(ctx.workspace.id);
+}
+
+/**
+ * Restart on the last build's version. Reads after the stop retry transient
+ * failures, so a dropped connection does not leave the workspace stopped.
+ */
+export async function restartWorkspace(
+	restClient: Pick<
+		BuildApi,
+		"postWorkspaceBuild" | "waitForBuild" | "getWorkspace"
+	>,
+	workspace: Workspace,
+	check: () => void,
+): Promise<void> {
+	const workspaceId = createWorkspaceIdentifier(workspace);
+	const stopBuild = await restClient.postWorkspaceBuild(workspace.id, {
+		transition: "stop",
+	});
+	const stopped = await retryTransient(() =>
+		restClient.waitForBuild(stopBuild),
+	);
+	if (stopped?.status !== "succeeded") {
+		throw new Error(
+			`Failed to stop ${workspaceId}, so it was not started again`,
+		);
+	}
+	const latest = await retryTransient(() =>
+		restClient.getWorkspace(workspace.id),
+	);
+	if (latest.latest_build.id !== stopBuild.id) {
+		throw new Error(
+			`${workspaceId} changed after stopping. Restart was halted to avoid overwriting another operation.`,
+		);
+	}
+	check();
+	try {
+		await restClient.postWorkspaceBuild(workspace.id, {
+			transition: "start",
+			template_version_id: workspace.latest_build.template_version_id,
+		});
+	} catch (error) {
+		// Retrying could queue a second start, so leave recovery to the user.
+		throw new Error(
+			`The stop completed for ${workspaceId}, but its start request failed: ${errToStr(error)}. Check its status before retrying.`,
+			{ cause: error },
+		);
+	}
+}
+
+const TRANSIENT_RETRIES = 3;
+const TRANSIENT_NETWORK_ERRORS: ReadonlySet<string> = new Set([
+	AxiosError.ERR_NETWORK,
+	AxiosError.ECONNABORTED,
+	AxiosError.ETIMEDOUT,
+	"ECONNRESET",
+	"ECONNREFUSED",
+	"EPIPE",
+	"EAI_AGAIN",
+]);
+
+/** Retries `read` after network failures and 5xx responses, a second apart. */
+async function retryTransient<T>(read: () => Promise<T>): Promise<T> {
+	for (let retries = 0; ; retries++) {
+		try {
+			return await read();
+		} catch (error) {
+			const transient =
+				isAxiosError(error) &&
+				(error.response
+					? error.response.status >= 500
+					: TRANSIENT_NETWORK_ERRORS.has(error.code ?? ""));
+			if (!transient || retries >= TRANSIENT_RETRIES) {
+				throw error;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+		}
+	}
 }
 
 /**

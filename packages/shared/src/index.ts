@@ -32,4 +32,5 @@ export type {
 
 // Workspaces types and API
 export * from "./workspaces/types";
+export * from "./workspaces/actions";
 export { WorkspacesApi } from "./workspaces/api";

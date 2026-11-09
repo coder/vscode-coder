@@ -4,11 +4,12 @@ import { Commands } from "@/commands";
 
 import { createTestCoderApi } from "./coderApi";
 import { createTestTelemetryService } from "./telemetry";
-import { createMockLogger } from "./testHelpers";
+import { createMockLogger, TestSessionStore } from "./testHelpers";
 
 import type { CoderApi } from "@/api/coderApi";
 import type { ServiceContainer } from "@/container";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
+import type { SessionState } from "@/deployment/sessionStore";
 
 /** Build `Commands`; services left unnamed stand in as empty objects. */
 export function createTestCommands(
@@ -16,6 +17,7 @@ export function createTestCommands(
 		services?: Record<string, unknown>;
 		baseUrl?: string;
 		client?: Partial<CoderApi>;
+		session?: SessionState;
 	} = {},
 ): Commands {
 	const services: Record<string, unknown> = {
@@ -32,6 +34,6 @@ export function createTestCommands(
 			get: (_, name: string) => () => services[name] ?? {},
 		}),
 		createTestCoderApi({ baseUrl: options.baseUrl, overrides: options.client }),
-		{} as DeploymentManager,
+		{ session: options.session ?? new TestSessionStore() } as DeploymentManager,
 	);
 }

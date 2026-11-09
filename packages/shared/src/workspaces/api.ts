@@ -12,6 +12,7 @@ import type {
 	SetFilterParams,
 	ViewInDashboardParams,
 	WatchAgentsParams,
+	WorkspaceActionParams,
 	WorkspacesState,
 } from "./types";
 
@@ -25,6 +26,8 @@ export const WorkspacesApi = {
 	login: defineCommand<void>("login"),
 	openWorkspace: defineCommand<OpenWorkspaceParams>("openWorkspace"),
 	viewInDashboard: defineCommand<ViewInDashboardParams>("viewInDashboard"),
+	runWorkspaceAction:
+		defineCommand<WorkspaceActionParams>("runWorkspaceAction"),
 	refresh: defineCommand<void>("refresh"),
 	setFilter: defineCommand<SetFilterParams>("setFilter"),
 	/** Watch metadata for these agents only, so idle rows cost nothing */

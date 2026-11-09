@@ -5,17 +5,29 @@ import * as semver from "semver";
 import * as vscode from "vscode";
 
 import {
+	workspaceActions,
+	type DashboardPage,
+	type WorkspaceAction,
+} from "@repo/shared";
+
+import {
 	extractAgents,
 	createWorkspaceIdentifier,
 	workspaceStatusLabel,
 } from "./api/models";
+import { restartWorkspace, startWorkspace } from "./api/workspace";
 import * as cliExec from "./cli/cliExec";
 import { runDiagnosticCli } from "./command/diagnosticFlow";
 import { openInBrowser, toSafeHost } from "./common/url";
 import { raceWithAbort } from "./error/abort";
 import { CertificateError } from "./error/certificateError";
 import { toError } from "./error/normalize";
-import { type CliFeatureSet, cliFeatureSet } from "./featureSet";
+import {
+	type CliFeatureSet,
+	cliFeatureSet,
+	type ServerFeatureSet,
+	serverFeatureSet,
+} from "./featureSet";
 import {
 	AuthTelemetry,
 	type AuthLoginOutcome,
@@ -75,8 +87,6 @@ import type {
 	Workspace,
 	WorkspaceAgent,
 } from "coder/site/src/api/typesGenerated";
-
-import type { DashboardPage } from "@repo/shared";
 
 import type { CoderApi } from "./api/coderApi";
 import type { CliManager } from "./cli/cliManager";
@@ -149,6 +159,14 @@ class SupportBundleUnsupportedCliError extends Error {
 }
 
 const UPDATE_AND_RESTART_ACTION = "Update and Restart";
+const RESTART_WARNING =
+	"stops any running processes and may result in the loss of unsaved work.";
+
+const DASHBOARD_PATHS: Readonly<Record<DashboardPage, string>> = {
+	workspace: "",
+	settings: "/settings",
+	sharing: "/settings/sharing",
+};
 
 const openDefaults = {
 	openRecent: false,
@@ -1012,7 +1030,7 @@ export class Commands {
 		const workspaceId = createWorkspaceIdentifier(workspace);
 		await openInBrowser(
 			this.requireExtensionBaseUrl(),
-			`/@${workspaceId}${page === "settings" ? "/settings" : ""}`,
+			`/@${workspaceId}${DASHBOARD_PATHS[page]}`,
 		);
 	}
 
@@ -1393,6 +1411,196 @@ export class Commands {
 	}
 
 	/**
+	 * `coder start` applies the template's version policy, cleans up a failed
+	 * start and reactivates a dormant workspace. Waits for the build.
+	 */
+	public async startWorkspace(workspace: Workspace): Promise<void> {
+		return this.withWorkspaceAction(async (check) => {
+			const latest = await this.refreshForAction(workspace, "start", check);
+			if (!latest) {
+				return;
+			}
+			const ctx = await this.buildCliContext(latest, check);
+			check();
+			await this.operationTelemetry(latest).traceStart(() =>
+				startWorkspace(ctx),
+			);
+		});
+	}
+
+	public async stopWorkspace(workspace: Workspace): Promise<void> {
+		return this.withWorkspaceAction(async (check) => {
+			if (!(await this.confirmDisconnect(workspace, "Stop"))) {
+				return;
+			}
+			const latest = await this.refreshForAction(workspace, "stop", check);
+			if (!latest) {
+				return;
+			}
+			await this.operationTelemetry(latest).traceStop(() =>
+				this.extensionClient.stopWorkspace(latest.id),
+			);
+		});
+	}
+
+	public async restartWorkspace(workspace: Workspace): Promise<void> {
+		return this.withWorkspaceAction(async (check) => {
+			if (!(await this.confirmDisconnect(workspace, "Restart"))) {
+				return;
+			}
+			const latest = await this.refreshForAction(workspace, "restart", check);
+			if (!latest) {
+				return;
+			}
+			await this.operationTelemetry(latest).traceRestart(() =>
+				restartWorkspace(this.extensionClient, latest, check),
+			);
+		});
+	}
+
+	public async deleteWorkspace(workspace: Workspace): Promise<void> {
+		return this.withWorkspaceAction(async (check) => {
+			const confirmed = await this.confirmModal(
+				`Delete ${createWorkspaceIdentifier(workspace)}?`,
+				"This permanently deletes the workspace and all of its data.",
+				"Delete",
+			);
+			if (!confirmed) {
+				return;
+			}
+			const latest = await this.refreshForAction(workspace, "delete", check);
+			if (!latest) {
+				return;
+			}
+			await this.operationTelemetry(latest).traceDelete(() =>
+				this.extensionClient.deleteWorkspace(latest.id),
+			);
+		});
+	}
+
+	/** Keep every dispatch in a lifecycle operation on its initiating session. */
+	private async withWorkspaceAction(
+		run: (check: () => void) => Promise<void>,
+	): Promise<void> {
+		const session = this.deploymentManager.session.current;
+		const check = () => {
+			if (this.deploymentManager.session.current !== session) {
+				throw new DOMException("The Coder session changed", "AbortError");
+			}
+		};
+		try {
+			await run(check);
+		} catch (error) {
+			if (this.deploymentManager.session.current !== session) {
+				void vscode.window.showInformationMessage(
+					"The Coder session changed. The workspace action was halted; check its status before retrying.",
+				);
+				return;
+			}
+			throw error;
+		}
+	}
+
+	/** The caller's copy may be stale, so re-read it and explain a refusal. */
+	private async refreshForAction(
+		workspace: Workspace,
+		action: WorkspaceAction,
+		check: () => void,
+	): Promise<Workspace | undefined> {
+		check();
+		const latest = await this.extensionClient.getWorkspace(workspace.id);
+		check();
+		if (workspaceActions(latest).includes(action)) {
+			return latest;
+		}
+		const workspaceId = createWorkspaceIdentifier(latest);
+		const status = workspaceStatusLabel(
+			latest.latest_build.status,
+		).toLowerCase();
+		void vscode.window.showInformationMessage(
+			`Cannot ${action} ${workspaceId} while it is ${status}.`,
+		);
+		return undefined;
+	}
+
+	/** Stopping the workspace this window is connected to ends the session. */
+	private async confirmDisconnect(
+		workspace: Workspace,
+		action: "Stop" | "Restart",
+	): Promise<boolean> {
+		if (workspace.id !== this.workspace?.id) {
+			return true;
+		}
+		const workspaceId = createWorkspaceIdentifier(workspace);
+		return this.confirmModal(
+			`${action} ${workspaceId}?`,
+			`This window is connected to ${workspaceId}. ${action === "Stop" ? "Stopping" : "Restarting"} it ${RESTART_WARNING}`,
+			action,
+		);
+	}
+
+	/** True when the user chose `button` in a modal warning. */
+	private async confirmModal(
+		title: string,
+		detail: string,
+		button: string,
+	): Promise<boolean> {
+		const choice = await vscodeProposed.window.showWarningMessage(
+			title,
+			{ useCustom: true, modal: true, detail },
+			button,
+		);
+		return choice === button;
+	}
+
+	private operationTelemetry(
+		workspace: Workspace,
+	): WorkspaceOperationTelemetry {
+		return new WorkspaceOperationTelemetry(
+			this.telemetryService,
+			createWorkspaceIdentifier(workspace),
+		);
+	}
+
+	private async fetchServerFeatures(): Promise<ServerFeatureSet> {
+		const { version } = await this.extensionClient.getBuildInfo();
+		return serverFeatureSet(semver.parse(version));
+	}
+
+	/** CLI output goes to the log. */
+	private async buildCliContext(workspace: Workspace, check: () => void) {
+		const [env, features] = await Promise.all([
+			this.resolveCliEnv(this.extensionClient, check),
+			this.fetchServerFeatures(),
+		]);
+		return {
+			...this.buildWorkspaceContext(workspace, features),
+			auth: env.auth,
+			binPath: env.binary,
+			cliFeatures: env.featureSet,
+		};
+	}
+
+	private buildWorkspaceContext(
+		workspace: Workspace,
+		serverFeatures: ServerFeatureSet,
+	) {
+		const workspaceId = createWorkspaceIdentifier(workspace);
+		return {
+			restClient: this.extensionClient,
+			workspace,
+			write: (data: string) => {
+				for (const line of data.split(/\r?\n|\r/)) {
+					if (line.trim()) {
+						this.logger.info(`[${workspaceId}] ${line}`);
+					}
+				}
+			},
+			serverFeatures,
+		};
+	}
+
+	/**
 	 * Resolve the API client and workspace identifier from a sidebar item,
 	 * the currently connected workspace, or by prompting the user to pick one.
 	 * Returns cancelled/failed if the user cancels the picker or the picker cannot load.
@@ -1472,6 +1680,7 @@ export class Commands {
 	/** Resolve a CliEnv, preferring a locally cached binary over a network fetch. */
 	private async resolveCliEnv(
 		client: CoderApi,
+		check?: () => void,
 	): Promise<cliExec.CliEnv & { featureSet: CliFeatureSet }> {
 		const baseUrl = client.getAxiosInstance().defaults.baseURL;
 		if (!baseUrl) {
@@ -1489,6 +1698,7 @@ export class Commands {
 		// Same threat model as the connection-time write in remote.ts: token
 		// goes to the file (or keyring on supported systems), never env, since
 		// child env is sibling-readable on most platforms.
+		check?.();
 		await this.cliManager.configure(baseUrl, client.getSessionToken() ?? "", {
 			silent: true,
 		});

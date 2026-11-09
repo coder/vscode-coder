@@ -161,6 +161,7 @@ const api = {
 	login: fn(),
 	openWorkspace: fn(),
 	viewInDashboard: fn(),
+	runWorkspaceAction: fn(),
 	refresh: fn(),
 	setFilter: fn(),
 	watchAgents: fn(),
@@ -220,6 +221,11 @@ export const MenuOpen: Story = {
 		);
 		await screen.findByRole("menu");
 	},
+};
+
+export const PendingActionMenuOpen: Story = {
+	...MenuOpen,
+	args: { state: { ...READY, pendingActions: { "ws-frontend": "stop" } } },
 };
 
 export const FilterOpen: Story = {

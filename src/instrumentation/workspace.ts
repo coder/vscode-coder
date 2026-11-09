@@ -69,7 +69,7 @@ export function recordAgentState(
 }
 
 /**
- * Wraps user-initiated workspace operations (start, update) as traced spans.
+ * Wraps user-initiated workspace operations as traced spans.
  * Stateless; safe to construct per call site.
  */
 export class WorkspaceOperationTelemetry {
@@ -86,6 +86,24 @@ export class WorkspaceOperationTelemetry {
 
 	public traceStart<T>(fn: () => Promise<T>): Promise<T> {
 		return this.telemetry.trace("workspace.start.triggered", fn, {
+			workspace_name: this.workspaceName,
+		});
+	}
+
+	public traceStop<T>(fn: () => Promise<T>): Promise<T> {
+		return this.telemetry.trace("workspace.stop.triggered", fn, {
+			workspace_name: this.workspaceName,
+		});
+	}
+
+	public traceRestart<T>(fn: () => Promise<T>): Promise<T> {
+		return this.telemetry.trace("workspace.restart.triggered", fn, {
+			workspace_name: this.workspaceName,
+		});
+	}
+
+	public traceDelete<T>(fn: () => Promise<T>): Promise<T> {
+		return this.telemetry.trace("workspace.delete.triggered", fn, {
 			workspace_name: this.workspaceName,
 		});
 	}

@@ -1,10 +1,18 @@
+import { AxiosError } from "axios";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { LazyStream, startWorkspace, updateWorkspace } from "@/api/workspace";
+import {
+	LazyStream,
+	restartWorkspace,
+	startWorkspace,
+	updateWorkspace,
+} from "@/api/workspace";
 
 import { workspace as createWorkspace } from "@repo/mocks";
+
+import { createAxiosError } from "../../mocks/testHelpers";
 
 import type {
 	CreateWorkspaceBuildRequest,
@@ -458,6 +466,19 @@ describe("startWorkspace", () => {
 		expect(restClient.getWorkspace).toHaveBeenCalledWith(ctx.workspace.id);
 	});
 
+	it("runs coder start when the last build was canceled", async () => {
+		const { ctx } = createUpdateCtx({
+			workspace: { latest_build: { status: "canceled", transition: "start" } },
+		});
+		const sp = controlSpawn();
+
+		const result = startWorkspace(ctx);
+		await sp.close(0);
+		await result;
+
+		expect(spawnedArgs()).toContain("start");
+	});
+
 	it("no-ops when the workspace is already running", async () => {
 		const { ctx, restClient } = createUpdateCtx();
 		await expect(startWorkspace(ctx)).resolves.toBe(ctx.workspace);
@@ -483,5 +504,142 @@ describe("startWorkspace", () => {
 			"--",
 			"testuser/test-workspace",
 		]);
+	});
+});
+
+describe("restartWorkspace", () => {
+	const noCheck = () => undefined;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	function setup() {
+		const { ctx, restClient } = createUpdateCtx({
+			workspace: {
+				template_active_version_id: "v-new",
+				latest_build: { template_version_id: "v-original" },
+			},
+		});
+		const stopBuild = { ...ctx.workspace.latest_build, id: "stop-build" };
+		restClient.postWorkspaceBuild.mockResolvedValueOnce(stopBuild);
+		restClient.getWorkspace.mockResolvedValue({
+			...ctx.workspace,
+			latest_build: { ...stopBuild, status: "stopped", transition: "stop" },
+		});
+		return { workspace: ctx.workspace, restClient };
+	}
+
+	it("starts on the original version once its stop succeeds", async () => {
+		const { workspace, restClient } = setup();
+
+		await restartWorkspace(restClient, workspace, noCheck);
+
+		expect(restClient.waitForBuild).toHaveBeenCalledOnce();
+		expect(restClient.postWorkspaceBuild.mock.calls).toEqual([
+			[workspace.id, { transition: "stop" }],
+			[
+				workspace.id,
+				{ transition: "start", template_version_id: "v-original" },
+			],
+		]);
+	});
+
+	it("retries transient reads after its stop, so it still starts", async () => {
+		vi.useFakeTimers();
+		const { workspace, restClient } = setup();
+		restClient.waitForBuild.mockRejectedValueOnce(
+			new AxiosError("socket hang up", "ECONNRESET"),
+		);
+		restClient.getWorkspace.mockRejectedValueOnce(
+			createAxiosError(503, "Service Unavailable"),
+		);
+
+		const restarting = restartWorkspace(restClient, workspace, noCheck);
+		await vi.runAllTimersAsync();
+		await restarting;
+
+		expect(restClient.postWorkspaceBuild).toHaveBeenCalledTimes(2);
+	});
+
+	interface StopFailureCase {
+		name: string;
+		waitForBuild: () => Promise<unknown>;
+		error: string;
+		waits: number;
+	}
+	it.each<StopFailureCase>([
+		{
+			name: "fails",
+			waitForBuild: () => Promise.reject(new Error("job failed")),
+			error: "job failed",
+			waits: 1,
+		},
+		{
+			name: "is canceled",
+			waitForBuild: () => Promise.resolve({ status: "canceled" }),
+			error: "so it was not started again",
+			waits: 1,
+		},
+		{
+			name: "stays unreachable",
+			waitForBuild: () => Promise.reject(new AxiosError("down", "ECONNRESET")),
+			error: "down",
+			waits: 4,
+		},
+	])(
+		"does not start when the stop $name",
+		async ({ waitForBuild, error, waits }) => {
+			vi.useFakeTimers();
+			const { workspace, restClient } = setup();
+			restClient.waitForBuild.mockImplementation(waitForBuild);
+
+			const restarting = expect(
+				restartWorkspace(restClient, workspace, noCheck),
+			).rejects.toThrow(error);
+			await vi.runAllTimersAsync();
+			await restarting;
+
+			expect(restClient.waitForBuild).toHaveBeenCalledTimes(waits);
+			expect(restClient.postWorkspaceBuild).toHaveBeenCalledOnce();
+		},
+	);
+
+	it.each([
+		["a build superseded its stop", "changed after stopping"],
+		["its session changed", "session changed"],
+	])("does not start when %s", async (reason, error) => {
+		const { workspace, restClient } = setup();
+		if (reason === "a build superseded its stop") {
+			restClient.getWorkspace.mockResolvedValue(
+				createWorkspace({ latest_build: { id: "another-build" } }),
+			);
+		}
+		const check = () => {
+			if (reason === "its session changed") throw new Error(error);
+		};
+
+		await expect(
+			restartWorkspace(restClient, workspace, check),
+		).rejects.toThrow(error);
+
+		expect(restClient.postWorkspaceBuild).toHaveBeenCalledOnce();
+	});
+
+	it("does not retry an ambiguous start failure and explains how to recover", async () => {
+		const { workspace, restClient } = setup();
+		restClient.postWorkspaceBuild.mockRejectedValueOnce(
+			new AxiosError("socket hang up", "ECONNRESET"),
+		);
+
+		await expect(
+			restartWorkspace(restClient, workspace, noCheck),
+		).rejects.toThrow("Check its status before retrying");
+
+		expect(restClient.postWorkspaceBuild).toHaveBeenCalledTimes(2);
 	});
 });

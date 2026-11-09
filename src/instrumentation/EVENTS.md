@@ -6,18 +6,18 @@ new ones live in `CONVENTIONS.md`.
 
 ## Event index
 
-| Category                                        | Events                                                                                                                                                                                                                                                                  |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Activation](#activation)                       | `activation`, `activation.deployment_init`                                                                                                                                                                                                                              |
-| [Auth](#auth)                                   | `auth.login`, `auth.logout`, `auth.login_prompted`, `auth.token_refresh.completed`, `auth.unauthorized_intercepted`, `auth.session_lookup`, `auth.credential.store`, `auth.credential.clear`, `auth.token_refresh.deduped`                                              |
-| [CLI](#cli)                                     | `cli.resolve`, `cli.download`, `cli.configure`                                                                                                                                                                                                                          |
-| [Commands](#commands)                           | `command.invoked`, `command.diagnostic.completed`                                                                                                                                                                                                                       |
-| [Deployment](#deployment)                       | `deployment.suspended`, `deployment.recovered`, `deployment.cross_window.detected`, `deployment.auth_config.recovery_failed`                                                                                                                                            |
-| [Remote setup](#remote-setup)                   | `remote.setup`                                                                                                                                                                                                                                                          |
-| [SSH](#ssh)                                     | `ssh.process.discovered`, `ssh.process.lost`, `ssh.process.recovered`, `ssh.process.replaced`, `ssh.process.disposed`, `ssh.network.sampled`                                                                                                                            |
-| [HTTP](#http)                                   | `http.requests`                                                                                                                                                                                                                                                         |
-| [WebSocket connections](#websocket-connections) | `connection.state_transitioned`, `connection.opened`, `connection.dropped`, `connection.reconnect_resolved`, `connection.unreachable`                                                                                                                                   |
-| [Workspace](#workspace)                         | `workspace.start.triggered`, `workspace.update.triggered`, `workspace.start.prompted`, `workspace.update.prompted`, `workspace.open`, `workspace.picker.prompted`, `workspace.dev_container.open`, `workspace.state_transitioned`, `workspace.agent.state_transitioned` |
+| Category                                        | Events                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Activation](#activation)                       | `activation`, `activation.deployment_init`                                                                                                                                                                                                                                                                                                                       |
+| [Auth](#auth)                                   | `auth.login`, `auth.logout`, `auth.login_prompted`, `auth.token_refresh.completed`, `auth.unauthorized_intercepted`, `auth.session_lookup`, `auth.credential.store`, `auth.credential.clear`, `auth.token_refresh.deduped`                                                                                                                                       |
+| [CLI](#cli)                                     | `cli.resolve`, `cli.download`, `cli.configure`                                                                                                                                                                                                                                                                                                                   |
+| [Commands](#commands)                           | `command.invoked`, `command.diagnostic.completed`                                                                                                                                                                                                                                                                                                                |
+| [Deployment](#deployment)                       | `deployment.suspended`, `deployment.recovered`, `deployment.cross_window.detected`, `deployment.auth_config.recovery_failed`                                                                                                                                                                                                                                     |
+| [Remote setup](#remote-setup)                   | `remote.setup`                                                                                                                                                                                                                                                                                                                                                   |
+| [SSH](#ssh)                                     | `ssh.process.discovered`, `ssh.process.lost`, `ssh.process.recovered`, `ssh.process.replaced`, `ssh.process.disposed`, `ssh.network.sampled`                                                                                                                                                                                                                     |
+| [HTTP](#http)                                   | `http.requests`                                                                                                                                                                                                                                                                                                                                                  |
+| [WebSocket connections](#websocket-connections) | `connection.state_transitioned`, `connection.opened`, `connection.dropped`, `connection.reconnect_resolved`, `connection.unreachable`                                                                                                                                                                                                                            |
+| [Workspace](#workspace)                         | `workspace.start.triggered`, `workspace.stop.triggered`, `workspace.restart.triggered`, `workspace.update.triggered`, `workspace.delete.triggered`, `workspace.start.prompted`, `workspace.update.prompted`, `workspace.open`, `workspace.picker.prompted`, `workspace.dev_container.open`, `workspace.state_transitioned`, `workspace.agent.state_transitioned` |
 
 Signal kinds, which each category groups its events by:
 
@@ -484,14 +484,14 @@ resets on a successful open, so a later outage emits again.
 
 ## Workspace
 
-Emitted by `WorkspaceOperationTelemetry` (start and update),
+Emitted by `WorkspaceOperationTelemetry` (start, stop, restart, update, delete),
 `WorkspaceOpenTelemetry` (open, picker, dev container), and
 `recordWorkspaceState` / `recordAgentState` (the state-transition events, from
 transitions detected by `WorkspaceStateObserver` / `WorkspaceAgentObserver`).
 
 ### Spans
 
-#### `workspace.start.triggered` / `workspace.update.triggered`
+#### `workspace.{start,stop,restart,update,delete}.triggered`
 
 | Attribute        | Values |
 | ---------------- | ------ |
