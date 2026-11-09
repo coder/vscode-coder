@@ -4,7 +4,11 @@ import { format, formatISO } from "date-fns";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { agent, agentMetadata, app, appStatus, workspace } from "@repo/mocks";
-import { WorkspacesApi, type WorkspacesState } from "@repo/shared";
+import {
+	WorkspacesApi,
+	type AgentDiagnostic,
+	type WorkspacesState,
+} from "@repo/shared";
 import App from "@repo/workspaces/App";
 
 import {
@@ -13,6 +17,8 @@ import {
 	stubElementBoxes,
 } from "../../ui/components/Tree/treeTestHelpers";
 import { captureSent, pushState } from "../ipc";
+
+import type { WorkspaceAgentStatus } from "coder/site/src/api/typesGenerated";
 
 const ALPHA = workspace({
 	id: "ws-alpha",
@@ -172,9 +178,6 @@ describe("WorkspacesPanel", () => {
 		await user.click(
 			screen.getByRole("button", { name: "Open dev in VS Code" }),
 		);
-		expect(
-			screen.queryByRole("button", { name: "More actions for dev" }),
-		).not.toBeInTheDocument();
 
 		expect(drain(WorkspacesApi.openWorkspace.method)).toEqual([
 			{ workspaceId: "ws-alpha" },
@@ -221,6 +224,57 @@ describe("WorkspacesPanel", () => {
 					expect(item).not.toBeInTheDocument();
 				}
 			}
+		},
+	);
+
+	interface DiagnosticMenuCase {
+		status: WorkspaceAgentStatus;
+		items: string[];
+		item: string;
+		diagnostic: AgentDiagnostic;
+	}
+
+	it.each<DiagnosticMenuCase>([
+		{
+			status: "connected",
+			items: ["Ping", "Speed Test", "Support Bundle"],
+			item: "Ping",
+			diagnostic: "ping",
+		},
+		{
+			status: "disconnected",
+			items: ["Support Bundle"],
+			item: "Support Bundle",
+			diagnostic: "supportBundle",
+		},
+	])(
+		"runs diagnostics a $status agent allows from its menu",
+		async ({ status, items, item, diagnostic }) => {
+			const { user, drain } = await setup({
+				...STATE,
+				workspaces: [
+					workspace({
+						id: "ws-alpha",
+						name: "alpha",
+						agents: [agent({ id: "agent-main", name: "main", status })],
+					}),
+				],
+			});
+			await user.click(row("alpha"));
+			await user.click(
+				screen.getByRole("button", { name: "More actions for main" }),
+			);
+			const menu = await screen.findByRole("menu");
+			expect(
+				within(menu)
+					.getAllByRole("menuitem")
+					.map((menuItem) => menuItem.textContent),
+			).toEqual(items);
+
+			await user.click(within(menu).getByRole("menuitem", { name: item }));
+			expect(drain(WorkspacesApi.runAgentDiagnostic.method)).toEqual([
+				{ workspaceId: "ws-alpha", agentId: "agent-main", diagnostic },
+			]);
 		},
 	);
 
