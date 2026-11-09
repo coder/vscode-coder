@@ -5,6 +5,13 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Fixed
+
+- Ping and speed test from an agent in the sidebar now target that agent
+  instead of the workspace's first agent.
+
 ## [v1.18.0](https://github.com/coder/vscode-coder/releases/tag/v1.18.0) 2026-11-13
 
 ### Security

@@ -289,20 +289,20 @@ Emitted by `CommandManager` around every registered `coder.*` command.
 
 Emitted by `DiagnosticTelemetry` around each diagnostic command.
 
-| Attribute                                  | Values                                                           |
-| ------------------------------------------ | ---------------------------------------------------------------- |
-| `command`                                  | `speed_test`, `netcheck`, `support_bundle`, `export_telemetry`   |
-| `abort_stage`                              | `workspace_picker`, `input`, `prompt`, `save_dialog`, `progress` |
-| `error.type`                               | `fetch_error`, `parse_error`, `error`                            |
-| `format`                                   | `json`, `otlp` (telemetry export only)                           |
-| `severity`                                 | `ok`, `warning`, `error` (netcheck only)                         |
-| `requested_duration_seconds` (measurement) | speed test only                                                  |
-| `interval.count` (measurement)             | speed test only                                                  |
-| `throughput_mbits` (measurement)           | speed test only                                                  |
-| `region.count` (measurement)               | netcheck only; DERP regions in the report                        |
-| `warning.count` (measurement)              | netcheck only; warnings across report sections                   |
-| `event.count` (measurement)                | telemetry export only                                            |
-| `file.skipped_count` (measurement)         | telemetry export only; unreadable files skipped, omitted at zero |
+| Attribute                                  | Values                                                                                                                  |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `command`                                  | `speed_test`, `netcheck`, `support_bundle`, `export_telemetry`                                                          |
+| `abort_stage`                              | `workspace_picker`, `unavailable` (the agent changed since it was listed), `input`, `prompt`, `save_dialog`, `progress` |
+| `error.type`                               | `fetch_error`, `parse_error`, `error`                                                                                   |
+| `format`                                   | `json`, `otlp` (telemetry export only)                                                                                  |
+| `severity`                                 | `ok`, `warning`, `error` (netcheck only)                                                                                |
+| `requested_duration_seconds` (measurement) | speed test only                                                                                                         |
+| `interval.count` (measurement)             | speed test only                                                                                                         |
+| `throughput_mbits` (measurement)           | speed test only                                                                                                         |
+| `region.count` (measurement)               | netcheck only; DERP regions in the report                                                                               |
+| `warning.count` (measurement)              | netcheck only; warnings across report sections                                                                          |
+| `event.count` (measurement)                | telemetry export only                                                                                                   |
+| `file.skipped_count` (measurement)         | telemetry export only; unreadable files skipped, omitted at zero                                                        |
 
 ## Deployment
 
@@ -334,9 +334,9 @@ No attributes.
 
 Emitted by `RemoteSetupTelemetry` around connecting to a remote workspace.
 
-| Attribute | Values                                                               |
-| --------- | -------------------------------------------------------------------- |
-| `outcome` | `workspace_not_found` (non-throwing early exit; the span is aborted) |
+| Attribute | Values                                                                                       |
+| --------- | -------------------------------------------------------------------------------------------- |
+| `outcome` | `workspace_not_found`, `incompatible_server` (non-throwing early exits; the span is aborted) |
 
 Phases (`remote.setup.<name>`): `cli_resolve`, `compatibility_check`,
 `cli_configure`, `workspace_lookup`, `workspace_monitor_setup`,
