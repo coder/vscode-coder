@@ -13,11 +13,7 @@ export function notifyKeyringSkipped(
 	auth: CliAuth | undefined,
 	configs: Pick<WorkspaceConfiguration, "get">,
 ): void {
-	if (
-		auth?.store === "extension" &&
-		auth.useKeyring === false &&
-		isKeyringEnabled(configs)
-	) {
+	if (auth?.store === "extension" && isKeyringEnabled(configs)) {
 		void vscode.window.showInformationMessage(
 			"Session not saved to the OS keyring: http:// deployments need Coder CLI 2.39 or later. The Coder CLI in your terminal won't share it.",
 		);

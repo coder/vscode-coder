@@ -342,7 +342,7 @@ describe("Remote", () => {
 				workspaceClient: mockClient(),
 				parts: parseRemoteAuthority(REMOTE_AUTHORITY)!,
 				binaryPath: "/mock/coder",
-				logDir: "",
+				logDir: "/mock/log",
 				cliAuth: CLI_AUTH,
 				sessionApp: "future-editor-next",
 			});

@@ -448,7 +448,7 @@ export class Remote {
 				SshProcessMonitor.start({
 					sshHost: parts.sshHost,
 					networkInfoPath: this.pathResolver.getNetworkInfoPath(),
-					proxyLogDir: logDir || undefined,
+					proxyLogDir: logDir,
 					logger: this.logger,
 					codeLogDir: this.pathResolver.getCodeLogDir(),
 					remoteSshExtensionId: args.remoteSshExtensionId,
@@ -813,9 +813,6 @@ export class Remote {
 	 * has been created.
 	 */
 	private async getLogArgs(logDir: string): Promise<string[]> {
-		if (!logDir) {
-			return [];
-		}
 		await fs.mkdir(logDir, { recursive: true });
 		this.logger.info("SSH proxy diagnostics are being written to", logDir);
 		return ["--log-dir", escapeProxyCommandPath(logDir), "-v"];
@@ -891,14 +888,14 @@ export class Remote {
 			userConfig,
 		);
 
-		const proxyOptions = {
+		const proxyCommand = buildSshProxyCommand({
 			pathResolver: this.pathResolver,
 			binaryPath,
 			cliAuth,
 			logArgs: await this.getLogArgs(logDir),
 			sessionApp,
-		};
-		const proxyCommand = buildSshProxyCommand({ ...proxyOptions, hostPrefix });
+			hostPrefix,
+		});
 
 		const sshValues: SshValues = {
 			Host: hostPrefix + `*`,
@@ -1053,24 +1050,11 @@ interface ProxyCommandOptions {
 	cliAuth: CliAuth;
 	logArgs: string[];
 	sessionApp: string;
-}
-
-function coderCommand(
-	options: ProxyCommandOptions,
-	subcommand: string,
-	flags: string[],
-): string {
-	const globalFlags = getGlobalShellFlags(
-		vscode.workspace.getConfiguration(),
-		options.cliAuth,
-	);
-	return `${escapeProxyCommandPath(options.binaryPath)} ${globalFlags.join(" ")} ${subcommand} ${flags.join(" ")}`;
+	hostPrefix: string;
 }
 
 /** SSH ProxyCommand using wildcard workspace hosts. */
-export function buildSshProxyCommand(
-	options: ProxyCommandOptions & { hostPrefix: string },
-): string {
+export function buildSshProxyCommand(options: ProxyCommandOptions): string {
 	// Make sure to update the `coder.sshFlags` description if we add more internal flags here!
 	const internalFlags = [
 		"--stdio",
@@ -1084,6 +1068,8 @@ export function buildSshProxyCommand(
 	];
 	// User SSH flags are included first; internally-managed flags
 	// are appended last so they take precedence.
-	const userSshFlags = getSshFlags(vscode.workspace.getConfiguration());
-	return coderCommand(options, "ssh", [...userSshFlags, ...internalFlags]);
+	const configs = vscode.workspace.getConfiguration();
+	const userSshFlags = getSshFlags(configs);
+	const globalFlags = getGlobalShellFlags(configs, options.cliAuth);
+	return `${escapeProxyCommandPath(options.binaryPath)} ${globalFlags.join(" ")} ssh ${[...userSshFlags, ...internalFlags].join(" ")}`;
 }
