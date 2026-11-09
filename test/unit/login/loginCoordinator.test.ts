@@ -870,12 +870,12 @@ describe("LoginCoordinator", () => {
 			expect(mockCredentialManager.storeToken).not.toHaveBeenCalled();
 		});
 
-		it("login succeeds even when keyring storage throws", async () => {
+		it("login succeeds even when CLI credential synchronization fails", async () => {
 			const { mockCredentialManager, user, login } =
 				await loginWithStoredToken();
 
 			vi.mocked(mockCredentialManager.storeToken).mockRejectedValueOnce(
-				new Error("keyring unavailable"),
+				new Error("binary unavailable"),
 			);
 
 			const result = await login();
@@ -888,8 +888,7 @@ describe("LoginCoordinator", () => {
 			});
 			await vi.waitFor(() =>
 				expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-					expect.stringContaining("keyring unavailable"),
-					"Open Settings",
+					expect.stringContaining("binary unavailable"),
 				),
 			);
 		});

@@ -104,15 +104,14 @@ describe("CliManager", () => {
 			async (options) => {
 				const { manager, mockCredManager } = setupCliManager();
 				vi.mocked(mockCredManager.storeToken).mockRejectedValueOnce(
-					new Error("keyring unavailable"),
+					new Error("binary unavailable"),
 				);
 
 				await expect(manager.configure(URL, TOKEN, options)).rejects.toThrow(
-					"keyring unavailable",
+					"binary unavailable",
 				);
 				expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-					expect.stringContaining("keyring unavailable"),
-					"Open Settings",
+					expect.stringContaining("binary unavailable"),
 				);
 			},
 		);

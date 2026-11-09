@@ -322,16 +322,23 @@ describe("Remote", () => {
 			},
 		);
 
-		it("keeps server capabilities separate when CLI probing fails", async () => {
-			useEditor("cursor");
-			const { sessionApp, serverFeatures, cliAuth } = await checkCompatibility(
-				new Error("unavailable"),
-				"2.38.0",
+		it("does not hide an unsupported CLI behind the version-probe fallback", async () => {
+			await expect(checkCompatibility("2.28.9", "2.38.0")).rejects.toThrow(
+				"Your Coder CLI is version 2.28.9. This extension requires Coder CLI 2.29.0 or newer. Upgrade your CLI to continue.",
 			);
-			expect(sessionApp).toBe("vscode");
-			expect(cliAuth.refuseRedirects).toBe(false);
-			expect(serverFeatures.onSuccessBuild).toBe(true);
 		});
+
+		it.each([new Error("unavailable"), "invalid"])(
+			"keeps baseline CLI capabilities separate from the server when probing returns %s",
+			async (cli) => {
+				useEditor("cursor");
+				const { sessionApp, serverFeatures, cliAuth } =
+					await checkCompatibility(cli, "2.38.0");
+				expect(sessionApp).toBe("vscode");
+				expect(cliAuth.refuseRedirects).toBe(false);
+				expect(serverFeatures.onSuccessBuild).toBe(true);
+			},
+		);
 
 		async function writeConfig(setEnv = true) {
 			const { remote } = createRemote();

@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 
 import { escapeNotificationLinks } from "../common/strings";
 import { errToStr } from "../error/normalize";
+import { CredentialCliError } from "../instrumentation/credentials";
 import { type CliAuth, isKeyringEnabled } from "../settings/cli";
 
 import type { WorkspaceConfiguration } from "vscode";
@@ -20,20 +21,25 @@ export function notifyKeyringSkipped(
 	}
 }
 
-/** Logs a failed credential store and shows an error that opens `coder.useKeyring`. */
+/** Logs a failed credential store and offers keyring settings for CLI command failures. */
 export function showStoreCredentialsError(
 	error: unknown,
 	configs: Pick<WorkspaceConfiguration, "get">,
 	logger: Logger,
 ): void {
 	logger.error("Failed to store credentials:", error);
-	let message = `Failed to store credentials: ${errToStr(error)}.`;
-	if (isKeyringEnabled(configs)) {
+	let message = `Failed to store credentials: ${errToStr(error).replace(/\.$/, "")}.`;
+	const offerKeyringSettings =
+		error instanceof CredentialCliError && isKeyringEnabled(configs);
+	if (offerKeyringSettings) {
 		message +=
 			' To store the token in a file instead, set "coder.useKeyring" to false.';
 	}
 	void vscode.window
-		.showErrorMessage(escapeNotificationLinks(message), "Open Settings")
+		.showErrorMessage(
+			escapeNotificationLinks(message),
+			...(offerKeyringSettings ? ["Open Settings"] : []),
+		)
 		.then((action) => {
 			if (action === "Open Settings") {
 				void vscode.commands.executeCommand(

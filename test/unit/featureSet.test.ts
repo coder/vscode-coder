@@ -21,17 +21,26 @@ function expectFlag(
 }
 
 describe("check version support", () => {
+	it.each(["2.28.9", "2.29.0-rc.1"])(
+		"rejects known unsupported CLI version %s with an upgrade message",
+		(version) => {
+			expect(() => cliFeatureSet(semver.parse(version))).toThrow(
+				`Your Coder CLI is version ${version}. This extension requires Coder CLI 2.29.0 or newer. Upgrade your CLI to continue.`,
+			);
+		},
+	);
+
 	it("token read", () => {
 		expectFlag(
 			"tokenRead",
-			["v2.31.1", "v2.31.0", "v2.30.0", "v1.0.0"],
+			["v2.31.1", "v2.31.0", "v2.30.0", "v2.29.0"],
 			["v2.32.0", "v2.32.1", "v2.33.0", "v3.0.0"],
 		);
 	});
 	it("ssh tty", () => {
 		expectFlag(
 			"sshTty",
-			["v2.23.0", "v2.33.11", "v1.0.0", "v2.3.3+e491217"],
+			["v2.29.0", "v2.33.11"],
 			["v2.34.0", "v2.34.1", "v2.35.0", "v3.0.0"],
 		);
 	});
@@ -45,7 +54,7 @@ describe("check version support", () => {
 	it("allow redirects", () => {
 		expectFlag(
 			"allowRedirectsFlag",
-			["v2.37.1", "v2.37.0", "v2.36.5", "v1.0.0"],
+			["v2.37.1", "v2.37.0", "v2.36.5", "v2.29.0"],
 			["v2.38.0", "v2.38.1", "v2.39.0", "v3.0.0"],
 		);
 	});

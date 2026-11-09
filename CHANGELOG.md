@@ -17,9 +17,9 @@
 - **Breaking:** the minimum supported Coder server and Coder CLI versions are
   both 2.29.0. Compatibility paths for older versions have been removed. The
   server minimum is checked at login and during CLI binary resolution, with an
-  upgrade message for unsupported deployments. A supplied CLI must independently
-  meet the minimum; capabilities introduced later still depend on the server or
-  CLI version separately.
+  upgrade message for unsupported deployments. Known CLI versions below the
+  minimum are also rejected; unknown versions use baseline capabilities rather
+  than the server version. Later features depend on each component's version.
 
 - **Breaking:** the extension no longer follows a redirect to a different
   scheme, host or port, and passes `--allow-redirects=false` to Coder CLI 2.38

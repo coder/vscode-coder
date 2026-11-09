@@ -27,7 +27,6 @@ import { toError } from "../error/normalize";
 import {
 	cliFeatureSet,
 	serverFeatureSet,
-	type CliFeatureSet,
 	type ServerFeatureSet,
 } from "../featureSet";
 import { Inbox } from "../inbox";
@@ -753,12 +752,13 @@ export class Remote {
 		const buildInfo = await workspaceClient.getBuildInfo();
 		const serverVersion = semver.parse(buildInfo.version);
 
-		let cliFeatures: CliFeatureSet;
+		let parsedCliVersion: semver.SemVer | null;
 		try {
-			cliFeatures = cliFeatureSet(semver.parse(await cliVersion(binaryPath)));
+			parsedCliVersion = semver.parse(await cliVersion(binaryPath));
 		} catch {
-			cliFeatures = cliFeatureSet(null);
+			parsedCliVersion = null;
 		}
+		const cliFeatures = cliFeatureSet(parsedCliVersion);
 		const serverFeatures = serverFeatureSet(serverVersion);
 		// Report schemes verbatim; normalization and editor families belong to the server.
 		const sessionApp =

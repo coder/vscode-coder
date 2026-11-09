@@ -41,9 +41,9 @@ The Coder Remote extension connects your editor to
 | Coder server | 2.29.0                    |
 | Coder CLI    | 2.29.0                    |
 
-The server minimum is checked at login and during CLI resolution. Supplied CLIs
-must independently meet the minimum. Later features have their own server or
-CLI version requirements.
+The server minimum is checked at login and during CLI resolution. Known CLI
+versions below the minimum are rejected; unknown versions use baseline
+capabilities. Newer features have their own version requirements.
 
 The minimum is version-pinned; changes are announced in the changelog.
 

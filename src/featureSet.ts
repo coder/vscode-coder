@@ -48,8 +48,16 @@ export function requireSupportedServerVersion(version: string): semver.SemVer {
 	return parsed;
 }
 
-/** Capabilities of the given CLI version. */
+/**
+ * CLI capabilities; unknown versions use the supported baseline.
+ * @throws {Error} for known unsupported releases.
+ */
 export function cliFeatureSet(version: semver.SemVer | null): CliFeatureSet {
+	if (version && !versionAtLeast(version, MIN_SUPPORTED_CODER_VERSION)) {
+		throw new Error(
+			`Your Coder CLI is version ${version.version}. This extension requires Coder CLI ${MIN_SUPPORTED_CODER_VERSION} or newer. Upgrade your CLI to continue.`,
+		);
+	}
 	return {
 		// Keyring entries keyed by origin rather than host (coder/coder#29764)
 		keyringByOrigin: versionAtLeast(version, "2.39.0"),
