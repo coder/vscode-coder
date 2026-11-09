@@ -4,19 +4,14 @@ import {
 	type RenderOptions,
 	type RenderResult,
 } from "@testing-library/react";
+import { useState, type ReactElement, type ReactNode } from "react";
 
-import type { ReactElement, ReactNode } from "react";
-
+/** One client per mount, so re-renders keep the cache. */
 export function QueryWrapper({ children }: { children: ReactNode }) {
-	return (
-		<QueryClientProvider
-			client={
-				new QueryClient({ defaultOptions: { mutations: { retry: false } } })
-			}
-		>
-			{children}
-		</QueryClientProvider>
+	const [client] = useState(
+		() => new QueryClient({ defaultOptions: { mutations: { retry: false } } }),
 	);
+	return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
 export function renderWithQuery(

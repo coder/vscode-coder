@@ -24,6 +24,7 @@ export function captureSent(): SentMessage[] {
 	return sent;
 }
 
+/** Push state as the extension does, then let the query cache notify. */
 export const pushState = (state: WorkspacesState) =>
 	act(async () => {
 		window.dispatchEvent(
@@ -31,5 +32,5 @@ export const pushState = (state: WorkspacesState) =>
 				data: { type: WorkspacesApi.stateChanged.method, data: state },
 			}),
 		);
-		await Promise.resolve();
+		await new Promise((resolve) => setTimeout(resolve, 0));
 	});

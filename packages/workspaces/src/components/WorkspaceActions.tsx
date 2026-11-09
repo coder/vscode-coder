@@ -1,4 +1,10 @@
 import {
+	workspaceActions,
+	type Workspace,
+	type WorkspaceAction,
+	type WorkspaceAgent,
+} from "@repo/shared";
+import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuTrigger,
@@ -6,33 +12,118 @@ import {
 	IconButton,
 	MenuItem,
 	MenuSeparator,
+	type CodiconName,
 } from "@repo/ui";
-
-import type { Workspace } from "@repo/shared";
 
 import type { WorkspaceCommands } from "./WorkspacesPanel";
 
-export function WorkspaceActions({
-	workspaceId,
-	name,
-	agentId,
-	status,
+interface MenuEntry {
+	readonly label: string;
+	readonly icon: CodiconName;
+}
+
+const ACTION_ENTRIES: Readonly<
+	Record<Exclude<WorkspaceAction, "delete">, MenuEntry>
+> = {
+	update: { label: "Update", icon: "arrow-circle-up" },
+	start: { label: "Start", icon: "play" },
+	stop: { label: "Stop", icon: "primitive-square" },
+	restart: { label: "Restart", icon: "debug-restart" },
+};
+
+const RETRY_ENTRY: MenuEntry = { label: "Retry", icon: "debug-restart" };
+
+function WorkspaceMenu({
+	workspace,
+	pendingAction,
 	api,
 }: {
-	workspaceId: string;
-	name: string;
-	agentId?: string;
-	status?: Workspace["latest_build"]["status"];
-	api: Pick<WorkspaceCommands, "openWorkspace" | "viewInDashboard">;
+	workspace: Workspace;
+	pendingAction?: WorkspaceAction;
+	api: WorkspaceCommands;
 }) {
-	const lifecycleActions =
-		status === "running"
-			? ["Stop", "Restart"]
-			: status === "stopped"
-				? ["Start"]
-				: status === "failed" || status === "canceled"
-					? ["Retry"]
-					: [];
+	const workspaceId = workspace.id;
+	const actions = workspaceActions(workspace);
+	const busy = pendingAction !== undefined;
+	// A failed build is retried by repeating its transition.
+	const failed = workspace.latest_build.status === "failed";
+	const lifecycle = actions.filter((action) => action !== "delete");
+	return (
+		<>
+			{lifecycle.map((action) => {
+				const { label, icon } =
+					failed && action !== "update" ? RETRY_ENTRY : ACTION_ENTRIES[action];
+				return (
+					<MenuItem
+						key={action}
+						disabled={busy}
+						onClick={() => api.runWorkspaceAction({ workspaceId, action })}
+					>
+						<Icon name={icon} />
+						{label}
+					</MenuItem>
+				);
+			})}
+			{lifecycle.length > 0 && <MenuSeparator />}
+			<MenuItem
+				onClick={() => api.viewInDashboard({ workspaceId, page: "sharing" })}
+			>
+				<Icon name="share" />
+				Share
+			</MenuItem>
+			<MenuItem
+				onClick={() => api.viewInDashboard({ workspaceId, page: "settings" })}
+			>
+				<Icon name="gear" />
+				Settings
+			</MenuItem>
+			<MenuSeparator />
+			<MenuItem disabled>
+				<Icon name="pulse" />
+				Ping
+			</MenuItem>
+			<MenuItem disabled>
+				<Icon name="dashboard" />
+				Speed Test
+			</MenuItem>
+			<MenuItem disabled>
+				<Icon name="archive" />
+				Support Bundle
+			</MenuItem>
+			{actions.includes("delete") && (
+				<>
+					<MenuSeparator />
+					<MenuItem
+						className="workspace-delete"
+						disabled={busy}
+						onClick={() =>
+							api.runWorkspaceAction({ workspaceId, action: "delete" })
+						}
+					>
+						<Icon name="trash" />
+						Delete...
+					</MenuItem>
+				</>
+			)}
+		</>
+	);
+}
+
+/** Row actions for a workspace, or for `agent` when given. */
+export function WorkspaceActions({
+	workspace,
+	agent,
+	pendingAction,
+	api,
+}: {
+	workspace: Workspace;
+	agent?: WorkspaceAgent;
+	/** Disables the workspace's lifecycle actions while one runs. */
+	pendingAction?: WorkspaceAction;
+	api: WorkspaceCommands;
+}) {
+	const workspaceId = workspace.id;
+	const name = (agent ? agent.name : workspace.name) || "Unknown";
 	return (
 		<>
 			<IconButton
@@ -40,7 +131,10 @@ export function WorkspaceActions({
 				label={`Open ${name} in VS Code`}
 				tooltip="Open in VS Code"
 				onClick={() =>
-					api.openWorkspace({ workspaceId, ...(agentId ? { agentId } : {}) })
+					api.openWorkspace({
+						workspaceId,
+						...(agent ? { agentId: agent.id } : {}),
+					})
 				}
 			/>
 			<IconButton
@@ -49,7 +143,7 @@ export function WorkspaceActions({
 				tooltip="View in Dashboard"
 				onClick={() => api.viewInDashboard({ workspaceId, page: "workspace" })}
 			/>
-			{!agentId && (
+			{!agent && (
 				<DropdownMenu>
 					<DropdownMenuTrigger
 						render={
@@ -62,53 +156,13 @@ export function WorkspaceActions({
 					/>
 					<DropdownMenuContent
 						align="end"
-						aria-description="Disabled actions are not supported by this panel."
+						aria-description="Ping, Speed Test and Support Bundle are not supported by this panel yet."
 					>
-						{lifecycleActions.map((label) => (
-							<MenuItem key={label} disabled>
-								<Icon
-									name={
-										label === "Start"
-											? "play"
-											: label === "Stop"
-												? "primitive-square"
-												: "debug-restart"
-									}
-								/>
-								{label}
-							</MenuItem>
-						))}
-						{lifecycleActions.length > 0 && <MenuSeparator />}
-						<MenuItem disabled>
-							<Icon name="share" />
-							Share
-						</MenuItem>
-						<MenuItem
-							onClick={() =>
-								api.viewInDashboard({ workspaceId, page: "settings" })
-							}
-						>
-							<Icon name="gear" />
-							Settings
-						</MenuItem>
-						<MenuSeparator />
-						<MenuItem disabled>
-							<Icon name="pulse" />
-							Ping
-						</MenuItem>
-						<MenuItem disabled>
-							<Icon name="dashboard" />
-							Speed Test
-						</MenuItem>
-						<MenuItem disabled>
-							<Icon name="archive" />
-							Support Bundle
-						</MenuItem>
-						<MenuSeparator />
-						<MenuItem disabled className="workspace-delete">
-							<Icon name="trash" />
-							Delete...
-						</MenuItem>
+						<WorkspaceMenu
+							workspace={workspace}
+							pendingAction={pendingAction}
+							api={api}
+						/>
 					</DropdownMenuContent>
 				</DropdownMenu>
 			)}
