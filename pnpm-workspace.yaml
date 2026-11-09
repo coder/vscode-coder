@@ -3,28 +3,28 @@ packages:
 
 catalog:
   "@base-ui/react": ^1.9.0
-  "@rolldown/plugin-babel": ^0.2.4
-  "@storybook/addon-a11y": ^10.6.5
-  "@storybook/addon-docs": ^10.6.5
-  "@storybook/react-vite": ^10.6.5
-  "@tanstack/react-query": ^5.105.0
+  "@rolldown/plugin-babel": ^0.3.0
+  "@storybook/addon-a11y": ^10.6.6
+  "@storybook/addon-docs": ^10.6.6
+  "@storybook/react-vite": ^10.6.6
+  "@tanstack/react-query": ^5.105.3
   "@testing-library/user-event": ^14.6.8
   "@types/react": ^19.3.0
   "@types/react-dom": ^19.3.0
   "@types/vscode-webview": ^1.57.5
-  "@vitejs/plugin-react": ^6.1.2
+  "@vitejs/plugin-react": ^6.2.1
   "@vscode-elements/react-elements": ^2.4.0
   "@vscode/codicons": 0.0.46-24
   babel-plugin-react-compiler: ^1.0.0
   date-fns: ^4.4.0
   react: ^19.3.1
   react-dom: ^19.3.1
-  storybook: ^10.6.5
-  storybook-addon-pseudo-states: ^10.6.5
+  storybook: ^10.6.6
+  storybook-addon-pseudo-states: ^10.6.6
   # typescript stays on the 6.0 API for typescript-eslint; TypeScript 7 runs `tsc`.
   # https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/
   typescript: npm:@typescript/typescript6@^6.0.2
-  vite: ^8.3.5
+  vite: ^8.3.6
 
 catalogMode: strict
 
