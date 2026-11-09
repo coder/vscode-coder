@@ -12,7 +12,7 @@ import type {
 	WorkspaceBuild,
 } from "coder/site/src/api/typesGenerated";
 
-import type { CliFeatureSet, ServerFeatureSet } from "@/featureSet";
+import type { ServerFeatureSet } from "@/featureSet";
 import type { UnidirectionalStream } from "@/websocket/eventStreamConnection";
 
 vi.mock(import("node:child_process"), async (importOriginal) => ({
@@ -21,27 +21,10 @@ vi.mock(import("node:child_process"), async (importOriginal) => ({
 }));
 const { spawn } = await import("node:child_process");
 
-const GLOBAL_FLAGS = ["--url", "https://test.coder.com"];
+const GLOBAL_FLAGS = ["--url", "https://test.coder.com", "--use-keyring=false"];
 
 /** Arguments of the first CLI invocation. */
 const spawnedArgs = () => vi.mocked(spawn).mock.calls[0][1];
-
-const CLI_FEATURES: CliFeatureSet = {
-	cliLogin: true,
-	proxyLogDirectory: true,
-	wildcardSSH: true,
-	buildReason: true,
-	cliUpdate: true,
-	keyringAuth: true,
-	tokenRead: true,
-	sshCommand: true,
-	sshTty: true,
-	supportBundle: true,
-	supportBundleWorkspaceFiles: true,
-	allowRedirectsFlag: true,
-	keyringByOrigin: true,
-	customSessionAppNames: true,
-};
 
 function mockStream(): UnidirectionalStream<unknown> {
 	return {
@@ -73,7 +56,6 @@ function createUpdateCtx(
 		workspace?: Omit<Partial<Workspace>, "latest_build"> & {
 			latest_build?: Partial<WorkspaceBuild>;
 		};
-		cliFeatures?: Partial<CliFeatureSet>;
 		serverFeatures?: Partial<ServerFeatureSet>;
 	} = {},
 ) {
@@ -92,30 +74,18 @@ function createUpdateCtx(
 	const restClient = {
 		getWorkspace: vi.fn().mockResolvedValue(finalWorkspace),
 		postWorkspaceBuild: vi.fn(),
-		stopWorkspace: vi
-			.fn()
-			.mockResolvedValue({ ...workspace.latest_build, status: "stopped" }),
-		startWorkspace: vi.fn().mockResolvedValue(workspace.latest_build),
-		getTemplate: vi
-			.fn()
-			.mockResolvedValue({ active_version_id: "active-version-id" }),
-		waitForBuild: vi.fn().mockResolvedValue({
-			...workspace.latest_build.job,
-			status: "succeeded",
-		}),
 	};
 	const ctx = {
 		restClient,
 		auth: {
 			store: "cli" as const,
 			url: "https://test.coder.com",
-			useKeyring: undefined,
+			useKeyring: false,
 			refuseRedirects: false,
 		},
 		binPath: "/usr/bin/coder",
 		workspace,
 		write: vi.fn<(data: string) => void>(),
-		cliFeatures: { ...CLI_FEATURES, ...overrides.cliFeatures },
 		serverFeatures: {
 			tasks: false,
 			onSuccessBuild: false,
@@ -364,71 +334,6 @@ describe("updateWorkspace", () => {
 			request,
 		);
 	});
-
-	it("falls back to the API update path when coder update is unsupported", async () => {
-		const { ctx, restClient, finalWorkspace } = createUpdateCtx({
-			cliFeatures: { cliUpdate: false },
-		});
-
-		await expect(updateWorkspace(ctx, [])).resolves.toBe(finalWorkspace);
-
-		expect(spawn).not.toHaveBeenCalled();
-		expect(restClient.stopWorkspace).toHaveBeenCalledWith(ctx.workspace.id);
-		expect(restClient.startWorkspace).toHaveBeenCalledWith(
-			ctx.workspace.id,
-			"active-version-id",
-			undefined,
-			[],
-		);
-	});
-
-	it("passes collected parameters when using the API fallback", async () => {
-		const { ctx, restClient } = createUpdateCtx({
-			cliFeatures: { cliUpdate: false },
-		});
-		const parameters = [{ name: "region", value: "us-east" }];
-
-		await updateWorkspace(ctx, parameters);
-
-		expect(restClient.startWorkspace).toHaveBeenCalledWith(
-			ctx.workspace.id,
-			"active-version-id",
-			undefined,
-			parameters,
-		);
-	});
-
-	it("does not stop before API fallback update when the workspace is not running", async () => {
-		const { ctx, restClient } = createUpdateCtx({
-			workspace: { latest_build: { status: "stopped", transition: "stop" } },
-			cliFeatures: { cliUpdate: false },
-		});
-
-		await updateWorkspace(ctx, []);
-
-		expect(restClient.stopWorkspace).not.toHaveBeenCalled();
-		expect(restClient.startWorkspace).toHaveBeenCalledWith(
-			ctx.workspace.id,
-			"active-version-id",
-			undefined,
-			[],
-		);
-	});
-
-	it("throws before update when the API fallback stop is cancelled", async () => {
-		const { ctx, restClient } = createUpdateCtx({
-			cliFeatures: { cliUpdate: false },
-		});
-		restClient.waitForBuild.mockResolvedValueOnce({
-			...ctx.workspace.latest_build.job,
-			status: "canceled",
-		});
-
-		await expect(updateWorkspace(ctx, [])).rejects.toThrow(
-			"Workspace update stop build did not succeed",
-		);
-		expect(restClient.startWorkspace).not.toHaveBeenCalled();
-	});
 });
 
 describe("startWorkspace", () => {
@@ -463,25 +368,5 @@ describe("startWorkspace", () => {
 		await expect(startWorkspace(ctx)).resolves.toBe(ctx.workspace);
 		expect(spawn).not.toHaveBeenCalled();
 		expect(restClient.getWorkspace).not.toHaveBeenCalled();
-	});
-
-	it("omits --reason when buildReason feature is unavailable", async () => {
-		const { ctx } = createUpdateCtx({
-			workspace: { latest_build: { status: "stopped", transition: "stop" } },
-			cliFeatures: { buildReason: false },
-		});
-		const sp = controlSpawn();
-
-		const result = startWorkspace(ctx);
-		await sp.close(0);
-		await result;
-
-		expect(spawnedArgs()).toEqual([
-			...GLOBAL_FLAGS,
-			"start",
-			"--yes",
-			"--",
-			"testuser/test-workspace",
-		]);
 	});
 });

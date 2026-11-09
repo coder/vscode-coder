@@ -293,7 +293,7 @@ Emitted by `DiagnosticTelemetry` around each diagnostic command.
 | ------------------------------------------ | ---------------------------------------------------------------- |
 | `command`                                  | `speed_test`, `netcheck`, `support_bundle`, `export_telemetry`   |
 | `abort_stage`                              | `workspace_picker`, `input`, `prompt`, `save_dialog`, `progress` |
-| `error.type`                               | `fetch_error`, `parse_error`, `unsupported_cli`, `error`         |
+| `error.type`                               | `fetch_error`, `parse_error`, `error`                            |
 | `format`                                   | `json`, `otlp` (telemetry export only)                           |
 | `severity`                                 | `ok`, `warning`, `error` (netcheck only)                         |
 | `requested_duration_seconds` (measurement) | speed test only                                                  |
@@ -334,9 +334,9 @@ No attributes.
 
 Emitted by `RemoteSetupTelemetry` around connecting to a remote workspace.
 
-| Attribute | Values                                                                                       |
-| --------- | -------------------------------------------------------------------------------------------- |
-| `outcome` | `workspace_not_found`, `incompatible_server` (non-throwing early exits; the span is aborted) |
+| Attribute | Values                                                               |
+| --------- | -------------------------------------------------------------------- |
+| `outcome` | `workspace_not_found` (non-throwing early exit; the span is aborted) |
 
 Phases (`remote.setup.<name>`): `cli_resolve`, `compatibility_check`,
 `cli_configure`, `workspace_lookup`, `workspace_monitor_setup`,

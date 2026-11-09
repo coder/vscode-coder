@@ -22,7 +22,7 @@ import {
 	MockUserInteraction,
 } from "../../mocks/testHelpers";
 
-export const TEST_VERSION = "1.2.3";
+export const TEST_VERSION = "2.29.0";
 export const TEST_URL = "https://test.coder.com";
 export const BASE_PATH = "/path/base";
 export const BINARY_DIR = `${BASE_PATH}/test.coder.com/bin`;

@@ -13,7 +13,7 @@ export type RemoteSetupPhase =
 	| "connection_handoff";
 
 /** Reason for a non-throwing early exit from `remote.setup`. */
-export type RemoteSetupOutcome = "workspace_not_found" | "incompatible_server";
+export type RemoteSetupOutcome = "workspace_not_found";
 
 /** Helpers scoped to the remote.setup trace's lifetime. */
 export interface RemoteSetupTracer {

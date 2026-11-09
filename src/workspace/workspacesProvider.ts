@@ -20,23 +20,11 @@ import {
 } from "../api/models";
 import { type Logger } from "../logging/logger";
 
-import {
-	isQueryRejected,
-	WORKSPACE_FILTERS,
-	type WorkspaceFilterConfig,
-} from "./filters";
+import { WORKSPACE_FILTERS, type WorkspaceFilterConfig } from "./filters";
 
 import type { WorkspaceFilter } from "@repo/shared";
 
 import type { SessionData, SessionState } from "../deployment/sessionStore";
-
-export interface WorkspaceProviderOptions {
-	/**
-	 * Called when the server rejects the workspaces query with HTTP 400,
-	 * which indicates a deployment that does not support the query filter.
-	 */
-	readonly onQueryRejected?: () => void;
-}
 
 /**
  * Polls workspaces using the provided REST client and renders them in a tree.
@@ -68,7 +56,6 @@ export class WorkspaceProvider
 		private readonly client: CoderApi,
 		private readonly logger: Logger,
 		private readonly sessionState: SessionState,
-		private readonly options: WorkspaceProviderOptions = {},
 	) {
 		this.config = WORKSPACE_FILTERS[filter];
 		this.sessionChangeDisposable = this.sessionState.onDidChange(() => {
@@ -106,9 +93,6 @@ export class WorkspaceProvider
 					this.logger.warn("Failed to fetch workspaces:", error);
 					hadError = true;
 					this.setWorkspaces([]);
-					if (isQueryRejected(error)) {
-						this.options.onQueryRejected?.();
-					}
 				}
 			} while (this.refetchPending && !this.disposed && this.visible);
 		} finally {

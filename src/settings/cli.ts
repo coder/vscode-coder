@@ -20,8 +20,8 @@ export type CliAuth = {
 	/** Pass `--allow-redirects=false`, overriding user flags and env. */
 	refuseRedirects: boolean;
 } & (
-	| { store: "cli"; useKeyring: boolean | undefined }
-	| { store: "extension"; configDir: string; useKeyring: false | undefined }
+	| { store: "cli"; useKeyring: boolean }
+	| { store: "extension"; configDir: string; useKeyring: false }
 );
 
 /**
@@ -111,9 +111,7 @@ function buildGlobalFlags(
 		flags.push("--global-config", escPath(auth.configDir));
 	}
 	flags.push("--url", escValue(auth.url));
-	if (auth.useKeyring !== undefined) {
-		flags.push(`--use-keyring=${auth.useKeyring}`);
-	}
+	flags.push(`--use-keyring=${auth.useKeyring}`);
 	if (auth.refuseRedirects) {
 		flags.push("--allow-redirects=false");
 	}
@@ -187,10 +185,7 @@ export function resolveCliAuth(
 	url: string,
 	configDir: string,
 ): CliAuth {
-	// Below 2.29 the CLI lacks --use-keyring.
-	const useKeyring = featureSet.keyringAuth
-		? shouldUseKeyring(configs, featureSet, url)
-		: undefined;
+	const useKeyring = shouldUseKeyring(configs, featureSet, url);
 	// A user directory is honored on 2.32+, where the CLI reports its token.
 	const userDir = hasUserConfigDir(configs) && featureSet.tokenRead;
 	const common = { url, refuseRedirects: featureSet.allowRedirectsFlag };

@@ -1,12 +1,10 @@
 import { Api } from "coder/site/src/api/api";
 import { vol } from "memfs";
 import { spawnSync } from "node:child_process";
-import * as semver from "semver";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import { version as cliVersion } from "@/cli/cliExec";
-import { cliFeatureSet } from "@/featureSet";
 import { parseRemoteAuthority } from "@/remote/authority";
 import {
 	buildSshProxyCommand,
@@ -69,7 +67,7 @@ const CLI_AUTH: CliAuth = {
 	store: "extension",
 	url: "https://coder.example.com",
 	configDir: "/mock/global",
-	useKeyring: undefined,
+	useKeyring: false,
 	refuseRedirects: false,
 };
 
@@ -324,17 +322,18 @@ describe("Remote", () => {
 			},
 		);
 
-		it("uses vscode when CLI probing fails without disabling unrelated features", async () => {
+		it("keeps server capabilities separate when CLI probing fails", async () => {
 			useEditor("cursor");
-			const { sessionApp, cliFeatures } = await checkCompatibility(
+			const { sessionApp, serverFeatures, cliAuth } = await checkCompatibility(
 				new Error("unavailable"),
 				"2.38.0",
 			);
 			expect(sessionApp).toBe("vscode");
-			expect(cliFeatures.allowRedirectsFlag).toBe(true);
+			expect(cliAuth.refuseRedirects).toBe(false);
+			expect(serverFeatures.onSuccessBuild).toBe(true);
 		});
 
-		async function writeConfig(cli = "2.38.0", setEnv = true) {
+		async function writeConfig(setEnv = true) {
 			const { remote } = createRemote();
 			useEditor("cursor");
 			vi.mocked(sshSupportsSetEnv).mockReturnValue(setEnv);
@@ -344,7 +343,6 @@ describe("Remote", () => {
 				parts: parseRemoteAuthority(REMOTE_AUTHORITY)!,
 				binaryPath: "/mock/coder",
 				logDir: "",
-				cliFeatures: cliFeatureSet(semver.parse(cli)),
 				cliAuth: CLI_AUTH,
 				sessionApp: "future-editor-next",
 			});
@@ -356,14 +354,8 @@ describe("Remote", () => {
 			expect(config.setenv).toBe("CODER_SSH_SESSION_TYPE=future-editor-next");
 		});
 
-		it("keeps the legacy proxy command without adding unsupported flags", async () => {
-			const config = await writeConfig("2.18.0");
-			expect(config.proxycommand).toContain(" vscodessh ");
-			expect(config.proxycommand).not.toContain("--usage-app");
-		});
-
 		it("omits SetEnv when unsupported by OpenSSH", async () => {
-			expect((await writeConfig("2.38.0", false)).setenv).toBeUndefined();
+			expect((await writeConfig(false)).setenv).toBeUndefined();
 		});
 	});
 
@@ -396,7 +388,7 @@ describe("Remote", () => {
 			});
 
 			expect(elideNetworkInfoDir(proxyCommand)).toBe(
-				`/mock/coder "--token=" --global-config /mock/global --url https://coder.example.com ${expected}`,
+				`/mock/coder "--token=" --global-config /mock/global --url https://coder.example.com --use-keyring=false ${expected}`,
 			);
 		});
 
@@ -441,6 +433,7 @@ describe("Remote", () => {
 				configDir.replaceAll("\\", "/"),
 				"--url",
 				CLI_AUTH.url,
+				"--use-keyring=false",
 				"--header-command",
 				headerCommand,
 				"ssh",

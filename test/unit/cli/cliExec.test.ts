@@ -44,14 +44,14 @@ const { spawn } = await import("node:child_process");
 const sharedAuth = (url: string): CliEnv["auth"] => ({
 	store: "cli",
 	url,
-	useKeyring: undefined,
+	useKeyring: false,
 	refuseRedirects: false,
 });
 const privateAuth = (url: string, configDir: string): CliEnv["auth"] => ({
 	store: "extension",
 	url,
 	configDir,
-	useKeyring: undefined,
+	useKeyring: false,
 	refuseRedirects: false,
 });
 
@@ -207,6 +207,7 @@ describe("cliExec", () => {
 			expect(args).toEqual([
 				"--url",
 				"http://localhost:3000",
+				"--use-keyring=false",
 				"--header-command",
 				"my-header-cmd",
 				"speedtest",
@@ -263,6 +264,7 @@ describe("cliExec", () => {
 			expect(args).toEqual([
 				"--url",
 				"http://localhost:3000",
+				"--use-keyring=false",
 				"--header-command",
 				"my-header-cmd",
 				"netcheck",
@@ -319,6 +321,7 @@ describe("cliExec", () => {
 			expect(args).toEqual([
 				"--url",
 				"http://localhost:3000",
+				"--use-keyring=false",
 				"--header-command",
 				"my-header-cmd",
 				"support",
@@ -350,6 +353,7 @@ describe("cliExec", () => {
 			expect(args).toEqual([
 				"--url",
 				"http://localhost:3000",
+				"--use-keyring=false",
 				"support",
 				"bundle",
 				"--output-file",
@@ -416,7 +420,14 @@ describe("cliExec", () => {
 
 			expect(spawn).toHaveBeenCalledWith(
 				env.binary,
-				["--url", "https://test.coder.com", "ping", "--", "owner/my workspace"],
+				[
+					"--url",
+					"https://test.coder.com",
+					"--use-keyring=false",
+					"ping",
+					"--",
+					"owner/my workspace",
+				],
 				expect.objectContaining({ detached: process.platform !== "win32" }),
 			);
 		});
@@ -446,6 +457,7 @@ describe("cliExec", () => {
 					"/cfg",
 					"--url",
 					"https://test.coder.com",
+					"--use-keyring=false",
 					"ping",
 					"--",
 					"owner/ws",
@@ -484,7 +496,7 @@ describe("cliExec", () => {
 		});
 
 		it.each([
-			{ cliVersion: "2.23.0", ttyArgs: [] },
+			{ cliVersion: "2.29.0", ttyArgs: [] },
 			{ cliVersion: "2.34.0", ttyArgs: ["--tty"] },
 		])(
 			"runs the app command as one argv entry after `--` on CLI $cliVersion",
@@ -504,6 +516,7 @@ describe("cliExec", () => {
 					shellArgs: [
 						"--url",
 						"https://test.coder.com",
+						"--use-keyring=false",
 						"ssh",
 						...ttyArgs,
 						"ws",
@@ -517,16 +530,6 @@ describe("cliExec", () => {
 				});
 			},
 		);
-
-		it("refuses CLIs that cannot take a command instead of typing it into a shell", () => {
-			expect(() =>
-				cliExec.openAppStatusTerminal(appEnv("2.22.9"), {
-					command,
-					workspace_name: "ws",
-				}),
-			).toThrow("requires Coder CLI v2.23.0");
-			expect(vscode.window.createTerminal).not.toHaveBeenCalled();
-		});
 
 		it.each(["x$(touch /tmp/pwned)", "--proxy-command=evil"])(
 			"rejects workspace name %j",

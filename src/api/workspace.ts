@@ -19,7 +19,7 @@ import type {
 	WorkspaceBuildParameter,
 } from "coder/site/src/api/typesGenerated";
 
-import type { CliFeatureSet, ServerFeatureSet } from "../featureSet";
+import type { ServerFeatureSet } from "../featureSet";
 import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
 
 import type { CoderApi } from "./coderApi";
@@ -56,15 +56,7 @@ export class LazyStream<T> {
 	}
 }
 
-type BuildApi = Pick<
-	Api,
-	| "getTemplate"
-	| "getWorkspace"
-	| "postWorkspaceBuild"
-	| "startWorkspace"
-	| "stopWorkspace"
-	| "waitForBuild"
->;
+type BuildApi = Pick<Api, "getWorkspace" | "postWorkspaceBuild">;
 
 interface CliContext {
 	restClient: BuildApi;
@@ -72,7 +64,6 @@ interface CliContext {
 	binPath: string;
 	workspace: Workspace;
 	write: (data: string) => void;
-	cliFeatures: CliFeatureSet;
 	serverFeatures: ServerFeatureSet;
 }
 
@@ -126,20 +117,15 @@ export async function startWorkspace(ctx: CliContext): Promise<Workspace> {
 		return ctx.workspace;
 	}
 
-	const args = ["start", "--yes"];
-	if (ctx.cliFeatures.buildReason) {
-		args.push("--reason", BUILD_REASON);
-	}
-
-	await runCliCommand(ctx, args);
+	await runCliCommand(ctx, ["start", "--yes", "--reason", BUILD_REASON]);
 	return ctx.restClient.getWorkspace(ctx.workspace.id);
 }
 
 /**
  * Update a workspace to the latest template version. Callers must collect
  * any newly-required parameters via `collectUpdateParameters` first; this
- * function does not prompt. On servers before 2.36, updating takes two
- * builds: `coder update`, or the REST API on CLIs before 2.24.
+ * function does not prompt. On servers before 2.36, `coder update` takes
+ * two builds.
  */
 export async function updateWorkspace(
 	ctx: CliContext,
@@ -147,10 +133,6 @@ export async function updateWorkspace(
 ): Promise<Workspace> {
 	if (ctx.serverFeatures.onSuccessBuild) {
 		return updateWorkspaceInOneBuild(ctx, parameters);
-	}
-
-	if (!ctx.cliFeatures.cliUpdate) {
-		return updateWorkspaceViaApi(ctx, parameters);
 	}
 
 	const paramArgs = parameters.flatMap((p) => [
@@ -193,30 +175,6 @@ async function updateWorkspaceInOneBuild(
 				},
 	);
 	return { ...workspace, latest_build: build };
-}
-
-async function updateWorkspaceViaApi(
-	ctx: CliContext,
-	parameters: WorkspaceBuildParameter[],
-): Promise<Workspace> {
-	if (ctx.workspace.latest_build.status === "running") {
-		ctx.write("Stopping workspace for update...\r\n");
-		const stopBuild = await ctx.restClient.stopWorkspace(ctx.workspace.id);
-		const stoppedJob = await ctx.restClient.waitForBuild(stopBuild);
-		if (stoppedJob?.status !== "succeeded") {
-			throw new Error("Workspace update stop build did not succeed");
-		}
-	}
-
-	ctx.write("Starting workspace with updated template...\r\n");
-	const template = await ctx.restClient.getTemplate(ctx.workspace.template_id);
-	await ctx.restClient.startWorkspace(
-		ctx.workspace.id,
-		template.active_version_id,
-		undefined,
-		parameters,
-	);
-	return ctx.restClient.getWorkspace(ctx.workspace.id);
 }
 
 /**

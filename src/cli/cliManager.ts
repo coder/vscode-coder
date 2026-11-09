@@ -13,6 +13,7 @@ import { HttpStatusCode } from "../api/httpStatusCode";
 import { tempFilePath } from "../common/fs";
 import { toSafeHost } from "../common/url";
 import { errToStr } from "../error/normalize";
+import { requireSupportedServerVersion } from "../featureSet";
 import {
 	CliDownloadsDisabledError,
 	CliFallbackDeclinedError,
@@ -227,12 +228,7 @@ export class CliManager {
 		// and to log for debugging.
 		const buildInfo = await restClient.getBuildInfo();
 		this.output.info("Got server version", buildInfo.version);
-		const parsedVersion = semver.parse(buildInfo.version);
-		if (!parsedVersion) {
-			throw new Error(
-				`Got invalid version from deployment: ${buildInfo.version}`,
-			);
-		}
+		const parsedVersion = requireSupportedServerVersion(buildInfo.version);
 
 		if (resolved.source === "not_found") {
 			this.output.info("No existing binary found, starting download");

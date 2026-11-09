@@ -8,6 +8,7 @@ import { HttpStatusCode } from "../api/httpStatusCode";
 import { openInBrowser, toSafeHost } from "../common/url";
 import { CertificateError } from "../error/certificateError";
 import { CrossOriginRedirectError } from "../error/crossOriginRedirectError";
+import { requireSupportedServerVersion } from "../featureSet";
 import { OAuthAuthorizer } from "../oauth/authorizer";
 import { revokeOAuthTokens } from "../oauth/revocation";
 import { buildOAuthTokenData } from "../oauth/tokens";
@@ -305,6 +306,13 @@ export class LoginCoordinator implements vscode.Disposable {
 		);
 		const client = CoderApi.create(deployment.url, "", this.logger);
 		try {
+			try {
+				const buildInfo = await client.getBuildInfo();
+				requireSupportedServerVersion(buildInfo.version);
+			} catch (err) {
+				this.showAuthError(err, isAutoLogin);
+				return { success: false, reason: "auth_failed" };
+			}
 			const result = await this.runLoginAttempts(
 				client,
 				deployment,

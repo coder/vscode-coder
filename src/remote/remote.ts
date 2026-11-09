@@ -121,7 +121,6 @@ interface SshConfigOptions {
 	parts: AuthorityParts;
 	binaryPath: string;
 	logDir: string;
-	cliFeatures: CliFeatureSet;
 	cliAuth: CliAuth;
 	sessionApp: string;
 }
@@ -320,36 +319,16 @@ export class Remote {
 				this.resolveRemoteBinary(workspaceClient),
 			);
 
-			const { cliFeatures, serverFeatures, cliAuth, sessionApp } =
-				await tracer.phase("compatibility_check", () =>
+			const { serverFeatures, cliAuth, sessionApp } = await tracer.phase(
+				"compatibility_check",
+				() =>
 					this.checkCompatibility({
 						workspaceClient,
 						binaryPath,
 						baseUrl,
 						safeHostname: parts.safeHostname,
 					}),
-				);
-
-			// Reject deployments below our minimum supported version (v0.25.0)
-			// before configuring credentials, so they get a clear message.
-			if (!cliFeatures.cliLogin) {
-				tracer.markAborted("incompatible_server");
-				await vscodeProposed.window.showErrorMessage(
-					"Incompatible Server",
-					{
-						detail:
-							"Your Coder server is too old to support the Coder extension! Please upgrade to v0.25.0 or newer.",
-						modal: true,
-						useCustom: true,
-					},
-					"Close Remote",
-				);
-				disposables.forEach((d) => {
-					d.dispose();
-				});
-				await this.closeRemote();
-				return;
-			}
+			);
 
 			// Write token to keyring or file
 			if (baseUrl && token !== undefined) {
@@ -406,7 +385,6 @@ export class Remote {
 				workspaceClient,
 				args.startupMode,
 				binaryPath,
-				cliFeatures,
 				serverFeatures,
 				cliAuth,
 				this.serviceContainer,
@@ -432,7 +410,7 @@ export class Remote {
 			const inbox = await Inbox.create(workspace, workspaceClient, this.logger);
 			disposables.push(inbox);
 
-			const logDir = this.getLogDir(cliFeatures);
+			const logDir = this.pathResolver.getProxyLogPath();
 
 			const computedSshProperties = await tracer.phase("ssh_config_write", () =>
 				this.writeRemoteSshConfig({
@@ -440,7 +418,6 @@ export class Remote {
 					workspaceClient,
 					binaryPath,
 					logDir,
-					cliFeatures,
 					cliAuth,
 					sessionApp,
 				}),
@@ -529,15 +506,13 @@ export class Remote {
 					title: "SSH Flags",
 					getValue: () => getSshFlags(vscode.workspace.getConfiguration()),
 				},
-				...SSH_PROXY_SETTINGS,
-			];
-			if (cliFeatures.proxyLogDirectory) {
-				settingsToWatch.push({
+				{
 					setting: "coder.proxyLogDirectory",
 					title: "Proxy Log Directory",
-					getValue: () => this.getLogDir(cliFeatures),
-				});
-			}
+					getValue: () => this.pathResolver.getProxyLogPath(),
+				},
+				...SSH_PROXY_SETTINGS,
+			];
 			disposables.push(this.watchSettings(settingsToWatch));
 		} catch (ex) {
 			// Whatever error happens, make sure we clean up the disposables in case of failure
@@ -761,8 +736,8 @@ export class Remote {
 	}
 
 	/**
-	 * Resolve the feature sets and CLI auth, falling back to the server version
-	 * when the CLI version can't be read.
+	 * Resolve server and CLI capabilities independently, disabling optional CLI
+	 * features when its version can't be read.
 	 */
 	private async checkCompatibility(options: {
 		workspaceClient: Api;
@@ -770,7 +745,6 @@ export class Remote {
 		baseUrl: string;
 		safeHostname: string;
 	}): Promise<{
-		cliFeatures: CliFeatureSet;
 		serverFeatures: ServerFeatureSet;
 		cliAuth: CliAuth;
 		sessionApp: string;
@@ -783,10 +757,7 @@ export class Remote {
 		try {
 			cliFeatures = cliFeatureSet(semver.parse(await cliVersion(binaryPath)));
 		} catch {
-			cliFeatures = {
-				...cliFeatureSet(serverVersion),
-				customSessionAppNames: false,
-			};
+			cliFeatures = cliFeatureSet(null);
 		}
 		const serverFeatures = serverFeatureSet(serverVersion);
 		// Report schemes verbatim; normalization and editor families belong to the server.
@@ -802,7 +773,6 @@ export class Remote {
 			configDir,
 		);
 		return {
-			cliFeatures,
 			serverFeatures,
 			cliAuth,
 			sessionApp,
@@ -839,19 +809,6 @@ export class Remote {
 	}
 
 	/**
-	 * Return the --log-dir argument value for the ProxyCommand, or an empty
-	 * string when the CLI does not support it.
-	 *
-	 * Value defined in the "coder.sshFlags" setting is not considered.
-	 */
-	private getLogDir(cliFeatures: CliFeatureSet): string {
-		if (!cliFeatures.proxyLogDirectory) {
-			return "";
-		}
-		return this.pathResolver.getProxyLogPath();
-	}
-
-	/**
 	 * Returns the --log-dir argument for the ProxyCommand after making sure it
 	 * has been created.
 	 */
@@ -876,7 +833,6 @@ export class Remote {
 		parts,
 		binaryPath,
 		logDir,
-		cliFeatures,
 		cliAuth,
 		sessionApp,
 	}: SshConfigOptions): Promise<SshProperties> {
@@ -942,9 +898,7 @@ export class Remote {
 			logArgs: await this.getLogArgs(logDir),
 			sessionApp,
 		};
-		const proxyCommand = cliFeatures.wildcardSSH
-			? buildSshProxyCommand({ ...proxyOptions, hostPrefix })
-			: buildVscodeSshProxyCommand({ ...proxyOptions, label: safeHostname });
+		const proxyCommand = buildSshProxyCommand({ ...proxyOptions, hostPrefix });
 
 		const sshValues: SshValues = {
 			Host: hostPrefix + `*`,
@@ -1113,7 +1067,7 @@ function coderCommand(
 	return `${escapeProxyCommandPath(options.binaryPath)} ${globalFlags.join(" ")} ${subcommand} ${flags.join(" ")}`;
 }
 
-/** ProxyCommand for CLIs that support wildcard hosts. */
+/** SSH ProxyCommand using wildcard workspace hosts. */
 export function buildSshProxyCommand(
 	options: ProxyCommandOptions & { hostPrefix: string },
 ): string {
@@ -1132,21 +1086,4 @@ export function buildSshProxyCommand(
 	// are appended last so they take precedence.
 	const userSshFlags = getSshFlags(vscode.workspace.getConfiguration());
 	return coderCommand(options, "ssh", [...userSshFlags, ...internalFlags]);
-}
-
-/** ProxyCommand for CLIs that predate wildcard hosts. */
-function buildVscodeSshProxyCommand(
-	options: ProxyCommandOptions & { label: string },
-): string {
-	const { pathResolver, label } = options;
-	return coderCommand(options, "vscodessh", [
-		"--network-info-dir",
-		escapeProxyCommandPath(pathResolver.getNetworkInfoPath()),
-		...options.logArgs,
-		"--session-token-file",
-		escapeProxyCommandPath(pathResolver.getSessionTokenPath(label)),
-		"--url-file",
-		escapeProxyCommandPath(pathResolver.getUrlPath(label)),
-		"%h",
-	]);
 }

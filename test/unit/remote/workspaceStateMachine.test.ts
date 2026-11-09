@@ -39,7 +39,6 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 
 import type { CoderApi } from "@/api/coderApi";
-import type { CliFeatureSet } from "@/featureSet";
 import type { AuthorityParts } from "@/remote/authority";
 import type { StartupMode } from "@/storage/mementoManager";
 import type { TelemetryService } from "@/telemetry/service";
@@ -117,12 +116,11 @@ function setup(
 		{} as CoderApi,
 		startupMode,
 		"/usr/bin/coder",
-		{} as CliFeatureSet,
 		{ tasks: false, onSuccessBuild: true, customSessionAppNames: true },
 		{
 			store: "cli",
 			url: "https://test.coder.com",
-			useKeyring: undefined,
+			useKeyring: false,
 			refuseRedirects: false,
 		},
 		createMockServiceContainer({ telemetry, logger: createMockLogger() }),

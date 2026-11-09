@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 
 import * as pgp from "@/pgp";
 
+import { createMockStream } from "../../mocks/testHelpers";
 import { expectPathsEqual } from "../../utils/platform";
 
 import {
@@ -395,11 +396,54 @@ describe("CliManager", () => {
 			);
 		});
 
-		it("accepts valid semver versions", async () => {
+		it("accepts the minimum supported server version", async () => {
 			const { manager, mockApi, withExistingBinary } = setupCliManager();
 			withExistingBinary(TEST_VERSION);
 			expectPathsEqual(await manager.fetchBinary(mockApi), BINARY_PATH);
 		});
+
+		const UNSUPPORTED_SERVER = "2.28.9";
+		it.each<{
+			scenario: string;
+			prepare: (t: CliManagerHarness) => void;
+		}>([
+			{
+				scenario: "no binary is cached",
+				prepare: (t) => {
+					t.withHttpResponse(
+						200,
+						{},
+						createMockStream(mockBinaryContent(UNSUPPORTED_SERVER)),
+					);
+					t.withBinaryVersion(UNSUPPORTED_SERVER);
+				},
+			},
+			{
+				scenario: "the cached binary matches the server",
+				prepare: (t) => t.withExistingBinary(UNSUPPORTED_SERVER),
+			},
+			{
+				scenario: "downloads are disabled with an older cached binary",
+				prepare: (t) => {
+					t.mockConfig.set("coder.enableDownloads", false);
+					t.withExistingBinary("1.0.0");
+				},
+			},
+		])(
+			"rejects a server below the minimum when $scenario",
+			async ({ prepare }) => {
+				const t = setupCliManager();
+				t.mockApi.getBuildInfo = vi
+					.fn()
+					.mockResolvedValue({ version: UNSUPPORTED_SERVER });
+				prepare(t);
+
+				await expect(t.manager.fetchBinary(t.mockApi)).rejects.toThrow(
+					`Your Coder server is version ${UNSUPPORTED_SERVER}. This extension requires Coder server 2.29.0 or newer. Upgrade your deployment to continue.`,
+				);
+				expect(t.mockAxios.get).not.toHaveBeenCalled();
+			},
+		);
 	});
 
 	describe("Existing Binary Handling", () => {

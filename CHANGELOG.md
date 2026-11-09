@@ -14,6 +14,13 @@
 
 ### Changed
 
+- **Breaking:** the minimum supported Coder server and Coder CLI versions are
+  both 2.29.0. Compatibility paths for older versions have been removed. The
+  server minimum is checked at login and during CLI binary resolution, with an
+  upgrade message for unsupported deployments. A supplied CLI must independently
+  meet the minimum; capabilities introduced later still depend on the server or
+  CLI version separately.
+
 - **Breaking:** the extension no longer follows a redirect to a different
   scheme, host or port, and passes `--allow-redirects=false` to Coder CLI 2.38
   or later even if `coder.globalFlags` or `CODER_ALLOW_REDIRECTS` allow

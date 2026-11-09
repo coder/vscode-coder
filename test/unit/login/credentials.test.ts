@@ -93,17 +93,6 @@ describe("notifyKeyringSkipped", () => {
 			{ store: "cli", url, useKeyring: false, refuseRedirects: true },
 			0,
 		],
-		[
-			"CLI without keyring support",
-			{
-				store: "extension",
-				url,
-				configDir: "/d",
-				useKeyring: undefined,
-				refuseRedirects: true,
-			},
-			0,
-		],
 	])("%s shows %i notices", (_name, auth, notices) => {
 		notifyKeyringSkipped(auth, configs);
 

@@ -35,7 +35,6 @@ export const WORKSPACE_FILTERS: Readonly<
 		showOwner: true,
 		showMetadata: false,
 		// Excludes workspaces the user owns and shared with others.
-		// Requires Coder 2.27.0+.
 		getQuery: (session) => `shared_with_user:${session.user.id}`,
 	},
 	all: {

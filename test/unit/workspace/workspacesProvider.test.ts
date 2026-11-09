@@ -35,16 +35,12 @@ function setup() {
 	const logger = createMockLogger();
 	const client = new MockWorkspacesClient();
 	const session = new TestSessionStore();
-	const makeProvider = (
-		query: WorkspaceFilter,
-		options?: { onQueryRejected?: () => void },
-	): WorkspaceProvider =>
+	const makeProvider = (query: WorkspaceFilter): WorkspaceProvider =>
 		new WorkspaceProvider(
 			query,
 			client as unknown as CoderApi,
 			logger,
 			session,
-			options,
 		);
 	return { logger, client, session, makeProvider };
 }
@@ -193,34 +189,6 @@ describe("WorkspaceProvider", () => {
 			expect(item?.contextValue).toContain("running");
 		},
 	);
-
-	it("reports a rejected query when the server responds with HTTP 400", async () => {
-		const { client, makeProvider } = setup();
-		const onQueryRejected = vi.fn();
-		client.getWorkspaces.mockRejectedValueOnce(
-			Object.assign(new Error("invalid query"), {
-				isAxiosError: true,
-				response: { status: 400 },
-			}),
-		);
-		const provider = makeProvider("shared", { onQueryRejected });
-
-		await show(provider);
-
-		expect(onQueryRejected).toHaveBeenCalledTimes(1);
-		expect(await provider.getChildren()).toEqual([]);
-	});
-
-	it("does not report a rejected query for other fetch failures", async () => {
-		const { client, makeProvider } = setup();
-		const onQueryRejected = vi.fn();
-		client.getWorkspaces.mockRejectedValueOnce(new Error("network down"));
-		const provider = makeProvider("shared", { onQueryRejected });
-
-		await show(provider);
-
-		expect(onQueryRejected).not.toHaveBeenCalled();
-	});
 
 	it("clears rendered workspaces when the session signs out", async () => {
 		const { client, session, makeProvider } = setup();

@@ -87,6 +87,7 @@ vi.mock("@/oauth/revocation", () => ({ revokeOAuthTokens: vi.fn() }));
 
 // Mock CoderApi to control getAuthenticatedUser behavior
 const mockGetAuthenticatedUser = vi.hoisted(() => vi.fn());
+const mockGetBuildInfo = vi.hoisted(() => vi.fn());
 vi.mock("@/api/coderApi", async (importOriginal) => {
 	const original = await importOriginal<typeof import("@/api/coderApi")>();
 	return {
@@ -98,6 +99,7 @@ vi.mock("@/api/coderApi", async (importOriginal) => {
 				}),
 				setSessionToken: vi.fn(),
 				getAuthenticatedUser: mockGetAuthenticatedUser,
+				getBuildInfo: mockGetBuildInfo,
 				dispose: vi.fn(),
 			})),
 		}),
@@ -122,6 +124,7 @@ function createTestContext(telemetry?: TelemetryService) {
 	mockAdapter.mockImplementation(mockAxiosAdapterImpl);
 	vi.mocked(getHeaders).mockResolvedValue({});
 	vi.mocked(maybeAskAuthMethod).mockResolvedValue("legacy");
+	mockGetBuildInfo.mockResolvedValue({ version: "2.29.0" });
 
 	const mockConfig = new MockConfigurationProvider();
 	// MockUserInteraction sets up vscode.window dialogs and input boxes
@@ -237,28 +240,71 @@ function createSignInTestContext(
 }
 
 describe("LoginCoordinator", () => {
+	it.each(["2.28.9", "2.29.0-rc.1"])(
+		"rejects server %s before authentication or credential persistence",
+		async (version) => {
+			const {
+				coordinator,
+				secretsManager,
+				mementoManager,
+				mockCredentialManager,
+				mockSuccessfulAuth,
+			} = createTestContext();
+			mockSuccessfulAuth();
+			mockGetBuildInfo.mockResolvedValue({ version });
+			const history = vi.spyOn(mementoManager, "addToUrlHistory");
+
+			await expect(
+				coordinator.ensureLoggedIn({
+					url: TEST_URL,
+					safeHostname: TEST_HOSTNAME,
+					token: "provided-token",
+					tokenSignInConfirmed: true,
+				}),
+			).resolves.toEqual({ success: false, reason: "auth_failed" });
+			expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+				"Failed to log in to Coder server",
+				expect.objectContaining({
+					detail: `Your Coder server is version ${version}. This extension requires Coder server 2.29.0 or newer. Upgrade your deployment to continue.`,
+					modal: true,
+				}),
+			);
+			expect(mockGetAuthenticatedUser).not.toHaveBeenCalled();
+			expect(mockCredentialManager.readToken).not.toHaveBeenCalled();
+			expect(mockCredentialManager.storeToken).not.toHaveBeenCalled();
+			expect(
+				await secretsManager.getSessionAuth(TEST_HOSTNAME),
+			).toBeUndefined();
+			expect(history).not.toHaveBeenCalled();
+		},
+	);
+
 	describe("token authentication", () => {
-		it("authenticates with a stored token", async () => {
-			const { secretsManager, coordinator, mockSuccessfulAuth } =
-				createTestContext();
-			const user = mockSuccessfulAuth();
-			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-				url: TEST_URL,
-				token: "stored-token",
-			});
+		it.each(["2.29.0", "0.0.0-devel+abc123"])(
+			"authenticates with a stored token on server %s",
+			async (version) => {
+				const { secretsManager, coordinator, mockSuccessfulAuth } =
+					createTestContext();
+				mockGetBuildInfo.mockResolvedValue({ version });
+				const user = mockSuccessfulAuth();
+				await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+					url: TEST_URL,
+					token: "stored-token",
+				});
 
-			const result = await coordinator.ensureLoggedIn({
-				url: TEST_URL,
-				safeHostname: TEST_HOSTNAME,
-			});
+				const result = await coordinator.ensureLoggedIn({
+					url: TEST_URL,
+					safeHostname: TEST_HOSTNAME,
+				});
 
-			expect(result).toEqual({
-				success: true,
-				method: "stored_token",
-				user,
-				token: "stored-token",
-			});
-		});
+				expect(result).toEqual({
+					success: true,
+					method: "stored_token",
+					user,
+					token: "stored-token",
+				});
+			},
+		);
 
 		it("authenticates with CLI credential token on success", async () => {
 			const {
@@ -403,34 +449,42 @@ describe("LoginCoordinator", () => {
 			expect(vscode.window.showInputBox).not.toHaveBeenCalled();
 		});
 
-		it("offers to sign in at the URL a deployment redirected to", async () => {
-			const { mockConfig, userInteraction, coordinator } = createTestContext();
-			mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
-			mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
-			mockGetAuthenticatedUser.mockRejectedValue(
-				new CrossOriginRedirectError("https://dogfood.cdr.dev/api"),
-			);
-			userInteraction.setResponse(
-				"Failed to log in to Coder server",
-				"Sign In to https://dogfood.cdr.dev",
-			);
+		it.each(["build info", "authentication"])(
+			"offers to sign in at the URL the %s request redirected to",
+			async (request) => {
+				const { mockConfig, userInteraction, coordinator } =
+					createTestContext();
+				mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
+				mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
+				const mockRequest =
+					request === "build info"
+						? mockGetBuildInfo
+						: mockGetAuthenticatedUser;
+				mockRequest.mockRejectedValue(
+					new CrossOriginRedirectError("https://dogfood.cdr.dev/api"),
+				);
+				userInteraction.setResponse(
+					"Failed to log in to Coder server",
+					"Sign In to https://dogfood.cdr.dev",
+				);
 
-			await coordinator.ensureLoggedIn({
-				url: TEST_URL,
-				safeHostname: TEST_HOSTNAME,
-			});
+				await coordinator.ensureLoggedIn({
+					url: TEST_URL,
+					safeHostname: TEST_HOSTNAME,
+				});
 
-			expect(userInteraction.getMessageCalls()).toContainEqual(
-				expect.objectContaining({
-					message: "Failed to log in to Coder server",
-					items: ["Sign In to https://dogfood.cdr.dev"],
-				}),
-			);
-			expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-				"coder.login",
-				{ url: "https://dogfood.cdr.dev" },
-			);
-		});
+				expect(userInteraction.getMessageCalls()).toContainEqual(
+					expect.objectContaining({
+						message: "Failed to log in to Coder server",
+						items: ["Sign In to https://dogfood.cdr.dev"],
+					}),
+				);
+				expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+					"coder.login",
+					{ url: "https://dogfood.cdr.dev" },
+				);
+			},
+		);
 
 		it("shows OAuth errors only in a modal's plain detail", async () => {
 			const { coordinator } = createTestContext();
