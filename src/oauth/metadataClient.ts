@@ -127,13 +127,17 @@ export class OAuthMetadataClient {
 			"revocation_endpoint",
 		] as const) {
 			const endpoint = metadata[name];
-			if (
-				endpoint &&
-				(!isSameOrigin(endpoint, deploymentUrl) ||
-					WORKSPACE_APP_PATH.test(new URL(endpoint).pathname))
-			) {
+			if (!endpoint) {
+				continue;
+			}
+			if (!isSameOrigin(endpoint, deploymentUrl)) {
 				throw new Error(
-					`OAuth server metadata ${name} is outside the deployment`,
+					`OAuth server metadata ${name} ${endpoint} is not on the deployment origin ${deploymentUrl}`,
+				);
+			}
+			if (WORKSPACE_APP_PATH.test(new URL(endpoint).pathname)) {
+				throw new Error(
+					`OAuth server metadata ${name} ${endpoint} is a workspace app path`,
 				);
 			}
 		}

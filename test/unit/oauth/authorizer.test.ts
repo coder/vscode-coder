@@ -121,13 +121,8 @@ async function waitForBrowserToOpen(): Promise<{
 describe("OAuthAuthorizer", () => {
 	describe("login flow", () => {
 		it("completes full OAuth login flow successfully", async () => {
-			const {
-				mockAdapter,
-				setupOAuthRoutes,
-				oauthCallback,
-				secretsManager,
-				authorizer,
-			} = createTestContext();
+			const { setupOAuthRoutes, oauthCallback, secretsManager, authorizer } =
+				createTestContext();
 
 			setupOAuthRoutes(undefined, {
 				"/oauth2/register": createMockClientRegistration({
@@ -167,15 +162,6 @@ describe("OAuthAuthorizer", () => {
 			const storedRegistration =
 				await secretsManager.getOAuthClientRegistration(TEST_HOSTNAME);
 			expect(storedRegistration?.client_id).toBe("registered-client-id");
-
-			for (const path of ["/oauth2/register", "/oauth2/token"]) {
-				expect(mockAdapter).toHaveBeenCalledWith(
-					expect.objectContaining({
-						url: `${TEST_URL}${path}`,
-						maxRedirects: 0,
-					}),
-				);
-			}
 		});
 
 		it("uses existing client registration when redirect URI matches", async () => {

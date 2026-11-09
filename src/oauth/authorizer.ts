@@ -181,7 +181,6 @@ export class OAuthAuthorizer implements vscode.Disposable {
 		const response = await axiosInstance.post<OAuth2ClientRegistrationResponse>(
 			metadata.registration_endpoint,
 			registrationRequest,
-			{ maxRedirects: 0 },
 		);
 
 		const registrationResponse = parseOAuthResponse(
@@ -375,7 +374,6 @@ export class OAuthAuthorizer implements vscode.Disposable {
 			metadata.token_endpoint,
 			tokenRequest,
 			{
-				maxRedirects: 0,
 				headers: {
 					"Content-Type": "application/x-www-form-urlencoded",
 				},
