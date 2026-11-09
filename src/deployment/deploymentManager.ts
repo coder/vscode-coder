@@ -218,8 +218,8 @@ export class DeploymentManager implements vscode.Disposable {
 		const wasAuthenticated = this.isAuthenticated();
 		this.#authListenerDisposable?.dispose();
 		this.#authListenerDisposable = undefined;
-		this.#sessionStore.signOut(null);
 		this.clearAuthState();
+		this.#sessionStore.signOut(null);
 		this.telemetryService.setDeploymentUrl("");
 		if (wasAuthenticated) {
 			this.deploymentTelemetry.suspended(reason);
@@ -234,8 +234,8 @@ export class DeploymentManager implements vscode.Disposable {
 	 */
 	public suspendSession(reason: DeploymentSuspendReason): void {
 		const wasAuthenticated = this.isAuthenticated();
-		this.#sessionStore.signOut(this.#sessionStore.current.deployment);
 		this.clearAuthState();
+		this.#sessionStore.signOut(this.#sessionStore.current.deployment);
 		if (wasAuthenticated) {
 			this.deploymentTelemetry.suspended(reason);
 		}
@@ -328,8 +328,12 @@ export class DeploymentManager implements vscode.Disposable {
 			if (current === sessionBefore) {
 				// Same-user rotation only needs fresh credentials; skipping
 				// setDeployment avoids a revision bump and tree rebuild.
-				if (current.kind === "signedIn" && current.user.id === user.id) {
-					this.client.setCredentials(deployment.url, deployment.token);
+				if (
+					current.kind === "signedIn" &&
+					current.user.id === user.id &&
+					current.deployment.url === deployment.url
+				) {
+					this.client.setSessionToken(deployment.token);
 				} else {
 					await this.setDeployment({ ...deployment, user });
 				}

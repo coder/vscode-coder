@@ -1,5 +1,6 @@
 import { CoderApi } from "../api/coderApi";
 import { isSameOrigin } from "../common/url";
+import { raceWithAbort, throwIfAborted } from "../error/abort";
 import {
 	AuthTelemetry,
 	type AuthTokenRefreshTrigger,
@@ -284,10 +285,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 	}
 
 	public async setDeployment(deployment: Deployment): Promise<void> {
-		if (
-			deployment.safeHostname === this.deployment?.safeHostname &&
-			deployment.url === this.deployment.url
-		) {
+		if (deployment === this.deployment) {
 			return;
 		}
 		this.deployment = deployment;
@@ -348,6 +346,7 @@ export class OAuthSessionManager implements vscode.Disposable {
 
 		try {
 			const storedTokens = await this.getTokensWithRequiredScopes();
+			throwIfAborted(abortController.signal);
 			if (!storedTokens?.refresh_token) {
 				throw new Error("No refresh token available");
 			}
@@ -399,13 +398,16 @@ export class OAuthSessionManager implements vscode.Disposable {
 						metadata.token_endpoint,
 					);
 
+					const username = await this.fetchUsername(
+						deployment,
+						tokenResponse.access_token,
+						abortController.signal,
+					);
+					throwIfAborted(abortController.signal);
 					await this.secretsManager.setSessionAuth(deployment.safeHostname, {
 						url: deployment.url,
 						token: tokenResponse.access_token,
-						username: await this.fetchUsername(
-							deployment,
-							tokenResponse.access_token,
-						),
+						username,
 						oauth: buildOAuthTokenData(tokenResponse, registration),
 					});
 
@@ -417,8 +419,8 @@ export class OAuthSessionManager implements vscode.Disposable {
 		} finally {
 			if (this.refreshAbortController === abortController) {
 				this.refreshAbortController = null;
+				this.refreshPromise = null;
 			}
-			this.refreshPromise = null;
 		}
 	}
 
@@ -429,11 +431,15 @@ export class OAuthSessionManager implements vscode.Disposable {
 	private async fetchUsername(
 		deployment: Deployment,
 		accessToken: string,
+		signal: AbortSignal,
 	): Promise<string | undefined> {
 		const client = CoderApi.create(deployment.url, accessToken, this.logger);
 		try {
-			return (await client.getAuthenticatedUser()).username;
+			throwIfAborted(signal);
+			return (await raceWithAbort(client.getAuthenticatedUser(), signal))
+				.username;
 		} catch (error) {
+			throwIfAborted(signal);
 			this.logger.warn("Failed to fetch the user after token refresh:", error);
 			const auth = await this.secretsManager.getSessionAuthForUrl(
 				deployment.url,

@@ -1,10 +1,13 @@
 import { Api } from "coder/site/src/api/api";
 import { vol } from "memfs";
 import { spawnSync } from "node:child_process";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { AuthInterceptor } from "@/api/authInterceptor";
 import { version as cliVersion } from "@/cli/cliExec";
+import { DEFAULT_OAUTH_SCOPES } from "@/oauth/constants";
+import { OAuthSessionManager } from "@/oauth/sessionManager";
 import { parseRemoteAuthority } from "@/remote/authority";
 import {
 	buildSshProxyCommand,
@@ -16,18 +19,31 @@ import { MementoManager } from "@/storage/mementoManager";
 import { PathResolver } from "@/storage/pathResolver";
 import { SecretsManager } from "@/storage/secretsManager";
 
+import { createTestCoderApi } from "../../mocks/coderApi";
 import { createTestTelemetryService } from "../../mocks/telemetry";
 import {
+	createAxiosError,
 	createMockLogger,
+	createMockUser,
 	createMockServiceContainer,
+	flush,
+	getAxiosMockAdapter,
 	InMemoryMemento,
 	InMemorySecretStorage,
 	LogCollector,
 	MockConfigurationProvider,
 	MockUserInteraction,
+	setupAxiosMockRoutes,
 	useEditor,
 } from "../../mocks/testHelpers";
 import { isWindows } from "../../utils/platform";
+import {
+	createMockClientRegistration,
+	createMockOAuthMetadata,
+	createMockTokenResponse,
+} from "../oauth/testUtils";
+
+import type { AxiosRequestConfig, InternalAxiosRequestConfig } from "axios";
 
 import type { CliManager } from "@/cli/cliManager";
 import type { Commands } from "@/commands";
@@ -38,6 +54,21 @@ const mockWorkspace = vscode.workspace as typeof vscode.workspace & {
 	workspaceFile: vscode.Uri | undefined;
 	workspaceFolders: vscode.WorkspaceFolder[];
 };
+
+vi.mock("axios", async () => {
+	const actual = await vi.importActual<typeof import("axios")>("axios");
+	const adapter = vi.fn();
+	return {
+		...actual,
+		default: {
+			...actual.default,
+			create: vi.fn((config?: AxiosRequestConfig) =>
+				actual.default.create({ ...config, adapter }),
+			),
+			__mockAdapter: adapter,
+		},
+	};
+});
 
 vi.mock("node:fs/promises", async () => (await import("memfs")).fs.promises);
 vi.mock("@/remote/windowsAcl", () => ({
@@ -88,11 +119,14 @@ function createRemote(logger: Logger = createMockLogger()) {
 		.fn()
 		.mockResolvedValue({ success: false, reason: "user_dismissed" });
 	const mementoManager = new MementoManager(new InMemoryMemento());
+	const cliManager = {
+		configure: vi.fn().mockResolvedValue(undefined),
+	} as unknown as CliManager;
 	const serviceContainer = createMockServiceContainer({
 		logger,
 		pathResolver,
 		mementoManager,
-		cliManager: {} as CliManager,
+		cliManager,
 		contextManager: {
 			set: vi.fn(),
 			get: vi.fn(() => false),
@@ -113,6 +147,8 @@ function createRemote(logger: Logger = createMockLogger()) {
 		mementoManager,
 		secretsManager,
 		userInteraction,
+		serviceContainer,
+		cliManager,
 	};
 }
 
@@ -122,6 +158,196 @@ describe("Remote", () => {
 		vol.reset();
 		mockWorkspace.workspaceFile = undefined;
 		mockWorkspace.workspaceFolders = [];
+	});
+
+	describe("remote session credentials", () => {
+		const USER_IDS: Record<string, string> = {
+			"alice-token": "alice",
+			"rotated-token": "alice",
+			"bob-token": "bob",
+		};
+		const tokenOf = (config: InternalAxiosRequestConfig) =>
+			String(config.headers["Coder-Session-Token"]);
+		/** Route answering `data` for tokens in USER_IDS and 401 otherwise. */
+		const authorized =
+			(data: (userId: string) => unknown) =>
+			(config: InternalAxiosRequestConfig) => {
+				const userId = USER_IDS[tokenOf(config)];
+				if (!userId) throw createAxiosError(401, "expired", { ...config });
+				return data(userId);
+			};
+		const lookupUser = authorized((id) => createMockUser({ id }));
+
+		function setup(
+			token = "alice-token",
+			routes: Record<string, unknown> = {},
+		) {
+			const context = createRemote();
+			const refresh = vi.fn(() =>
+				createMockTokenResponse({
+					access_token: "rotated-token",
+					scope: DEFAULT_OAUTH_SCOPES,
+				}),
+			);
+			setupAxiosMockRoutes(getAxiosMockAdapter(), {
+				"/.well-known/oauth-authorization-server": createMockOAuthMetadata(
+					CLI_AUTH.url,
+				),
+				"/oauth2/token": refresh,
+				"/api/v2/users/me": lookupUser,
+				...routes,
+			});
+			const client = createTestCoderApi({ baseUrl: CLI_AUTH.url, token });
+			const oauth = OAuthSessionManager.create(
+				{ url: CLI_AUTH.url, safeHostname: SAFE_HOSTNAME },
+				context.serviceContainer,
+			);
+			onTestFinished(() => oauth.dispose());
+			const subscribe = vi.spyOn(
+				context.secretsManager,
+				"onDidChangeSessionAuth",
+			);
+			const watch = () => {
+				const method = "watchRemoteSessionAuth";
+				const watcher = context.remote[method](SAFE_HOSTNAME, client, oauth);
+				onTestFinished(() => watcher.dispose());
+				return { watcher, update: subscribe.mock.calls[0][1] };
+			};
+			return { ...context, client, oauth, refresh, watch };
+		}
+
+		interface Options {
+			url?: string;
+			previous?: string;
+			initial?: string;
+		}
+		it.each<[string, boolean, string, Options?]>([
+			["token rotates", false, "rotated-token"],
+			["user changes", true, "bob-token"],
+			["user changes back", true, "alice-token", { previous: "bob-token" }],
+			[
+				"URL changes",
+				true,
+				"rotated-token",
+				{ url: "http://coder.example.com" },
+			],
+			["bound user is unknown", true, "rotated-token", { initial: "expired" }],
+			["token is rejected", false, "invalid-token"],
+		])(
+			"when the %s, cancels pending requests: %s",
+			async (_change, canceled, token, options = {}) => {
+				const {
+					url = CLI_AUTH.url,
+					previous,
+					initial = "alice-token",
+				} = options;
+				const pending = Promise.withResolvers<string>();
+				const started = Promise.withResolvers<void>();
+				const { client, oauth, cliManager, watch } = setup(initial, {
+					"/pending": () => {
+						started.resolve();
+						return pending.promise;
+					},
+				});
+				const { update } = watch();
+				if (previous) await update({ url, token: previous });
+				const setDeployment = vi.spyOn(oauth, "setDeployment");
+				const request = client.getAxiosInstance().get("/pending");
+				await started.promise;
+
+				await update({ url, token });
+				pending.resolve("done");
+
+				await (canceled
+					? expect(request).rejects.toMatchObject({ code: "ERR_CANCELED" })
+					: expect(request).resolves.toMatchObject({ data: "done" }));
+				const accepted = token in USER_IDS;
+				expect(client.getHost()).toBe(url);
+				expect(client.getSessionToken()).toBe(accepted ? token : initial);
+				// Resetting OAuth cancels the previous account's pending refresh.
+				expect(setDeployment).toHaveBeenCalledTimes(canceled ? 1 : 0);
+				if (accepted) {
+					expect(cliManager.configure).toHaveBeenLastCalledWith(url, token, {
+						silent: true,
+					});
+				} else {
+					expect(cliManager.configure).not.toHaveBeenCalled();
+				}
+			},
+		);
+
+		type Watch = ReturnType<ReturnType<typeof setup>["watch"]>;
+		it.each<[string, (watch: Watch) => unknown, string | undefined]>([
+			[
+				"a newer update",
+				({ update }) => update({ url: CLI_AUTH.url, token: "bob-token" }),
+				"bob-token",
+			],
+			["sign-out", ({ update }) => update(undefined), undefined],
+			["disposal", ({ watcher }) => watcher.dispose(), "alice-token"],
+		])("ignores an update superseded by %s", async (_by, supersede, token) => {
+			const boundUser =
+				Promise.withResolvers<ReturnType<typeof createMockUser>>();
+			const { client, cliManager, watch } = setup("alice-token", {
+				"/api/v2/users/me": (config: InternalAxiosRequestConfig) =>
+					tokenOf(config) === "alice-token"
+						? boundUser.promise
+						: lookupUser(config),
+			});
+			const watching = watch();
+			const stale = watching.update({
+				url: CLI_AUTH.url,
+				token: "rotated-token",
+			});
+			await flush();
+
+			const superseding = supersede(watching);
+			boundUser.resolve(createMockUser({ id: "alice" }));
+			await Promise.all([stale, superseding]);
+
+			expect(client.getSessionToken()).toBe(token);
+			expect(cliManager.configure).not.toHaveBeenCalledWith(
+				CLI_AUTH.url,
+				"rotated-token",
+				expect.anything(),
+			);
+		});
+
+		it("recovers OAuth when the initial user lookup also needs refresh", async () => {
+			const { client, oauth, cliManager, refresh, watch, ...context } = setup(
+				"expired",
+				{ "/protected": authorized(() => "recovered") },
+			);
+			await context.secretsManager.setSessionAuth(SAFE_HOSTNAME, {
+				url: CLI_AUTH.url,
+				token: "expired",
+				oauth: {
+					refresh_token: "refresh-token",
+					expiry_timestamp: Date.now() + 3_600_000,
+					scope: DEFAULT_OAUTH_SCOPES,
+					registration: createMockClientRegistration(),
+				},
+			});
+			const interceptor = new AuthInterceptor(
+				client,
+				oauth,
+				context.serviceContainer,
+			);
+			onTestFinished(() => interceptor.dispose());
+			watch();
+
+			await expect(
+				client.getAxiosInstance().get("/protected"),
+			).resolves.toMatchObject({ data: "recovered" });
+			await flush();
+
+			expect(refresh).toHaveBeenCalledOnce();
+			expect(cliManager.configure).toHaveBeenCalledWith(
+				CLI_AUTH.url,
+				"rotated-token",
+				{ silent: true },
+			);
+		});
 	});
 
 	type UriOptions = Partial<
