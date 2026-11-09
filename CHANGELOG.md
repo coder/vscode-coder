@@ -64,9 +64,10 @@
   but preserved during verified same-account token refreshes, including remote windows.
 - Canceled OAuth refreshes no longer overwrite replacement credentials or
   reopen sign-in prompts.
-- Treat TLS client certificates as transport configuration only. An empty
-  session token follows the same authentication path as any other token, with
-  stored or CLI credentials and OAuth or token prompts available after a 401.
+- Sign in to deployments that use TLS client certificates for transport only.
+  Signing in without a stored session tries an empty token first, which still
+  works where the certificate authenticates you, and on a 401 falls back to
+  CLI credentials and the OAuth or token prompt.
 - An empty session token is no longer passed to `coder login`, which waited a
   minute for a pasted token and then failed the connection. It now clears the
   token the extension stored for the Coder CLI, leaving the CLI's own session

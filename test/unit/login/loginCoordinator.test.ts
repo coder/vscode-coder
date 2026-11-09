@@ -81,7 +81,8 @@ vi.mock("@/ui/prompts", () => ({
 
 vi.mock("@/oauth/revocation", () => ({ revokeOAuthTokens: vi.fn() }));
 
-// Mock CoderApi to control getAuthenticatedUser behavior
+// Mock CoderApi to control getAuthenticatedUser behavior; it receives the
+// client's current session token.
 const mockGetAuthenticatedUser = vi.hoisted(() => vi.fn());
 const mockGetBuildInfo = vi.hoisted(() => vi.fn());
 vi.mock("@/api/coderApi", async (importOriginal) => {
@@ -89,15 +90,20 @@ vi.mock("@/api/coderApi", async (importOriginal) => {
 	return {
 		...original,
 		CoderApi: Object.assign({}, original.CoderApi, {
-			create: vi.fn(() => ({
-				getAxiosInstance: () => ({
-					defaults: { baseURL: "https://coder.example.com" },
-				}),
-				setSessionToken: vi.fn(),
-				getAuthenticatedUser: mockGetAuthenticatedUser,
-				getBuildInfo: mockGetBuildInfo,
-				dispose: vi.fn(),
-			})),
+			create: vi.fn((_url: string, initialToken: string) => {
+				let token = initialToken;
+				return {
+					getAxiosInstance: () => ({
+						defaults: { baseURL: "https://coder.example.com" },
+					}),
+					setSessionToken: vi.fn((value: string) => {
+						token = value;
+					}),
+					getAuthenticatedUser: () => mockGetAuthenticatedUser(token),
+					getBuildInfo: mockGetBuildInfo,
+					dispose: vi.fn(),
+				};
+			}),
 		}),
 	};
 });
@@ -153,6 +159,7 @@ function createTestContext(telemetry?: TelemetryService) {
 		"coder.coder-remote",
 	);
 
+	/** A deployment that accepts any non-empty token. */
 	const mockSuccessfulAuth = (user = createMockUser()) => {
 		// Configure both the axios adapter (for tests that bypass CoderApi mock)
 		// and mockGetAuthenticatedUser (for tests that use the CoderApi mock)
@@ -163,6 +170,18 @@ function createTestContext(telemetry?: TelemetryService) {
 			headers: {},
 			config: {},
 		});
+		mockGetAuthenticatedUser.mockImplementation((token: string) =>
+			token
+				? Promise.resolve(user)
+				: Promise.reject(
+						createAxiosError(HttpStatusCode.UNAUTHORIZED, "Unauthorized"),
+					),
+		);
+		return user;
+	};
+
+	/** A deployment that needs no token, e.g. one authenticating by mTLS. */
+	const mockTokenlessAuth = (user = createMockUser()) => {
 		mockGetAuthenticatedUser.mockResolvedValue(user);
 		return user;
 	};
@@ -188,6 +207,7 @@ function createTestContext(telemetry?: TelemetryService) {
 		mockCredentialManager,
 		coordinator,
 		mockSuccessfulAuth,
+		mockTokenlessAuth,
 		mockAuthFailure,
 	};
 }
@@ -355,6 +375,7 @@ describe("LoginCoordinator", () => {
 				user,
 				token: "new-token",
 			});
+			expect(mockGetAuthenticatedUser).toHaveBeenNthCalledWith(1, "");
 
 			// Verify new token was persisted
 			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
@@ -416,10 +437,32 @@ describe("LoginCoordinator", () => {
 	});
 
 	describe("empty-token authentication", () => {
-		it("succeeds without prompt and persists the session", async () => {
-			const { secretsManager, coordinator, mockSuccessfulAuth } =
+		it("signs in with an empty token when no session is stored", async () => {
+			const { secretsManager, coordinator, mockTokenlessAuth } =
 				createTestContext();
-			const user = mockSuccessfulAuth();
+			const user = mockTokenlessAuth();
+
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+			});
+
+			expect(result).toEqual({
+				success: true,
+				method: "empty_token",
+				user,
+				token: "",
+			});
+			expect((await secretsManager.getSessionAuth(TEST_HOSTNAME))?.token).toBe(
+				"",
+			);
+			expect(maybeAskAuthMethod).not.toHaveBeenCalled();
+		});
+
+		it("succeeds without prompt and persists the session", async () => {
+			const { secretsManager, coordinator, mockTokenlessAuth } =
+				createTestContext();
+			const user = mockTokenlessAuth();
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "",
@@ -613,9 +656,9 @@ describe("LoginCoordinator", () => {
 		});
 
 		it("accepts an empty-token session signed in from another window", async () => {
-			const { secretsManager, coordinator, mockSuccessfulAuth } =
+			const { secretsManager, coordinator, mockTokenlessAuth } =
 				createTestContext();
-			const user = mockSuccessfulAuth();
+			const user = mockTokenlessAuth();
 			vi.mocked(vscode.window.showErrorMessage).mockReturnValueOnce(
 				new Promise(() => {}),
 			);
@@ -911,13 +954,13 @@ describe("LoginCoordinator", () => {
 				secretsManager,
 				coordinator,
 				mockCredentialManager,
-				mockSuccessfulAuth,
+				mockTokenlessAuth,
 			} = createTestContext();
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
 				token: "",
 			});
-			mockSuccessfulAuth();
+			mockTokenlessAuth();
 
 			await coordinator.ensureLoggedIn({
 				url: TEST_URL,

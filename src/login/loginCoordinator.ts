@@ -41,6 +41,7 @@ import type {
 export type LoginMethod =
 	| "provided_token"
 	| "stored_token"
+	| "empty_token"
 	| "cli_token"
 	| "oauth";
 
@@ -411,20 +412,29 @@ export class LoginCoordinator implements vscode.Disposable {
 		return withLoginMethod("provided_token", result);
 	}
 
-	/** Stored session for the deployment's origin, if it still works. */
+	/**
+	 * Stored session for the deployment's origin, or an empty token when
+	 * none is stored, which signs in deployments that need no token (e.g. mTLS).
+	 */
 	private async tryStoredSession(
 		ctx: LoginAttemptContext,
 	): Promise<LoginResult | undefined> {
 		const { client, isAutoLogin, auth } = ctx;
-		if (auth === undefined) {
-			return undefined;
-		}
-		this.logger.debug("Trying stored session token");
-		const result = await this.tryTokenAuth(client, auth.token, isAutoLogin);
+		this.logger.debug(
+			auth ? "Trying stored session token" : "Trying empty token",
+		);
+		const result = await this.tryTokenAuth(
+			client,
+			auth?.token ?? "",
+			isAutoLogin,
+		);
 		if (result === "unauthorized") {
 			return undefined;
 		}
-		return withLoginMethod("stored_token", result);
+		return withLoginMethod(
+			auth ? "stored_token" : "empty_token",
+			result,
+		);
 	}
 
 	/** The CLI's own session, adopted after confirmation if it is another user's. */
