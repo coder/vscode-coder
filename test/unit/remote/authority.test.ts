@@ -210,9 +210,9 @@ describe("authority construction", () => {
 	);
 
 	it.each([
-		["http://dev.coder.com:8080", "dev.coder.com_http8080"],
-		["https://my_host", "my_host_https"],
-		["https://[::1]:8080", "[::1]_8080"],
+		["http://dev.coder.com:8080", "http_dev.coder.com_8080"],
+		["https://my_host", "https_my_host_"],
+		["https://[::1]:8080", "https_[::1]_8080"],
 	])("round-trips the origin of %s as %s", (url, safeHostname) => {
 		vi.spyOn(os, "platform").mockReturnValue("linux");
 		const authority = toRemoteAuthority(url, "alice", "dev", "main");

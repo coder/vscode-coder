@@ -53,7 +53,7 @@ describe("SecretsManager", () => {
 			const listener = vi.fn();
 			secretsManager.onDidChangeSessionAuth("example.com", listener);
 
-			await secretsManager.setSessionAuth("example.com_8443", {
+			await secretsManager.setSessionAuth("https_example.com_8443", {
 				url: "https://example.com:8443",
 				token: "port-token",
 			});
@@ -91,7 +91,7 @@ describe("SecretsManager", () => {
 				name: "other origin of the hostname",
 				url: "http://example.com/private?token=secret",
 				error:
-					'Session auth hostname mismatch: expected "example.com", got "example.com_http"',
+					'Session auth hostname mismatch: expected "example.com", got "http_example.com_"',
 			},
 		];
 
@@ -377,7 +377,7 @@ describe("SecretsManager", () => {
 
 			expect(await secretsManager.getCurrentDeployment()).toEqual({
 				url: "http://coder.example.com",
-				safeHostname: "coder.example.com_http",
+				safeHostname: "http_coder.example.com_",
 			});
 		});
 

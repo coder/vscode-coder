@@ -295,7 +295,7 @@ describe("OAuthSessionManager", () => {
 		it("ignores another origin's tokens on the same hostname", async () => {
 			const { secretsManager, manager } = createTestContext();
 
-			await secretsManager.setSessionAuth(`${TEST_HOSTNAME}_8443`, {
+			await secretsManager.setSessionAuth(`https_${TEST_HOSTNAME}_8443`, {
 				url: `${TEST_URL}:8443`,
 				token: "access-token",
 				oauth: {

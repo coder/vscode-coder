@@ -83,10 +83,10 @@ export function validateFilenameHostname(value: string): string {
 }
 
 /**
- * A bracketed IPv6 host, optionally with a `toSafeHost` origin suffix
- * (`_https`, `_http`, `_http8080`, `_8443`).
+ * A bracketed IPv6 host, optionally inside a `toSafeHost` origin label
+ * (`https_[::1]_8443`, `http_[::1]_`).
  */
-const BRACKETED_IPV6_LABEL = /^\[([^\]%]+)\](?:_(?:https|http\d*|\d+))?$/;
+const BRACKETED_IPV6_LABEL = /^(?:https?_)?\[([^\]%]+)\](?:_\d*)?$/;
 
 /** Shell-safe, literal SSH host characters; IP structure uses Node's parser. */
 export function isShellSafeHostname(value: string): boolean {
@@ -106,13 +106,19 @@ export function validateShellSafeHostname(value: string): string {
 
 /**
  * Validates a deployment URL for sign-in, storage reads, and the SSH
- * `ProxyCommand`, and returns it unchanged. Rejects credentials, which the SSH
- * config would store in plain text; query parameters and fragments, which
- * break API paths built on the URL; and characters that are not literal
- * inside shell quotes, including OpenSSH's `%` tokens.
+ * `ProxyCommand`, and returns it unchanged. Rejects schemes other than http(s);
+ * credentials, which the SSH config would store in plain text; query parameters
+ * and fragments, which break API paths built on the URL; and characters that
+ * are not literal inside shell quotes, including OpenSSH's `%` tokens.
  */
 export function validateDeploymentUrl(value: string): string {
 	const url = parseDeploymentUrl(value);
+	if (url.protocol !== "https:" && url.protocol !== "http:") {
+		throw new InputValidationError(
+			"Invalid URL: the deployment URL must use http or https.",
+			url.protocol,
+		);
+	}
 	if (url.username || url.password || /[?#]/.test(url.href)) {
 		throw new InputValidationError(
 			"Invalid URL: the deployment URL cannot include a username, password, query, or fragment.",

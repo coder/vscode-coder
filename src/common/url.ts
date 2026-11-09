@@ -1,34 +1,21 @@
-import url from "node:url";
 import * as vscode from "vscode";
 
-import {
-	InputValidationError,
-	parseDeploymentUrl,
-	validateFilenameHostname,
-} from "./validation";
+import { parseDeploymentUrl, validateFilenameHostname } from "./validation";
 
 /**
  * The URL's origin as a file- and SSH-safe label that keys per-deployment
- * storage: `host` for HTTPS on 443, else `host_<scheme><port>` without `https`
- * or a default port (`host_8443`, `host_http`). A hostname with `_` always gets
- * a suffix (`my_host_https`), so labels never collide.
+ * storage: `scheme_host_port`, with an empty default port (`https_host_8443`,
+ * `http_host_`). HTTPS on its default port keeps the bare hostname (`host`)
+ * unless it contains `_`, so labels never collide.
  */
 export function toSafeHost(rawUrl: string): string {
 	const u = parseDeploymentUrl(rawUrl);
-	if (u.protocol !== "https:" && u.protocol !== "http:") {
-		throw new InputValidationError(
-			"Invalid URL: the deployment URL must use http or https.",
-			u.protocol,
-		);
+	// `URL` already lowercases and punycodes http(s) hostnames.
+	const hostname = validateFilenameHostname(u.hostname);
+	if (u.protocol === "https:" && !u.port && !hostname.includes("_")) {
+		return hostname;
 	}
-	// If the host is invalid, an empty string is returned.  Although, `new URL`
-	// should already have thrown in that case.
-	const hostname = url.domainToASCII(u.hostname) || u.hostname;
-	let suffix = (u.protocol === "http:" ? "http" : "") + u.port;
-	if (!suffix && hostname.includes("_")) {
-		suffix = "https";
-	}
-	return validateFilenameHostname(suffix ? `${hostname}_${suffix}` : hostname);
+	return `${u.protocol.slice(0, -1)}_${hostname}_${u.port}`;
 }
 
 export function removeTrailingSlashes(value: string): string {

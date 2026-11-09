@@ -153,8 +153,9 @@ describe("isShellSafeHostname", () => {
 		"my--host.example.com",
 		"127.0.0.1",
 		"[::1]",
-		"dev.coder.com_http8080",
-		"[::1]_8080",
+		"http_dev.coder.com_8080",
+		"https_[::1]_8080",
+		"http_[::1]_",
 	])("accepts %j", (input) => {
 		expect(isShellSafeHostname(input)).toBe(true);
 	});
@@ -172,7 +173,7 @@ describe("isShellSafeHostname", () => {
 		"[::not-ip]",
 		"[::1]_$(id)",
 		"[::1]x",
-		"[::1]_ftp",
+		"ftp_[::1]_",
 	])("rejects scoped or invalid bracketed IPv6 %j", (input) => {
 		expect(isShellSafeHostname(input)).toBe(false);
 	});
@@ -200,6 +201,8 @@ describe("validateDeploymentUrl", () => {
 
 	it.each([
 		...INVALID_DEPLOYMENT_URLS,
+		"ftp://coder.example.com",
+		"file:///coder.example.com",
 		// Sign-in normalizes these away, but storage reads see them raw.
 		"https://host/a\\b",
 		"https://host/a\nb",
