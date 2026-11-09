@@ -41,35 +41,11 @@ The Coder Remote extension connects your editor to
 | Coder server | 2.29.0                    |
 | Coder CLI    | 2.29.0                    |
 
-Server and CLI versions are separate requirements. The extension normally
-manages a CLI matching the server version, but a cached CLI can differ when
-downloads are disabled. Both must meet the supported minimum.
+The server minimum is checked at login and during CLI resolution. Supplied CLIs
+must independently meet the minimum. Later features have their own server or
+CLI version requirements.
 
-The extension checks the server minimum when signing in and when resolving the
-managed CLI. These checks do not validate the version of a supplied CLI. If you
-manage the executable through `coder.binaryDestination`, use CLI 2.29.0 or newer.
-Update the executable, or clear the setting and `CODER_BINARY_DESTINATION` (if
-set) and enable `coder.enableDownloads` to use the extension-managed CLI.
-
-The support floor is version-pinned, not a rolling release window. Changes to
-the floor are announced in the changelog.
-
-Capabilities introduced after the baseline depend on the relevant component:
-
-| Capability                                                  | Coder server           | Coder CLI    |
-| ----------------------------------------------------------- | ---------------------- | ------------ |
-| Tasks panel                                                 | 2.29.0 to below 2.35.0 | Not required |
-| Read an existing CLI session or use a user config directory | Not required           | 2.32.0+      |
-| Explicit TTY flag for app commands                          | Not required           | 2.34.0+      |
-| Update to the latest template in a single build request     | 2.36.0+                | Not required |
-| Include workspace files in support bundles                  | Not required           | 2.36.0+      |
-| Explicit redirect-refusal flag                              | Not required           | 2.38.0+      |
-| Editor-specific session app names                           | 2.38.0+                | 2.38.0+      |
-| Origin-scoped keyring storage for HTTP deployments          | Not required           | 2.39.0+      |
-
-Keyring storage on macOS and Windows is supported at the baseline for HTTPS
-deployments. Linux and configurations with keyring storage disabled continue
-to use file-backed credentials.
+The minimum is version-pinned; changes are announced in the changelog.
 
 ## Getting Started
 
