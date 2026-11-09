@@ -39,6 +39,7 @@ export type WorkspaceCommands = Pick<
 	| "openWorkspace"
 	| "viewInDashboard"
 	| "runAgentDiagnostic"
+	| "runWorkspaceAction"
 	| "refresh"
 	| "setFilter"
 	| "watchAgents"
@@ -113,18 +114,32 @@ export function WorkspacesPanel({
 			.map((agent) => agentNode(agent, expandedIds.includes(workspace.id)));
 		const name = workspace.name || "Unknown";
 		const hasAgentChat = agentWorkspaces.has(workspace.id);
+		const pendingAction = state?.pendingActions?.[workspace.id];
 		return {
 			id: workspace.id,
 			textValue: `${name}${hasAgentChat ? " Agent" : ""}${showOwner ? ` ${workspace.owner_name || "Unknown"}` : ""}`,
-			tooltip: <WorkspaceHover workspace={workspace} showOwner={showOwner} />,
+			tooltip: (
+				<WorkspaceHover
+					workspace={workspace}
+					showOwner={showOwner}
+					pendingAction={pendingAction}
+				/>
+			),
 			label: (
 				<WorkspaceRow
 					workspace={workspace}
 					showOwner={showOwner}
 					hasAgentChat={hasAgentChat}
+					pendingAction={pendingAction}
 				/>
 			),
-			action: <WorkspaceActions workspace={workspace} api={api} />,
+			action: (
+				<WorkspaceActions
+					workspace={workspace}
+					pendingAction={pendingAction}
+					api={api}
+				/>
+			),
 			children: children.length
 				? children
 				: [{ id: `agents:${workspace.id}`, label: "No workspace agents" }],

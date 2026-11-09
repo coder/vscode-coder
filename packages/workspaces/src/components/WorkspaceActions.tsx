@@ -1,59 +1,65 @@
+import {
+	workspaceActions,
+	type Workspace,
+	type WorkspaceAction,
+} from "@repo/shared";
 import { Icon, MenuItem, MenuSeparator, type CodiconName } from "@repo/ui";
 
 import { RowActions } from "./RowActions";
 
-import type { Workspace } from "@repo/shared";
-import type { WorkspaceStatus } from "coder/site/src/api/typesGenerated";
-
 import type { WorkspaceCommands } from "./WorkspacesPanel";
 
-type LifecycleAction = "Start" | "Stop" | "Restart" | "Retry";
-
-const LIFECYCLE_ICONS: Readonly<Record<LifecycleAction, CodiconName>> = {
-	Start: "play",
-	Stop: "primitive-square",
-	Restart: "debug-restart",
-	Retry: "debug-restart",
-};
-
-function lifecycleActions(status: WorkspaceStatus): readonly LifecycleAction[] {
-	switch (status) {
-		case "running":
-			return ["Stop", "Restart"];
-		case "stopped":
-			return ["Start"];
-		case "failed":
-		case "canceled":
-			return ["Retry"];
-		default:
-			return [];
-	}
+interface MenuEntry {
+	readonly label: string;
+	readonly icon: CodiconName;
 }
 
-export function WorkspaceActions({
+const ACTION_ENTRIES: Readonly<
+	Record<Exclude<WorkspaceAction, "delete">, MenuEntry>
+> = {
+	update: { label: "Update", icon: "arrow-circle-up" },
+	start: { label: "Start", icon: "play" },
+	stop: { label: "Stop", icon: "primitive-square" },
+	restart: { label: "Restart", icon: "debug-restart" },
+};
+
+const RETRY_ENTRY: MenuEntry = { label: "Retry", icon: "debug-restart" };
+
+function WorkspaceMenu({
 	workspace,
+	pendingAction,
 	api,
 }: {
 	workspace: Workspace;
+	pendingAction?: WorkspaceAction;
 	api: WorkspaceCommands;
 }) {
 	const workspaceId = workspace.id;
-	const actions = lifecycleActions(workspace.latest_build.status);
+	const actions = workspaceActions(workspace);
+	const busy = pendingAction !== undefined;
+	// A failed build is retried by repeating its transition.
+	const failed = workspace.latest_build.status === "failed";
+	const lifecycle = actions.filter((action) => action !== "delete");
 	return (
-		<RowActions
-			name={workspace.name || "Unknown"}
-			target={{ workspaceId }}
-			api={api}
-			menuDescription="Disabled actions are not supported by this panel."
-		>
-			{actions.map((action) => (
-				<MenuItem key={action} disabled>
-					<Icon name={LIFECYCLE_ICONS[action]} />
-					{action}
-				</MenuItem>
-			))}
-			{actions.length > 0 && <MenuSeparator />}
-			<MenuItem disabled>
+		<>
+			{lifecycle.map((action) => {
+				const { label, icon } =
+					failed && action !== "update" ? RETRY_ENTRY : ACTION_ENTRIES[action];
+				return (
+					<MenuItem
+						key={action}
+						disabled={busy}
+						onClick={() => api.runWorkspaceAction({ workspaceId, action })}
+					>
+						<Icon name={icon} />
+						{label}
+					</MenuItem>
+				);
+			})}
+			{lifecycle.length > 0 && <MenuSeparator />}
+			<MenuItem
+				onClick={() => api.viewInDashboard({ workspaceId, page: "sharing" })}
+			>
 				<Icon name="share" />
 				Share
 			</MenuItem>
@@ -63,11 +69,46 @@ export function WorkspaceActions({
 				<Icon name="gear" />
 				Settings
 			</MenuItem>
-			<MenuSeparator />
-			<MenuItem disabled className="workspace-delete">
-				<Icon name="trash" />
-				Delete...
-			</MenuItem>
+			{actions.includes("delete") && (
+				<>
+					<MenuSeparator />
+					<MenuItem
+						className="workspace-delete"
+						disabled={busy}
+						onClick={() =>
+							api.runWorkspaceAction({ workspaceId, action: "delete" })
+						}
+					>
+						<Icon name="trash" />
+						Delete...
+					</MenuItem>
+				</>
+			)}
+		</>
+	);
+}
+
+export function WorkspaceActions({
+	workspace,
+	pendingAction,
+	api,
+}: {
+	workspace: Workspace;
+	/** Disables the workspace's lifecycle actions while one runs. */
+	pendingAction?: WorkspaceAction;
+	api: WorkspaceCommands;
+}) {
+	return (
+		<RowActions
+			name={workspace.name || "Unknown"}
+			target={{ workspaceId: workspace.id }}
+			api={api}
+		>
+			<WorkspaceMenu
+				workspace={workspace}
+				pendingAction={pendingAction}
+				api={api}
+			/>
 		</RowActions>
 	);
 }

@@ -18,6 +18,7 @@ const WORKSPACES: readonly Workspace[] = [
 		id: "ws-frontend",
 		name: "frontend",
 		owner_name: "alice",
+		outdated: true,
 		agents: [
 			agent({
 				id: "agent-main",
@@ -162,6 +163,7 @@ const api = {
 	openWorkspace: fn(),
 	viewInDashboard: fn(),
 	runAgentDiagnostic: fn(),
+	runWorkspaceAction: fn(),
 	refresh: fn(),
 	setFilter: fn(),
 	watchAgents: fn(),
@@ -236,6 +238,11 @@ export const AgentMenuOpen: Story = {
 		);
 		await screen.findByRole("menuitem", { name: "Ping" });
 	},
+};
+
+export const PendingActionMenuOpen: Story = {
+	...MenuOpen,
+	args: { state: { ...READY, pendingActions: { "ws-frontend": "update" } } },
 };
 
 export const FilterOpen: Story = {

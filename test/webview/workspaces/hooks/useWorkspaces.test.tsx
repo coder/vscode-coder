@@ -1,9 +1,11 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { workspace } from "@repo/mocks";
 import { WorkspacesApi, type WorkspacesState } from "@repo/shared";
 import { useWorkspaces } from "@repo/workspaces/hooks/useWorkspaces";
 
+import { QueryWrapper } from "../../render";
 import { captureSent, pushState } from "../ipc";
 
 const STATE: WorkspacesState = {
@@ -16,7 +18,10 @@ const STATE: WorkspacesState = {
 
 function setup() {
 	const sent = captureSent();
-	return { sent, ...renderHook(() => useWorkspaces()) };
+	return {
+		sent,
+		...renderHook(() => useWorkspaces(), { wrapper: QueryWrapper }),
+	};
 }
 
 describe("useWorkspaces", () => {
@@ -42,6 +47,27 @@ describe("useWorkspaces", () => {
 		expect(sent).toEqual([
 			{ method: WorkspacesApi.ready.method, params: undefined },
 		]);
+	});
+
+	it("keeps unchanged workspaces by identity, so only changed rows render", async () => {
+		const { result } = setup();
+		const alpha = workspace({ id: "alpha" });
+		const beta = workspace({ id: "beta" });
+		await pushState({ ...STATE, workspaces: [alpha, beta] });
+		const [first, second] = result.current.state?.workspaces ?? [];
+
+		await pushState({
+			...STATE,
+			workspaces: [
+				JSON.parse(JSON.stringify(alpha)) as typeof alpha,
+				workspace({ id: "beta", latest_build: { status: "stopping" } }),
+			],
+		});
+
+		const [nextFirst, nextSecond] = result.current.state?.workspaces ?? [];
+		expect(nextFirst).toBe(first);
+		expect(nextSecond).not.toBe(second);
+		expect(nextSecond?.latest_build.status).toBe("stopping");
 	});
 
 	it("stops applying pushes once unmounted", async () => {
