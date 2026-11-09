@@ -359,7 +359,9 @@ export class Remote {
 			}
 
 			// Listen for token changes for this deployment
-			disposables.push(this.watchRemoteSessionAuth(context, workspaceClient));
+			disposables.push(
+				this.watchRemoteSessionAuth(parts.safeHostname, workspaceClient),
+			);
 
 			// Next is to find the workspace from the URI scheme provided.
 			const foundWorkspace = await tracer.phase("workspace_lookup", () =>
@@ -810,13 +812,17 @@ export class Remote {
 	}
 
 	private watchRemoteSessionAuth(
-		context: RemoteSetupContext,
+		safeHostname: string,
 		workspaceClient: CoderApi,
 	): vscode.Disposable {
 		return this.secretsManager.onDidChangeSessionAuth(
-			context.parts.safeHostname,
+			safeHostname,
 			async (auth) => {
-				workspaceClient.setCredentials(auth?.url, auth?.token);
+				if (auth && auth.url === workspaceClient.getHost()) {
+					workspaceClient.setSessionToken(auth.token);
+				} else {
+					workspaceClient.setCredentials(auth?.url, auth?.token);
+				}
 				if (!auth?.url) {
 					return;
 				}

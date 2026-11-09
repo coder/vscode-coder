@@ -2,7 +2,7 @@ import { Api } from "coder/site/src/api/api";
 import { vol } from "memfs";
 import { spawnSync } from "node:child_process";
 import * as semver from "semver";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import * as vscode from "vscode";
 
 import { version as cliVersion } from "@/cli/cliExec";
@@ -18,6 +18,7 @@ import { MementoManager } from "@/storage/mementoManager";
 import { PathResolver } from "@/storage/pathResolver";
 import { SecretsManager } from "@/storage/secretsManager";
 
+import { createTestCoderApi } from "../../mocks/coderApi";
 import { createTestTelemetryService } from "../../mocks/telemetry";
 import {
 	createMockLogger,
@@ -124,6 +125,33 @@ describe("Remote", () => {
 		vol.reset();
 		mockWorkspace.workspaceFile = undefined;
 		mockWorkspace.workspaceFolders = [];
+	});
+
+	it.each<[string, string | undefined, "setSessionToken" | "setCredentials"]>([
+		["keeps requests when the token rotates", CLI_AUTH.url, "setSessionToken"],
+		[
+			"cancels requests when the URL changes",
+			"http://x.test",
+			"setCredentials",
+		],
+		["cancels requests on sign-out", undefined, "setCredentials"],
+	])("%s in remote windows", async (_name, url, rebind) => {
+		const { remote, secretsManager } = createRemote();
+		const client = createTestCoderApi({ baseUrl: CLI_AUTH.url, token: "old" });
+		const calls = {
+			setSessionToken: vi.spyOn(client, "setSessionToken"),
+			setCredentials: vi.spyOn(client, "setCredentials"),
+		};
+		const subscribe = vi.spyOn(secretsManager, "onDidChangeSessionAuth");
+		const method = "watchRemoteSessionAuth";
+		const watcher = remote[method](SAFE_HOSTNAME, client);
+		onTestFinished(() => watcher.dispose());
+
+		await subscribe.mock.calls[0][1](url ? { url, token: "new" } : undefined);
+
+		for (const [name, spy] of Object.entries(calls)) {
+			expect(spy).toHaveBeenCalledTimes(name === rebind ? 1 : 0);
+		}
 	});
 
 	type UriOptions = Partial<

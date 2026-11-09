@@ -1,4 +1,9 @@
-import { type AxiosError, isAxiosError } from "axios";
+import {
+	type AxiosError,
+	CanceledError,
+	isAxiosError,
+	type InternalAxiosRequestConfig,
+} from "axios";
 
 import { isSameOrigin } from "../common/url";
 import { AuthTelemetry } from "../instrumentation/auth";
@@ -16,6 +21,14 @@ import type { SecretsManager } from "../storage/secretsManager";
 import type { CoderApi } from "./coderApi";
 
 const coderSessionTokenHeader = "Coder-Session-Token";
+
+function throwIfRequestCanceled(
+	config: InternalAxiosRequestConfig | undefined,
+): void {
+	if (config?.signal?.aborted) {
+		throw new CanceledError(undefined, config);
+	}
+}
 
 /**
  * Callback invoked when authentication is required.
@@ -77,6 +90,7 @@ export class AuthInterceptor implements vscode.Disposable {
 		url: string,
 	): Promise<unknown> {
 		const config = error.config;
+		throwIfRequestCanceled(config);
 
 		// Checked before _retryAttempted so an OAuth-retry 401 caused by a
 		// fresh settings change still gets one silent attempt.
@@ -103,9 +117,10 @@ export class AuthInterceptor implements vscode.Disposable {
 			// 1) OAuth refresh path.
 			const isOAuth =
 				await this.oauthSessionManager.canRefreshOAuthSession(url);
+			throwIfRequestCanceled(config);
 			recorder.setRefreshAttempted(isOAuth);
 			if (isOAuth) {
-				const newToken = await this.tryOAuthRefresh();
+				const newToken = await this.tryOAuthRefresh(config);
 				if (newToken) {
 					// Switched deployments mid-refresh.
 					if (!isSameOrigin(this.client.getHost() ?? "", url)) {
@@ -125,9 +140,11 @@ export class AuthInterceptor implements vscode.Disposable {
 			}
 			recorder.setRecovery("login_required");
 			const success = await this.executeAuthRequired();
+			throwIfRequestCanceled(config);
 			const auth = success
 				? await this.secretsManager.getSessionAuthForUrl(url)
 				: undefined;
+			throwIfRequestCanceled(config);
 			if (!auth) {
 				throw error;
 			}
@@ -137,12 +154,16 @@ export class AuthInterceptor implements vscode.Disposable {
 	}
 
 	/** Returns the new access token on success, or undefined when refresh fails. */
-	private async tryOAuthRefresh(): Promise<string | undefined> {
+	private async tryOAuthRefresh(
+		config: InternalAxiosRequestConfig | undefined,
+	): Promise<string | undefined> {
 		try {
 			const newTokens = await this.oauthSessionManager.refreshToken();
+			throwIfRequestCanceled(config);
 			this.logger.debug("Token refresh successful");
 			return newTokens.access_token;
 		} catch (refreshError) {
+			throwIfRequestCanceled(config);
 			if (!(refreshError instanceof OAuthError)) {
 				this.logger.error("Token refresh failed:", refreshError);
 			} else if (refreshError.requiresReAuth) {
@@ -185,6 +206,7 @@ export class AuthInterceptor implements vscode.Disposable {
 			throw error;
 		}
 
+		throwIfRequestCanceled(error.config);
 		error.config._retryAttempted = true;
 		error.config.headers[coderSessionTokenHeader] = token;
 		return this.client.getAxiosInstance().request(error.config);

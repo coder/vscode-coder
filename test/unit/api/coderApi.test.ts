@@ -120,6 +120,18 @@ describe("CoderApi", () => {
 		return CoderApi.create(url, token, mockLogger, telemetry);
 	};
 
+	async function pendingRequest(client: CoderApi) {
+		const headers = Promise.withResolvers<Record<string, string>>();
+		const started = Promise.withResolvers<void>();
+		vi.mocked(getHeaders).mockImplementationOnce(() => {
+			started.resolve();
+			return headers.promise;
+		});
+		const request = client.getAxiosInstance().get("/api/v2/users/me");
+		await started.promise;
+		return { headers, request };
+	}
+
 	beforeEach(() => {
 		vi.resetAllMocks();
 
@@ -166,6 +178,41 @@ describe("CoderApi", () => {
 			const response = await api.getAxiosInstance().get("/api/v2/users/me");
 
 			expect(response.config.timeout).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+		});
+
+		it.each<[string, boolean, (client: CoderApi) => void]>([
+			["another host", true, (c) => c.setCredentials("https://x.test", "t")],
+			["same credentials", true, (c) => c.setCredentials(CODER_URL, "old")],
+			[
+				"cleared credentials",
+				true,
+				(c) => c.setCredentials(undefined, undefined),
+			],
+			["setHost", true, (c) => c.setHost(CODER_URL)],
+			["dispose", true, (c) => c.dispose()],
+			["setSessionToken", false, (c) => c.setSessionToken("refreshed")],
+		])("%s cancels pending requests: %s", async (_name, canceled, act) => {
+			api = createApi(CODER_URL, "old");
+			const { headers, request } = await pendingRequest(api);
+			const outcome = canceled
+				? expect(request).rejects.toMatchObject({ code: "ERR_CANCELED" })
+				: expect(request).resolves.toBeDefined();
+
+			act(api);
+			headers.resolve({});
+
+			await outcome;
+			expect(mockAdapter).toHaveBeenCalledTimes(canceled ? 0 : 1);
+		});
+
+		it("sends later requests with rebound credentials", async () => {
+			api = createApi(CODER_URL, "old-token");
+			api.setCredentials("https://new.example.com", "new-token");
+
+			const { config } = await api.getAxiosInstance().get("/api/v2/users/me");
+
+			expect(config.baseURL).toBe("https://new.example.com");
+			expect(config.headers["Coder-Session-Token"]).toBe("new-token");
 		});
 
 		it("allows per-request timeout overrides", async () => {
