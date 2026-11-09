@@ -10,8 +10,8 @@ import {
 } from "../settings/cli";
 
 import { createWorkspaceIdentifier } from "./models";
+import { WorkspaceUpdateCancelledError } from "./updateParameters";
 
-import type { Api } from "coder/site/src/api/api";
 import type {
 	CreateWorkspaceBuildOnSuccessRequest,
 	ProvisionerJobLog,
@@ -65,8 +65,7 @@ export class LazyStream<T> {
 }
 
 type BuildApi = Pick<
-	Api,
-	| "getTemplate"
+	CoderApi,
 	| "getWorkspace"
 	| "postWorkspaceBuild"
 	| "startWorkspace"
@@ -74,14 +73,19 @@ type BuildApi = Pick<
 	| "waitForBuild"
 >;
 
-interface CliContext {
+interface WorkspaceContext {
 	restClient: BuildApi;
-	auth: CliAuth;
-	binPath: string;
 	workspace: Workspace;
 	write: (data: string) => void;
-	cliFeatures: CliFeatureSet;
 	serverFeatures: ServerFeatureSet;
+	/** Throws once the initiating session changes. */
+	check?: () => void;
+}
+
+interface CliContext extends WorkspaceContext {
+	auth: CliAuth;
+	binPath: string;
+	cliFeatures: CliFeatureSet;
 }
 
 /** Streams CLI output via `ctx.write`; rejects with stderr on non-zero exit. */
@@ -146,27 +150,30 @@ export async function startWorkspace(ctx: CliContext): Promise<Workspace> {
 /**
  * Update a workspace to the latest template version. Callers must collect
  * any newly-required parameters via `collectUpdateParameters` first; this
- * function does not prompt. On servers before 2.36, updating takes two
- * builds: `coder update`, or the REST API on CLIs before 2.24.
+ * function does not prompt, and refuses if the workspace changed since. On
+ * servers before 2.36, updating takes two builds: `coder update`, or the
+ * REST API without a CLI or on CLIs before 2.24.
  */
 export async function updateWorkspace(
-	ctx: CliContext,
+	ctx: WorkspaceContext | CliContext,
 	parameters: WorkspaceBuildParameter[],
 ): Promise<Workspace> {
-	if (ctx.serverFeatures.onSuccessBuild) {
-		return updateWorkspaceInOneBuild(ctx, parameters);
+	const workspace = await ctx.restClient.getWorkspace(ctx.workspace.id);
+	assertSameUpdate(ctx.workspace, workspace);
+	const current = { ...ctx, workspace };
+	if (current.serverFeatures.onSuccessBuild) {
+		return updateWorkspaceInOneBuild(current, parameters);
 	}
-
-	if (!ctx.cliFeatures.cliUpdate) {
-		return updateWorkspaceViaApi(ctx, parameters);
+	if (!("cliFeatures" in current) || !current.cliFeatures.cliUpdate) {
+		return updateWorkspaceViaApi(current, parameters);
 	}
 
 	const paramArgs = parameters.flatMap((p) => [
 		"--parameter",
 		`${p.name}=${p.value}`,
 	]);
-	await runCliCommand(ctx, ["update", ...paramArgs]);
-	return ctx.restClient.getWorkspace(ctx.workspace.id);
+	await runCliCommand(current, ["update", ...paramArgs]);
+	return ctx.restClient.getWorkspace(workspace.id);
 }
 
 /**
@@ -174,21 +181,19 @@ export async function updateWorkspace(
  * returned workspace carries the stop build; the server starts it after.
  */
 async function updateWorkspaceInOneBuild(
-	ctx: CliContext,
+	{ restClient, workspace, write }: WorkspaceContext,
 	parameters: WorkspaceBuildParameter[],
 ): Promise<Workspace> {
-	// The build may have changed while parameters were collected.
-	const workspace = await ctx.restClient.getWorkspace(ctx.workspace.id);
 	const start: CreateWorkspaceBuildOnSuccessRequest = {
 		transition: "start",
 		rich_parameter_values: parameters,
 	};
 	const running = workspace.latest_build.status === "running";
 
-	ctx.write(
+	write(
 		`${running ? "Restarting" : "Starting"} workspace with the updated template...\r\n`,
 	);
-	const build = await ctx.restClient.postWorkspaceBuild(
+	const build = await restClient.postWorkspaceBuild(
 		workspace.id,
 		running
 			? { transition: "stop", reason: BUILD_REASON, on_success: start }
@@ -203,8 +208,32 @@ async function updateWorkspaceInOneBuild(
 	return { ...workspace, latest_build: build };
 }
 
+/** The update no longer does what was confirmed, so it must be confirmed again. */
+export function updateChangedError(
+	workspaceName: string,
+): WorkspaceUpdateCancelledError {
+	return new WorkspaceUpdateCancelledError(
+		`${workspaceName} changed while preparing its update. Run Update again to confirm the current operation.`,
+	);
+}
+
+/**
+ * Refuses an update of `current` that would no longer do what was prepared
+ * for `prepared`: the same start or restart, to the same version.
+ */
+function assertSameUpdate(prepared: Workspace, current: Workspace): void {
+	const running = current.latest_build.status === "running";
+	if (
+		running !== (prepared.latest_build.status === "running") ||
+		(!running && !STARTABLE_STATUSES.has(current.latest_build.status)) ||
+		current.template_active_version_id !== prepared.template_active_version_id
+	) {
+		throw updateChangedError(createWorkspaceIdentifier(current));
+	}
+}
+
 async function updateWorkspaceViaApi(
-	ctx: CliContext,
+	ctx: WorkspaceContext,
 	parameters: WorkspaceBuildParameter[],
 ): Promise<Workspace> {
 	if (ctx.workspace.latest_build.status === "running") {
@@ -216,11 +245,11 @@ async function updateWorkspaceViaApi(
 		}
 	}
 
+	ctx.check?.();
 	ctx.write("Starting workspace with updated template...\r\n");
-	const template = await ctx.restClient.getTemplate(ctx.workspace.template_id);
 	await ctx.restClient.startWorkspace(
 		ctx.workspace.id,
-		template.active_version_id,
+		ctx.workspace.template_active_version_id,
 		undefined,
 		parameters,
 	);

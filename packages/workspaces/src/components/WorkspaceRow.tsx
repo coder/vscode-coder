@@ -9,6 +9,7 @@ const PENDING_LABELS: Readonly<Record<WorkspaceAction, string>> = {
 	start: "Starting",
 	stop: "Stopping",
 	restart: "Restarting",
+	update: "Updating",
 	delete: "Deleting",
 };
 

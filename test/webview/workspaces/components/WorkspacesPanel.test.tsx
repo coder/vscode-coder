@@ -209,6 +209,7 @@ describe("WorkspacesPanel", () => {
 	interface MenuCase {
 		name: string;
 		build: Partial<Workspace["latest_build"]>;
+		outdated?: boolean;
 		items: string[];
 	}
 
@@ -219,9 +220,10 @@ describe("WorkspacesPanel", () => {
 			items: ["Stop", "Restart", "Share", "Settings", "Delete..."],
 		},
 		{
-			name: "stopped",
+			name: "outdated and stopped",
 			build: { status: "stopped" },
-			items: ["Start", "Share", "Settings", "Delete..."],
+			outdated: true,
+			items: ["Update", "Start", "Share", "Settings", "Delete..."],
 		},
 		{
 			name: "a failed start",
@@ -233,10 +235,10 @@ describe("WorkspacesPanel", () => {
 			build: { status: "starting" },
 			items: ["Share", "Settings"],
 		},
-	])("offers the actions $name allows", async ({ build, items }) => {
+	])("offers the actions $name allows", async ({ build, outdated, items }) => {
 		const { user } = await setup({
 			...STATE,
-			workspaces: [workspace({ latest_build: build })],
+			workspaces: [workspace({ outdated, latest_build: build })],
 		});
 		const menu = await openMenu(user, "test-workspace");
 		expect(enabledLabels(menu)).toEqual(items);

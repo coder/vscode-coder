@@ -3,7 +3,12 @@ import type {
 	WorkspaceStatus,
 } from "coder/site/src/api/typesGenerated";
 
-export type WorkspaceAction = "start" | "stop" | "restart" | "delete";
+export type WorkspaceAction =
+	| "start"
+	| "stop"
+	| "restart"
+	| "update"
+	| "delete";
 
 const BUSY_STATUSES: ReadonlySet<WorkspaceStatus> = new Set([
 	"pending",
@@ -35,10 +40,18 @@ export function workspaceActions(
 		return ["delete"];
 	}
 	const { status, transition } = workspace.latest_build;
-	const actions: WorkspaceAction[] = [];
+	// A policy that forces the active version leaves only an update.
+	const updateOnly =
+		workspace.outdated &&
+		(workspace.template_require_active_version ||
+			workspace.automatic_updates === "always");
+	const actions: WorkspaceAction[] = workspace.outdated ? ["update"] : [];
 	if (status === "running") {
-		actions.push("stop", "restart");
-	} else if (status === "stopped") {
+		actions.push("stop");
+		if (!updateOnly) {
+			actions.push("restart");
+		}
+	} else if (status === "stopped" && !updateOnly) {
 		actions.push("start");
 	} else if (status === "canceled") {
 		actions.push("start", "stop");

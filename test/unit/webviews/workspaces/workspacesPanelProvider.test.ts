@@ -62,6 +62,7 @@ function setup() {
 		startWorkspace: vi.fn(() => Promise.resolve()),
 		stopWorkspace: vi.fn(() => Promise.resolve()),
 		restartWorkspace: vi.fn(() => Promise.resolve()),
+		updateWorkspace: vi.fn(() => Promise.resolve()),
 		deleteWorkspace: vi.fn(() => Promise.resolve()),
 	} satisfies ConstructorParameters<typeof WorkspacesPanelProvider>[2];
 	const provider = new WorkspacesPanelProvider(
@@ -289,6 +290,7 @@ describe("WorkspacesPanelProvider", () => {
 		{ action: "start", command: "startWorkspace" },
 		{ action: "stop", command: "stopWorkspace" },
 		{ action: "restart", command: "restartWorkspace" },
+		{ action: "update", command: "updateWorkspace" },
 		{ action: "delete", command: "deleteWorkspace" },
 	])(
 		"runs $action through Commands and lists again after it",

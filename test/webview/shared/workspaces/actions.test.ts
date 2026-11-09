@@ -11,6 +11,11 @@ interface ActionsCase {
 	actions: WorkspaceAction[];
 }
 
+const outdated = (
+	status: "running" | "stopped",
+	policy: Partial<Workspace> = {},
+) => workspace({ ...policy, outdated: true, latest_build: { status } });
+
 describe("workspaceActions", () => {
 	it.each<ActionsCase>([
 		{
@@ -48,6 +53,21 @@ describe("workspaceActions", () => {
 				latest_build: { status: "failed", transition: "delete" },
 			}),
 			actions: ["delete"],
+		},
+		{
+			name: "outdated",
+			workspace: outdated("stopped"),
+			actions: ["update", "start", "delete"],
+		},
+		{
+			name: "running and forced to the active version",
+			workspace: outdated("running", { template_require_active_version: true }),
+			actions: ["update", "stop", "delete"],
+		},
+		{
+			name: "stopped and updating automatically",
+			workspace: outdated("stopped", { automatic_updates: "always" }),
+			actions: ["update", "delete"],
 		},
 		{
 			name: "dormant, which coder start reactivates",

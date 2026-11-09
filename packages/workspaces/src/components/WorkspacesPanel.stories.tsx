@@ -18,6 +18,7 @@ const WORKSPACES: readonly Workspace[] = [
 		id: "ws-frontend",
 		name: "frontend",
 		owner_name: "alice",
+		outdated: true,
 		agents: [
 			agent({
 				id: "agent-main",
@@ -225,7 +226,7 @@ export const MenuOpen: Story = {
 
 export const PendingActionMenuOpen: Story = {
 	...MenuOpen,
-	args: { state: { ...READY, pendingActions: { "ws-frontend": "stop" } } },
+	args: { state: { ...READY, pendingActions: { "ws-frontend": "update" } } },
 };
 
 export const FilterOpen: Story = {

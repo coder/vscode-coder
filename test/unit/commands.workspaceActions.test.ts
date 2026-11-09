@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { restartWorkspace, startWorkspace } from "@/api/workspace";
+import {
+	collectUpdateParameters,
+	WorkspaceUpdateCancelledError,
+} from "@/api/updateParameters";
+import {
+	restartWorkspace,
+	startWorkspace,
+	updateWorkspace,
+} from "@/api/workspace";
 import * as cliExec from "@/cli/cliExec";
 
 import { workspace } from "@repo/mocks";
@@ -25,6 +33,12 @@ vi.mock("@/api/workspace", async (importOriginal) => ({
 	...(await importOriginal<typeof import("@/api/workspace")>()),
 	startWorkspace: vi.fn(),
 	restartWorkspace: vi.fn(),
+	updateWorkspace: vi.fn(),
+}));
+
+vi.mock("@/api/updateParameters", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@/api/updateParameters")>()),
+	collectUpdateParameters: vi.fn(),
 }));
 
 vi.mock("@/cli/cliExec", async (importOriginal) => ({
@@ -34,8 +48,8 @@ vi.mock("@/cli/cliExec", async (importOriginal) => ({
 
 const NAME = "testuser/test-workspace";
 
-const withStatus = (status: WorkspaceStatus) =>
-	workspace({ latest_build: { status } });
+const withStatus = (status: WorkspaceStatus, outdated = false) =>
+	workspace({ outdated, latest_build: { status } });
 
 /** Commands whose deployment re-reads the workspace as `latest`. */
 function setup(latest: Workspace, warningChoice?: string) {
@@ -122,15 +136,49 @@ describe("workspace lifecycle commands", () => {
 		expect(client.deleteWorkspace).toHaveBeenCalledWith(latest.id);
 	});
 
+	it("updates a listed workspace in place, without a CLI from 2.36", async () => {
+		const latest = withStatus("stopped", true);
+		const parameters = [{ name: "region", value: "eu" }];
+		vi.mocked(collectUpdateParameters).mockResolvedValue(parameters);
+		const { commands, cliManager } = setup(latest, "Update and Start");
+		cliManager.locateBinary.mockRejectedValue(new Error("CLI unavailable"));
+
+		await commands.updateWorkspace(latest);
+
+		expect(updateWorkspace).toHaveBeenCalledWith(
+			expect.objectContaining({ workspace: latest }),
+			parameters,
+		);
+		expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith(
+			"workbench.action.reloadWindow",
+		);
+		expect(cliManager.locateBinary).not.toHaveBeenCalled();
+		expect(cliManager.configure).not.toHaveBeenCalled();
+	});
+
+	it("aborts an update when starting becomes restarting during confirmation", async () => {
+		const latest = { ...withStatus("running", true), name: "renamed" };
+		const { commands } = setup(latest, "Update and Start");
+
+		await commands.updateWorkspace(withStatus("stopped", true));
+
+		expect(collectUpdateParameters).not.toHaveBeenCalled();
+		expect(updateWorkspace).not.toHaveBeenCalled();
+		expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+			`${NAME} changed while preparing its update. Run Update again to confirm the current operation.`,
+		);
+	});
+
 	it.each([
 		{ action: "start", status: "stopped", confirm: undefined },
 		{ action: "stop", status: "running", confirm: undefined },
 		{ action: "restart", status: "running", confirm: undefined },
 		{ action: "delete", status: "stopped", confirm: "Delete" },
+		{ action: "update", status: "stopped", confirm: "Update and Start" },
 	] as const)(
 		"does not $action under a session that replaced its workspace read",
 		async ({ action, status, confirm }) => {
-			const latest = withStatus(status);
+			const latest = withStatus(status, true);
 			const { commands, client, session, cliManager } = setup(latest, confirm);
 			const read = Promise.withResolvers<Workspace>();
 			const requested = Promise.withResolvers<void>();
@@ -143,6 +191,7 @@ describe("workspace lifecycle commands", () => {
 				stop: () => commands.stopWorkspace(latest),
 				restart: () => commands.restartWorkspace(latest),
 				delete: () => commands.deleteWorkspace(latest),
+				update: () => commands.updateWorkspace(latest),
 			};
 
 			const running = methods[action]();
@@ -155,6 +204,7 @@ describe("workspace lifecycle commands", () => {
 			expect(client.deleteWorkspace).not.toHaveBeenCalled();
 			expect(startWorkspace).not.toHaveBeenCalled();
 			expect(restartWorkspace).not.toHaveBeenCalled();
+			expect(updateWorkspace).not.toHaveBeenCalled();
 			expect(cliManager.configure).not.toHaveBeenCalled();
 		},
 	);
@@ -196,6 +246,17 @@ describe("workspace lifecycle commands", () => {
 		expect(startWorkspace).not.toHaveBeenCalled();
 	});
 
+	it("does not update when a parameter prompt is dismissed", async () => {
+		vi.mocked(collectUpdateParameters).mockRejectedValue(
+			new WorkspaceUpdateCancelledError(),
+		);
+		const { commands } = setup(withStatus("stopped", true), "Update and Start");
+
+		await commands.updateWorkspace(withStatus("stopped", true));
+
+		expect(updateWorkspace).not.toHaveBeenCalled();
+	});
+
 	interface RefusalCase {
 		action: string;
 		latest: Workspace;
@@ -219,9 +280,12 @@ describe("workspace lifecycle commands", () => {
 		},
 		{
 			action: "restart",
-			latest: withStatus("stopped"),
+			latest: workspace({
+				outdated: true,
+				template_require_active_version: true,
+			}),
 			run: (c, w) => c.restartWorkspace(w),
-			message: `Cannot restart ${NAME} while it is stopped.`,
+			message: `Cannot restart ${NAME} while it is running.`,
 		},
 		{
 			action: "delete",
@@ -230,12 +294,19 @@ describe("workspace lifecycle commands", () => {
 			run: (c, w) => c.deleteWorkspace(w),
 			message: `Cannot delete ${NAME} while it is deleting.`,
 		},
+		{
+			action: "update",
+			latest: withStatus("stopped"),
+			confirm: "Update and Start",
+			run: (c, w) => c.updateWorkspace(w),
+			message: `${NAME} is already up to date.`,
+		},
 	])(
 		"refuses to $action when the workspace changed since it was listed",
 		async ({ action, latest, confirm, run, message }) => {
 			const { commands, triggered } = setup(latest, confirm);
 
-			await run(commands, withStatus("stopped"));
+			await run(commands, withStatus("stopped", true));
 
 			expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
 				message,
@@ -276,6 +347,13 @@ describe("workspace lifecycle commands", () => {
 			run: (c, w) => c.deleteWorkspace(w),
 			title: `Delete ${NAME}?`,
 			button: "Delete",
+		},
+		{
+			action: "update",
+			listed: withStatus("running", true),
+			run: (c, w) => c.updateWorkspace(w),
+			title: "Update Workspace",
+			button: "Update and Restart",
 		},
 	])(
 		"asks before it will $action and stops when dismissed",

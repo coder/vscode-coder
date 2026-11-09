@@ -37,6 +37,7 @@ type PanelCommands = Pick<
 	| "startWorkspace"
 	| "stopWorkspace"
 	| "restartWorkspace"
+	| "updateWorkspace"
 	| "deleteWorkspace"
 >;
 
@@ -187,6 +188,8 @@ export class WorkspacesPanelProvider
 				return this.commands.stopWorkspace(workspace);
 			case "restart":
 				return this.commands.restartWorkspace(workspace);
+			case "update":
+				return this.commands.updateWorkspace(workspace);
 			case "delete":
 				return this.commands.deleteWorkspace(workspace);
 		}

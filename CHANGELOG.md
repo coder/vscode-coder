@@ -11,12 +11,13 @@
 
 - The experimental Workspaces panel lists workspace agents, metadata and app
   status. Updated times expose the full date and time on hover or keyboard focus.
-- The experimental Workspaces panel can start, stop, restart, retry and delete
-  workspaces, and open their sharing settings in the dashboard. Each action
-  checks the workspace's current status first, explains when it no longer
-  applies, and halts if the Coder session changes. Restart keeps the
-  workspace's template version. A spinner marks a workspace while its action
-  runs, and its other actions are disabled until it finishes.
+- The experimental Workspaces panel can start, stop, restart, update, retry and
+  delete workspaces, and open their sharing settings in the dashboard. Each
+  action checks the workspace's current status first, explains when it no
+  longer applies, and halts if the Coder session changes. Restart keeps the
+  workspace's template version. Updates on Coder 2.36+ do not require a local
+  CLI. A spinner marks a workspace while its action runs, and its other actions
+  are disabled until it finishes.
 
 ### Changed
 
@@ -29,6 +30,9 @@
 
 ### Fixed
 
+- Updating a workspace halts if it starts, stops or moves to another template
+  version while its parameters are collected, instead of applying a different
+  update than the one confirmed.
 - A session saved for one URL is no longer used for a URL on the same host with
   a different scheme or port.
 - The session token and `coder.headerCommand` headers are now only sent to the

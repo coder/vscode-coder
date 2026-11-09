@@ -15,7 +15,16 @@ import {
 	createWorkspaceIdentifier,
 	workspaceStatusLabel,
 } from "./api/models";
-import { restartWorkspace, startWorkspace } from "./api/workspace";
+import {
+	collectUpdateParameters,
+	WorkspaceUpdateCancelledError,
+} from "./api/updateParameters";
+import {
+	restartWorkspace,
+	startWorkspace,
+	updateChangedError,
+	updateWorkspace,
+} from "./api/workspace";
 import * as cliExec from "./cli/cliExec";
 import { runDiagnosticCli } from "./command/diagnosticFlow";
 import { openInBrowser, toSafeHost } from "./common/url";
@@ -159,6 +168,7 @@ class SupportBundleUnsupportedCliError extends Error {
 }
 
 const UPDATE_AND_RESTART_ACTION = "Update and Restart";
+const UPDATE_AND_START_ACTION = "Update and Start";
 const RESTART_WARNING =
 	"stops any running processes and may result in the loss of unsaved work.";
 
@@ -1339,10 +1349,80 @@ export class Commands {
 	}
 
 	/**
-	 * Update the current workspace.  If there is no active workspace connection,
-	 * this is a no-op.
+	 * Update a workspace, or the connected one when none is given. The
+	 * connected one updates through a reload so the remote setup follows it.
 	 */
-	public async updateWorkspace(): Promise<void> {
+	public async updateWorkspace(workspace?: Workspace): Promise<void> {
+		if (workspace && workspace.id !== this.workspace?.id) {
+			return this.withWorkspaceAction((check) =>
+				this.updateListedWorkspace(workspace, check),
+			);
+		}
+		return this.updateConnectedWorkspace();
+	}
+
+	private async updateListedWorkspace(
+		workspace: Workspace,
+		check: () => void,
+	): Promise<void> {
+		const workspaceId = createWorkspaceIdentifier(workspace);
+		const telemetry = this.operationTelemetry(workspace);
+		const running = workspace.latest_build.status === "running";
+		const confirmed = await telemetry.traceConfirmationPrompt(() =>
+			this.confirmModal(
+				"Update Workspace",
+				running
+					? `Update ${workspaceId} to the latest version?\n\nUpdating will restart your workspace which ${RESTART_WARNING}`
+					: `Update ${workspaceId} to the latest version?\n\nThe workspace will start on the latest version.`,
+				running ? UPDATE_AND_RESTART_ACTION : UPDATE_AND_START_ACTION,
+			),
+		);
+		if (!confirmed) {
+			return;
+		}
+		try {
+			const latest = await this.refreshForAction(workspace, "update", check);
+			if (!latest) {
+				return;
+			}
+			// The confirmation named a start or a restart.
+			if (running !== (latest.latest_build.status === "running")) {
+				throw updateChangedError(workspaceId);
+			}
+			const parameters = await telemetry.traceParametersPrompt(() =>
+				collectUpdateParameters(this.extensionClient, latest),
+			);
+			const serverFeatures = await this.fetchServerFeatures();
+			const ctx = this.buildWorkspaceContext(latest, serverFeatures, check);
+			const cli = serverFeatures.onSuccessBuild
+				? undefined
+				: await this.resolveCliEnv(this.extensionClient, check);
+			check();
+			await telemetry.traceUpdate(() =>
+				updateWorkspace(
+					cli
+						? {
+								...ctx,
+								auth: cli.auth,
+								binPath: cli.binary,
+								cliFeatures: cli.featureSet,
+							}
+						: ctx,
+					parameters,
+				),
+			);
+		} catch (error) {
+			if (error instanceof WorkspaceUpdateCancelledError) {
+				if (error.reason) {
+					void vscode.window.showInformationMessage(error.reason);
+				}
+				return;
+			}
+			throw error;
+		}
+	}
+
+	private async updateConnectedWorkspace(): Promise<void> {
 		if (!this.workspace || !this.remoteWorkspaceClient) {
 			return;
 		}
@@ -1356,22 +1436,15 @@ export class Commands {
 			return;
 		}
 		const workspaceName = createWorkspaceIdentifier(this.workspace);
-		const operationTelemetry = new WorkspaceOperationTelemetry(
-			this.telemetryService,
-			workspaceName,
-		);
-		const action = await operationTelemetry.traceConfirmationPrompt(async () =>
-			vscodeProposed.window.showWarningMessage(
+		const operationTelemetry = this.operationTelemetry(this.workspace);
+		const confirmed = await operationTelemetry.traceConfirmationPrompt(() =>
+			this.confirmModal(
 				"Update Workspace",
-				{
-					useCustom: true,
-					modal: true,
-					detail: `Update ${workspaceName} to the latest version?\n\nUpdating will restart your workspace which stops any running processes and may result in the loss of unsaved work.`,
-				},
+				`Update ${workspaceName} to the latest version?\n\nUpdating will restart your workspace which ${RESTART_WARNING}`,
 				UPDATE_AND_RESTART_ACTION,
 			),
 		);
-		if (action !== UPDATE_AND_RESTART_ACTION) {
+		if (!confirmed) {
 			return;
 		}
 
@@ -1518,7 +1591,9 @@ export class Commands {
 			latest.latest_build.status,
 		).toLowerCase();
 		void vscode.window.showInformationMessage(
-			`Cannot ${action} ${workspaceId} while it is ${status}.`,
+			action === "update" && !latest.outdated
+				? `${workspaceId} is already up to date.`
+				: `Cannot ${action} ${workspaceId} while it is ${status}.`,
 		);
 		return undefined;
 	}
@@ -1584,11 +1659,13 @@ export class Commands {
 	private buildWorkspaceContext(
 		workspace: Workspace,
 		serverFeatures: ServerFeatureSet,
+		check?: () => void,
 	) {
 		const workspaceId = createWorkspaceIdentifier(workspace);
 		return {
 			restClient: this.extensionClient,
 			workspace,
+			check,
 			write: (data: string) => {
 				for (const line of data.split(/\r?\n|\r/)) {
 					if (line.trim()) {

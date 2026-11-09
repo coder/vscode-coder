@@ -25,6 +25,7 @@ interface MenuEntry {
 const ACTION_ENTRIES: Readonly<
 	Record<Exclude<WorkspaceAction, "delete">, MenuEntry>
 > = {
+	update: { label: "Update", icon: "arrow-circle-up" },
 	start: { label: "Start", icon: "play" },
 	stop: { label: "Stop", icon: "primitive-square" },
 	restart: { label: "Restart", icon: "debug-restart" },
@@ -50,7 +51,8 @@ function WorkspaceMenu({
 	return (
 		<>
 			{lifecycle.map((action) => {
-				const { label, icon } = failed ? RETRY_ENTRY : ACTION_ENTRIES[action];
+				const { label, icon } =
+					failed && action !== "update" ? RETRY_ENTRY : ACTION_ENTRIES[action];
 				return (
 					<MenuItem
 						key={action}
