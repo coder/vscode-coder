@@ -449,17 +449,16 @@ describe("LoginCoordinator", () => {
 			expect(vscode.window.showInputBox).not.toHaveBeenCalled();
 		});
 
-		it.each(["build info", "authentication"])(
-			"offers to sign in at the URL the %s request redirected to",
-			async (request) => {
+		it.each([
+			{ request: "build info", mockRequest: mockGetBuildInfo },
+			{ request: "authentication", mockRequest: mockGetAuthenticatedUser },
+		])(
+			"offers to sign in at the URL the $request request redirected to",
+			async ({ mockRequest }) => {
 				const { mockConfig, userInteraction, coordinator } =
 					createTestContext();
 				mockConfig.set("coder.tlsCertFile", "/path/to/cert.pem");
 				mockConfig.set("coder.tlsKeyFile", "/path/to/key.pem");
-				const mockRequest =
-					request === "build info"
-						? mockGetBuildInfo
-						: mockGetAuthenticatedUser;
 				mockRequest.mockRejectedValue(
 					new CrossOriginRedirectError("https://dogfood.cdr.dev/api"),
 				);
