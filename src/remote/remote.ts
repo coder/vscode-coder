@@ -23,6 +23,7 @@ import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
 	watchConfigurationChanges,
 } from "../configWatcher";
+import { raceWithAbort, throwIfAborted } from "../error/abort";
 import { toError } from "../error/normalize";
 import {
 	cliFeatureSet,
@@ -90,7 +91,7 @@ import type { Logger } from "../logging/logger";
 import type { LoginCoordinator } from "../login/loginCoordinator";
 import type { StartupMode } from "../storage/mementoManager";
 import type { PathResolver } from "../storage/pathResolver";
-import type { SecretsManager } from "../storage/secretsManager";
+import type { SecretsManager, SessionAuth } from "../storage/secretsManager";
 import type { ContextManager } from "../vscode/contextManager";
 
 export interface RemoteDetails extends vscode.Disposable {
@@ -359,7 +360,13 @@ export class Remote {
 			}
 
 			// Listen for token changes for this deployment
-			disposables.push(this.watchRemoteSessionAuth(context, workspaceClient));
+			disposables.push(
+				this.watchRemoteSessionAuth(
+					parts.safeHostname,
+					workspaceClient,
+					remoteOAuthManager,
+				),
+			);
 
 			// Next is to find the workspace from the URI scheme provided.
 			const foundWorkspace = await tracer.phase("workspace_lookup", () =>
@@ -809,19 +816,59 @@ export class Remote {
 		};
 	}
 
+	/**
+	 * Rebind the workspace client when this deployment's stored session changes.
+	 * Pending requests survive only a token rotation for the same user and URL.
+	 */
 	private watchRemoteSessionAuth(
-		context: RemoteSetupContext,
+		safeHostname: string,
 		workspaceClient: CoderApi,
+		oauth: OAuthSessionManager,
 	): vscode.Disposable {
-		return this.secretsManager.onDidChangeSessionAuth(
-			context.parts.safeHostname,
+		// This lookup may itself refresh OAuth, so updates await it instead of blocking on it.
+		let boundUserId = workspaceClient.getAuthenticatedUser().then(
+			(user) => user.id,
+			() => undefined,
+		);
+		let disposed = false;
+		let latestUpdate = new AbortController();
+
+		const listener = this.secretsManager.onDidChangeSessionAuth(
+			safeHostname,
 			async (auth) => {
-				workspaceClient.setCredentials(auth?.url, auth?.token);
-				if (!auth?.url) {
+				if (disposed) {
+					return;
+				}
+				latestUpdate.abort();
+				latestUpdate = new AbortController();
+				const signal = latestUpdate.signal;
+
+				if (!auth) {
+					boundUserId = Promise.resolve(undefined);
+					workspaceClient.setCredentials(undefined, undefined);
+					oauth.clearDeployment();
 					return;
 				}
 
 				try {
+					const [previousUserId, userId] = await Promise.all([
+						boundUserId,
+						this.fetchUserId(auth, signal),
+					]);
+					throwIfAborted(signal);
+
+					boundUserId = Promise.resolve(userId);
+					if (
+						auth.url === workspaceClient.getHost() &&
+						userId === previousUserId
+					) {
+						workspaceClient.setSessionToken(auth.token);
+					} else {
+						workspaceClient.setCredentials(auth.url, auth.token);
+						await oauth.setDeployment({ url: auth.url, safeHostname });
+						throwIfAborted(signal);
+					}
+
 					await this.cliManager.configure(auth.url, auth.token, {
 						silent: true,
 					});
@@ -829,13 +876,36 @@ export class Remote {
 						"Updated CLI config with new token for remote deployment",
 					);
 				} catch (error) {
-					this.logger.error(
-						"Failed to update CLI config for remote deployment",
-						error,
-					);
+					if (!signal.aborted) {
+						this.logger.error(
+							"Failed to update credentials for remote deployment",
+							toError(error).message,
+						);
+					}
 				}
 			},
 		);
+
+		return {
+			dispose: () => {
+				disposed = true;
+				latestUpdate.abort();
+				listener.dispose();
+			},
+		};
+	}
+
+	/** Resolve the user `auth` belongs to without touching the workspace client. */
+	private async fetchUserId(
+		auth: SessionAuth,
+		signal: AbortSignal,
+	): Promise<string> {
+		const client = CoderApi.create(auth.url, auth.token, this.logger);
+		try {
+			return (await raceWithAbort(client.getAuthenticatedUser(), signal)).id;
+		} finally {
+			client.dispose();
+		}
 	}
 
 	/**

@@ -123,6 +123,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		ReconnectingWebSocket<never>
 	>();
 	private readonly configWatcher: vscode.Disposable;
+	private requestAbortController = new AbortController();
 
 	private constructor(
 		private readonly output: Logger,
@@ -200,13 +201,24 @@ export class CoderApi extends Api implements vscode.Disposable {
 	}
 
 	/**
-	 * Set both host and token together. Useful for login/logout/switch to
-	 * avoid triggering multiple reconnection events.
+	 * Rebind the client to a session, canceling requests from the previous one.
+	 * Token refresh within the same session should use setSessionToken instead.
 	 */
 	setCredentials = (
 		host: string | undefined,
 		token: string | undefined,
 	): void => {
+		this.requestAbortController.abort();
+		this.requestAbortController = new AbortController();
+		this.getAxiosInstance().defaults.signal =
+			this.requestAbortController.signal;
+		this.updateCredentials(host, token);
+	};
+
+	private updateCredentials(
+		host: string | undefined,
+		token: string | undefined,
+	): void {
 		const currentHost = this.getHost();
 		const currentToken = this.getSessionToken();
 
@@ -227,10 +239,11 @@ export class CoderApi extends Api implements vscode.Disposable {
 				}
 			}
 		}
-	};
+	}
 
+	/** Refresh a token without canceling requests belonging to the same session. */
 	override setSessionToken = (token: string): void => {
-		this.setCredentials(this.getHost(), token);
+		this.updateCredentials(this.getHost(), token);
 	};
 
 	override setHost = (host: string | undefined): void => {
@@ -238,10 +251,11 @@ export class CoderApi extends Api implements vscode.Disposable {
 	};
 
 	/**
-	 * Permanently dispose all WebSocket connections.
+	 * Cancel pending requests and permanently dispose all WebSocket connections.
 	 * This clears handlers and prevents reconnection.
 	 */
 	dispose(): void {
+		this.requestAbortController.abort();
 		this.configWatcher.dispose();
 		this.authConfigTracker.dispose();
 		this.httpRequestsTelemetry.dispose();
