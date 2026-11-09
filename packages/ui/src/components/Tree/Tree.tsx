@@ -36,9 +36,16 @@ type TreeContainerProps = Omit<
 
 export type TreeProps = TreeOwnProps & SelectionProps & TreeContainerProps;
 
-/** Whether the focus or blur target is inside the tree rather than a portal. */
+/**
+ * Whether the focus or blur target is inside the tree rather than a portal.
+ * Like native, focusing the sticky widget leaves the tree's rows inactive.
+ */
 function ownsTarget(tree: HTMLElement, target: EventTarget | null): boolean {
-	return target instanceof Node && tree.contains(target);
+	return (
+		target instanceof Element &&
+		tree.contains(target) &&
+		target.closest(".ui-tree-sticky") === null
+	);
 }
 
 /** A controlled tree following the current VS Code workbench behavior. */

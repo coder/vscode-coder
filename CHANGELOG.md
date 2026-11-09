@@ -7,6 +7,11 @@
 
 ## Unreleased
 
+### Added
+
+- The experimental Workspaces panel lists workspace agents, metadata and app
+  status. Updated times expose the full date and time on hover or keyboard focus.
+
 ### Changed
 
 - **Breaking:** the extension no longer follows a redirect to a different

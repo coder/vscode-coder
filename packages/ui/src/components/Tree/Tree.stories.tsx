@@ -1,3 +1,4 @@
+import { useId } from "react";
 import {
 	expect,
 	fireEvent,
@@ -10,7 +11,13 @@ import {
 import { PIXEL_ALL_THEMES } from "#storybook";
 
 import { TreeDemo } from "../../../storybook/Tree.demo";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuTrigger,
+} from "../DropdownMenu/DropdownMenu";
 import { IconButton } from "../IconButton/IconButton";
+import { MenuItem } from "../Menu/Menu";
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
@@ -90,6 +97,32 @@ const exerciseTree: NonNullable<Story["play"]> = async ({ canvasElement }) => {
 	await user.click(readme);
 	// Clicking leaves the pointer on the row; these stories snapshot hoverless.
 	await user.unhover(readme);
+};
+
+export const OpenRowMenu: Story = {
+	render: function OpenMenuTree() {
+		const triggerId = useId();
+		return tree({
+			"aria-label": "Row actions",
+			selectedItemId: "first",
+			nodes: [
+				node("first"),
+				node("second", {
+					action: (
+						<DropdownMenu defaultOpen defaultTriggerId={triggerId}>
+							<DropdownMenuTrigger
+								id={triggerId}
+								render={<IconButton icon="more" label="Actions for second" />}
+							/>
+							<DropdownMenuContent align="end">
+								<MenuItem>Settings</MenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					),
+				}),
+			],
+		});
+	},
 };
 
 export const States: Story = { play: exerciseTree };

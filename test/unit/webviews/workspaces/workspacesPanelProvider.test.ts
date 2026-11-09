@@ -57,11 +57,12 @@ function setup() {
 		new TestSessionStore(),
 	);
 	const commands = {
+		login: vi.fn(() => Promise.resolve()),
 		openWorkspaceFromSidebar: vi.fn(() => Promise.resolve()),
 		openWorkspaceInDashboard: vi.fn(() => Promise.resolve()),
 	} satisfies Pick<
 		Commands,
-		"openWorkspaceFromSidebar" | "openWorkspaceInDashboard"
+		"login" | "openWorkspaceFromSidebar" | "openWorkspaceInDashboard"
 	>;
 	const provider = new WorkspacesPanelProvider(
 		vscode.Uri.file("/test"),
@@ -224,7 +225,7 @@ describe("WorkspacesPanelProvider", () => {
 		expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
 	});
 
-	it("forwards commands to the store, and dashboard pages to Commands", async () => {
+	it("forwards commands to the store, and dashboard pages and login to Commands", async () => {
 		const h = await shown([alice()]);
 		await h.send(WorkspacesApi.watchAgents, { agentIds: ["agent-1"] });
 		expect([...h.client.metadataStreams.keys()]).toEqual(["agent-1"]);
@@ -238,6 +239,23 @@ describe("WorkspacesPanelProvider", () => {
 
 		await h.send(WorkspacesApi.setFilter, { filter: "shared" });
 		expect(h.store.state.filter).toBe("shared");
+
+		await h.send(WorkspacesApi.login);
+		expect(h.commands.login).toHaveBeenCalledOnce();
+	});
+
+	it("reports a failed refresh the user asked for, but not a failed poll", async () => {
+		const h = setup();
+		h.client.getWorkspaces.mockRejectedValueOnce(new Error("offline"));
+		h.hooks.setVisible(true);
+		await h.store.settled;
+		expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+
+		h.client.getWorkspaces.mockRejectedValueOnce(new Error("still offline"));
+		await h.send(WorkspacesApi.refresh);
+		expect(vscode.window.showErrorMessage).toHaveBeenCalledExactlyOnceWith(
+			"Failed to refresh workspaces: still offline",
+		);
 	});
 
 	interface OpenCase {

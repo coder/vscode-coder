@@ -313,6 +313,10 @@ async function doActivate(
 			output,
 		);
 
+		commandManager.register("coder.workspaces.refresh", () =>
+			workspacesPanelProvider.refresh(),
+		);
+
 		ctx.subscriptions.push(
 			workspaceStore,
 			workspacesPanelProvider,

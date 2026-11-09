@@ -22,6 +22,7 @@ export const WorkspacesApi = {
 	// Commands
 	/** Webview signals its subscription is live and asks for the state */
 	ready: defineCommand<void>("ready"),
+	login: defineCommand<void>("login"),
 	openWorkspace: defineCommand<OpenWorkspaceParams>("openWorkspace"),
 	viewInDashboard: defineCommand<ViewInDashboardParams>("viewInDashboard"),
 	refresh: defineCommand<void>("refresh"),

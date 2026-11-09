@@ -13,7 +13,9 @@
 
 /* One outline serves hover, toggled, and focus, so :where() keeps the
    exclusions weightless and source order alone decides. */
-.ui-icon-button:hover:where(:not(:disabled, [aria-pressed="true"])) {
+.ui-icon-button:is(:hover, [data-popup-open]):where(
+		:not(:disabled, [aria-pressed="true"])
+	) {
 	background: var(--ui-toolbar-hover-background);
 	outline-color: var(--ui-toolbar-hover-outline);
 	outline-style: dashed;
@@ -31,8 +33,7 @@
 	outline-style: solid;
 }
 
-/* Last: native's ring is an outline, the others border colors, so it wins */
-.ui-icon-button:focus {
+.ui-icon-button:focus-visible {
 	outline-color: var(--ui-focus-border);
 	outline-style: solid;
 }

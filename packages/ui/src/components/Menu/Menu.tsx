@@ -77,6 +77,7 @@ export function MenuSeparator({
 export function MenuCheckboxItem({
 	className,
 	children,
+	closeOnClick = true,
 	...props
 }: Styled<
 	ComponentPropsWithRef<typeof MenuPrimitive.CheckboxItem>
@@ -84,6 +85,7 @@ export function MenuCheckboxItem({
 	return (
 		<MenuPrimitive.CheckboxItem
 			{...props}
+			closeOnClick={closeOnClick}
 			className={cx(ITEM_CLASS, className)}
 		>
 			<MenuPrimitive.CheckboxItemIndicator render={<Icon name="check" />} />
@@ -95,12 +97,17 @@ export function MenuCheckboxItem({
 export function MenuRadioItem({
 	className,
 	children,
+	closeOnClick = true,
 	...props
 }: Styled<
 	ComponentPropsWithRef<typeof MenuPrimitive.RadioItem>
 >): React.JSX.Element {
 	return (
-		<MenuPrimitive.RadioItem {...props} className={cx(ITEM_CLASS, className)}>
+		<MenuPrimitive.RadioItem
+			{...props}
+			closeOnClick={closeOnClick}
+			className={cx(ITEM_CLASS, className)}
+		>
 			<MenuPrimitive.RadioItemIndicator render={<Icon name="check" />} />
 			{children}
 		</MenuPrimitive.RadioItem>

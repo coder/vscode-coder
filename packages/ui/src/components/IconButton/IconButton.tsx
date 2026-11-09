@@ -27,6 +27,7 @@ export function IconButton({
 	tooltip = label,
 	className,
 	type = "button",
+	onMouseDown,
 	...props
 }: IconButtonProps): React.JSX.Element {
 	const button = (
@@ -35,6 +36,10 @@ export function IconButton({
 			type={type}
 			aria-label={label}
 			className={cx("ui-control", "ui-icon-button", className)}
+			onMouseDown={(event) => {
+				onMouseDown?.(event);
+				event.preventDefault();
+			}}
 		>
 			<Icon name={icon} />
 		</button>
