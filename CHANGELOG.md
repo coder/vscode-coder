@@ -40,6 +40,9 @@
 - Pending HTTP requests are canceled when the Coder deployment or account
   changes, and are no longer retried or prompt for sign-in afterward. Token
   refreshes keep them running.
+- Remote windows verify the account behind a new token before keeping pending
+  requests, and a canceled OAuth refresh no longer overwrites the credentials
+  that replaced it.
 
 ## [v1.17.2](https://github.com/coder/vscode-coder/releases/tag/v1.17.2) 2026-10-28
 

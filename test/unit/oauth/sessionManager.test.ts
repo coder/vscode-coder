@@ -486,6 +486,83 @@ describe("OAuthSessionManager", () => {
 			await expect(refreshPromise).rejects.toThrow("canceled");
 		});
 
+		type User = ReturnType<typeof createMockUser>;
+		it.each<[string, (m: OAuthSessionManager) => unknown]>([
+			["clearDeployment", (m) => m.clearDeployment()],
+			["dispose", (m) => m.dispose()],
+			["the same deployment", (m) => m.setDeployment(createTestDeployment())],
+			[
+				"another deployment",
+				(m) =>
+					m.setDeployment({
+						url: "https://replacement.example.com",
+						safeHostname: "replacement.example.com",
+					}),
+			],
+		])(
+			"does not persist a refresh canceled during its user lookup by %s",
+			async (_name, cancel) => {
+				const ctx = createTestContext();
+				const started = Promise.withResolvers<void>();
+				const user = Promise.withResolvers<User>();
+				await ctx.setupForOAuthOperation({
+					"/oauth2/token": createMockTokenResponse({ access_token: "stale" }),
+					"/api/v2/users/me": () => {
+						started.resolve();
+						return user.promise;
+					},
+				});
+				const canceled = expect(ctx.manager.refreshToken()).rejects.toThrow(
+					/aborted|canceled/i,
+				);
+				await started.promise;
+
+				await cancel(ctx.manager);
+				await ctx.setupOAuthSession({ token: "replacement-token" });
+				await canceled;
+				user.resolve(createMockUser());
+
+				const stored = await ctx.secretsManager.getSessionAuth(TEST_HOSTNAME);
+				expect(stored?.token).toBe("replacement-token");
+			},
+		);
+
+		it("keeps the replacement refresh shared when a canceled refresh finishes", async () => {
+			const { manager, setupForOAuthOperation } = createTestContext();
+			const users = [
+				Promise.withResolvers<User>(),
+				Promise.withResolvers<User>(),
+			];
+			const started = [
+				Promise.withResolvers<void>(),
+				Promise.withResolvers<void>(),
+			];
+			const tokenEndpoint = vi.fn(() => createMockTokenResponse());
+			let lookups = 0;
+			await setupForOAuthOperation({
+				"/oauth2/token": tokenEndpoint,
+				"/api/v2/users/me": () => {
+					started[lookups].resolve();
+					return users[lookups++].promise;
+				},
+			});
+
+			const canceled = expect(manager.refreshToken()).rejects.toThrow(
+				/aborted|canceled/i,
+			);
+			await started[0].promise;
+			await manager.setDeployment(createTestDeployment());
+			const replacement = manager.refreshToken();
+			await started[1].promise;
+			users[0].resolve(createMockUser());
+			await canceled;
+
+			const joined = manager.refreshToken();
+			users[1].resolve(createMockUser());
+			await Promise.all([replacement, joined]);
+			expect(tokenEndpoint).toHaveBeenCalledTimes(2);
+		});
+
 		it.each<{ name: string; method: (m: OAuthSessionManager) => void }>([
 			{ name: "clearDeployment", method: (m) => m.clearDeployment() },
 			{ name: "dispose", method: (m) => m.dispose() },
