@@ -24,22 +24,59 @@ describe("toSafeHost", () => {
 
 	it("preserves the IPv6 deployment key on POSIX but rejects it on Windows", () => {
 		vi.spyOn(os, "platform").mockReturnValue("linux");
-		expect(toSafeHost("https://[::1]:8080")).toBe("[::1]");
+		expect(toSafeHost("https://[::1]:8080")).toBe("https_[::1]_8080");
 		vi.spyOn(os, "platform").mockReturnValue("win32");
 		expect(() => toSafeHost("https://[::1]:8080")).toThrow(
 			/Cannot connect on Windows/,
 		);
 	});
 
+	it("names only the hostname when rejecting it", () => {
+		vi.spyOn(os, "platform").mockReturnValue("win32");
+		expect(() => toSafeHost("http://con:8080")).toThrow(
+			expect.objectContaining({ diagnosticValue: '"con"' }),
+		);
+	});
+
 	it.each([
-		["https://foobar:8080", "foobar"],
+		["https://foobar", "foobar"],
+		["https://foobar:443", "foobar"],
+		["https://foobar:8080", "https_foobar_8080"],
+		["http://foobar", "http_foobar_"],
+		["http://foobar:80", "http_foobar_"],
+		["http://foobar:8080", "http_foobar_8080"],
+		["https://foobar:80", "https_foobar_80"],
+		["http://foobar:443", "http_foobar_443"],
+		["https://my_host", "https_my_host_"],
+		["https://my_host:8443", "https_my_host_8443"],
+		["https://my_host_443", "https_my_host_443_"],
 		["https://ほげ", "xn--18j4d"],
 		["https://عربي", "xn--ngbrx4e"],
 		["https://test.😉.invalid", "test.xn--n28h.invalid"],
 		["https://dev.😉-coder.com", "dev.xn---coder-vx74e.com"],
-		["http://ignore-port.com:8080", "ignore-port.com"],
 	])("returns %s for %s", (input, expected) => {
 		expect(toSafeHost(input)).toBe(expected);
+	});
+
+	it("gives two URLs the same label exactly when they share an origin", () => {
+		const hosts = ["host", "HOST", "host.com", "my_host", "xn--n3h.com"];
+		// Hostnames that look like another origin's label.
+		hosts.push("http_host_", "https_host_8080", "host_80", "https_my_host");
+		const urls = hosts.flatMap((host) =>
+			["http", "https"].flatMap((scheme) =>
+				["", ":80", ":443", ":8080"].map(
+					(port) => `${scheme}://${host}${port}`,
+				),
+			),
+		);
+
+		for (const a of urls) {
+			for (const b of urls) {
+				expect(toSafeHost(a) === toSafeHost(b), `${a} vs ${b}`).toBe(
+					new URL(a).origin === new URL(b).origin,
+				);
+			}
+		}
 	});
 
 	it("throws for invalid URLs", () => {

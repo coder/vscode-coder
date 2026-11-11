@@ -148,12 +148,17 @@ describe("InputValidationError", () => {
 });
 
 describe("isShellSafeHostname", () => {
-	it.each(["dev.coder.com", "my--host.example.com", "127.0.0.1", "[::1]"])(
-		"accepts %j",
-		(input) => {
-			expect(isShellSafeHostname(input)).toBe(true);
-		},
-	);
+	it.each([
+		"dev.coder.com",
+		"my--host.example.com",
+		"127.0.0.1",
+		"[::1]",
+		"http_dev.coder.com_8080",
+		"https_[::1]_8080",
+		"http_[::1]_",
+	])("accepts %j", (input) => {
+		expect(isShellSafeHostname(input)).toBe(true);
+	});
 
 	it.each(["", "a/b", "a\\b", "host name", "x$(id)", "host%h", "::1"])(
 		"rejects %j",
@@ -162,12 +167,16 @@ describe("isShellSafeHostname", () => {
 		},
 	);
 
-	it.each(["[::1%h]", "[fe80::1%eth0]", "[::not-ip]"])(
-		"rejects scoped or invalid bracketed IPv6 %j",
-		(input) => {
-			expect(isShellSafeHostname(input)).toBe(false);
-		},
-	);
+	it.each([
+		"[::1%h]",
+		"[fe80::1%eth0]",
+		"[::not-ip]",
+		"[::1]_$(id)",
+		"[::1]x",
+		"ftp_[::1]_",
+	])("rejects scoped or invalid bracketed IPv6 %j", (input) => {
+		expect(isShellSafeHostname(input)).toBe(false);
+	});
 });
 
 describe("validateShellSafeHostname", () => {
@@ -192,6 +201,8 @@ describe("validateDeploymentUrl", () => {
 
 	it.each([
 		...INVALID_DEPLOYMENT_URLS,
+		"ftp://coder.example.com",
+		"file:///coder.example.com",
 		// Sign-in normalizes these away, but storage reads see them raw.
 		"https://host/a\\b",
 		"https://host/a\nb",
