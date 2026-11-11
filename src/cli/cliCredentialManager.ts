@@ -139,8 +139,7 @@ export class CliCredentialManager {
 
 	/**
 	 * True when the CLI's own store holds `token`. Below CLI 2.32 the token
-	 * cannot be read back, so the CLI's store counts as holding it. False without a working CLI
-	 * and for an empty token, which is never stored.
+	 * cannot be read back, so the CLI's store counts as holding it. False without a working CLI.
 	 */
 	public async holdsToken(
 		url: string,
@@ -148,9 +147,6 @@ export class CliCredentialManager {
 		configs: Pick<WorkspaceConfiguration, "get">,
 		options?: { signal?: AbortSignal },
 	): Promise<boolean> {
-		if (!token) {
-			return false;
-		}
 		try {
 			const cli = await this.resolveCli(url, configs);
 			if (cli?.auth.store !== "cli") {

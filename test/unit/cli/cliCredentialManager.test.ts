@@ -387,7 +387,6 @@ describe("CliCredentialManager", () => {
 			scenario: string;
 			platform: NodeJS.Platform;
 			version?: string;
-			token?: string;
 			cliToken?: string;
 			expected: boolean;
 		}
@@ -412,19 +411,11 @@ describe("CliCredentialManager", () => {
 				cliToken: "other",
 				expected: true,
 			},
-			{
-				scenario: "an empty token, which the CLI store never holds",
-				platform: "darwin",
-				version: "2.31.0",
-				token: "",
-				expected: false,
-			},
 		])(
 			"is $expected for $scenario",
 			async ({
 				platform,
 				version = "2.32.0",
-				token = "my-token",
 				cliToken = "my-token",
 				expected,
 			}) => {
@@ -432,9 +423,9 @@ describe("CliCredentialManager", () => {
 				vi.mocked(cliExec.version).mockResolvedValue(version);
 				stubExecFile({ token: cliToken });
 
-				expect(await setup().manager.holdsToken(TEST_URL, token, configs)).toBe(
-					expected,
-				);
+				expect(
+					await setup().manager.holdsToken(TEST_URL, "my-token", configs),
+				).toBe(expected);
 			},
 		);
 	});

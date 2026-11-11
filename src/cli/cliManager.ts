@@ -1059,6 +1059,10 @@ export class CliManager {
 
 	/** True when the CLI's own store holds this token. Cancelling the check counts as false. */
 	public async holdsToken(url: string, token: string): Promise<boolean> {
+		// The CLI never stores an empty token.
+		if (!token) {
+			return false;
+		}
 		const configs = vscode.workspace.getConfiguration();
 		if (!(await this.cliCredentialManager.hasCliStore(url, configs))) {
 			return false;
