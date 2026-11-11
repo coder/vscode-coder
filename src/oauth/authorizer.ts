@@ -281,7 +281,10 @@ export class OAuthAuthorizer implements vscode.Disposable {
 				if (this.pendingAuthReject) {
 					this.pendingAuthReject(new Error("New OAuth flow started"));
 				}
-				this.pendingAuthReject = reject;
+				this.pendingAuthReject = (error) => {
+					cleanup();
+					reject(error);
+				};
 
 				const timeoutMins = 5;
 				const timeoutHandle = setTimeout(
@@ -297,10 +300,7 @@ export class OAuthAuthorizer implements vscode.Disposable {
 				const listener = this.oauthCallback.onReceive(
 					({ state: callbackState, code, error }) => {
 						if (callbackState !== state) {
-							this.logger.warn(
-								"Ignoring OAuth callback with mismatched state",
-								{ expected: state, received: callbackState },
-							);
+							this.logger.warn("Ignoring OAuth callback with mismatched state");
 							return;
 						}
 
@@ -329,16 +329,20 @@ export class OAuthAuthorizer implements vscode.Disposable {
 					listener.dispose();
 					cancellationListener.dispose();
 				};
+
+				// Not awaited, so a rejection while the browser opens reaches the caller.
+				Promise.resolve(
+					vscode.env.openExternal(vscode.Uri.parse(authUrl)),
+				).catch((error: unknown) => {
+					cleanup();
+					reject(
+						error instanceof Error
+							? error
+							: new Error("Failed to open browser"),
+					);
+				});
 			},
 		);
-
-		try {
-			await vscode.env.openExternal(vscode.Uri.parse(authUrl));
-		} catch (error) {
-			throw error instanceof Error
-				? error
-				: new Error("Failed to open browser");
-		}
 
 		return callbackPromise;
 	}

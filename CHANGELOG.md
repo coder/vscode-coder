@@ -42,6 +42,10 @@
   ``!#$%&'*+-.^_`|~``, so whitespace (including tabs and carriage returns) and
   `:` are not allowed. An invisible byte order mark at the start of the output,
   which some Windows editors and PowerShell add, is ignored.
+- OAuth endpoints off the deployment's origin or on a workspace app path are
+  now refused.
+- OAuth sign-in errors are now shown in a dialog, where server text cannot
+  become a link.
 
 ## [v1.17.2](https://github.com/coder/vscode-coder/releases/tag/v1.17.2) 2026-10-28
 

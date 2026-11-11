@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import * as vscode from "vscode";
 
 import { InvalidApiResponseError } from "@/api/responseValidation";
@@ -524,6 +524,44 @@ describe("OAuthAuthorizer", () => {
 			await expect(loginPromise).rejects.toThrow("OAuthAuthorizer disposed");
 		});
 
+		it("rejects when disposed while the browser is opening", async () => {
+			const { authorizer, setupOAuthRoutes, startLogin } = createTestContext();
+			setupOAuthRoutes();
+			vi.mocked(vscode.env.openExternal).mockReturnValueOnce(
+				new Promise(() => undefined),
+			);
+
+			const { loginPromise } = await startLogin();
+			authorizer.dispose();
+
+			await expect(loginPromise).rejects.toThrow("OAuthAuthorizer disposed");
+		});
+
+		it("keeps a newer flow cancellable after the one it replaced times out", async () => {
+			vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+			onTestFinished(() => {
+				vi.useRealTimers();
+			});
+			const { authorizer, setupOAuthRoutes, startLogin } = createTestContext();
+			setupOAuthRoutes();
+
+			const first = await startLogin();
+			vi.advanceTimersByTime(60_000);
+			const second = authorizer.login(
+				createTestDeployment(),
+				new MockProgress(),
+				new MockCancellationToken(),
+			);
+			await expect(first.loginPromise).rejects.toThrow(
+				"New OAuth flow started",
+			);
+			// Past the first flow's timeout, before the second's.
+			vi.advanceTimersByTime(4.5 * 60_000);
+			authorizer.dispose();
+
+			await expect(second).rejects.toThrow("OAuthAuthorizer disposed");
+		});
+
 		it("does nothing when disposed without pending auth", () => {
 			const { authorizer } = createTestContext();
 			expect(() => authorizer.dispose()).not.toThrow();
@@ -531,6 +569,24 @@ describe("OAuthAuthorizer", () => {
 	});
 
 	describe("error handling", () => {
+		it("rejects when the browser fails to open", async () => {
+			const { authorizer, setupOAuthRoutes } = createTestContext();
+			setupOAuthRoutes();
+			vi.mocked(vscode.env.openExternal).mockRejectedValueOnce(
+				new Error("No browser available"),
+			);
+
+			await expect(
+				authorizer.login(
+					createTestDeployment(),
+					new MockProgress(),
+					new MockCancellationToken(),
+				),
+			).rejects.toThrow("No browser available");
+			// Vitest fails on the unhandled rejection a leftover flow would cause.
+			authorizer.dispose();
+		});
+
 		it("throws when server does not support dynamic client registration", async () => {
 			const { mockAdapter, authorizer } = createTestContext();
 

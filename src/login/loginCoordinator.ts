@@ -685,10 +685,16 @@ export class LoginCoordinator implements vscode.Disposable {
 			this.logger.error(title, error);
 			if (error instanceof CertificateError) {
 				void error.showNotification(title);
+			} else if (error instanceof CrossOriginRedirectError) {
+				void error.showNotification(title);
 			} else {
-				vscode.window.showErrorMessage(
-					`${title}: ${getErrorMessage(error, "Unknown error")}`,
-				);
+				// A modal's `detail` is plain text; a notification message would render
+				// server-supplied markdown links, including `command:` links.
+				void vscodeProposed.window.showErrorMessage(title, {
+					detail: getErrorMessage(error, "Unknown error"),
+					modal: true,
+					useCustom: true,
+				});
 			}
 			return { success: false, reason: "auth_failed" };
 		}

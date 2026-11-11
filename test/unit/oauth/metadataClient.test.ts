@@ -102,6 +102,43 @@ describe("OAuthMetadataClient", () => {
 			);
 		});
 
+		it.each([
+			["authorization_endpoint", "https://someone.example/oauth2/authorize"],
+			["token_endpoint", "https://someone.example/oauth2/token"],
+			["registration_endpoint", "https://someone.example/oauth2/register"],
+			["revocation_endpoint", "https://someone.example/oauth2/revoke"],
+			["token_endpoint", "http://coder.example.com/oauth2/token"],
+		])("rejects %s %s off the deployment origin", async (field, endpoint) => {
+			const { mockAdapter, client } = createTestContext();
+			setupAxiosMockRoutes(mockAdapter, {
+				"/.well-known/oauth-authorization-server": createMockOAuthMetadata(
+					TEST_URL,
+					{ [field]: endpoint },
+				),
+			});
+
+			await expect(client.getMetadata()).rejects.toThrow(
+				`OAuth server metadata ${field} ${endpoint} is not on the deployment origin ${TEST_URL}`,
+			);
+		});
+
+		it.each([
+			`${TEST_URL}/@someone/ws/apps/app/token`,
+			`${TEST_URL}/%40someone/ws/apps/app/token`,
+		])("rejects the workspace app path %s", async (endpoint) => {
+			const { mockAdapter, client } = createTestContext();
+			setupAxiosMockRoutes(mockAdapter, {
+				"/.well-known/oauth-authorization-server": createMockOAuthMetadata(
+					TEST_URL,
+					{ token_endpoint: endpoint },
+				),
+			});
+
+			await expect(client.getMetadata()).rejects.toThrow(
+				`OAuth server metadata token_endpoint ${endpoint} is a workspace app path`,
+			);
+		});
+
 		describe("grant type validation", () => {
 			it("accepts metadata with required grant types", async () => {
 				const { mockAdapter, client } = createTestContext();
