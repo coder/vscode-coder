@@ -3,10 +3,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	escapeCommandArg,
+	escapeNotificationLinks,
 	escapeProxyCommandArg,
 	escapeProxyCommandPath,
 	escapeShellArg,
 } from "@/common/strings";
+
+describe("escapeNotificationLinks", () => {
+	it.each([
+		["[Retry](command:x.y?%7B%7D)", "[Retry] (command:x.y?%7B%7D)"],
+		[
+			"a [b](https://c) d [e](file:///f)",
+			"a [b] (https://c) d [e] (file:///f)",
+		],
+		["plain [text] (not a link)", "plain [text] (not a link)"],
+	])("writes %j as %j", (value, expected) => {
+		expect(escapeNotificationLinks(value)).toBe(expected);
+	});
+});
 
 describe("escapeCommandArg", () => {
 	it("returns simple strings unquoted", () => {

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import { escapeNotificationLinks } from "./common/strings";
 import { areNotificationsDisabled } from "./settings/notifications";
 
 import type {
@@ -59,7 +60,7 @@ export class Inbox implements vscode.Disposable {
 				!areNotificationsDisabled(vscode.workspace.getConfiguration())
 			) {
 				vscode.window.showInformationMessage(
-					data.parsedMessage.notification.title,
+					escapeNotificationLinks(data.parsedMessage.notification.title),
 				);
 			}
 		});

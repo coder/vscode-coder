@@ -1,5 +1,13 @@
 import os from "node:os";
 
+/**
+ * Shows `[text](target)` literally in a notification, which otherwise renders
+ * it as a link. Use for text from the deployment, templates, or the CLI.
+ */
+export function escapeNotificationLinks(text: string): string {
+	return text.replaceAll("](", "] (");
+}
+
 /** `toLowerCase` typed for indexing `Lowercase`-keyed records without a cast. */
 export function lowercase<T extends string>(value: T): Lowercase<T> {
 	return value.toLowerCase() as Lowercase<T>;

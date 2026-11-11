@@ -46,6 +46,8 @@
   now refused.
 - OAuth sign-in errors are now shown in a dialog, where server text cannot
   become a link.
+- Notifications show template version messages, startup script names, inbox
+  titles, and Coder CLI errors as plain text.
 
 ## [v1.17.2](https://github.com/coder/vscode-coder/releases/tag/v1.17.2) 2026-10-28
 

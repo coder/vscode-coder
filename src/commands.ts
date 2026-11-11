@@ -11,6 +11,7 @@ import {
 } from "./api/models";
 import * as cliExec from "./cli/cliExec";
 import { runDiagnosticCli } from "./command/diagnosticFlow";
+import { escapeNotificationLinks } from "./common/strings";
 import { openInBrowser, toSafeHost } from "./common/url";
 import { raceWithAbort } from "./error/abort";
 import { CertificateError } from "./error/certificateError";
@@ -532,7 +533,9 @@ export class Commands {
 			);
 			this.logger.error("Support bundle failed", result.error);
 			vscode.window.showErrorMessage(
-				`Support bundle failed: ${toError(result.error).message}`,
+				escapeNotificationLinks(
+					`Support bundle failed: ${toError(result.error).message}`,
+				),
 			);
 			return;
 		}

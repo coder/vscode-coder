@@ -10,6 +10,7 @@ import { formatDistanceToNowStrict } from "date-fns";
 import * as vscode from "vscode";
 
 import { extractAgents, createWorkspaceIdentifier } from "../api/models";
+import { escapeNotificationLinks } from "../common/strings";
 import { errToStr } from "../error/normalize";
 import {
 	recordAgentState,
@@ -303,7 +304,11 @@ export class WorkspaceMonitor implements vscode.Disposable {
 		}
 		this.notifiedStartupFailure = true;
 		vscode.window
-			.showWarningMessage(message, "Show Logs", "Open in Dashboard")
+			.showWarningMessage(
+				escapeNotificationLinks(message),
+				"Show Logs",
+				"Open in Dashboard",
+			)
 			.then((action) => {
 				if (action === "Show Logs") {
 					void this.showStartupLogs(agent, failed);
@@ -414,7 +419,10 @@ export class WorkspaceMonitor implements vscode.Disposable {
 						? `A new version of your workspace is available: ${version.message}`
 						: "A new version of your workspace is available.";
 					vscode.window
-						.showInformationMessage(infoMessage, "Update")
+						.showInformationMessage(
+							escapeNotificationLinks(infoMessage),
+							"Update",
+						)
 						.then((action) => {
 							if (action === "Update") {
 								vscode.commands.executeCommand(

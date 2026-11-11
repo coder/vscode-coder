@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { ZodError } from "zod";
 
+import { escapeNotificationLinks } from "../common/strings";
 import { toError } from "../error/normalize";
 import { withCancellableProgress, type ProgressContext } from "../ui/progress";
 import { openJsonBeside } from "../webviews/openJson";
@@ -47,7 +48,9 @@ export async function runDiagnosticCli(
 		telemetry.error();
 		logger.error(`${name} failed`, result.error);
 		vscode.window.showErrorMessage(
-			`${name} failed: ${toError(result.error).message}`,
+			escapeNotificationLinks(
+				`${name} failed: ${toError(result.error).message}`,
+			),
 		);
 		return;
 	}

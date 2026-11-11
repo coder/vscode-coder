@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import { escapeNotificationLinks } from "../common/strings";
 import { errToStr } from "../error/normalize";
 import { type CliAuth, isKeyringEnabled } from "../settings/cli";
 
@@ -36,7 +37,7 @@ export function showStoreCredentialsError(
 			' To store the token in a file instead, set "coder.useKeyring" to false.';
 	}
 	void vscode.window
-		.showErrorMessage(message, "Open Settings")
+		.showErrorMessage(escapeNotificationLinks(message), "Open Settings")
 		.then((action) => {
 			if (action === "Open Settings") {
 				void vscode.commands.executeCommand(
