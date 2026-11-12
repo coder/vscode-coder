@@ -380,6 +380,24 @@ describe("WorkspaceMonitor", () => {
 			});
 		});
 
+		it("keeps web links and escapes command links in the template version message", async () => {
+			const { monitor, stream, client } = await setup();
+			vi.mocked(client.getTemplateVersion).mockResolvedValue({
+				message:
+					"[Changelog](https://example.com) [Update now](command:example.command)",
+			} as Awaited<ReturnType<typeof client.getTemplateVersion>>);
+			monitor.markInitialSetupComplete("agent-1");
+
+			stream.pushMessage(workspaceEvent({ outdated: true }));
+
+			await vi.waitFor(() => {
+				expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+					"A new version of your workspace is available: [Changelog](https://example.com) [Update now] (command:example.command)",
+					"Update",
+				);
+			});
+		});
+
 		it("fires outdated notification on markInitialSetupComplete", async () => {
 			const { monitor, stream } = await setup();
 

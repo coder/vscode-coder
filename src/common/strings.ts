@@ -1,5 +1,20 @@
 import os from "node:os";
 
+/**
+ * Shows `[text](target)` literally in a notification, which otherwise renders
+ * it as a link. Use for text from the deployment, templates, or the CLI.
+ * `keepWebLinks` keeps `http(s)://` links clickable and escapes the rest
+ * (`command:`, `file:`).
+ */
+export function escapeNotificationLinks(
+	text: string,
+	{ keepWebLinks = false }: { keepWebLinks?: boolean } = {},
+): string {
+	return keepWebLinks
+		? text.replaceAll(/\]\((?!https?:\/\/)/gi, "] (")
+		: text.replaceAll("](", "] (");
+}
+
 /** `toLowerCase` typed for indexing `Lowercase`-keyed records without a cast. */
 export function lowercase<T extends string>(value: T): Lowercase<T> {
 	return value.toLowerCase() as Lowercase<T>;

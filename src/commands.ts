@@ -11,6 +11,7 @@ import {
 } from "./api/models";
 import * as cliExec from "./cli/cliExec";
 import { runDiagnosticCli } from "./command/diagnosticFlow";
+import { escapeNotificationLinks } from "./common/strings";
 import { openInBrowser, toSafeHost } from "./common/url";
 import { raceWithAbort } from "./error/abort";
 import { CertificateError } from "./error/certificateError";
@@ -532,7 +533,9 @@ export class Commands {
 			);
 			this.logger.error("Support bundle failed", result.error);
 			vscode.window.showErrorMessage(
-				`Support bundle failed: ${toError(result.error).message}`,
+				escapeNotificationLinks(
+					`Support bundle failed: ${toError(result.error).message}`,
+				),
 			);
 			return;
 		}
@@ -1118,9 +1121,12 @@ export class Commands {
 		}
 
 		// If no URL or command, show information about the app status
-		vscode.window.showInformationMessage(`${app.name}`, {
-			detail: `Agent: ${app.agent_name || "Unknown"}`,
-		});
+		vscode.window.showInformationMessage(
+			escapeNotificationLinks(`${app.name}`),
+			{
+				detail: `Agent: ${app.agent_name || "Unknown"}`,
+			},
+		);
 	}
 
 	/**
