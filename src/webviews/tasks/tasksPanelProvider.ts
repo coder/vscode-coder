@@ -381,7 +381,7 @@ export class TasksPanelProvider
 					onOutput,
 					workspace.latest_build.id,
 				);
-				stream.addEventListener("close", onStreamClose);
+				void stream.closed.then(onStreamClose);
 				return stream;
 			});
 			return;
@@ -392,7 +392,7 @@ export class TasksPanelProvider
 			this.buildLogStream.close();
 			await this.agentLogStream.open(async () => {
 				const stream = await streamAgentLogs(this.client, onOutput, agentId);
-				stream.addEventListener("close", onStreamClose);
+				void stream.closed.then(onStreamClose);
 				return stream;
 			});
 			return;

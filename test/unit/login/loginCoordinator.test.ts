@@ -74,10 +74,6 @@ vi.mock("@/api/httpAgent", async () => {
 	return { ...actual, createHttpAgent: vi.fn() };
 });
 
-vi.mock("@/api/streamingFetchAdapter", () => ({
-	createStreamingFetchAdapter: vi.fn(() => fetch),
-}));
-
 vi.mock("@/ui/prompts", () => ({
 	maybeAskAuthMethod: vi.fn().mockResolvedValue("legacy"),
 	maybeAskUrl: vi.fn(),

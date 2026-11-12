@@ -39,7 +39,7 @@ export type EventHandler<TData, TEvent extends WebSocketEventType> = (
 ) => void;
 
 /**
- * Common interface for both WebSocket and SSE connections that handle event streams.
+ * Common interface for one-way event streams.
  * Matches the OneWayWebSocket interface for compatibility.
  */
 export interface UnidirectionalStream<TData> {

@@ -10,7 +10,6 @@ describe("EventStreamLogger", () => {
 		const eventStreamLogger = new EventStreamLogger(
 			logger,
 			"wss://example.com",
-			"WS",
 		);
 
 		eventStreamLogger.logOpen();
@@ -30,7 +29,6 @@ describe("EventStreamLogger", () => {
 		const eventStreamLogger = new EventStreamLogger(
 			logger,
 			"wss://example.com",
-			"WS",
 		);
 
 		eventStreamLogger.logOpen();
@@ -48,7 +46,6 @@ describe("EventStreamLogger", () => {
 		const eventStreamLogger = new EventStreamLogger(
 			logger,
 			"wss://example.com",
-			"WS",
 		);
 
 		// Closing without opening should not throw
@@ -61,7 +58,6 @@ describe("EventStreamLogger", () => {
 		const eventStreamLogger = new EventStreamLogger(
 			logger,
 			"wss://example.com",
-			"WS",
 		);
 
 		eventStreamLogger.logOpen();
@@ -80,7 +76,6 @@ describe("EventStreamLogger", () => {
 		const eventStreamLogger = new EventStreamLogger(
 			logger,
 			"wss://example.com",
-			"WS",
 		);
 		const error = new Error("Connection failed");
 

@@ -20,7 +20,11 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 
 import type { ServerFeatureSet } from "../featureSet";
-import type { UnidirectionalStream } from "../websocket/eventStreamConnection";
+import type {
+	EventHandler,
+	UnidirectionalStream,
+} from "../websocket/eventStreamConnection";
+import type { OneWayWebSocket } from "../websocket/oneWayWebSocket";
 
 import type { CoderApi } from "./coderApi";
 
@@ -178,14 +182,14 @@ async function updateWorkspaceInOneBuild(
 }
 
 /**
- * Streams build logs in real-time via a callback.
- * Returns the websocket for lifecycle management.
+ * Streams build logs in real-time via a callback. Resolves once the socket
+ * opens and rejects if the handshake fails.
  */
 export async function streamBuildLogs(
 	client: CoderApi,
 	onOutput: (line: string) => void,
 	buildId: string,
-): Promise<UnidirectionalStream<ProvisionerJobLog>> {
+): Promise<OneWayWebSocket<ProvisionerJobLog>> {
 	const socket = await client.watchBuildLogsByBuildId(buildId, []);
 
 	socket.addEventListener("message", (data) => {
@@ -195,30 +199,27 @@ export async function streamBuildLogs(
 			onOutput(data.parsedMessage.output);
 		}
 	});
-
-	socket.addEventListener("error", (error) => {
+	onErrorAfterOpen(socket, (error) => {
 		const baseUrlRaw = client.getAxiosInstance().defaults.baseURL;
 		onOutput(
 			`Error watching workspace build logs on ${baseUrlRaw}: ${errToStr(error, "no further details")}`,
 		);
 	});
 
-	socket.addEventListener("close", () => {
-		onOutput("Build complete");
-	});
-
+	await socket.opened;
+	void socket.closed.then(() => onOutput("Build complete"));
 	return socket;
 }
 
 /**
- * Streams agent logs in real-time via a callback.
- * Returns the websocket for lifecycle management.
+ * Streams agent logs in real-time via a callback. Resolves once the socket
+ * opens and rejects if the handshake fails.
  */
 export async function streamAgentLogs(
 	client: CoderApi,
 	onOutput: (line: string) => void,
 	agentId: string,
-): Promise<UnidirectionalStream<WorkspaceAgentLog[]>> {
+): Promise<OneWayWebSocket<WorkspaceAgentLog[]>> {
 	const socket = await client.watchWorkspaceAgentLogs(agentId, []);
 
 	socket.addEventListener("message", (data) => {
@@ -230,13 +231,29 @@ export async function streamAgentLogs(
 			}
 		}
 	});
-
-	socket.addEventListener("error", (error) => {
+	onErrorAfterOpen(socket, (error) => {
 		const baseUrlRaw = client.getAxiosInstance().defaults.baseURL;
 		onOutput(
 			`Error watching agent logs on ${baseUrlRaw}: ${errToStr(error, "no further details")}`,
 		);
 	});
 
+	await socket.opened;
 	return socket;
+}
+
+/** Handshake errors are left to `socket.opened`, which rejects with them. */
+function onErrorAfterOpen<T>(
+	socket: OneWayWebSocket<T>,
+	handler: EventHandler<T, "error">,
+): void {
+	let isOpen = false;
+	socket.addEventListener("open", () => {
+		isOpen = true;
+	});
+	socket.addEventListener("error", (event) => {
+		if (isOpen) {
+			handler(event);
+		}
+	});
 }

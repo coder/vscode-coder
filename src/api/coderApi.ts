@@ -15,7 +15,6 @@ import {
 } from "../configWatcher";
 import { ClientCertificateError } from "../error/clientCertificateError";
 import { CrossOriginRedirectError } from "../error/crossOriginRedirectError";
-import { toError } from "../error/normalize";
 import { ServerCertificateError } from "../error/serverCertificateError";
 import { getHeaders } from "../headers";
 import { EventStreamLogger } from "../logging/eventStreamLogger";
@@ -39,7 +38,7 @@ import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
 } from "../telemetry/reporter";
-import { WebSocketCloseCode, handshakeStatus } from "../websocket/codes";
+import { WebSocketCloseCode } from "../websocket/codes";
 import {
 	OneWayWebSocket,
 	type OneWayWebSocketInit,
@@ -50,11 +49,9 @@ import {
 	type ReconnectingWebSocketOptions,
 	type SocketFactory,
 } from "../websocket/reconnectingWebSocket";
-import { SseConnection } from "../websocket/sseConnection";
 
 import { getRefreshCommand, refreshCertificates } from "./certificateRefresh";
 import { createHttpAgent } from "./httpAgent";
-import { HttpStatusCode } from "./httpStatusCode";
 import {
 	parseApiResponse,
 	VALIDATED_RESPONSES,
@@ -303,11 +300,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 	watchWorkspace = async (workspace: Workspace, options?: ClientOptions) => {
 		const apiRoute = `/api/v2/workspaces/${workspace.id}/watch-ws`;
 		return this.createReconnectingSocket(apiRoute, () =>
-			this.createStreamWithSseFallback({
-				apiRoute,
-				fallbackApiRoute: `/api/v2/workspaces/${workspace.id}/watch`,
-				options,
-			}),
+			this.createOneWayWebSocket<ServerSentEvent>({ apiRoute, options }),
 		);
 	};
 
@@ -317,11 +310,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 	) => {
 		const apiRoute = `/api/v2/workspaceagents/${agentId}/watch-metadata-ws`;
 		return this.createReconnectingSocket(apiRoute, () =>
-			this.createStreamWithSseFallback({
-				apiRoute,
-				fallbackApiRoute: `/api/v2/workspaceagents/${agentId}/watch-metadata`,
-				options,
-			}),
+			this.createOneWayWebSocket<ServerSentEvent>({ apiRoute, options }),
 		);
 	};
 
@@ -367,6 +356,10 @@ export class CoderApi extends Api implements vscode.Disposable {
 		});
 	}
 
+	/**
+	 * Returns before the socket opens: `ws` emits frames that arrive with the
+	 * handshake before any awaited continuation, so listeners must come first.
+	 */
 	private async createOneWayWebSocket<TData>(
 		configs: Omit<OneWayWebSocketInit, "location">,
 	): Promise<OneWayWebSocket<TData>> {
@@ -416,9 +409,7 @@ export class CoderApi extends Api implements vscode.Disposable {
 		});
 
 		this.attachStreamLogger(ws);
-
-		// Wait for connection to open before returning
-		return await this.waitForOpen(ws);
+		return ws;
 	}
 
 	private attachStreamLogger<TData>(
@@ -428,7 +419,6 @@ export class CoderApi extends Api implements vscode.Disposable {
 		const logger = new EventStreamLogger(
 			this.output,
 			url.pathname + url.search,
-			url.protocol.startsWith("http") ? "SSE" : "WS",
 		);
 		logger.logConnecting();
 
@@ -442,104 +432,6 @@ export class CoderApi extends Api implements vscode.Disposable {
 		connection.addEventListener("message", (event) =>
 			logger.logMessage(event.sourceEvent.data),
 		);
-	}
-
-	/**
-	 * Create a WebSocket connection with SSE fallback on 404.
-	 *
-	 * Tries WS first, falls back to SSE on 404.
-	 *
-	 * Note: The fallback on SSE ignores all passed client options except the headers.
-	 */
-	private async createStreamWithSseFallback(
-		configs: Omit<OneWayWebSocketInit, "location"> & {
-			fallbackApiRoute: string;
-		},
-	): Promise<UnidirectionalStream<ServerSentEvent>> {
-		const { fallbackApiRoute, ...socketConfigs } = configs;
-		try {
-			// createOneWayWebSocket already waits for open
-			return await this.createOneWayWebSocket<ServerSentEvent>(socketConfigs);
-		} catch (error) {
-			if (this.is404Error(error)) {
-				this.output.warn(
-					`WebSocket failed (${socketConfigs.apiRoute}), using SSE fallback: ${fallbackApiRoute}`,
-				);
-				const sse = this.createSseConnection(
-					fallbackApiRoute,
-					socketConfigs.searchParams,
-					socketConfigs.options?.headers,
-				);
-				return await this.waitForOpen(sse);
-			}
-			throw error;
-		}
-	}
-
-	/**
-	 * Create an SSE connection without waiting for connection.
-	 */
-	private createSseConnection(
-		apiRoute: string,
-		searchParams?: Record<string, string> | URLSearchParams,
-		optionsHeaders?: Record<string, string>,
-	): SseConnection {
-		const baseUrlRaw = this.getAxiosInstance().defaults.baseURL;
-		if (!baseUrlRaw) {
-			throw new Error("No base URL set on REST client");
-		}
-		const url = new URL(baseUrlRaw);
-		const sse = new SseConnection({
-			location: url,
-			apiRoute,
-			searchParams,
-			axiosInstance: this.getAxiosInstance(),
-			optionsHeaders,
-			logger: this.output,
-		});
-
-		this.attachStreamLogger(sse);
-		return sse;
-	}
-
-	/**
-	 * Wait for a connection to open. Rejects on error.
-	 * Preserves the specific connection type (e.g., OneWayWebSocket, SseConnection).
-	 */
-	private waitForOpen<T extends UnidirectionalStream<unknown>>(
-		connection: T,
-	): Promise<T> {
-		return new Promise((resolve, reject) => {
-			const cleanup = () => {
-				connection.removeEventListener("open", handleOpen);
-				connection.removeEventListener("error", handleError);
-			};
-
-			const handleOpen = () => {
-				cleanup();
-				resolve(connection);
-			};
-
-			const handleError = (event: ErrorEvent) => {
-				cleanup();
-				connection.close();
-				const error = toError(
-					event.error,
-					event.message || "WebSocket connection error",
-				);
-				reject(error);
-			};
-
-			connection.addEventListener("open", handleOpen);
-			connection.addEventListener("error", handleError);
-		});
-	}
-
-	/**
-	 * Check if an error is a 404 Not Found error.
-	 */
-	private is404Error(error: unknown): boolean {
-		return handshakeStatus(error) === HttpStatusCode.NOT_FOUND;
 	}
 
 	/**

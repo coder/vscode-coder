@@ -16,6 +16,7 @@ import { toError } from "../error/normalize";
 
 import { HandshakeError } from "./codes";
 import {
+	type CloseEvent,
 	type UnidirectionalStream,
 	type EventHandler,
 } from "./eventStreamConnection";
@@ -31,6 +32,9 @@ export interface OneWayWebSocketInit {
 export class OneWayWebSocket<
 	TData = unknown,
 > implements UnidirectionalStream<TData> {
+	/** Rejects if the handshake fails. */
+	readonly opened: Promise<void>;
+	readonly closed: Promise<CloseEvent>;
 	readonly #socket: Ws;
 	#handshakeStatus?: number;
 	readonly #errorCallbacks = new Map<
@@ -66,6 +70,20 @@ export class OneWayWebSocket<
 			) {
 				request.destroy(new CrossOriginRedirectError(target));
 			}
+		});
+
+		this.opened = new Promise((resolve, reject) => {
+			this.addEventListener("open", () => resolve());
+			this.addEventListener("error", (event) =>
+				reject(
+					toError(event.error, event.message || "WebSocket connection error"),
+				),
+			);
+		});
+		// Not every caller awaits this; failures also arrive as events.
+		this.opened.catch(() => undefined);
+		this.closed = new Promise((resolve) => {
+			this.addEventListener("close", resolve);
 		});
 	}
 
