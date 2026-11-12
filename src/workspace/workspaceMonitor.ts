@@ -420,7 +420,7 @@ export class WorkspaceMonitor implements vscode.Disposable {
 						: "A new version of your workspace is available.";
 					vscode.window
 						.showInformationMessage(
-							escapeNotificationLinks(infoMessage),
+							escapeNotificationLinks(infoMessage, { keepWebLinks: true }),
 							"Update",
 						)
 						.then((action) => {

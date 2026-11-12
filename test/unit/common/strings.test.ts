@@ -10,6 +10,12 @@ import {
 } from "@/common/strings";
 
 describe("escapeNotificationLinks", () => {
+	// Copy of VS Code's notification link pattern (src/vs/base/common/linkedText.ts).
+	const LINK_REGEX =
+		/\[([^\]]+)\]\(((?:https?:\/\/|command:|file:)[^)\s]+)(?: (["'])(.+?)(\3))?\)/gi;
+	const hrefs = (text: string) =>
+		Array.from(text.matchAll(LINK_REGEX), (m) => m[2]);
+
 	it.each([
 		["[Retry](command:x.y?%7B%7D)", "[Retry] (command:x.y?%7B%7D)"],
 		[
@@ -18,7 +24,25 @@ describe("escapeNotificationLinks", () => {
 		],
 		["plain [text] (not a link)", "plain [text] (not a link)"],
 	])("writes %j as %j", (value, expected) => {
-		expect(escapeNotificationLinks(value)).toBe(expected);
+		const escaped = escapeNotificationLinks(value);
+		expect(escaped).toBe(expected);
+		expect(hrefs(escaped)).toEqual([]);
+	});
+
+	it.each([
+		["[Docs](https://c/d)", "[Docs](https://c/d)"],
+		["[Docs](HTTP://c)", "[Docs](HTTP://c)"],
+		["[Run](command:x)", "[Run] (command:x)"],
+		["[Run](COMMAND:x)", "[Run] (COMMAND:x)"],
+		["[F](file:///f)", "[F] (file:///f)"],
+		["[a](https://b)[c](command:d)", "[a](https://b)[c] (command:d)"],
+		["[a]](command:d)", "[a]] (command:d)"],
+	])("with keepWebLinks writes %j as %j", (value, expected) => {
+		const escaped = escapeNotificationLinks(value, { keepWebLinks: true });
+		expect(escaped).toBe(expected);
+		for (const href of hrefs(escaped)) {
+			expect(href).toMatch(/^https?:\/\//i);
+		}
 	});
 });
 

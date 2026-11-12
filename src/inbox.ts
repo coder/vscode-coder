@@ -60,7 +60,9 @@ export class Inbox implements vscode.Disposable {
 				!areNotificationsDisabled(vscode.workspace.getConfiguration())
 			) {
 				vscode.window.showInformationMessage(
-					escapeNotificationLinks(data.parsedMessage.notification.title),
+					escapeNotificationLinks(data.parsedMessage.notification.title, {
+						keepWebLinks: true,
+					}),
 				);
 			}
 		});
