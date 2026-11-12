@@ -1121,9 +1121,12 @@ export class Commands {
 		}
 
 		// If no URL or command, show information about the app status
-		vscode.window.showInformationMessage(`${app.name}`, {
-			detail: `Agent: ${app.agent_name || "Unknown"}`,
-		});
+		vscode.window.showInformationMessage(
+			escapeNotificationLinks(`${app.name}`),
+			{
+				detail: `Agent: ${app.agent_name || "Unknown"}`,
+			},
+		);
 	}
 
 	/**
