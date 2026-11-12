@@ -16,31 +16,27 @@ export class EventStreamLogger {
 	private readonly logger: Logger;
 	private readonly url: string;
 	private readonly id: string;
-	private readonly protocol: string;
 	private readonly startedAt: number;
 	private openedAt?: number;
 	private msgCount = 0;
 	private byteCount = 0;
 	private unknownByteCount = false;
 
-	constructor(logger: Logger, url: string, protocol: "WS" | "SSE") {
+	constructor(logger: Logger, url: string) {
 		this.logger = logger;
 		this.url = url;
-		this.protocol = protocol;
 		this.id = createRequestId();
 		this.startedAt = Date.now();
 	}
 
 	logConnecting(): void {
-		this.logger.trace(`→ ${this.protocol} ${shortId(this.id)} ${this.url}`);
+		this.logger.trace(`→ WS ${shortId(this.id)} ${this.url}`);
 	}
 
 	logOpen(): void {
 		this.openedAt = Date.now();
 		const time = formatTime(this.openedAt - this.startedAt);
-		this.logger.trace(
-			`← ${this.protocol} ${shortId(this.id)} connected ${this.url} ${time}`,
-		);
+		this.logger.trace(`← WS ${shortId(this.id)} connected ${this.url} ${time}`);
 	}
 
 	logMessage(data: unknown): void {
@@ -66,7 +62,7 @@ export class EventStreamLogger {
 		const statsStr = ` [${stats.join(", ")}]`;
 
 		this.logger.trace(
-			`▣ ${this.protocol} ${shortId(this.id)} closed ${this.url}${codeStr}${reasonStr}${statsStr}`,
+			`▣ WS ${shortId(this.id)} closed ${this.url}${codeStr}${reasonStr}${statsStr}`,
 		);
 	}
 
@@ -74,7 +70,7 @@ export class EventStreamLogger {
 		const time = formatTime(Date.now() - this.startedAt);
 		const errorMsg = message || errToStr(error, "connection error");
 		this.logger.error(
-			`✗ ${this.protocol} ${shortId(this.id)} error ${this.url} ${time} - ${errorMsg}`,
+			`✗ WS ${shortId(this.id)} error ${this.url} ${time} - ${errorMsg}`,
 			error,
 		);
 	}

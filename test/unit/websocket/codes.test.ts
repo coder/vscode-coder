@@ -1,4 +1,3 @@
-import axios from "axios";
 import http from "node:http";
 import { type AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,9 +10,6 @@ import {
 } from "@/websocket/codes";
 import { type ErrorEvent } from "@/websocket/eventStreamConnection";
 import { OneWayWebSocket } from "@/websocket/oneWayWebSocket";
-import { SseConnection } from "@/websocket/sseConnection";
-
-import { createMockLogger } from "../../mocks/testHelpers";
 
 describe("handshakeStatus", () => {
 	it("reads status independently of the message", () => {
@@ -89,23 +85,5 @@ describe("handshake errors from real transports", () => {
 			WebSocketCloseCode.ABNORMAL,
 		]);
 		expect(removed).not.toHaveBeenCalled();
-	});
-
-	it("reports the status from an SSE handshake rejection", async () => {
-		const host = await listen(HttpStatusCode.FORBIDDEN);
-		const source = new SseConnection({
-			location: { protocol: "http:", host },
-			apiRoute: "/",
-			axiosInstance: axios.create({ proxy: false }),
-			logger: createMockLogger(),
-		});
-		try {
-			const event = await new Promise<ErrorEvent>((resolve) => {
-				source.addEventListener("error", resolve);
-			});
-			expect(handshakeStatus(event.error)).toBe(HttpStatusCode.FORBIDDEN);
-		} finally {
-			source.close();
-		}
 	});
 });

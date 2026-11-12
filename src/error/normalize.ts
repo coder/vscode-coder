@@ -1,5 +1,4 @@
 import { isApiError, isApiErrorResponse } from "coder/site/src/api/errors";
-import { ErrorEvent } from "eventsource";
 import util from "node:util";
 
 import { toError as baseToError } from "@repo/shared";
@@ -37,9 +36,6 @@ export function errToStr(error: unknown, def = "No error message provided") {
 		return error.response.data.message;
 	} else if (isApiErrorResponse(error)) {
 		return error.message;
-	} else if (error instanceof ErrorEvent) {
-		const message = error.message || def;
-		return error.code ? `${error.code}: ${message}` : message;
 	} else if (typeof error === "string" && error.trim().length > 0) {
 		return error;
 	}

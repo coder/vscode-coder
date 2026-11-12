@@ -30,6 +30,10 @@
 
 ### Fixed
 
+- Workspace, agent metadata and inbox watchers, and build and agent log
+  streams, no longer drop the first message a server sends right after
+  connecting, so metadata and log backlogs show up immediately. Watchers now
+  also report as connected, which resets their reconnect backoff.
 - A session saved for one URL is no longer used for a URL on the same host with
   a different scheme or port.
 - Each deployment origin (scheme, host, and port) now has its own stored

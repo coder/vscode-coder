@@ -154,6 +154,7 @@ export class ReconnectingWebSocket<
 	#backoffMs: number;
 	#reconnectTimeoutId: NodeJS.Timeout | null = null;
 	#consecutiveConnectFailures = 0;
+	#connectAttempt = 0;
 	#state: ConnectionState = ConnectionState.IDLE;
 	#certRefreshAttempted = false; // Tracks if cert refresh was already attempted this connection cycle
 	readonly #onDispose?: () => void;
@@ -343,6 +344,7 @@ export class ReconnectingWebSocket<
 			return;
 		}
 		this.#telemetry.connectStarted();
+		const attempt = ++this.#connectAttempt;
 		try {
 			if (this.#currentSocket) {
 				this.#telemetry.dropped("replaced", WebSocketCloseCode.NORMAL);
@@ -353,8 +355,11 @@ export class ReconnectingWebSocket<
 
 			const socket = await this.#socketFactory();
 
-			// Check if state changed while waiting for factory (e.g., disconnect/dispose called)
-			if (this.#state !== ConnectionState.CONNECTING) {
+			// Superseded by a newer connect(), or disconnected/disposed while waiting.
+			if (
+				attempt !== this.#connectAttempt ||
+				this.#state !== ConnectionState.CONNECTING
+			) {
 				socket.close(WebSocketCloseCode.NORMAL, "Cancelled during connection");
 				return;
 			}
@@ -362,10 +367,19 @@ export class ReconnectingWebSocket<
 			this.#currentSocket = socket;
 			this.#lastRoute = this.#route;
 
+			// Failures before open are retried like a rejected factory, unseen by consumers.
+			let opened = false;
+			const failBeforeOpen = (error: Error) => {
+				this.#currentSocket = null;
+				socket.close();
+				void this.handleConnectionError(error);
+			};
+
 			socket.addEventListener("open", (event) => {
 				if (this.#currentSocket !== socket) {
 					return;
 				}
+				opened = true;
 
 				if (!this.#dispatch({ type: "OPEN" }, "open")) {
 					return;
@@ -391,21 +405,29 @@ export class ReconnectingWebSocket<
 					return;
 				}
 
-				this.executeHandlers("error", event);
-				// Errors during initial connection are caught by the factory (waitForOpen).
-				// This handler is for errors AFTER successful connection.
-				// Route through handleConnectionError for consistent handling.
 				const error = toError(event.error, event.message);
+				if (!opened) {
+					failBeforeOpen(error);
+					return;
+				}
+				this.executeHandlers("error", event);
 				void this.handleConnectionError(error);
 			});
 
 			socket.addEventListener("close", (event) => {
-				if (this.#currentSocket === socket) {
+				if (this.#currentSocket !== socket) {
+					return;
+				}
+				if (opened) {
 					this.handleSocketClose(event);
+				} else {
+					failBeforeOpen(toCloseEventError(event));
 				}
 			});
 		} catch (error) {
-			await this.handleConnectionError(error);
+			if (attempt === this.#connectAttempt) {
+				await this.handleConnectionError(error);
+			}
 		}
 	}
 
@@ -569,7 +591,11 @@ export class ReconnectingWebSocket<
 		// Check for certificate error and attempt refresh if possible.
 		const certError = ClientCertificateError.fromError(error);
 		if (certError) {
-			if (await this.handleClientCertificateError(certError)) {
+			const refreshed = await this.handleClientCertificateError(certError);
+			if (this.state === ConnectionState.DISCONNECTED) {
+				return;
+			}
+			if (refreshed) {
 				this.#reconnectInternal("certificate_refresh");
 			} else {
 				this.disconnectWithReason("certificate_error", "error", {

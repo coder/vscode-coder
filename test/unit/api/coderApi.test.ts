@@ -4,7 +4,6 @@ import axios, {
 	type CreateAxiosDefaults,
 	type InternalAxiosRequestConfig,
 } from "axios";
-import { EventSource } from "eventsource";
 import { ProxyAgent } from "proxy-agent";
 import {
 	afterEach,
@@ -23,12 +22,12 @@ import {
 } from "@/api/certificateRefresh";
 import { CoderApi, DEFAULT_REQUEST_TIMEOUT_MS } from "@/api/coderApi";
 import { createHttpAgent } from "@/api/httpAgent";
-import { HttpStatusCode } from "@/api/httpStatusCode";
 import {
 	InvalidApiResponseError,
 	VALIDATED_RESPONSES,
 	type ValidatedMethods,
 } from "@/api/responseValidation";
+import { streamBuildLogs } from "@/api/workspace";
 import { CONFIG_CHANGE_DEBOUNCE_MS } from "@/configWatcher";
 import { ClientCertificateError } from "@/error/clientCertificateError";
 import { ServerCertificateError } from "@/error/serverCertificateError";
@@ -38,8 +37,7 @@ import {
 	NOOP_TELEMETRY_REPORTER,
 	type TelemetryReporter,
 } from "@/telemetry/reporter";
-import { WebSocketCloseCode, HandshakeError } from "@/websocket/codes";
-import { ReconnectingWebSocket } from "@/websocket/reconnectingWebSocket";
+import { WebSocketCloseCode } from "@/websocket/codes";
 
 import {
 	createMockLogger,
@@ -60,7 +58,6 @@ const BUILD_ID = "build-123";
 const AGENT_ID = "agent-123";
 
 vi.mock("ws");
-vi.mock("eventsource");
 vi.mock("proxy-agent");
 
 vi.mock("axios", async () => {
@@ -98,10 +95,6 @@ vi.mock("@/api/httpAgent", () => ({
 vi.mock("@/api/certificateRefresh", () => ({
 	getRefreshCommand: vi.fn(),
 	refreshCertificates: vi.fn(),
-}));
-
-vi.mock("@/api/streamingFetchAdapter", () => ({
-	createStreamingFetchAdapter: vi.fn(() => fetch),
 }));
 
 describe("CoderApi", () => {
@@ -459,7 +452,6 @@ describe("CoderApi", () => {
 
 		beforeEach(() => {
 			api = createApi(CODER_URL, AXIOS_TOKEN);
-			// createOneWayWebSocket waits for open, which the mock fires automatically.
 			const mockWs = createMockWebSocket(wsUrl);
 			setupWebSocketMock(mockWs);
 		});
@@ -582,6 +574,7 @@ describe("CoderApi", () => {
 			setupWebSocketMock(mockWs);
 
 			const connection = await failingApi.watchAgentMetadata(AGENT_ID);
+			await new Promise((resolve) => setImmediate(resolve));
 
 			// An unrecoverable close code is a terminal failure, not a retry.
 			mockWs.fireClose({
@@ -594,141 +587,6 @@ describe("CoderApi", () => {
 				`unrecoverable_close /api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
 			);
 			connection.close();
-		});
-	});
-
-	describe("SSE Fallback", () => {
-		beforeEach(() => {
-			api = createApi();
-			const mockEventSource = createMockEventSource(
-				`${CODER_URL}/api/v2/workspaces/123/watch`,
-			);
-			setupEventSourceMock(mockEventSource);
-		});
-
-		it("uses WebSocket when no errors occur", async () => {
-			const mockWs = createMockWebSocket(
-				`wss://${CODER_URL.replace("https://", "")}/api/v2/workspaceagents/${AGENT_ID}/watch-metadata`,
-			);
-			setupWebSocketMock(mockWs);
-
-			const connection = await api.watchAgentMetadata(AGENT_ID);
-
-			expect(connection).toBeInstanceOf(ReconnectingWebSocket);
-			expect(EventSource).not.toHaveBeenCalled();
-		});
-
-		it("falls back to SSE on 404 error from WebSocket open", async () => {
-			const mockWs = createMockWebSocket(
-				`wss://${CODER_URL.replace("https://", "")}/api/v2/test`,
-				{
-					connectError: {
-						error: new HandshakeError(HttpStatusCode.NOT_FOUND),
-					},
-				},
-			);
-			setupWebSocketMock(mockWs);
-
-			const connection = await api.watchAgentMetadata(AGENT_ID);
-
-			// Returns ReconnectingWebSocket (which wraps SSE internally after WS 404)
-			expect(connection).toBeInstanceOf(ReconnectingWebSocket);
-			expect(EventSource).toHaveBeenCalled();
-		});
-
-		it("handles non-404 errors without SSE fallback", async () => {
-			vi.mocked(Ws).mockImplementation(function () {
-				throw new Error("Network error");
-			});
-
-			// Non-404 errors are handled by ReconnectingWebSocket internally
-			// (schedules reconnect with backoff) instead of being thrown
-			const connection = await api.watchAgentMetadata(AGENT_ID);
-			expect(connection).toBeInstanceOf(ReconnectingWebSocket);
-			expect(EventSource).not.toHaveBeenCalled();
-
-			connection.close();
-		});
-
-		it("does not fall back to SSE on a non-404 HTTP handshake failure", async () => {
-			setupWebSocketMock(
-				createMockWebSocket("wss://test", {
-					connectError: { error: new HandshakeError(500) },
-				}),
-			);
-
-			const connection = await api.watchAgentMetadata(AGENT_ID);
-			expect(EventSource).not.toHaveBeenCalled();
-
-			connection.close();
-		});
-
-		it("treats an HTTP failure of the SSE fallback as unrecoverable", async () => {
-			api = createApi();
-			setupWebSocketMock(
-				createMockWebSocket("wss://test", {
-					connectError: {
-						error: new HandshakeError(HttpStatusCode.NOT_FOUND),
-					},
-				}),
-			);
-			setupEventSourceMock(
-				createMockEventSource(`${CODER_URL}/api/v2/test`, {
-					connectError: Object.assign(new Event("error"), {
-						code: HttpStatusCode.FORBIDDEN,
-						message: "Access denied",
-					}),
-				}),
-			);
-
-			const connection = await api.watchAgentMetadata(AGENT_ID);
-
-			expect(mockLogger.flush).toHaveBeenCalledWith(
-				`unrecoverable_http /api/v2/workspaceagents/${AGENT_ID}/watch-metadata-ws`,
-			);
-			connection.close();
-		});
-
-		describe("reconnection after fallback", () => {
-			beforeEach(() => vi.useFakeTimers());
-			afterEach(() => vi.useRealTimers());
-
-			it("reconnects after SSE fallback and retries WS on each reconnect", async () => {
-				let wsAttempts = 0;
-				const mockEventSources: MockEventSource[] = [];
-
-				vi.mocked(Ws).mockImplementation(function () {
-					wsAttempts++;
-					const mockWs = createMockWebSocket("wss://test", {
-						connectError: {
-							error: new HandshakeError(HttpStatusCode.NOT_FOUND),
-						},
-					});
-					return mockWs as Ws;
-				});
-
-				vi.mocked(EventSource).mockImplementation(function () {
-					const es = createMockEventSource(`${CODER_URL}/api/v2/test`);
-					mockEventSources.push(es);
-					return es as unknown as EventSource;
-				});
-
-				const pendingConnection = api.watchAgentMetadata(AGENT_ID);
-				await vi.runAllTimersAsync();
-				const connection = await pendingConnection;
-				expect(wsAttempts).toBe(1);
-				expect(EventSource).toHaveBeenCalledTimes(1);
-
-				mockEventSources[0].fireError();
-				await vi.runAllTimersAsync();
-
-				expect(wsAttempts).toBe(2);
-				expect(EventSource).toHaveBeenCalledTimes(2);
-				expect(mockEventSources[1].close).not.toHaveBeenCalled();
-				expect(vi.getTimerCount()).toBe(0);
-
-				connection.close();
-			});
 		});
 	});
 
@@ -880,17 +738,20 @@ describe("CoderApi", () => {
 				expectedMessage: "WebSocket connection error",
 			},
 		])(
-			"uses $desc for WebSocket error",
+			"rejects a log stream's handshake error using $description",
 			async ({ eventMessage, expectedMessage }) => {
 				api = createApi();
 				const mockWs = createMockWebSocket("wss://test", {
 					connectError: { error: undefined, message: eventMessage },
 				});
 				setupWebSocketMock(mockWs);
+				const onOutput = vi.fn();
 
-				await expect(api.watchBuildLogsByBuildId(BUILD_ID, [])).rejects.toThrow(
+				await expect(streamBuildLogs(api, onOutput, BUILD_ID)).rejects.toThrow(
 					expectedMessage,
 				);
+				mockWs.fireClose({ code: WebSocketCloseCode.ABNORMAL, reason: "" });
+				expect(onOutput).not.toHaveBeenCalled();
 			},
 		);
 	});
@@ -1266,52 +1127,8 @@ function createMockWebSocket(
 	return mock;
 }
 
-type MockEventSource = Partial<EventSource> & {
-	readyState: number;
-	fireOpen: () => void;
-	fireError: () => void;
-};
-
-function createMockEventSource(
-	url: string,
-	options: { connectError?: Event } = {},
-): MockEventSource {
-	const { connectError } = options;
-	const handlers: Record<string, ((e: Event) => void) | undefined> = {};
-	const mock: MockEventSource = {
-		url,
-		readyState: EventSource.CONNECTING,
-		addEventListener: vi.fn((event: string, handler: (e: Event) => void) => {
-			handlers[event] = handler;
-			if (event === "open" && !connectError) {
-				setImmediate(() => handler(new Event("open")));
-			}
-			if (event === "error" && connectError) {
-				setImmediate(() => {
-					mock.readyState = EventSource.CLOSED;
-					handler(connectError);
-				});
-			}
-		}),
-		removeEventListener: vi.fn(),
-		close: vi.fn(),
-		fireOpen: () => handlers.open?.(new Event("open")),
-		fireError: () => {
-			mock.readyState = EventSource.CLOSED;
-			handlers.error?.(new Event("error"));
-		},
-	};
-	return mock;
-}
-
 function setupWebSocketMock(ws: Partial<Ws>): void {
 	vi.mocked(Ws).mockImplementation(function () {
 		return ws as Ws;
-	});
-}
-
-function setupEventSourceMock(es: Partial<EventSource>): void {
-	vi.mocked(EventSource).mockImplementation(function () {
-		return es as EventSource;
 	});
 }

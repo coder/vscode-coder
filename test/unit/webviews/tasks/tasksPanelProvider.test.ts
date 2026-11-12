@@ -38,22 +38,21 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 
 import type { CoderApi } from "@/api/coderApi";
-import type { UnidirectionalStream } from "@/websocket/eventStreamConnection";
+import type { OneWayWebSocket } from "@/websocket/oneWayWebSocket";
 
-function mockStream<T>(): UnidirectionalStream<T> {
-	const listeners = new Map<string, Array<() => void>>();
+function mockStream<T>(): OneWayWebSocket<T> {
+	let resolveClosed!: () => void;
+	const closed = new Promise<void>((resolve) => {
+		resolveClosed = resolve;
+	});
 	return {
 		url: "",
-		addEventListener: vi.fn((event: string, cb: () => void) => {
-			const list = listeners.get(event) ?? [];
-			list.push(cb);
-			listeners.set(event, list);
-		}),
+		opened: Promise.resolve(),
+		closed,
+		addEventListener: vi.fn(),
 		removeEventListener: vi.fn(),
-		close: vi.fn(() => {
-			for (const cb of listeners.get("close") ?? []) cb();
-		}),
-	} as UnidirectionalStream<T>;
+		close: vi.fn(() => resolveClosed()),
+	} as unknown as OneWayWebSocket<T>;
 }
 
 vi.mock("@/api/workspace", async (importOriginal) => {
@@ -998,9 +997,7 @@ describe("TasksPanelProvider", () => {
 
 		interface StreamCloseTestCase {
 			name: string;
-			openStream: (
-				h: Harness,
-			) => Promise<{ stream: UnidirectionalStream<unknown> }>;
+			openStream: (h: Harness) => Promise<{ stream: { close: () => void } }>;
 		}
 		it.each<StreamCloseTestCase>([
 			{ name: "build", openStream: openBuildStream },

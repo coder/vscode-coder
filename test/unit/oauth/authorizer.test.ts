@@ -56,10 +56,6 @@ vi.mock("@/api/httpAgent", async () => {
 	return { ...actual, createHttpAgent: vi.fn() };
 });
 
-vi.mock("@/api/streamingFetchAdapter", () => ({
-	createStreamingFetchAdapter: vi.fn(() => fetch),
-}));
-
 const EXTENSION_ID = "coder.coder-remote";
 
 function createTestContext() {

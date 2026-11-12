@@ -232,6 +232,40 @@ describe("ReconnectingWebSocket", () => {
 			ws.close();
 		});
 
+		it("connects the latest attempt when a superseded factory resolves late", async () => {
+			const sockets: MockSocket[] = [];
+			const resolvers: Array<() => void> = [];
+			const ws = await fromFactory(() => {
+				const socket = createMockSocket();
+				sockets.push(socket);
+				if (sockets.length === 1) {
+					return Promise.resolve(socket);
+				}
+				return new Promise<MockSocket>((resolve) =>
+					resolvers.push(() => resolve(socket)),
+				);
+			});
+
+			ws.reconnect();
+			ws.reconnect();
+			resolvers[0]();
+			await vi.advanceTimersByTimeAsync(0);
+			sockets[1].fireOpen();
+
+			expect(sockets[1].close).toHaveBeenCalledWith(
+				WebSocketCloseCode.NORMAL,
+				"Cancelled during connection",
+			);
+			expect(ws.state).toBe(ConnectionState.CONNECTING);
+
+			resolvers[1]();
+			await vi.advanceTimersByTimeAsync(0);
+			sockets[2].fireOpen();
+			expect(ws.state).toBe(ConnectionState.CONNECTED);
+
+			ws.close();
+		});
+
 		it("disconnect() cancels in-progress reconnect and prevents new connections", async () => {
 			const { ws, sockets, failConnection } =
 				await createBlockingReconnectingWebSocket();
@@ -788,6 +822,23 @@ describe("ReconnectingWebSocket", () => {
 			expect(flush).toHaveBeenCalledWith(
 				expect.stringMatching(/^certificate_error /),
 			);
+			ws.close();
+		});
+
+		it("stays disconnected when disconnect() runs during the refresh", async () => {
+			let finishRefresh: (refreshed: boolean) => void = () => {};
+			const { ws, sockets, refreshCallback } = await setupRefreshTest(
+				() => new Promise((resolve) => (finishRefresh = resolve)),
+			);
+
+			sockets[0].fireError(new Error("ssl alert certificate_expired"));
+			await vi.waitFor(() => expect(refreshCallback).toHaveBeenCalled());
+			ws.disconnect();
+			finishRefresh(true);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(ws.state).toBe(ConnectionState.DISCONNECTED);
+			expect(sockets).toHaveLength(1);
 			ws.close();
 		});
 

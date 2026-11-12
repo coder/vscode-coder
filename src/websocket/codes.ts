@@ -52,7 +52,7 @@ export class HandshakeError extends Error {
 	}
 }
 
-/** HTTP status from a failed `ws` or `eventsource` handshake, or `undefined`. */
+/** HTTP status from a failed `ws` handshake, or `undefined`. */
 export function handshakeStatus(error: unknown): number | undefined {
 	return error instanceof HandshakeError ? error.statusCode : undefined;
 }
