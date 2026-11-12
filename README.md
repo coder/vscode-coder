@@ -34,6 +34,19 @@ The Coder Remote extension connects your editor to
 > (`ms-vscode-remote.remote-ssh`, `anysphere.remote-ssh` for Cursor, or
 > `codeium.windsurf-remote-openssh` for Devin Desktop).
 
+## Compatibility
+
+| Component    | Minimum supported version |
+| ------------ | ------------------------- |
+| Coder server | 2.29.0                    |
+| Coder CLI    | 2.29.0                    |
+
+The server minimum is checked at login and during CLI resolution. Known CLI
+versions below the minimum are rejected; unknown versions use baseline
+capabilities. Newer features have their own version requirements.
+
+The minimum is version-pinned; changes are announced in the changelog.
+
 ## Getting Started
 
 Launch VS Code Quick Open (Ctrl+P), paste the following command, and press

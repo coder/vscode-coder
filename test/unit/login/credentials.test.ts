@@ -2,6 +2,7 @@ import * as os from "node:os";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { CredentialCliError } from "@/instrumentation/credentials";
 import {
 	notifyKeyringSkipped,
 	showStoreCredentialsError,
@@ -23,25 +24,42 @@ describe("showStoreCredentialsError", () => {
 	});
 
 	interface StoreErrorCase {
+		scenario: string;
 		platform: NodeJS.Platform;
+		error: Error;
 		message: string;
+		actions: string[];
 	}
 
 	it.each<StoreErrorCase>([
 		{
+			scenario: "a credential-command failure with keyring enabled",
 			platform: "darwin",
+			error: new CredentialCliError(new Error("exit status 36")),
 			message:
 				'Failed to store credentials: exit status 36. To store the token in a file instead, set "coder.useKeyring" to false.',
+			actions: ["Open Settings"],
 		},
 		{
+			scenario: "a credential-command failure on Linux",
 			platform: "linux",
+			error: new CredentialCliError(new Error("exit status 36")),
 			message: "Failed to store credentials: exit status 36.",
+			actions: [],
 		},
-	])("logs and shows the failure on $platform", ({ platform, message }) => {
+		{
+			scenario: "an unsupported CLI version with keyring enabled",
+			platform: "darwin",
+			error: new Error("CLI version 2.28.9 is unsupported."),
+			message:
+				"Failed to store credentials: CLI version 2.28.9 is unsupported.",
+			actions: [],
+		},
+	])("logs and shows $scenario", ({ platform, error, message, actions }) => {
 		vi.mocked(os.platform).mockReturnValue(platform);
 		const logger = createMockLogger();
 
-		showStoreCredentialsError(new Error("exit status 36"), configs, logger);
+		showStoreCredentialsError(error, configs, logger);
 
 		expect(logger.error).toHaveBeenCalledWith(
 			"Failed to store credentials:",
@@ -49,17 +67,21 @@ describe("showStoreCredentialsError", () => {
 		);
 		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
 			message,
-			"Open Settings",
+			...actions,
 		);
 	});
 
 	it("opens the coder.useKeyring setting from the toast", async () => {
-		vi.mocked(os.platform).mockReturnValue("linux");
+		vi.mocked(os.platform).mockReturnValue("darwin");
 		vi.mocked(vscode.window.showErrorMessage).mockResolvedValueOnce(
 			"Open Settings" as unknown as vscode.MessageItem,
 		);
 
-		showStoreCredentialsError(new Error("x"), configs, createMockLogger());
+		showStoreCredentialsError(
+			new CredentialCliError(new Error("x")),
+			configs,
+			createMockLogger(),
+		);
 		await Promise.resolve();
 
 		expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
@@ -91,17 +113,6 @@ describe("notifyKeyringSkipped", () => {
 		[
 			"user config dir",
 			{ store: "cli", url, useKeyring: false, refuseRedirects: true },
-			0,
-		],
-		[
-			"CLI without keyring support",
-			{
-				store: "extension",
-				url,
-				configDir: "/d",
-				useKeyring: undefined,
-				refuseRedirects: true,
-			},
 			0,
 		],
 	])("%s shows %i notices", (_name, auth, notices) => {

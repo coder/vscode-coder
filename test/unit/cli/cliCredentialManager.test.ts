@@ -202,6 +202,19 @@ describe("CliCredentialManager", () => {
 	);
 
 	describe("storeToken", () => {
+		it("rejects an unsupported CLI before writing credentials", async () => {
+			stubExecFile();
+			vi.mocked(cliExec.version).mockResolvedValue("2.28.9");
+			const { manager } = setup();
+
+			await expect(
+				manager.storeToken(TEST_URL, "token", configs),
+			).rejects.toThrow(
+				"Your Coder CLI is version 2.28.9. This extension requires Coder CLI 2.29.0 or newer. Upgrade your CLI to continue.",
+			);
+			expect(execFile).not.toHaveBeenCalled();
+		});
+
 		it("passes the token through the environment only", async () => {
 			stubExecFile();
 			vi.stubEnv("coder_session_token", "host-token");

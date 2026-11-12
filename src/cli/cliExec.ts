@@ -169,16 +169,13 @@ export function ping(env: CliEnv, workspaceName: string): vscode.Terminal {
 
 /**
  * Open a terminal that runs `coder ssh <workspace> -- <command>` with no
- * local shell in between. Older CLIs cannot take a command, and falling back
- * to typing it into a local shell would let the deployment run local code.
+ * local shell in between; typing the command into a local shell would let the
+ * deployment run local code.
  */
 export function openAppStatusTerminal(
 	env: CliEnv & { featureSet: CliFeatureSet },
 	app: { name?: string; command: string; workspace_name: string },
 ): void {
-	if (!env.featureSet.sshCommand) {
-		throw new Error("Running app commands requires Coder CLI v2.23.0 or later");
-	}
 	const workspaceName = validateIdentifier(
 		app.workspace_name,
 		"workspace name",

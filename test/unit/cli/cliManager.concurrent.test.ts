@@ -116,8 +116,8 @@ describe("CliManager Concurrent Downloads", () => {
 
 	it("handles multiple concurrent downloads without race conditions", async () => {
 		const manager = setupManager(testDir);
-		setupCliUtilsMocks("1.2.3");
-		const mockApi = createMockApi("1.2.3");
+		setupCliUtilsMocks("2.29.0");
+		const mockApi = createMockApi("2.29.0");
 
 		const label = "test.coder.com";
 		const binaryPath = path.join(testDir, label, "bin", "coder-linux-amd64");
@@ -140,17 +140,17 @@ describe("CliManager Concurrent Downloads", () => {
 
 	it("redownloads when version mismatch is detected concurrently", async () => {
 		const manager = setupManager(testDir);
-		setupCliUtilsMocks("1.2.3");
+		setupCliUtilsMocks("2.29.0");
 		vi.mocked(cliExec.version).mockImplementation(async (binPath) => {
 			const fileContent = await fs.readFile(binPath, {
 				encoding: "utf-8",
 			});
-			return fileContent.includes("1.2.3") ? "1.2.3" : "2.0.0";
+			return fileContent.includes("2.29.0") ? "2.29.0" : "2.30.0";
 		});
 
-		// First call downloads 1.2.3, next two expect 2.0.0 (server upgraded)
-		const mockApi1 = createMockApi("1.2.3", { delay: 100 });
-		const mockApi2 = createMockApi("2.0.0");
+		// First call downloads 2.29.0, next two expect 2.30.0 (server upgraded)
+		const mockApi1 = createMockApi("2.29.0", { delay: 100 });
+		const mockApi2 = createMockApi("2.30.0");
 
 		const label = "test.coder.com";
 		const binaryPath = path.join(testDir, label, "bin", "coder-linux-amd64");
@@ -171,10 +171,10 @@ describe("CliManager Concurrent Downloads", () => {
 			expect(result).toBe(binaryPath);
 		}
 
-		// Binary should be updated to 2.0.0, and lock/progress files are cleaned up
+		// Binary should be updated to 2.30.0, and lock/progress files are cleaned up
 		await expect(fs.access(binaryPath)).resolves.toBeUndefined();
 		const finalContent = await fs.readFile(binaryPath, "utf8");
-		expect(finalContent).toContain("v2.0.0");
+		expect(finalContent).toContain("v2.30.0");
 		await expectLockFilesRemoved(binaryPath);
 	});
 
@@ -191,11 +191,11 @@ describe("CliManager Concurrent Downloads", () => {
 		},
 	])("handles $name error during download", async ({ code, message }) => {
 		const manager = setupManager(testDir);
-		setupCliUtilsMocks("1.2.3");
+		setupCliUtilsMocks("2.29.0");
 
 		const error = new Error(`${code}: ${message}`);
 		(error as NodeJS.ErrnoException).code = code;
-		const mockApi = createMockApi("1.2.3", { error });
+		const mockApi = createMockApi("2.29.0", { error });
 
 		const label = "test.coder.com";
 		const binaryPath = path.join(testDir, label, "bin", "coder-linux-amd64");

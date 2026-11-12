@@ -28,7 +28,7 @@ export class InvalidApiResponseError extends Error {
  *
  * Schemas list only the fields the extension reads and use looseObject so
  * unknown fields pass through. Require a field only if every deployment back
- * to Coder 0.25 sends it; anything newer must be .optional().
+ * to Coder 2.29 sends it; anything newer must be .optional().
  *
  * @throws {InvalidApiResponseError} naming the endpoint when validation fails.
  */

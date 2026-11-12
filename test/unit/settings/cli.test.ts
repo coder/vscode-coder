@@ -31,13 +31,13 @@ const extensionStoreAuth: CliAuth = {
 	store: "extension",
 	url: URL,
 	configDir: EXT_DIR,
-	useKeyring: undefined,
+	useKeyring: false,
 	refuseRedirects: false,
 };
 const cliStoreAuth: CliAuth = {
 	store: "cli",
 	url: URL,
-	useKeyring: undefined,
+	useKeyring: false,
 	refuseRedirects: false,
 };
 
@@ -56,13 +56,12 @@ describe("cliConfig", () => {
 			{
 				scenario: "extension store",
 				auth: extensionStoreAuth,
-				expected: EXTENSION_FLAGS,
-			},
-			{ scenario: "CLI store", auth: cliStoreAuth, expected: CLI_FLAGS },
-			{
-				scenario: "extension store with keyring off",
-				auth: { ...extensionStoreAuth, useKeyring: false },
 				expected: [...EXTENSION_FLAGS, "--use-keyring=false"],
+			},
+			{
+				scenario: "CLI store",
+				auth: cliStoreAuth,
+				expected: [...CLI_FLAGS, "--use-keyring=false"],
 			},
 			{
 				scenario: "CLI store with keyring on",
@@ -97,6 +96,7 @@ describe("cliConfig", () => {
 				"--verbose",
 				"--global-configs", // similar prefixes are not managed flags
 				...EXTENSION_FLAGS,
+				"--use-keyring=false",
 			]);
 		});
 
@@ -108,6 +108,7 @@ describe("cliConfig", () => {
 				'"--token="',
 				"--verbose",
 				...EXTENSION_FLAGS,
+				"--use-keyring=false",
 			]);
 		});
 
@@ -119,6 +120,7 @@ describe("cliConfig", () => {
 				'"--token="',
 				"--token=abc",
 				...CLI_FLAGS,
+				"--use-keyring=false",
 			]);
 		});
 
@@ -140,6 +142,7 @@ describe("cliConfig", () => {
 					'"--token="',
 					...flags,
 					...CLI_FLAGS,
+					"--use-keyring=false",
 				]);
 			},
 		);
@@ -160,6 +163,7 @@ describe("cliConfig", () => {
 					'"--token="',
 					"-v",
 					...EXTENSION_FLAGS,
+					"--use-keyring=false",
 				]);
 			},
 		);
@@ -175,6 +179,7 @@ describe("cliConfig", () => {
 				"-v",
 				'"--header-command custom"', // ignored by CLI
 				...CLI_FLAGS,
+				"--use-keyring=false",
 				"--header-command",
 				`"${headerCommand}"`,
 			]);
@@ -213,6 +218,7 @@ describe("cliConfig", () => {
 					configDir,
 					"--url",
 					URL,
+					"--use-keyring=false",
 					"--header-command",
 					headerCommand,
 				]);
@@ -229,6 +235,7 @@ describe("cliConfig", () => {
 				'"--token="',
 				'"--cfg=C:\\Users\\John Doe/coder"',
 				...EXTENSION_FLAGS,
+				"--use-keyring=false",
 			]);
 		});
 	});
@@ -242,6 +249,7 @@ describe("cliConfig", () => {
 			expect(getGlobalFlags(config, extensionStoreAuth)).toStrictEqual([
 				"--verbose",
 				...EXTENSION_FLAGS,
+				"--use-keyring=false",
 				"--header-command",
 				"echo test",
 			]);
@@ -456,14 +464,6 @@ describe("cliConfig", () => {
 				override: "none",
 				version: "2.29.0",
 				expected: ["--verbose", ...EXTENSION_FLAGS, "--use-keyring=false"],
-			},
-			{
-				scenario:
-					"omits --use-keyring below 2.29, where the CLI lacks the flag",
-				platform: "darwin",
-				override: "none",
-				version: "2.28.0",
-				expected: ["--verbose", ...EXTENSION_FLAGS],
 			},
 			{
 				scenario: "honors a globalFlags --global-config on 2.32+",

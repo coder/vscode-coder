@@ -76,14 +76,14 @@
 					"scope": "application"
 				},
 				"coder.binarySource": {
-					"markdownDescription": "Used to download the Coder CLI which is necessary to make SSH connections. The If-None-Match header will be set to the SHA1 of the CLI and can be used for caching. Absolute URLs will be used as-is; otherwise this value will be resolved against the deployment domain. Defaults to downloading from the Coder deployment.",
+					"markdownDescription": "Used to download the Coder CLI which is necessary to make SSH connections. The If-None-Match header will be set to the SHA1 of the CLI and can be used for caching. Absolute URLs will be used as-is; otherwise this value will be resolved against the deployment domain. Defaults to downloading from the Coder deployment. The supplied CLI must be version 2.29.0 or newer.",
 					"type": "string",
 					"default": "",
 					"scope": "application",
 					"ignoreSync": true
 				},
 				"coder.binaryDestination": {
-					"markdownDescription": "The path to the Coder CLI binary or the directory containing it. When set to a file path (e.g., `/usr/bin/coder`), the extension checks its version and downloads a replacement if it does not match the server (and downloads are enabled). When set to a directory, the extension looks for the CLI inside it (downloading if enabled). Defaults to the value of `CODER_BINARY_DESTINATION` if not set, otherwise the extension's global storage directory.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
+					"markdownDescription": "Path to a Coder CLI 2.29.0+ executable or its directory. With `#coder.enableDownloads#` enabled, missing binaries or versions that differ from the server are downloaded automatically. Defaults to `CODER_BINARY_DESTINATION`, then the extension's global storage directory.\n\nSupports `${env:VAR}`, `${userHome}`, and a leading `~`.",
 					"type": "string",
 					"default": "",
 					"scope": "application",
@@ -214,7 +214,7 @@
 					"ignoreSync": true
 				},
 				"coder.useKeyring": {
-					"markdownDescription": "Store session tokens in the OS keyring (macOS Keychain, Windows Credential Manager) instead of a file. Requires Coder CLI 2.29.0 or later; 2.32.0 or later to sign in with the CLI's existing session. Has no effect on Linux.\n\nThe keyring entry is shared with the `coder` CLI: signing in here also signs in the CLI, and signing out asks whether to sign out the CLI too.",
+					"markdownDescription": "Store session tokens in the OS keyring (macOS Keychain, Windows Credential Manager) instead of a file. Requires Coder CLI 2.32.0 or later to sign in with the CLI's existing session. Has no effect on Linux.\n\nThe keyring entry is shared with the `coder` CLI: signing in here also signs in the CLI, and signing out asks whether to sign out the CLI too.",
 					"type": "boolean",
 					"default": true,
 					"scope": "application"
@@ -404,13 +404,8 @@
 			},
 			{
 				"view": "sharedWorkspaces",
-				"contents": "Shared workspaces require Coder 2.27.0 or newer.",
-				"when": "coder.authenticated && !coder.sharedWorkspacesSupported"
-			},
-			{
-				"view": "sharedWorkspaces",
 				"contents": "No workspaces have been shared with you.",
-				"when": "coder.authenticated && coder.sharedWorkspacesSupported"
+				"when": "coder.authenticated"
 			}
 		],
 		"commands": [

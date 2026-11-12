@@ -141,14 +141,6 @@ type OpenWorkspaceResult =
 	| { readonly status: "opened"; readonly handoff: "folder" | "empty_window" }
 	| { readonly status: "cancelled"; readonly stage: "recent_folder_picker" };
 
-class SupportBundleUnsupportedCliError extends Error {
-	public constructor() {
-		super(
-			"Support bundles require Coder CLI v2.10.0 or later. Please update your Coder deployment.",
-		);
-	}
-}
-
 const UPDATE_AND_RESTART_ACTION = "Update and Restart";
 
 const openDefaults = {
@@ -478,9 +470,6 @@ export class Commands {
 					logger: this.logger,
 				}).then(toRemoteLogGlobs);
 				const env = await this.resolveCliEnv(client);
-				if (!env.featureSet.supportBundle) {
-					throw new SupportBundleUnsupportedCliError();
-				}
 
 				// The resolution APIs take no signal, so race to keep cancel honest.
 				const workspaceFiles = env.featureSet.supportBundleWorkspaceFiles
@@ -526,11 +515,7 @@ export class Commands {
 				telemetry.abort("progress");
 				return;
 			}
-			telemetry.error(
-				result.error instanceof SupportBundleUnsupportedCliError
-					? "unsupported_cli"
-					: undefined,
-			);
+			telemetry.error();
 			this.logger.error("Support bundle failed", result.error);
 			vscode.window.showErrorMessage(
 				escapeNotificationLinks(

@@ -21,7 +21,6 @@ export type DiagnosticCommand =
 export type DiagnosticErrorCategory =
 	| WorkspacePickerErrorCategory
 	| "parse_error"
-	| "unsupported_cli"
 	| "error";
 export type DiagnosticAbortStage =
 	| "workspace_picker"

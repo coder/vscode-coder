@@ -1,24 +1,19 @@
-import type * as semver from "semver";
+import * as semver from "semver";
 
-/** Capabilities keyed to the Coder CLI version. */
+/** Supported baseline for the Coder server and, independently, the CLI. */
+export const MIN_SUPPORTED_CODER_VERSION = "2.29.0";
+
+/** Optional capabilities above the supported Coder CLI baseline of 2.29.0. */
 export interface CliFeatureSet {
-	cliLogin: boolean;
-	proxyLogDirectory: boolean;
-	wildcardSSH: boolean;
-	buildReason: boolean;
-	cliUpdate: boolean;
-	keyringAuth: boolean;
 	tokenRead: boolean;
-	sshCommand: boolean;
 	sshTty: boolean;
-	supportBundle: boolean;
 	supportBundleWorkspaceFiles: boolean;
 	allowRedirectsFlag: boolean;
 	keyringByOrigin: boolean;
 	customSessionAppNames: boolean;
 }
 
-/** Capabilities keyed to the Coder server (REST API) version. */
+/** Optional capabilities keyed independently to the Coder server version. */
 export interface ServerFeatureSet {
 	tasks: boolean;
 	onSuccessBuild: boolean;
@@ -39,32 +34,40 @@ function versionAtLeast(
 	return version.compare(minVersion) >= 0 || version.prerelease[0] === "devel";
 }
 
-/** Capabilities of the given CLI version. */
+/** Parse the server version and reject unsupported releases; development builds are allowed. */
+export function requireSupportedServerVersion(version: string): semver.SemVer {
+	const parsed = semver.parse(version);
+	if (!parsed) {
+		throw new Error(`Got invalid version from deployment: ${version}`);
+	}
+	if (!versionAtLeast(parsed, MIN_SUPPORTED_CODER_VERSION)) {
+		throw new Error(
+			`Your Coder server is version ${version}. This extension requires Coder server ${MIN_SUPPORTED_CODER_VERSION} or newer. Upgrade your deployment to continue.`,
+		);
+	}
+	return parsed;
+}
+
+/**
+ * CLI capabilities; unknown versions use the supported baseline.
+ * @throws {Error} for known unsupported releases.
+ */
 export function cliFeatureSet(version: semver.SemVer | null): CliFeatureSet {
+	if (
+		version !== null &&
+		!versionAtLeast(version, MIN_SUPPORTED_CODER_VERSION)
+	) {
+		throw new Error(
+			`Your Coder CLI is version ${version.version}. This extension requires Coder CLI ${MIN_SUPPORTED_CODER_VERSION} or newer. Upgrade your CLI to continue.`,
+		);
+	}
 	return {
-		// `coder login --use-token-as-session` to write a token (file or keyring).
-		// The extension relies on this, so 0.25.0 is the minimum supported version.
-		cliLogin: versionAtLeast(version, "0.25.0"),
-		// --log-dir flag for proxy logs; vscodessh fails if unsupported
-		proxyLogDirectory: versionAtLeast(version, "2.4.0"),
-		// Wildcard SSH host matching
-		wildcardSSH: versionAtLeast(version, "2.19.0"),
-		// --reason flag for `coder start`
-		buildReason: versionAtLeast(version, "2.25.0"),
-		// `coder update` with stop transition (stops before updating)
-		cliUpdate: versionAtLeast(version, "2.24.0"),
-		// Keyring-backed token storage via `coder login`
-		keyringAuth: versionAtLeast(version, "2.29.0"),
 		// Keyring entries keyed by origin rather than host (coder/coder#29764)
 		keyringByOrigin: versionAtLeast(version, "2.39.0"),
 		// `coder login token`; from 2.32 file mode also checks the URL it stored.
 		tokenRead: versionAtLeast(version, "2.32.0"),
-		// `coder ssh <workspace> -- <command>` one-shot remote commands
-		sshCommand: versionAtLeast(version, "2.23.0"),
 		// `coder ssh --tty`; earlier CLIs always allocate a PTY in command mode
 		sshTty: versionAtLeast(version, "2.34.0"),
-		// `coder support bundle` (officially released/unhidden in 2.10.0)
-		supportBundle: versionAtLeast(version, "2.10.0"),
 		// --workspace-file flag for `coder support bundle`
 		supportBundleWorkspaceFiles: versionAtLeast(version, "2.36.0"),
 		// --allow-redirects
@@ -78,9 +81,8 @@ export function serverFeatureSet(
 	version: semver.SemVer | null,
 ): ServerFeatureSet {
 	return {
-		// `/api/v2/tasks`, stable from 2.29 until the 2.35 deprecation
-		tasks:
-			versionAtLeast(version, "2.29.0") && !versionAtLeast(version, "2.35.0"),
+		// `/api/v2/tasks` is deprecated from 2.35.
+		tasks: version !== null && !versionAtLeast(version, "2.35.0"),
 		// `on_success` on a stop build, which queues the start in one request
 		onSuccessBuild: versionAtLeast(version, "2.36.0"),
 		customSessionAppNames: versionAtLeast(version, "2.38.0"),

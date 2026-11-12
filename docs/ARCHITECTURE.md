@@ -81,8 +81,6 @@ deny-listed (`DENIED_DEPLOYMENT_KEYS` in `src/remote/sshConfig.ts`), since the
 other two are the user's own. `SetEnv` is written only when the local ssh
 supports it, and `--usage-app` only when both the CLI and the deployment
 accept custom session app names; otherwise the session reports as `vscode`.
-CLIs without wildcard host support get a `coder vscodessh` ProxyCommand
-instead.
 
 Which main file gains the include depends on the Remote - SSH extension.
 Microsoft's and Cursor's pass `remote.SSH.configFile` to ssh with `-F`, and

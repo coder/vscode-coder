@@ -26,7 +26,7 @@ import type * as vscode from "vscode";
 
 import type { CoderApi } from "../api/coderApi";
 import type { ServiceContainer } from "../container";
-import type { CliFeatureSet, ServerFeatureSet } from "../featureSet";
+import type { ServerFeatureSet } from "../featureSet";
 import type { Logger } from "../logging/logger";
 import type { CliAuth } from "../settings/cli";
 import type { StartupMode } from "../storage/mementoManager";
@@ -55,7 +55,6 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 		private readonly workspaceClient: CoderApi,
 		private startupMode: StartupMode,
 		private readonly binaryPath: string,
-		private readonly cliFeatures: CliFeatureSet,
 		private readonly serverFeatures: ServerFeatureSet,
 		private readonly cliAuth: CliAuth,
 		container: ServiceContainer,
@@ -287,7 +286,6 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			binPath: this.binaryPath,
 			workspace,
 			write: (data: string) => this.terminal.write(data),
-			cliFeatures: this.cliFeatures,
 			serverFeatures: this.serverFeatures,
 		};
 	}

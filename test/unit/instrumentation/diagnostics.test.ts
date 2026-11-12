@@ -20,7 +20,7 @@ describe("DiagnosticTelemetry", () => {
 			return Promise.resolve();
 		});
 		await telemetry.trace("support_bundle", (trace) => {
-			trace.error("unsupported_cli");
+			trace.error("parse_error");
 			return Promise.resolve();
 		});
 
@@ -32,7 +32,7 @@ describe("DiagnosticTelemetry", () => {
 			result: "aborted",
 		});
 		expect(failed.properties).toMatchObject({
-			"error.type": "unsupported_cli",
+			"error.type": "parse_error",
 			result: "error",
 		});
 		expect(failed.error).toBeUndefined();
