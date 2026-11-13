@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
+import { setTimeout as sleep } from "node:timers/promises";
 import * as vscode from "vscode";
 
+import { throwIfAborted } from "../error/abort";
 import { errToStr } from "../error/normalize";
 import {
 	getCliProcessEnv,
@@ -9,14 +11,16 @@ import {
 } from "../settings/cli";
 
 import { createWorkspaceIdentifier } from "./models";
+import { WorkspaceUpdateCancelledError } from "./updateParameters";
 
-import type { Api } from "coder/site/src/api/api";
 import type {
-	CreateWorkspaceBuildOnSuccessRequest,
+	CreateWorkspaceBuildRequest,
 	ProvisionerJobLog,
 	Workspace,
 	WorkspaceAgentLog,
+	WorkspaceBuild,
 	WorkspaceBuildParameter,
+	WorkspaceStatus,
 } from "coder/site/src/api/typesGenerated";
 
 import type { ServerFeatureSet } from "../featureSet";
@@ -29,6 +33,15 @@ import type { OneWayWebSocket } from "../websocket/oneWayWebSocket";
 import type { CoderApi } from "./coderApi";
 
 const BUILD_REASON = "vscode_connection";
+
+/** How long a one-build update waits for the server to queue its start. */
+const FOLLOW_UP_POLLS = 30;
+
+const STARTABLE_STATUSES: ReadonlySet<WorkspaceStatus> = new Set([
+	"stopped",
+	"failed",
+	"canceled",
+]);
 
 /** Opens a stream once; subsequent open() calls are no-ops until closed. */
 export class LazyStream<T> {
@@ -60,14 +73,32 @@ export class LazyStream<T> {
 	}
 }
 
-type BuildApi = Pick<Api, "getWorkspace" | "postWorkspaceBuild">;
+type BuildClient = Pick<
+	CoderApi,
+	| "getAxiosInstance"
+	| "getWorkspace"
+	| "postWorkspaceBuild"
+	| "updateWorkspaceDormancy"
+	| "waitForBuild"
+	| "watchBuildLogsByBuildId"
+>;
+type BuildRequest = Omit<CreateWorkspaceBuildRequest, "reason">;
+export type Write = (line: string) => void;
+
+/** Where builds go, where their logs go, and when to stop. */
+export interface BuildContext {
+	readonly client: BuildClient;
+	readonly write: Write;
+	/** Checked before every request, and ends any wait when aborted. */
+	readonly signal?: AbortSignal;
+}
 
 interface CliContext {
-	restClient: BuildApi;
+	restClient: Pick<BuildClient, "getWorkspace" | "postWorkspaceBuild">;
 	auth: CliAuth;
 	binPath: string;
 	workspace: Workspace;
-	write: (data: string) => void;
+	write: Write;
 	serverFeatures: ServerFeatureSet;
 }
 
@@ -128,57 +159,259 @@ export async function startWorkspace(ctx: CliContext): Promise<Workspace> {
 /**
  * Update a workspace to the latest template version. Callers must collect
  * any newly-required parameters via `collectUpdateParameters` first; this
- * function does not prompt. On servers before 2.36, `coder update` takes
- * two builds.
+ * function does not prompt, and refuses if the workspace changed since. On
+ * servers before 2.36, `coder update` takes two builds.
  */
 export async function updateWorkspace(
 	ctx: CliContext,
 	parameters: WorkspaceBuildParameter[],
 ): Promise<Workspace> {
+	const workspace = await rereadForUpdate(ctx.restClient, ctx.workspace);
 	if (ctx.serverFeatures.onSuccessBuild) {
-		return updateWorkspaceInOneBuild(ctx, parameters);
+		announceUpdate(ctx.write, workspace);
+		const build = await postBuild(
+			ctx.restClient,
+			workspace.id,
+			oneBuildUpdate(workspace, parameters),
+		);
+		// The server starts it after this stop.
+		return { ...workspace, latest_build: build };
 	}
 
 	const paramArgs = parameters.flatMap((p) => [
 		"--parameter",
 		`${p.name}=${p.value}`,
 	]);
-	await runCliCommand(ctx, ["update", ...paramArgs]);
-	return ctx.restClient.getWorkspace(ctx.workspace.id);
+	await runCliCommand({ ...ctx, workspace }, ["update", ...paramArgs]);
+	return ctx.restClient.getWorkspace(workspace.id);
 }
 
 /**
- * Stop and start in one build, so nothing can take the slot in between. The
- * returned workspace carries the stop build; the server starts it after.
+ * `updateWorkspace` over the REST API, waiting for every build it takes.
+ * Before 2.36, a running workspace restarts in two builds.
  */
-async function updateWorkspaceInOneBuild(
-	ctx: CliContext,
+export async function updateWorkspaceViaApi(
+	ctx: BuildContext,
+	prepared: Workspace,
+	serverFeatures: ServerFeatureSet,
 	parameters: WorkspaceBuildParameter[],
-): Promise<Workspace> {
-	// The build may have changed while parameters were collected.
-	const workspace = await ctx.restClient.getWorkspace(ctx.workspace.id);
-	const start: CreateWorkspaceBuildOnSuccessRequest = {
-		transition: "start",
+): Promise<void> {
+	const workspace = await rereadForUpdate(ctx.client, prepared, ctx.signal);
+	announceUpdate(ctx.write, workspace);
+	if (serverFeatures.onSuccessBuild) {
+		await runBuild(ctx, workspace.id, oneBuildUpdate(workspace, parameters));
+		return;
+	}
+	const start = {
+		template_version_id: workspace.template_active_version_id,
 		rich_parameter_values: parameters,
 	};
-	const running = workspace.latest_build.status === "running";
+	await (workspace.latest_build.status === "running"
+		? restartWorkspace(ctx, workspace, start)
+		: runBuild(ctx, workspace.id, { transition: "start", ...start }));
+}
 
-	ctx.write(
+/** Re-reads the workspace and refuses the update if it changed since `prepared`. */
+async function rereadForUpdate(
+	client: Pick<BuildClient, "getWorkspace">,
+	prepared: Workspace,
+	signal?: AbortSignal,
+): Promise<Workspace> {
+	const current = await client.getWorkspace(prepared.id);
+	throwIfAborted(signal);
+	assertSameUpdate(prepared, current);
+	return current;
+}
+
+function announceUpdate(write: Write, workspace: Workspace): void {
+	const running = workspace.latest_build.status === "running";
+	write(
 		`${running ? "Restarting" : "Starting"} workspace with the updated template...\r\n`,
 	);
-	const build = await ctx.restClient.postWorkspaceBuild(
-		workspace.id,
-		running
-			? { transition: "stop", reason: BUILD_REASON, on_success: start }
-			: {
-					...start,
-					reason: BUILD_REASON,
-					// Pinning a follow-up build needs template update permission,
-					// so only a lone start can name the version.
-					template_version_id: workspace.template_active_version_id,
-				},
+}
+
+/**
+ * Stop and start in one build, so nothing can take the slot in between. A
+ * running workspace gets a stop that the server follows with the start.
+ */
+function oneBuildUpdate(
+	workspace: Workspace,
+	parameters: WorkspaceBuildParameter[],
+): BuildRequest {
+	const start = {
+		transition: "start",
+		rich_parameter_values: parameters,
+	} as const;
+	return workspace.latest_build.status === "running"
+		? { transition: "stop", on_success: start }
+		: {
+				...start,
+				// Pinning a follow-up build needs template update permission,
+				// so only a lone start can name the version.
+				template_version_id: workspace.template_active_version_id,
+			};
+}
+
+/** The update no longer does what was confirmed, so it must be confirmed again. */
+export function updateChangedError(
+	workspaceName: string,
+): WorkspaceUpdateCancelledError {
+	return new WorkspaceUpdateCancelledError(
+		`${workspaceName} changed while preparing its update. Run Update again to confirm the current operation.`,
 	);
-	return { ...workspace, latest_build: build };
+}
+
+/**
+ * Refuses an update of `current` that would no longer do what was prepared
+ * for `prepared`: the same start or restart, to the same version.
+ */
+function assertSameUpdate(prepared: Workspace, current: Workspace): void {
+	const running = current.latest_build.status === "running";
+	if (
+		running !== (prepared.latest_build.status === "running") ||
+		(!running && !STARTABLE_STATUSES.has(current.latest_build.status)) ||
+		current.template_active_version_id !== prepared.template_active_version_id
+	) {
+		throw updateChangedError(createWorkspaceIdentifier(current));
+	}
+}
+
+/** Queue a build for the extension, so the server records it as ours. */
+export function postBuild(
+	client: Pick<BuildClient, "postWorkspaceBuild">,
+	workspaceId: string,
+	request: BuildRequest,
+	signal?: AbortSignal,
+): Promise<WorkspaceBuild> {
+	throwIfAborted(signal);
+	return client.postWorkspaceBuild(workspaceId, {
+		...request,
+		reason: BUILD_REASON,
+	});
+}
+
+/**
+ * Queue a build and wait for it as `coder` does: stream its logs, warn when
+ * no provisioner can take it, and throw unless it succeeds. A build with an
+ * `on_success` follow-up waits for that one too. Returns the last build.
+ */
+export async function runBuild(
+	ctx: BuildContext,
+	workspaceId: string,
+	request: BuildRequest,
+): Promise<WorkspaceBuild> {
+	const build = await postBuild(ctx.client, workspaceId, request, ctx.signal);
+	await awaitBuild(ctx, build);
+	if (!request.on_success) {
+		return build;
+	}
+	const next = await nextBuild(ctx, build, FOLLOW_UP_POLLS);
+	if (!next) {
+		ctx.write(
+			`The server has not queued the ${request.on_success.transition} yet; it runs once it does.`,
+		);
+		return build;
+	}
+	await awaitBuild(ctx, next);
+	return next;
+}
+
+/**
+ * Start as `coder start` does: activate a dormant workspace, clean up a
+ * failed start, and start on the version its policies require.
+ */
+export async function startWorkspaceViaApi(
+	ctx: BuildContext,
+	workspace: Workspace,
+): Promise<WorkspaceBuild> {
+	if (workspace.dormant_at) {
+		ctx.write("Activating dormant workspace...");
+		throwIfAborted(ctx.signal);
+		await ctx.client.updateWorkspaceDormancy(workspace.id, false);
+	}
+	const last = workspace.latest_build;
+	if (last.status === "failed" && last.transition === "start") {
+		ctx.write("The last start build failed. Cleaning up before retrying...");
+		await runBuild(ctx, workspace.id, { transition: "stop" });
+	}
+	const active =
+		workspace.automatic_updates === "always" ||
+		workspace.template_require_active_version;
+	return runBuild(ctx, workspace.id, {
+		transition: "start",
+		template_version_id: active
+			? workspace.template_active_version_id
+			: last.template_version_id,
+	});
+}
+
+/**
+ * Restart with `start`, by default on the last build's version, refusing to
+ * start over a build that superseded the stop. Returns the start build.
+ */
+export async function restartWorkspace(
+	ctx: BuildContext,
+	workspace: Workspace,
+	start: Pick<BuildRequest, "template_version_id" | "rich_parameter_values"> = {
+		template_version_id: workspace.latest_build.template_version_id,
+	},
+): Promise<WorkspaceBuild> {
+	const stop = await runBuild(ctx, workspace.id, { transition: "stop" });
+	if (await nextBuild(ctx, stop)) {
+		throw new Error(
+			`${createWorkspaceIdentifier(workspace)} changed after stopping, so it was not started again, to avoid overwriting another operation.`,
+		);
+	}
+	return runBuild(ctx, workspace.id, { transition: "start", ...start });
+}
+
+/** The build that replaced `build` as the latest, read up to `polls` times a second apart. */
+async function nextBuild(
+	{ client, signal }: BuildContext,
+	build: WorkspaceBuild,
+	polls = 1,
+): Promise<WorkspaceBuild | undefined> {
+	for (let poll = 1; ; poll++) {
+		const { latest_build: latest } = await client.getWorkspace(
+			build.workspace_id,
+		);
+		throwIfAborted(signal);
+		if (latest.id !== build.id) {
+			return latest;
+		}
+		if (poll >= polls) {
+			return undefined;
+		}
+		await sleep(1000, undefined, { signal });
+	}
+}
+
+async function awaitBuild(
+	{ client, write, signal }: BuildContext,
+	build: WorkspaceBuild,
+): Promise<void> {
+	if (build.matched_provisioners?.count === 0) {
+		write("No provisioner matches this build's tags, so it stays pending.");
+	} else if (build.matched_provisioners?.available === 0) {
+		write("No matching provisioner is available yet, so the build waits.");
+	}
+	const logs = streamBuildLogs(client, write, build.id).catch(
+		(error: unknown) => {
+			write(`Could not stream the build logs: ${errToStr(error)}`);
+			return undefined;
+		},
+	);
+	try {
+		const job = await client.waitForBuild(build, signal);
+		if (job?.status !== "succeeded") {
+			throw new Error(
+				`The ${build.transition} build was ${job?.status ?? "not found"}`,
+			);
+		}
+	} finally {
+		// Close once open, so a stalled log handshake cannot hold up the result.
+		void logs.then((socket) => socket?.close());
+	}
 }
 
 /**
@@ -186,7 +419,7 @@ async function updateWorkspaceInOneBuild(
  * opens and rejects if the handshake fails.
  */
 export async function streamBuildLogs(
-	client: CoderApi,
+	client: Pick<CoderApi, "getAxiosInstance" | "watchBuildLogsByBuildId">,
 	onOutput: (line: string) => void,
 	buildId: string,
 ): Promise<OneWayWebSocket<ProvisionerJobLog>> {

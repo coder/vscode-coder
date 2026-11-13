@@ -17,6 +17,7 @@ import { Poller, type NextRun, type RetryOptions } from "./poller";
 
 import type {
 	Workspace,
+	WorkspaceAction,
 	WorkspaceFilter,
 	WorkspaceListStatus,
 	WorkspacesState,
@@ -29,6 +30,7 @@ import type { Logger } from "../../logging/logger";
 
 interface WorkspacesClient extends AgentMetadataClient {
 	readonly experimental: Pick<CoderApi["experimental"], "getChatsByWorkspace">;
+	getWorkspace(workspaceId: string): Promise<Workspace>;
 	getWorkspaces(
 		request: Parameters<CoderApi["getWorkspaces"]>[0],
 	): Promise<{ readonly workspaces: readonly Workspace[] }>;
@@ -38,6 +40,12 @@ const RETRY: RetryOptions = { initialDelayMs: 5_000, maxDelayMs: 60_000 };
 const LOADING: WorkspaceListStatus = { kind: "loading" };
 const READY: WorkspaceListStatus = { kind: "ready" };
 const MINUTE_MS = 60_000;
+
+/** A deleted workspace answers 404 or 410. */
+function isGone(error: unknown): boolean {
+	const status = isAxiosError(error) ? error.response?.status : undefined;
+	return status === HttpStatusCode.NOT_FOUND || status === HttpStatusCode.GONE;
+}
 
 function listedAgentIds(
 	requested: readonly string[],
@@ -73,6 +81,8 @@ export class WorkspaceStore implements vscode.Disposable {
 	/** Agents the webview is showing, listed or not. */
 	private requestedAgents: readonly string[] = [];
 	private lastEmitted: WorkspacesState | undefined;
+	/** Actions running, which may not have queued their build yet. */
+	private readonly acting = new Map<string, WorkspaceAction>();
 	private visible = false;
 	private disposed = false;
 
@@ -105,6 +115,9 @@ export class WorkspaceStore implements vscode.Disposable {
 			...(this.listedAt === undefined ? {} : { listedAt: this.listedAt }),
 			...(this.agentWorkspaceIds.length
 				? { agentWorkspaceIds: this.agentWorkspaceIds }
+				: {}),
+			...(this.acting.size
+				? { pendingActions: Object.fromEntries(this.acting) }
 				: {}),
 		};
 	}
@@ -147,6 +160,51 @@ export class WorkspaceStore implements vscode.Disposable {
 		return this.watchListedAgents();
 	}
 
+	/**
+	 * Report `action` as pending while `run` performs it and waits for its
+	 * builds, then re-read the workspace. Actions on other workspaces run
+	 * alongside; another one on this workspace is ignored until it ends.
+	 */
+	public async followAction(
+		workspaceId: string,
+		action: WorkspaceAction,
+		run: () => Promise<void>,
+	): Promise<void> {
+		if (this.disposed) {
+			return;
+		}
+		const pending = this.acting.get(workspaceId);
+		if (pending) {
+			this.logger.warn(
+				`Ignoring ${action} on workspace ${workspaceId} while ${pending} runs`,
+			);
+			return;
+		}
+		const session = this.sessionState.current;
+		this.acting.set(workspaceId, action);
+		this.publish();
+		try {
+			await run();
+		} finally {
+			// A session change or disposal already cleared the pending action.
+			const current = () =>
+				!this.disposed && this.sessionState.current === session;
+			// Read it before clearing, so the row never shows its old actions again.
+			const read = current() ? await this.reread(workspaceId) : undefined;
+			if (current()) {
+				this.acting.delete(workspaceId);
+				this.setList(
+					read === "gone"
+						? this.workspaces.filter((w) => w.id !== workspaceId)
+						: this.workspaces.map((w) =>
+								w.id === workspaceId ? (read ?? w) : w,
+							),
+					this.status,
+				);
+			}
+		}
+	}
+
 	/** List now, keeping the list on show and offering rejected filters again. */
 	public refresh(): Promise<void> {
 		// A hidden panel cannot re-validate a filter it offers again.
@@ -160,6 +218,7 @@ export class WorkspaceStore implements vscode.Disposable {
 
 	public dispose(): void {
 		this.disposed = true;
+		this.acting.clear();
 		for (const disposable of this.disposables) {
 			disposable.dispose();
 		}
@@ -260,6 +319,25 @@ export class WorkspaceStore implements vscode.Disposable {
 		}
 	}
 
+	/**
+	 * Read one workspace after its action. A list already in flight may
+	 * predate the action's builds, so it lands first and cannot undo this.
+	 */
+	private async reread(
+		workspaceId: string,
+	): Promise<Workspace | "gone" | undefined> {
+		await this.poller.settled;
+		try {
+			return await this.client.getWorkspace(workspaceId);
+		} catch (error) {
+			if (isGone(error)) {
+				return "gone";
+			}
+			this.logger.warn("Failed to refresh workspace:", error);
+			return undefined;
+		}
+	}
+
 	/** Show `workspaces` as loading, then list again. */
 	private reload(workspaces: readonly Workspace[] = []): Promise<void> {
 		this.setList(workspaces, LOADING);
@@ -302,6 +380,7 @@ export class WorkspaceStore implements vscode.Disposable {
 		this.agentLookupSupported = true;
 		this.agentWorkspaceIds = [];
 		this.requestedAgents = [];
+		this.acting.clear();
 		if (!this.filters.includes(this.filter)) {
 			this.filter = DEFAULT_WORKSPACE_FILTER;
 		}

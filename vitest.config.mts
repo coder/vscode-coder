@@ -23,6 +23,8 @@ export default defineConfig({
 					environment: "node",
 					globals: true,
 					setupFiles: ["test/unit/setup.ts"],
+					// Also fake `node:timers/promises`, which the extension sleeps with.
+					fakeTimers: { fakeNodeBuiltins: true },
 				},
 				resolve: {
 					alias: {

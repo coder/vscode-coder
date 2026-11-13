@@ -5,6 +5,15 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Fixed
+
+- When an update asks for parameters the new template version adds, and the
+  workspace starts, stops or gets a newer template version before you finish,
+  the update is skipped and the workspace starts on its current version, as
+  when you dismiss the prompt.
+
 ## [v1.18.0](https://github.com/coder/vscode-coder/releases/tag/v1.18.0) 2026-11-13
 
 ### Security
