@@ -5,79 +5,80 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
-## Unreleased
+## [v1.18.0](https://github.com/coder/vscode-coder/releases/tag/v1.18.0) 2026-11-13
 
-### Added
+### Security
 
-- The experimental Workspaces panel lists workspace agents, metadata and app
-  status. Updated times expose the full date and time on hover or keyboard focus.
+- Sessions, CLI credentials, SSH hosts, and the CLI binary cache are now stored
+  per deployment origin (scheme, host, and port) instead of per hostname, so a
+  session for `https://coder.example.com` is never sent to
+  `http://coder.example.com` or to another port on that host
+  ([GHSA-x24p-7cw4-4qm4](https://github.com/coder/vscode-coder/security/advisories/GHSA-x24p-7cw4-4qm4)).
+- The session token and `coder.headerCommand` headers are now sent only to the
+  deployment, never to a redirect target on another origin or to a
+  `coder.binarySource` on another host
+  ([GHSA-47qp-vp45-fhjf](https://github.com/coder/vscode-coder/security/advisories/GHSA-47qp-vp45-fhjf)).
+- `http://` deployments now use the OS keyring only with Coder CLI 2.39.0 or
+  later, so they can't read or sign out the session of an `https://`
+  deployment on the same host. With an older CLI, the session is stored in a
+  file and a notice says so
+  ([GHSA-g92h-wph3-v9pm](https://github.com/coder/vscode-coder/security/advisories/GHSA-g92h-wph3-v9pm)).
+- OAuth sign-in now rejects server metadata with endpoints on another origin or
+  under a workspace app path (`/@user/...`), and OAuth requests no longer
+  follow redirects to another origin
+  ([GHSA-frg9-9vj4-2v84](https://github.com/coder/vscode-coder/security/advisories/GHSA-frg9-9vj4-2v84)).
+
+> **Note:** HTTPS deployments on the default port keep their sessions. Any
+> other origin (`http://`, or a port other than 443) needs one new sign-in and
+> a fresh CLI download.
 
 ### Changed
 
-- **Breaking:** the minimum supported Coder server and Coder CLI versions are
-  both 2.29.0. Compatibility paths for older versions have been removed. The
-  server minimum is checked at login and during CLI binary resolution, with an
-  upgrade message for unsupported deployments. Known CLI versions below the
-  minimum are also rejected; unknown versions use baseline capabilities rather
-  than the server version. Later features depend on each component's version.
-
-- **Breaking:** the extension no longer follows a redirect to a different
-  scheme, host or port, and passes `--allow-redirects=false` to Coder CLI 2.38
-  or later even if `coder.globalFlags` or `CODER_ALLOW_REDIRECTS` allow
-  redirects. If your deployment URL redirects, for example after a domain move
-  or from `http://` to `https://`, sign in with the new URL. The error and a
-  notice at startup offer a **Sign In to …** button.
+- **Breaking:** Coder server 2.29.0 or later and Coder CLI 2.29.0 or later are
+  now required. Older versions show an upgrade message. See
+  [Compatibility](https://github.com/coder/vscode-coder#compatibility).
+- **Breaking:** redirects to a different scheme, host, or port are no longer
+  followed. With Coder CLI 2.38 or later, the extension also passes
+  `--allow-redirects=false`, overriding `coder.globalFlags` and
+  `CODER_ALLOW_REDIRECTS`. If your deployment URL redirects, for example after
+  a domain move or from `http://` to `https://`, sign in with the new URL using
+  the **Sign In to …** button.
 
 ### Fixed
 
-- Workspace, agent metadata and inbox watchers, and build and agent log
-  streams, no longer drop the first message a server sends right after
-  connecting, so metadata and log backlogs show up immediately. Watchers now
-  also report as connected, which resets their reconnect backoff.
-- A session saved for one URL is no longer used for a URL on the same host with
-  a different scheme or port.
-- Each deployment origin (scheme, host, and port) now has its own stored
-  session, CLI credentials, SSH hosts, and CLI binary cache, so two origins on
-  one host no longer overwrite each other or connect a window to the wrong
-  deployment. HTTPS on the default port is unchanged; other origins need one
-  new login and a fresh CLI download.
-- The session token and `coder.headerCommand` headers are now only sent to the
-  deployment, not to other servers such as a `coder.binarySource` host.
-- Sessions for `http://` deployments are saved to the OS keyring only with Coder
-  CLI 2.39 or later, which keeps them apart from `https://` sessions on the same
-  host. Signing in with an older CLI shows a notice.
-- Fix WebSocket connections that hung when the server never finished the
+- Workspace status, agent metadata, inbox notifications, and build and agent
+  logs no longer miss the first message the server sends after connecting.
+- WebSocket connections no longer hang when the server never completes the
   handshake. They now time out after 60 seconds and retry.
-- `coder.headerCommand` output with an invalid header name is now an error and
-  stops the connection. Names may only contain letters, digits, and
-  ``!#$%&'*+-.^_`|~``, so whitespace (including tabs and carriage returns) and
-  `:` are not allowed. An invisible byte order mark at the start of the output,
-  which some Windows editors and PowerShell add, is ignored.
-- OAuth endpoints off the deployment's origin or on a workspace app path are
-  now refused.
-- OAuth sign-in errors are now shown in a dialog, where server text cannot
-  become a link.
-- Notifications show startup script names, app status messages, and Coder CLI
-  errors as plain text. Template version messages and inbox titles keep
-  `http(s)://` links; other links show as plain text.
-- Pending HTTP requests are canceled when the Coder deployment or account changes,
-  but preserved during verified same-account token refreshes, including remote windows.
-- Canceled OAuth refreshes no longer overwrite replacement credentials or
-  reopen sign-in prompts.
-- Sign in to deployments that use TLS client certificates for transport only.
-  With `coder.tlsCertFile` or `coder.tlsKeyFile` set and no stored token that
-  works, the extension tries an empty token, which still signs you in where the
-  certificate authenticates you, and then CLI credentials and the OAuth or
-  token prompt. If the empty token replaces an expired session with a different
-  user, the extension asks first. Submitting the token prompt empty also signs
-  in where the deployment needs no token.
+- `coder.headerCommand` output with an invalid header name now stops the
+  connection with "Malformed line N from header command output". Header names
+  may contain only letters, digits, and ``!#$%&'*+-.^_`|~``. A leading byte
+  order mark, which PowerShell and some Windows editors add, is ignored.
+- OAuth sign-in errors now appear in a dialog, so server text can't become a
+  link.
+- Switching to another deployment or account now cancels the previous
+  session's pending requests, in local and remote windows, and canceled
+  requests no longer refresh the token or show a sign-in prompt. Token
+  refreshes for the same account keep pending requests running.
+- A canceled OAuth token refresh no longer overwrites newer credentials.
+- Setting `coder.tlsCertFile` or `coder.tlsKeyFile` no longer skips token
+  sign-in, so deployments that use client certificates only for the connection
+  can sign in. The extension now tries an empty token, which still works where
+  the certificate signs you in, then the Coder CLI's token, then the OAuth or
+  token prompt. It asks before signing you in as a different user. Submitting
+  the token prompt empty also signs you in where the deployment accepts an
+  empty token.
 - An empty session token is no longer passed to `coder login`, which waited a
-  minute for a pasted token and then failed the connection. It now clears the
-  token the extension stored for the Coder CLI, leaving the CLI's own session
-  and the keyring alone. **Remove All** in **Manage Credentials** no longer
-  signs out the Coder CLI's own session for a deployment with an empty token.
+  minute for a token and then failed the connection. **Remove All** in **Coder:
+  Manage Credentials** no longer signs the Coder CLI out of a deployment with
+  an empty token.
 - Clearing or dismissing the token prompt after entering a valid token no
   longer signs you in with an empty token.
+- Startup script names, app status messages, and Coder CLI errors now appear as
+  plain text in notifications. Template version messages and inbox titles keep
+  their `http(s)://` links; other links appear as plain text.
+- The **Open Settings** button for `coder.useKeyring` now appears only when the
+  CLI fails to store your credentials.
 
 ## [v1.17.2](https://github.com/coder/vscode-coder/releases/tag/v1.17.2) 2026-10-28
 
