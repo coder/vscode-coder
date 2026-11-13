@@ -19,6 +19,7 @@ import {
 import { format, formatISO } from "date-fns";
 import { useEffect, useEffectEvent, useState } from "react";
 
+import { AgentActions } from "./AgentActions";
 import {
 	AgentHover,
 	AgentRow,
@@ -37,6 +38,7 @@ export type WorkspaceCommands = Pick<
 	| "login"
 	| "openWorkspace"
 	| "viewInDashboard"
+	| "runAgentDiagnostic"
 	| "refresh"
 	| "setFilter"
 	| "watchAgents"
@@ -86,12 +88,7 @@ export function WorkspacesPanel({
 				tooltip: <AgentHover agent={agent} />,
 				label: <AgentRow agent={agent} />,
 				action: (
-					<WorkspaceActions
-						workspaceId={workspace.id}
-						name={name}
-						agentId={agent.id}
-						api={api}
-					/>
+					<AgentActions workspaceId={workspace.id} agent={agent} api={api} />
 				),
 				children: [
 					...appStatusNodes(agent),
@@ -127,14 +124,7 @@ export function WorkspacesPanel({
 					hasAgentChat={hasAgentChat}
 				/>
 			),
-			action: (
-				<WorkspaceActions
-					workspaceId={workspace.id}
-					name={name}
-					status={workspace.latest_build.status}
-					api={api}
-				/>
-			),
+			action: <WorkspaceActions workspace={workspace} api={api} />,
 			children: children.length
 				? children
 				: [{ id: `agents:${workspace.id}`, label: "No workspace agents" }],

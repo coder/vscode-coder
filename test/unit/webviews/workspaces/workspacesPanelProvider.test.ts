@@ -13,6 +13,7 @@ import {
 } from "@repo/mocks";
 import {
 	WorkspacesApi,
+	type AgentDiagnostic,
 	type CommandDef,
 	type OpenWorkspaceParams,
 	type WorkspacesState,
@@ -29,8 +30,6 @@ import {
 } from "../../../mocks/testHelpers";
 
 import type { Workspace } from "coder/site/src/api/typesGenerated";
-
-import type { Commands } from "@/commands";
 
 const alice = () =>
 	workspace({
@@ -60,10 +59,10 @@ function setup() {
 		login: vi.fn(() => Promise.resolve()),
 		openWorkspaceFromSidebar: vi.fn(() => Promise.resolve()),
 		openWorkspaceInDashboard: vi.fn(() => Promise.resolve()),
-	} satisfies Pick<
-		Commands,
-		"login" | "openWorkspaceFromSidebar" | "openWorkspaceInDashboard"
-	>;
+		pingWorkspace: vi.fn(() => Promise.resolve()),
+		speedTest: vi.fn(() => Promise.resolve()),
+		supportBundle: vi.fn(() => Promise.resolve()),
+	} satisfies ConstructorParameters<typeof WorkspacesPanelProvider>[2];
 	const provider = new WorkspacesPanelProvider(
 		vscode.Uri.file("/test"),
 		store,
@@ -277,6 +276,47 @@ describe("WorkspacesPanelProvider", () => {
 		expect(h.commands.openWorkspaceFromSidebar).toHaveBeenCalledWith(
 			expect.objectContaining({ name: "dev", owner_name: "alice" }),
 			agentName && expect.objectContaining({ name: agentName }),
+		);
+	});
+
+	interface DiagnosticCase {
+		diagnostic: AgentDiagnostic;
+		command: "pingWorkspace" | "speedTest" | "supportBundle";
+	}
+
+	it.each<DiagnosticCase>([
+		{ diagnostic: "ping", command: "pingWorkspace" },
+		{ diagnostic: "speedTest", command: "speedTest" },
+		{ diagnostic: "supportBundle", command: "supportBundle" },
+	])("runs $diagnostic on the agent", async ({ diagnostic, command }) => {
+		const h = await shown([alice()]);
+		await h.send(WorkspacesApi.runAgentDiagnostic, {
+			workspaceId: "workspace-1",
+			agentId: "agent-1",
+			diagnostic,
+		});
+		expect(h.commands[command]).toHaveBeenCalledWith({
+			workspace: expect.objectContaining({ id: "workspace-1" }),
+			agent: expect.objectContaining({ name: "main" }),
+		});
+	});
+
+	it("refuses a diagnostic on an agent of another workspace", async () => {
+		const bob = workspace({
+			id: "workspace-2",
+			name: "other",
+			owner_name: "bob",
+			agents: [agent({ id: "agent-2", name: "main" })],
+		});
+		const h = await shown([alice(), bob]);
+		await h.send(WorkspacesApi.runAgentDiagnostic, {
+			workspaceId: "workspace-1",
+			agentId: "agent-2",
+			diagnostic: "ping",
+		});
+		expect(h.commands.pingWorkspace).not.toHaveBeenCalled();
+		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+			"Agent is no longer available",
 		);
 	});
 
