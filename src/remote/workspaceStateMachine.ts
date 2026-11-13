@@ -300,7 +300,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			mode: this.startupMode,
 			status: workspace.latest_build.status,
 		});
-		await this.operationTelemetry.traceStart(() =>
+		await this.operationTelemetry.traceAction("start", () =>
 			startWorkspace(this.buildCliContext(workspace)),
 		);
 		this.logger.info(`${workspaceName} start initiated`);
@@ -323,7 +323,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			const parameters = await this.operationTelemetry.traceParametersPrompt(
 				() => collectUpdateParameters(this.workspaceClient, workspace),
 			);
-			const updated = await this.operationTelemetry.traceUpdate(() =>
+			const updated = await this.operationTelemetry.traceAction("update", () =>
 				updateWorkspace(this.buildCliContext(workspace), parameters),
 			);
 			this.workspace = updated;

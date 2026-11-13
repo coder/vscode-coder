@@ -75,10 +75,9 @@ export const WorkspaceSchema = z.looseObject({
 	}),
 });
 
-/** waitForBuild reads the identifiers to poll and the job status to stop. */
+/** waitForBuild polls by `id`, names `build_number` in errors, and stops on the job status. */
 export const WorkspaceBuildSchema = z.looseObject({
-	workspace_owner_name: z.string(),
-	workspace_name: z.string(),
+	id: z.string(),
 	build_number: z.number(),
 	job: z.looseObject({ status: z.string() }),
 });
@@ -106,7 +105,7 @@ export const VALIDATED_RESPONSES = [
 	["getTemplateVersionResources", WorkspaceResourcesSchema],
 	["getWorkspace", WorkspaceSchema],
 	["getWorkspaceByOwnerAndName", WorkspaceSchema],
-	["getWorkspaceBuildByNumber", WorkspaceBuildSchema],
+	["getWorkspaceBuild", WorkspaceBuildSchema],
 	["startWorkspace", WorkspaceBuildSchema],
 	["stopWorkspace", WorkspaceBuildSchema],
 ] as const satisfies ReadonlyArray<readonly [keyof CoderApi, z.ZodType]>;

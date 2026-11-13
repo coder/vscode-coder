@@ -19,12 +19,14 @@ import type { Workspace } from "coder/site/src/api/typesGenerated";
 import type { Commands } from "../../commands";
 import type { Logger } from "../../logging/logger";
 
+import type { WorkspaceActionRunner } from "./workspaceActionRunner";
 import type { WorkspaceStore } from "./workspaceStore";
 
 /** Methods whose failures warrant a dialog; others are logged only. */
 const USER_ACTION_METHODS: ReadonlySet<string> = new Set([
 	WorkspacesApi.openWorkspace.method,
 	WorkspacesApi.viewInDashboard.method,
+	WorkspacesApi.runWorkspaceAction.method,
 ]);
 
 /**
@@ -55,6 +57,10 @@ export class WorkspacesPanelProvider
 					this.requireWorkspace(p.workspaceId),
 					p.page,
 				),
+			runWorkspaceAction: (p) =>
+				this.store.followAction(p.workspaceId, p.action, () =>
+					this.actions.run(this.requireWorkspace(p.workspaceId), p.action),
+				),
 		}),
 	};
 
@@ -68,6 +74,7 @@ export class WorkspacesPanelProvider
 			Commands,
 			"login" | "openWorkspaceFromSidebar" | "openWorkspaceInDashboard"
 		>,
+		private readonly actions: Pick<WorkspaceActionRunner, "run">,
 		private readonly logger: Logger,
 	) {}
 

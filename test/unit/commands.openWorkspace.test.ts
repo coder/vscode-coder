@@ -141,3 +141,22 @@ describe("openWorkspace", () => {
 		expect(vscode.window.showQuickPick).not.toHaveBeenCalled();
 	});
 });
+
+describe("openWorkspaceInDashboard", () => {
+	it.each([
+		["workspace", ""],
+		["settings", "/settings"],
+		["sharing", "/settings/sharing"],
+	] as const)("opens the %s page", async (page, path) => {
+		const commands = createTestCommands({ baseUrl: BASE_URL });
+
+		await commands.openWorkspaceInDashboard(
+			createWorkspace({ owner_name: "foo", name: "bar" }),
+			page,
+		);
+
+		expect(vscode.env.openExternal).toHaveBeenCalledWith(
+			vscode.Uri.parse(`${BASE_URL}/@foo/bar${path}`),
+		);
+	});
+});

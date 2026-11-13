@@ -17,10 +17,10 @@ interface PromptSpec {
 	preselect?: string[];
 }
 
-/** Thrown when the user dismisses a parameter prompt. */
+/** Thrown when an update is dismissed or no longer matches its confirmation. */
 export class WorkspaceUpdateCancelledError extends Error {
-	constructor() {
-		super("Workspace update cancelled");
+	constructor(public readonly reason?: string) {
+		super(reason ?? "Workspace update cancelled");
 		this.name = "WorkspaceUpdateCancelledError";
 	}
 }

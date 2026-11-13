@@ -7,6 +7,9 @@ import {
 
 import type { WorkspaceBuildParameter } from "coder/site/src/api/typesGenerated";
 
+import type { WorkspaceAction } from "@repo/shared";
+
+import type { CallerProperties } from "../telemetry/event";
 import type { TelemetryReporter } from "../telemetry/reporter";
 import type { Span } from "../telemetry/span";
 
@@ -69,7 +72,7 @@ export function recordAgentState(
 }
 
 /**
- * Wraps user-initiated workspace operations (start, update) as traced spans.
+ * Wraps user-initiated workspace operations as traced spans.
  * Stateless; safe to construct per call site.
  */
 export class WorkspaceOperationTelemetry {
@@ -78,16 +81,16 @@ export class WorkspaceOperationTelemetry {
 		private readonly workspaceName: string,
 	) {}
 
-	public traceUpdate<T>(fn: () => Promise<T>): Promise<T> {
-		return this.telemetry.trace("workspace.update.triggered", fn, {
-			workspace_name: this.workspaceName,
-		});
-	}
-
-	public traceStart<T>(fn: () => Promise<T>): Promise<T> {
-		return this.telemetry.trace("workspace.start.triggered", fn, {
-			workspace_name: this.workspaceName,
-		});
+	/** Emits `workspace.<action>.triggered` around `fn`; a refused update is aborted. */
+	public traceAction<T>(
+		action: WorkspaceAction,
+		fn: () => Promise<T>,
+	): Promise<T> {
+		return this.traceCancellable(
+			`workspace.${action}.triggered`,
+			{ workspace_name: this.workspaceName },
+			fn,
+		);
 	}
 
 	public async traceStartPrompt(
@@ -109,33 +112,15 @@ export class WorkspaceOperationTelemetry {
 		);
 	}
 
-	/**
-	 * Records dismissal as `result: "aborted"`. The framework treats any throw
-	 * as `result: "error"`, so we return inside the span and rethrow outside.
-	 */
-	public async traceParametersPrompt(
+	/** Records dismissal as `result: "aborted"`. */
+	public traceParametersPrompt(
 		fn: () => Promise<WorkspaceBuildParameter[]>,
 	): Promise<WorkspaceBuildParameter[]> {
-		let cancelled: WorkspaceUpdateCancelledError | undefined;
-		const parameters = await this.traceUpdatePrompt(
-			"parameters",
-			async (span) => {
-				try {
-					return await fn();
-				} catch (error) {
-					if (error instanceof WorkspaceUpdateCancelledError) {
-						span.markAborted();
-						cancelled = error;
-						return [];
-					}
-					throw error;
-				}
-			},
+		return this.traceCancellable(
+			"workspace.update.prompted",
+			{ prompt: "parameters", workspace_name: this.workspaceName },
+			fn,
 		);
-		if (cancelled) {
-			throw cancelled;
-		}
-		return parameters;
 	}
 
 	public traceConfirmationPrompt<T>(
@@ -164,6 +149,41 @@ export class WorkspaceOperationTelemetry {
 			span.setProperty("action", action);
 			return value;
 		});
+	}
+
+	/**
+	 * Records a dismissed or refused update as `result: "aborted"`. The
+	 * framework treats any throw as an error, so the cancellation is returned
+	 * from the span and rethrown outside it.
+	 */
+	private async traceCancellable<T>(
+		eventName: string,
+		properties: CallerProperties,
+		fn: () => Promise<T>,
+	): Promise<T> {
+		const outcome = await this.telemetry.trace(
+			eventName,
+			async (
+				span,
+			): Promise<
+				{ value: T } | { cancelled: WorkspaceUpdateCancelledError }
+			> => {
+				try {
+					return { value: await fn() };
+				} catch (error) {
+					if (!(error instanceof WorkspaceUpdateCancelledError)) {
+						throw error;
+					}
+					span.markAborted();
+					return { cancelled: error };
+				}
+			},
+			properties,
+		);
+		if ("cancelled" in outcome) {
+			throw outcome.cancelled;
+		}
+		return outcome.value;
 	}
 
 	private traceUpdatePrompt<T>(

@@ -22,42 +22,43 @@ const newOps = (svc: TelemetryService, name: string) =>
 	new WorkspaceOperationTelemetry(svc, name);
 
 describe("WorkspaceOperationTelemetry", () => {
-	it.each([
-		{
-			method: "traceStart" as const,
-			event: "workspace.start.triggered",
-		},
-		{
-			method: "traceUpdate" as const,
-			event: "workspace.update.triggered",
-		},
-	])("$method emits $event with result=success", async ({ method, event }) => {
-		const { sink, instance: ops } = setup(newOps);
+	const ACTIONS = ["start", "stop", "restart", "update", "delete"] as const;
 
-		await ops[method](() => Promise.resolve());
+	it.each(ACTIONS)(
+		"traces %s as workspace.<action>.triggered with result=success",
+		async (action) => {
+			const { sink, instance: ops } = setup(newOps);
 
-		expect(sink.expectOne(event)).toMatchObject({
-			properties: { workspace_name: WORKSPACE_NAME, result: "success" },
-		});
-	});
+			await ops.traceAction(action, () => Promise.resolve());
 
-	it.each([
-		{
-			method: "traceStart" as const,
-			event: "workspace.start.triggered",
+			expect(sink.expectOne(`workspace.${action}.triggered`)).toMatchObject({
+				properties: { workspace_name: WORKSPACE_NAME, result: "success" },
+			});
 		},
-		{
-			method: "traceUpdate" as const,
-			event: "workspace.update.triggered",
-		},
-	])("$method emits result=error and rethrows", async ({ method, event }) => {
+	);
+
+	it("emits result=error and rethrows", async () => {
 		const { sink, instance: ops } = setup(newOps);
 		const boom = new Error("nope");
 
-		await expect(ops[method](() => Promise.reject(boom))).rejects.toBe(boom);
-		expect(sink.expectOne(event)).toMatchObject({
+		await expect(
+			ops.traceAction("stop", () => Promise.reject(boom)),
+		).rejects.toBe(boom);
+		expect(sink.expectOne("workspace.stop.triggered")).toMatchObject({
 			properties: { result: "error" },
 			error: { message: "nope" },
+		});
+	});
+
+	it("emits result=aborted and rethrows when an update is refused", async () => {
+		const { sink, instance: ops } = setup(newOps);
+		const refused = new WorkspaceUpdateCancelledError("changed");
+
+		await expect(
+			ops.traceAction("update", () => Promise.reject(refused)),
+		).rejects.toBe(refused);
+		expect(sink.expectOne("workspace.update.triggered")).toMatchObject({
+			properties: { result: "aborted" },
 		});
 	});
 

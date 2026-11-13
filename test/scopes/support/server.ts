@@ -5,13 +5,15 @@ import WebSocket from "ws";
 
 export const PASSWORD = "SomeLongPassw0rd!";
 
-/** A REST client whose errors name the request and the server's reason. */
-export function createClient(url: string, token?: string): Api {
+/** A plain REST client for setup. */
+export function createClient(url: string): Api {
 	const api = new Api();
 	api.setHost(url);
-	if (token) {
-		api.setSessionToken(token);
-	}
+	return withErrorDetail(api);
+}
+
+/** Makes `api`'s errors name the request and the server's reason. */
+export function withErrorDetail<T extends Api>(api: T): T {
 	api
 		.getAxiosInstance()
 		.interceptors.response.use(undefined, (error: unknown) => {

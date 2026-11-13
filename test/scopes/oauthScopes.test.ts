@@ -25,6 +25,7 @@ describe("OAuth scopes", () => {
 			);
 		}
 		deployment = await setUpDeployment(url);
+		return () => deployment.scoped.dispose();
 	});
 
 	it.each(["login", "refresh"] as const)(
