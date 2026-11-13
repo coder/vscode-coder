@@ -94,7 +94,7 @@ const TASKS_API =
 export const unprobedMethods: Partial<Record<ApiMethod, string>> = {
 	waitForBuild: "Polls `getWorkspaceBuild`",
 	updateWorkspaceDormancy:
-		"No token scope covers dormant workspaces; the server keeps `workspace_dormant` internal",
+		"No token scope covers dormant workspaces: coder/coder#32192",
 	startWorkspace: TASKS_API,
 	stopWorkspace: TASKS_API,
 	createTask: TASKS_API,
