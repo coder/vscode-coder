@@ -61,6 +61,19 @@
   requests no longer refresh the token or show a sign-in prompt. Token
   refreshes for the same account keep pending requests running.
 - A canceled OAuth token refresh no longer overwrites newer credentials.
+- Setting `coder.tlsCertFile` or `coder.tlsKeyFile` no longer skips token
+  sign-in, so deployments that use client certificates only for the connection
+  can sign in. The extension now tries an empty token, which still works where
+  the certificate signs you in, then the Coder CLI's token, then the OAuth or
+  token prompt. It asks before signing you in as a different user. Submitting
+  the token prompt empty also signs you in where the deployment accepts an
+  empty token.
+- An empty session token is no longer passed to `coder login`, which waited a
+  minute for a token and then failed the connection. **Remove All** in **Coder:
+  Manage Credentials** no longer signs the Coder CLI out of a deployment with
+  an empty token.
+- Clearing or dismissing the token prompt after entering a valid token no
+  longer signs you in with an empty token.
 - Startup script names, app status messages, and Coder CLI errors now appear as
   plain text in notifications. Template version messages and inbox titles keep
   their `http(s)://` links; other links appear as plain text.
