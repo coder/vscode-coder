@@ -25,7 +25,7 @@ import {
 	appStatusNodes,
 	metadataNodes,
 } from "./AgentRow";
-import { WorkspaceActions } from "./WorkspaceActions";
+import { OpenActions, WorkspaceActions } from "./WorkspaceActions";
 import { WorkspaceHover, WorkspaceRow } from "./WorkspaceRow";
 
 import type { Workspace, WorkspaceAgent, WorkspacesState } from "@repo/shared";
@@ -87,7 +87,12 @@ export function WorkspacesPanel({
 				tooltip: <AgentHover agent={agent} />,
 				label: <AgentRow agent={agent} />,
 				action: (
-					<WorkspaceActions workspace={workspace} agent={agent} api={api} />
+					<OpenActions
+						workspaceId={workspace.id}
+						agentId={agent.id}
+						name={name}
+						api={api}
+					/>
 				),
 				children: [
 					...appStatusNodes(agent),

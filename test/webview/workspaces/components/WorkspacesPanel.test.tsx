@@ -6,10 +6,14 @@ import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { agent, agentMetadata, app, appStatus, workspace } from "@repo/mocks";
 import {
 	WorkspacesApi,
+	type ViewInDashboardParams,
 	type Workspace,
+	type WorkspaceActionParams,
 	type WorkspacesState,
 } from "@repo/shared";
 import App from "@repo/workspaces/App";
+import { OpenActions } from "@repo/workspaces/components/WorkspaceActions";
+import { WorkspaceRow } from "@repo/workspaces/components/WorkspaceRow";
 
 import { renderWithQuery } from "../../render";
 import {
@@ -18,6 +22,25 @@ import {
 	stubElementBoxes,
 } from "../../ui/components/Tree/treeTestHelpers";
 import { captureSent, pushState } from "../ipc";
+
+vi.mock("@repo/workspaces/components/WorkspaceRow", async (importOriginal) => {
+	const actual =
+		await importOriginal<
+			typeof import("@repo/workspaces/components/WorkspaceRow")
+		>();
+	return { ...actual, WorkspaceRow: vi.fn(actual.WorkspaceRow) };
+});
+
+vi.mock(
+	"@repo/workspaces/components/WorkspaceActions",
+	async (importOriginal) => {
+		const actual =
+			await importOriginal<
+				typeof import("@repo/workspaces/components/WorkspaceActions")
+			>();
+		return { ...actual, OpenActions: vi.fn(actual.OpenActions) };
+	},
+);
 
 const ALPHA = workspace({
 	id: "ws-alpha",
@@ -245,13 +268,20 @@ describe("WorkspacesPanel", () => {
 		expect(enabledLabels(menu)).toEqual(items);
 	});
 
-	interface SendCase {
+	type SendCase = {
 		name: string;
 		build: Partial<Workspace["latest_build"]>;
 		item: string;
-		method: string;
-		params: object;
-	}
+	} & (
+		| {
+				method: typeof WorkspacesApi.runWorkspaceAction.method;
+				params: WorkspaceActionParams;
+		  }
+		| {
+				method: typeof WorkspacesApi.viewInDashboard.method;
+				params: ViewInDashboardParams;
+		  }
+	);
 
 	it.each<SendCase>([
 		{
@@ -319,11 +349,34 @@ describe("WorkspacesPanel", () => {
 
 		const menu = await openMenu(user, "alpha");
 		expect(menu).toHaveAccessibleDescription(
-			"Ping, Speed Test and Support Bundle are not supported by this panel yet.",
+			"Stopping. Actions that change the workspace are unavailable until it finishes. Ping, Speed Test and Support Bundle are not supported by this panel yet.",
 		);
 		expect(enabledLabels(menu)).toEqual(["Share", "Settings"]);
 		await user.click(within(menu).getByRole("menuitem", { name: "Stop" }));
 		expect(drain(WorkspacesApi.runWorkspaceAction.method)).toEqual([]);
+	});
+
+	it("renders again only the rows whose own content changed", async () => {
+		const { user } = await setup();
+		await user.click(row("alpha"));
+		await screen.findByRole("button", { name: "Open dev in VS Code" });
+		vi.mocked(WorkspaceRow).mockClear();
+		vi.mocked(OpenActions).mockClear();
+
+		await pushState({
+			...STATE,
+			workspaces: [
+				{ ...ALPHA, last_used_at: "2024-02-01T00:00:00Z" },
+				// Each push arrives as a fresh copy, as a message does.
+				JSON.parse(JSON.stringify(BETA)) as Workspace,
+			],
+		});
+
+		// Alpha's agents are unchanged, so their rows are kept too.
+		expect(
+			vi.mocked(WorkspaceRow).mock.calls.map(([props]) => props.workspace.name),
+		).toEqual(["alpha"]);
+		expect(OpenActions).not.toHaveBeenCalled();
 	});
 
 	it("describes workspaces, workspace agents and metadata on hover", async () => {
