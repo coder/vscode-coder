@@ -49,7 +49,7 @@ describe("useWorkspaces", () => {
 		]);
 	});
 
-	it("keeps unchanged workspaces by identity, so only changed rows render", async () => {
+	it("keeps unchanged workspaces by identity across pushes", async () => {
 		const { result } = setup();
 		const alpha = workspace({ id: "alpha" });
 		const beta = workspace({ id: "beta" });

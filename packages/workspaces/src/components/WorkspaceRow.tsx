@@ -2,16 +2,9 @@ import { Spinner, StatusPill } from "@repo/ui";
 
 import { RowHover } from "./RowHover";
 import { formatStatus, StatusDot } from "./StatusDot";
+import { ACTION_LABELS } from "./WorkspaceActions";
 
 import type { Workspace, WorkspaceAction } from "@repo/shared";
-
-const PENDING_LABELS: Readonly<Record<WorkspaceAction, string>> = {
-	start: "Starting",
-	stop: "Stopping",
-	restart: "Restarting",
-	update: "Updating",
-	delete: "Deleting",
-};
 
 /** Health is only meaningful for the build that is running. */
 function workspaceStatus(workspace: Workspace): string {
@@ -33,7 +26,7 @@ export function WorkspaceHover({
 	const template =
 		workspace.template_display_name || workspace.template_name || "Unknown";
 	const status = pendingAction
-		? PENDING_LABELS[pendingAction]
+		? ACTION_LABELS[pendingAction].pending
 		: formatStatus(workspaceStatus(workspace));
 	return (
 		<RowHover
@@ -63,7 +56,7 @@ export function WorkspaceRow({
 	return (
 		<span className="workspace-label">
 			{pendingAction ? (
-				<Spinner size="small" label={PENDING_LABELS[pendingAction]} />
+				<Spinner size="small" label={ACTION_LABELS[pendingAction].pending} />
 			) : (
 				<StatusDot status={workspaceStatus(workspace)} />
 			)}

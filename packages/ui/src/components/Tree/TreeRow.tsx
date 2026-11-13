@@ -87,7 +87,7 @@ export const TreeRow = memo(function TreeRow({
 }, sameRowProps);
 
 /**
- * Compares what the rows render, so new fields are compared too. A node's
+ * Compares every field a row renders, whatever fields a node has. A node's
  * `children` are left out: the row renders only its own node, and
  * `expanded` already says whether they show.
  */
