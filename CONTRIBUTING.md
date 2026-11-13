@@ -8,8 +8,8 @@ guides cover the rest; they serve humans and coding agents alike, and
   naming, and test placement.
 - [Architecture](docs/ARCHITECTURE.md): how opening a workspace works, SSH
   config management, Windows permissions and connection logging.
-- [Testing](docs/TESTING.md): unit, webview and integration tests, and
-  testing the open flow by hand.
+- [Testing](docs/TESTING.md): unit, webview, integration and OAuth scope
+  tests, and testing the open flow by hand.
 - [Tooling](docs/TOOLING.md): linting, formatting, TypeScript, Node.js and
   dependency upgrades.
 - [Webviews](packages/AGENTS.md): React, `@repo/ui`, Storybook and the

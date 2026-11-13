@@ -1,0 +1,143 @@
+import path from "node:path";
+import ts from "typescript";
+import { beforeAll, describe, expect, it } from "vitest";
+
+import { apiProbes, unprobedMethods } from "../scopes/probes";
+
+const ROOT = path.resolve(import.meta.dirname, "../..");
+
+const TYPE_CHECK_TIMEOUT_MS = 60_000;
+
+/**
+ * Returns the CoderApi methods that code under src/ calls, through CoderApi or
+ * any type it satisfies, like `Api` or `Pick<CoderApi, ...>`. Only methods
+ * returning a promise count, since only those send requests or open streams.
+ */
+function findApiMethodsUsedBySource(): Set<string> {
+	const config = ts.getParsedCommandLineOfConfigFile(
+		path.join(ROOT, "tsconfig.json"),
+		{},
+		{ ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => undefined },
+	);
+	if (!config) {
+		throw new Error("Could not read tsconfig.json");
+	}
+	const program = ts.createProgram(config.fileNames, config.options);
+	const checker = program.getTypeChecker();
+	const coderApi = getCoderApiType(program, checker);
+	const methods = new Set(
+		checker
+			.getPropertiesOfType(coderApi)
+			.filter((method) => isPublicAsyncMethod(checker, method))
+			.map((method) => method.name),
+	);
+
+	const used = new Set<string>();
+	const visit = (node: ts.Node): void => {
+		const reference = getMemberReference(node);
+		if (
+			reference &&
+			methods.has(reference.name) &&
+			checker.isTypeAssignableTo(
+				coderApi,
+				// Resolves `this` inside CoderApi to its class type.
+				checker.getApparentType(checker.getTypeAtLocation(reference.object)),
+			)
+		) {
+			used.add(reference.name);
+		}
+		ts.forEachChild(node, visit);
+	};
+	const srcDir = path.join(ROOT, "src");
+	for (const file of program.getSourceFiles()) {
+		if (path.resolve(file.fileName).startsWith(srcDir)) {
+			visit(file);
+		}
+	}
+	return used;
+}
+
+/**
+ * The member name in `api.method` or `const { method } = api`, and the node
+ * that owns it.
+ */
+function getMemberReference(
+	node: ts.Node,
+): { name: string; object: ts.Node } | undefined {
+	if (ts.isPropertyAccessExpression(node)) {
+		return { name: node.name.text, object: node.expression };
+	}
+	if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
+		const property = node.propertyName ?? node.name;
+		if (ts.isIdentifier(property)) {
+			return { name: property.text, object: node.parent };
+		}
+	}
+	return undefined;
+}
+
+function getCoderApiType(
+	program: ts.Program,
+	checker: ts.TypeChecker,
+): ts.Type {
+	const file = program.getSourceFile(path.join(ROOT, "src/api/coderApi.ts"));
+	const declaration = file?.statements.find(
+		(statement): statement is ts.ClassDeclaration =>
+			ts.isClassDeclaration(statement) && statement.name?.text === "CoderApi",
+	);
+	if (!declaration) {
+		throw new Error("CoderApi class not found");
+	}
+	return checker.getTypeAtLocation(declaration);
+}
+
+function isPublicAsyncMethod(
+	checker: ts.TypeChecker,
+	method: ts.Symbol,
+): boolean {
+	const declaration = method.declarations?.[0];
+	if (
+		!declaration ||
+		ts.getCombinedModifierFlags(declaration) &
+			ts.ModifierFlags.NonPublicAccessibilityModifier
+	) {
+		return false;
+	}
+	return checker
+		.getTypeOfSymbol(method)
+		.getCallSignatures()
+		.some(
+			(signature) =>
+				checker.getReturnTypeOfSignature(signature).getSymbol()?.name ===
+				"Promise",
+		);
+}
+
+describe("OAuth scope probes", () => {
+	const probed = new Set(
+		Object.keys(apiProbes).map((key) => key.split(" ")[0]),
+	);
+	let used: Set<string>;
+
+	beforeAll(() => {
+		used = findApiMethodsUsedBySource();
+	}, TYPE_CHECK_TIMEOUT_MS);
+
+	it("probes every Coder API method the extension calls", () => {
+		const unprobed = [...used].filter(
+			(method) => !probed.has(method) && !(method in unprobedMethods),
+		);
+		expect(
+			unprobed,
+			"Add a probe to `apiProbes` in test/scopes/probes.ts and run `pnpm test:scopes`, or list the method in `unprobedMethods` with the reason it needs none",
+		).toEqual([]);
+	});
+
+	it("only lists methods the extension still calls", () => {
+		const listed = [...probed, ...Object.keys(unprobedMethods)];
+		expect(
+			listed.filter((method) => !used.has(method)),
+			"Remove these from test/scopes/probes.ts",
+		).toEqual([]);
+	});
+});
