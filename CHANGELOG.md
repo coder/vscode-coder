@@ -9,58 +9,57 @@
 
 ### Security
 
-- Sessions, CLI credentials, SSH hosts, and the CLI binary cache are now kept
-  per deployment origin (scheme, host, and port) instead of per hostname. A
-  session stored for `https://coder.example.com` is no longer sent to
-  `http://coder.example.com` or another port on the same host
+- Sessions, CLI credentials, SSH hosts, and the CLI binary cache are now stored
+  per deployment origin (scheme, host, and port) instead of per hostname, so a
+  session for `https://coder.example.com` is never sent to
+  `http://coder.example.com` or to another port on that host
   ([GHSA-x24p-7cw4-4qm4](https://github.com/coder/vscode-coder/security/advisories/GHSA-x24p-7cw4-4qm4)).
 - The session token and `coder.headerCommand` headers are now sent only to the
-  deployment, not to redirect targets on other origins or to a
+  deployment, never to a redirect target on another origin or to a
   `coder.binarySource` on another host
   ([GHSA-47qp-vp45-fhjf](https://github.com/coder/vscode-coder/security/advisories/GHSA-47qp-vp45-fhjf)).
-- `http://` deployments use the OS keyring only with Coder CLI 2.39 or later,
-  so they can no longer read or sign out the session of an `https://`
+- `http://` deployments now use the OS keyring only with Coder CLI 2.39.0 or
+  later, so they can't read or sign out the session of an `https://`
   deployment on the same host. With an older CLI, the session is stored in a
   file and a notice says so
   ([GHSA-g92h-wph3-v9pm](https://github.com/coder/vscode-coder/security/advisories/GHSA-g92h-wph3-v9pm)).
-- OAuth sign-in now rejects server metadata whose endpoints are on another
-  origin or under a workspace app path (`/@user/...`), and OAuth requests no
-  longer follow redirects to another origin
+- OAuth sign-in now rejects server metadata with endpoints on another origin or
+  under a workspace app path (`/@user/...`), and OAuth requests no longer
+  follow redirects to another origin
   ([GHSA-frg9-9vj4-2v84](https://github.com/coder/vscode-coder/security/advisories/GHSA-frg9-9vj4-2v84)).
 
-> **Note:** HTTPS deployments on the default port keep their sessions.
-> Deployments on any other origin (`http://`, or a port other than 443) need
-> one new sign-in and a fresh CLI download.
+> **Note:** HTTPS deployments on the default port keep their sessions. Any
+> other origin (`http://`, or a port other than 443) needs one new sign-in and
+> a fresh CLI download.
 
 ### Changed
 
-- **Breaking:** requires Coder server 2.29.0 or later and Coder CLI 2.29.0 or
-  later. Older deployments show an upgrade message at sign-in. See
+- **Breaking:** Coder server 2.29.0 or later and Coder CLI 2.29.0 or later are
+  now required. Older versions show an upgrade message. See
   [Compatibility](https://github.com/coder/vscode-coder#compatibility).
-- **Breaking:** the extension no longer follows redirects to a different
-  scheme, host, or port, and passes `--allow-redirects=false` to Coder CLI 2.38
-  or later, even if `coder.globalFlags` or `CODER_ALLOW_REDIRECTS` allow
-  redirects. If your deployment URL redirects, for example after a domain move
-  or from `http://` to `https://`, sign in with the new URL. The error offers a
-  **Sign In to …** button.
+- **Breaking:** redirects to a different scheme, host, or port are no longer
+  followed. With Coder CLI 2.38 or later, the extension also passes
+  `--allow-redirects=false`, overriding `coder.globalFlags` and
+  `CODER_ALLOW_REDIRECTS`. If your deployment URL redirects, for example after
+  a domain move or from `http://` to `https://`, sign in with the new URL using
+  the **Sign In to …** button.
 
 ### Fixed
 
 - Workspace status, agent metadata, inbox notifications, and build and agent
-  logs no longer miss the first message after connecting, so they show up
-  right away.
+  logs no longer miss the first message the server sends after connecting.
 - WebSocket connections no longer hang when the server never completes the
-  handshake. They time out after 60 seconds and retry.
-- `coder.headerCommand` output with an invalid header name now fails with
-  "Malformed line N from header command output" instead of sending a header
-  that differs from the one logged. A byte order mark at the start of the
-  output, which PowerShell and some Windows editors add, is ignored.
-- OAuth sign-in errors now appear in a dialog, so text from the server can't
-  show up as a link.
-- Notifications show startup script names, app status messages, and Coder CLI
-  errors as plain text. Template version messages and inbox titles keep their
-  `http(s)://` links; other links show as plain text.
-- The **Open Settings** hint for `coder.useKeyring` now appears only when the
+  handshake. They now time out after 60 seconds and retry.
+- `coder.headerCommand` output with an invalid header name now stops the
+  connection with "Malformed line N from header command output". Header names
+  may contain only letters, digits, and ``!#$%&'*+-.^_`|~``. A leading byte
+  order mark, which PowerShell and some Windows editors add, is ignored.
+- OAuth sign-in errors now appear in a dialog, so server text can't become a
+  link.
+- Startup script names, app status messages, and Coder CLI errors now appear as
+  plain text in notifications. Template version messages and inbox titles keep
+  their `http(s)://` links; other links appear as plain text.
+- The **Open Settings** button for `coder.useKeyring` now appears only when the
   CLI fails to store your credentials.
 
 ## [v1.17.2](https://github.com/coder/vscode-coder/releases/tag/v1.17.2) 2026-10-28
