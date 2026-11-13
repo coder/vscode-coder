@@ -1,7 +1,7 @@
 import { vol } from "memfs";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { createHttpAgent } from "@/api/httpAgent";
+import { createHttpAgent, usesClientCertificate } from "@/api/httpAgent";
 
 import {
 	clearProxyEnv,
@@ -47,6 +47,29 @@ async function proxyForUrl(
 	const getProxy = await createProxyResolver(settings);
 	return await getProxy(url);
 }
+
+describe("usesClientCertificate", () => {
+	it.each<{ name: string; settings: Settings; expected: boolean }>([
+		{ name: "no certificate", settings: {}, expected: false },
+		{
+			name: "a blank cert file",
+			settings: { "coder.tlsCertFile": "  " },
+			expected: false,
+		},
+		{
+			name: "a cert file",
+			settings: { "coder.tlsCertFile": "/cert.pem" },
+			expected: true,
+		},
+		{
+			name: "a key file",
+			settings: { "coder.tlsKeyFile": "/key.pem" },
+			expected: true,
+		},
+	])("returns $expected with $name", ({ settings, expected }) => {
+		expect(usesClientCertificate(config(settings))).toBe(expected);
+	});
+});
 
 describe("createHttpAgent", () => {
 	beforeEach(() => {

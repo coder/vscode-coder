@@ -3,6 +3,7 @@ import { getErrorMessage } from "coder/site/src/api/errors";
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
+import { usesClientCertificate } from "../api/httpAgent";
 import { HttpStatusCode } from "../api/httpStatusCode";
 import { openInBrowser, toSafeHost } from "../common/url";
 import { CertificateError } from "../error/certificateError";
@@ -343,16 +344,23 @@ export class LoginCoordinator implements vscode.Disposable {
 			}
 		}
 
-		this.logger.debug("Trying empty token");
-		const empty = await this.tryFallbackToken(ctx, {
-			token: "",
-			method: "empty_token",
-			title: "Sign in without a session token?",
-			detail: (username) =>
-				`The deployment signs you in as "${username}" without a token`,
-		});
-		if (empty) {
-			return empty;
+		// Only mTLS deployments sign in without a token, unless the stored session
+		// already uses an empty one.
+		if (
+			stored?.token === "" ||
+			usesClientCertificate(vscode.workspace.getConfiguration())
+		) {
+			this.logger.debug("Trying empty token");
+			const empty = await this.tryFallbackToken(ctx, {
+				token: "",
+				method: "empty_token",
+				title: "Sign in without a session token?",
+				detail: (username) =>
+					`The deployment signs you in as "${username}" without a token`,
+			});
+			if (empty) {
+				return empty;
+			}
 		}
 
 		const cliToken = await this.readCliToken(deployment.url);
@@ -483,11 +491,12 @@ export class LoginCoordinator implements vscode.Disposable {
 					"oauth",
 					await this.loginWithOAuth(ctx.deployment),
 				);
-			case "legacy":
-				return withLoginMethod(
-					"cli_token",
-					await this.loginWithToken(ctx.client),
-				);
+			case "legacy": {
+				const result = await this.loginWithToken(ctx.client);
+				const method =
+					result.success && result.token === "" ? "empty_token" : "cli_token";
+				return withLoginMethod(method, result);
+			}
 			case undefined:
 				return { success: false, reason: "user_dismissed" };
 		}
@@ -580,50 +589,45 @@ export class LoginCoordinator implements vscode.Disposable {
 		// they may already have a token or already have the page opened.
 		await openInBrowser(url, "/cli-auth");
 
-		// For token auth, start with the existing token in the prompt or the last
-		// used token.  Once submitted, if there is a failure we will keep asking
-		// the user for a new token until they quit.
-		let user: User | undefined;
-		const validatedToken = await vscode.window.showInputBox({
-			title: "Coder API Key",
-			password: true,
-			placeHolder: "Paste your API key.",
-			ignoreFocusOut: true,
-			validateInput: async (value) => {
-				if (!value) {
-					return null;
-				}
-				client.setSessionToken(value);
-				try {
-					user = await client.getAuthenticatedUser();
-					return null;
-				} catch (err) {
-					// For certificate errors show both a notification and add to the
-					// text under the input box, since users sometimes miss the
-					// notification.
-					if (err instanceof CertificateError) {
-						void err.showNotification();
-						return {
-							message: err.detail,
-							severity: vscode.InputBoxValidationSeverity.Error,
-						};
+		// Tokens are checked as typed, so only a valid one can be submitted. An
+		// empty token is checked on submit instead, and on failure the prompt
+		// reopens showing the error, which then blocks submitting it again.
+		let emptyTokenError: vscode.InputBoxValidationMessage | undefined;
+		for (;;) {
+			let validated: { token: string; user: User } | undefined;
+			const submitted = await vscode.window.showInputBox({
+				title: "Coder API Key",
+				password: true,
+				placeHolder: "Paste your API key.",
+				ignoreFocusOut: true,
+				validateInput: async (value) => {
+					if (!value) {
+						return emptyTokenError ?? null;
 					}
-					// This could be something like the header command erroring or an
-					// invalid session token.
-					const message = getErrorMessage(err, "no response from the server");
-					return {
-						message: "Failed to authenticate: " + message,
-						severity: vscode.InputBoxValidationSeverity.Error,
-					};
-				}
-			},
-		});
+					const result = await checkToken(client, value);
+					if ("user" in result) {
+						validated = { token: value, user: result.user };
+						return null;
+					}
+					return result;
+				},
+			});
 
-		if (user && validatedToken) {
-			return { success: true, user, token: validatedToken };
+			if (submitted === undefined) {
+				return { success: false, reason: "user_dismissed" };
+			}
+			if (submitted) {
+				// A user validated for an earlier value must not sign in this one.
+				return validated?.token === submitted
+					? { success: true, user: validated.user, token: submitted }
+					: { success: false, reason: "user_dismissed" };
+			}
+			const result = await checkToken(client, "");
+			if ("user" in result) {
+				return { success: true, user: result.user, token: "" };
+			}
+			emptyTokenError = result;
 		}
-
-		return { success: false, reason: "user_dismissed" };
 	}
 
 	/**
@@ -686,4 +690,32 @@ function withLoginMethod(
 	result: LoginAttemptResult,
 ): LoginResult {
 	return { ...result, method };
+}
+
+/** The token's user, or the error to show under the token prompt. */
+async function checkToken(
+	client: CoderApi,
+	token: string,
+): Promise<{ user: User } | vscode.InputBoxValidationMessage> {
+	client.setSessionToken(token);
+	try {
+		return { user: await client.getAuthenticatedUser() };
+	} catch (err) {
+		// For certificate errors show both a notification and add to the text
+		// under the input box, since users sometimes miss the notification.
+		if (err instanceof CertificateError) {
+			void err.showNotification();
+			return {
+				message: err.detail,
+				severity: vscode.InputBoxValidationSeverity.Error,
+			};
+		}
+		// This could be something like the header command erroring or an invalid
+		// session token.
+		const message = getErrorMessage(err, "no response from the server");
+		return {
+			message: "Failed to authenticate: " + message,
+			severity: vscode.InputBoxValidationSeverity.Error,
+		};
+	}
 }

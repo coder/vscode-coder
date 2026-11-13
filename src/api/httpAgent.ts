@@ -7,6 +7,15 @@ import { LocalProxySettings, type LocalProxySetting } from "../settings/proxy";
 
 import { getProxyForUrl, joinNoProxy } from "./proxy";
 
+/** Whether requests carry a TLS client certificate (mTLS). */
+export function usesClientCertificate(
+	cfg: Pick<WorkspaceConfiguration, "get">,
+): boolean {
+	return ["coder.tlsCertFile", "coder.tlsKeyFile"].some(
+		(key) => String(cfg.get(key) ?? "").trim() !== "",
+	);
+}
+
 /**
  * Create a new HTTP agent based on the current VS Code settings.
  * Configures proxy, TLS certificates, and security options.

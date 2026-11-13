@@ -128,7 +128,7 @@ function createTestContext(telemetry?: TelemetryService) {
 	vi.mocked(maybeAskAuthMethod).mockResolvedValue("legacy");
 	mockGetBuildInfo.mockResolvedValue({ version: "2.29.0" });
 
-	new MockConfigurationProvider();
+	const config = new MockConfigurationProvider();
 	// MockUserInteraction sets up vscode.window dialogs and input boxes
 	const userInteraction = new MockUserInteraction();
 	// MockProgressReporter sets up vscode.window.withProgress to execute callbacks
@@ -180,8 +180,9 @@ function createTestContext(telemetry?: TelemetryService) {
 		return user;
 	};
 
-	/** A deployment that needs no token, for example one using mTLS. */
+	/** A deployment that needs no token since it uses mTLS. */
 	const mockTokenlessAuth = (user = createMockUser()) => {
+		config.set("coder.tlsCertFile", "/cert.pem");
 		mockGetAuthenticatedUser.mockResolvedValue(user);
 		return user;
 	};
@@ -196,6 +197,7 @@ function createTestContext(telemetry?: TelemetryService) {
 	};
 
 	return {
+		config,
 		mockAdapter,
 		mockGetAuthenticatedUser,
 		userInteraction,
@@ -374,7 +376,7 @@ describe("LoginCoordinator", () => {
 				user,
 				token: "new-token",
 			});
-			expect(mockGetAuthenticatedUser).toHaveBeenNthCalledWith(1, "");
+			expect(mockGetAuthenticatedUser).not.toHaveBeenCalledWith("");
 
 			// Verify new token was persisted
 			const auth = await secretsManager.getSessionAuth(TEST_HOSTNAME);
@@ -438,6 +440,7 @@ describe("LoginCoordinator", () => {
 	describe("token prompt", () => {
 		it.each([
 			{ name: "cleared", submitted: "" },
+			{ name: "changed", submitted: "other-token" },
 			{ name: "dismissed", submitted: undefined },
 		])(
 			"does not sign in when a validated token is $name",
@@ -459,9 +462,83 @@ describe("LoginCoordinator", () => {
 				expect(result).toMatchObject({ success: false });
 			},
 		);
+
+		it("signs in with an empty token only once it is submitted", async () => {
+			const { coordinator, userInteraction } = createTestContext();
+			const user = createMockUser();
+			mockGetAuthenticatedUser.mockResolvedValue(user);
+			userInteraction.setInputBoxValue("");
+
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+			});
+
+			expect(result).toEqual({
+				success: true,
+				method: "empty_token",
+				user,
+				token: "",
+			});
+			expect(mockGetAuthenticatedUser).toHaveBeenCalledExactlyOnceWith("");
+		});
+
+		it("reopens with the error when a submitted empty token is rejected", async () => {
+			const { coordinator, mockSuccessfulAuth } = createTestContext();
+			mockSuccessfulAuth();
+			let reopenedError: unknown;
+			vi.mocked(vscode.window.showInputBox)
+				.mockResolvedValueOnce("")
+				.mockImplementationOnce(async (options) => {
+					reopenedError = await options?.validateInput?.("");
+					return undefined;
+				});
+
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+			});
+
+			expect(result).toMatchObject({ success: false });
+			expect(reopenedError).toMatchObject({
+				message: expect.stringContaining("Failed to authenticate"),
+			});
+			expect(mockGetAuthenticatedUser).toHaveBeenCalledExactlyOnceWith("");
+		});
 	});
 
 	describe("empty-token authentication", () => {
+		it("is not tried without a client certificate", async () => {
+			const { coordinator, userInteraction } = createTestContext();
+			mockGetAuthenticatedUser.mockResolvedValue(createMockUser());
+			userInteraction.setInputBoxValue(undefined);
+
+			await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+			});
+
+			expect(mockGetAuthenticatedUser).not.toHaveBeenCalled();
+			expect(maybeAskAuthMethod).toHaveBeenCalled();
+		});
+
+		it("re-checks a stored empty token without a client certificate", async () => {
+			const { secretsManager, coordinator } = createTestContext();
+			mockGetAuthenticatedUser.mockResolvedValue(createMockUser());
+			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
+				url: TEST_URL,
+				token: "",
+			});
+
+			const result = await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+			});
+
+			expect(result).toMatchObject({ success: true, method: "empty_token" });
+			expect(maybeAskAuthMethod).not.toHaveBeenCalled();
+		});
+
 		it("signs in with an empty token when no session is stored", async () => {
 			const { secretsManager, coordinator, mockTokenlessAuth } =
 				createTestContext();
@@ -1052,6 +1129,7 @@ describe("LoginCoordinator", () => {
 				(username) =>
 					`The deployment signs you in as "${username}" without a token`,
 			);
+			ctx.config.set("coder.tlsCertFile", "/cert.pem");
 			return {
 				...ctx,
 				login: () =>
@@ -1150,12 +1228,7 @@ describe("LoginCoordinator", () => {
 		it("adopts the CLI session without a prompt when it belongs to the same user", async () => {
 			const t = createCliTestContext();
 			await t.storeSession({ token: "expired-token", username: "same-user" });
-			// Stored token, empty token, then the CLI token.
-			t.authSequence(
-				"unauthorized",
-				"unauthorized",
-				createMockUser({ username: "same-user" }),
-			);
+			t.authSequence("unauthorized", createMockUser({ username: "same-user" }));
 			t.cliToken("cli-token");
 
 			expect(await t.login()).toMatchObject({ token: "cli-token" });
@@ -1165,23 +1238,19 @@ describe("LoginCoordinator", () => {
 		it("does not retry the stored token when the CLI holds it too", async () => {
 			const t = createCliTestContext();
 			await t.storeSession({ token: "expired-token" });
-			t.authSequence("unauthorized", "unauthorized");
+			t.authSequence("unauthorized");
 			t.cliToken("expired-token");
 			t.userInteraction.setInputBoxValue(undefined);
 
 			await t.login();
 
-			expect(mockGetAuthenticatedUser).toHaveBeenCalledTimes(2);
+			expect(mockGetAuthenticatedUser).toHaveBeenCalledTimes(1);
 		});
 
 		it("asks before adopting a CLI session for a different user, naming both", async () => {
 			const t = createCliTestContext();
 			await t.storeSession({ token: "expired-token", username: "old-user" });
-			t.authSequence(
-				"unauthorized",
-				"unauthorized",
-				createMockUser({ username: "cli-user" }),
-			);
+			t.authSequence("unauthorized", createMockUser({ username: "cli-user" }));
 			t.cliToken("cli-token");
 			t.confirmSignIn();
 
@@ -1195,7 +1264,6 @@ describe("LoginCoordinator", () => {
 			const t = createCliTestContext();
 			await t.storeSession({ token: "expired-token", username: "old-user" });
 			t.authSequence(
-				"unauthorized",
 				"unauthorized",
 				createMockUser({ username: "cli-user" }),
 				createMockUser({ username: "new-user" }),
