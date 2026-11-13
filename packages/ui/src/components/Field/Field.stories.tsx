@@ -3,6 +3,7 @@ import { useId, useState } from "react";
 import { PIXEL_ALL_THEMES } from "#storybook";
 
 import { Input } from "../Input/Input";
+import { ValidationMessage } from "../ValidationMessage/ValidationMessage";
 
 import { Field } from "./Field";
 
@@ -30,7 +31,11 @@ const FieldStates = (): React.JSX.Element => {
 			<Field
 				label="CPU cores"
 				htmlFor={coresId}
-				error="Value must be between 1 and 16."
+				error={
+					<ValidationMessage severity="error">
+						Value must be between 1 and 16.
+					</ValidationMessage>
+				}
 				errorId={`${coresId}-error`}
 			>
 				<Input

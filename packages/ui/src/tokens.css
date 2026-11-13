@@ -29,6 +29,11 @@
 	);
 	--ui-description-foreground: var(--vscode-descriptionForeground);
 	--ui-border: var(--vscode-sideBar-border, transparent);
+	/* Divides sections in an editor tab, like the settings editor's headers */
+	--ui-separator: var(
+		--vscode-settings-headerBorder,
+		var(--vscode-panel-border, var(--ui-border))
+	);
 	--ui-link-foreground: var(--vscode-textLink-foreground);
 	--ui-link-active-foreground: var(
 		--vscode-textLink-activeForeground,
@@ -284,7 +289,7 @@
 	/* Only defined by high contrast themes; transparent elsewhere */
 	--ui-contrast-border: var(--vscode-contrastBorder, transparent);
 
-	/* Banner */
+	/* Validation and banner messages */
 	--ui-message-info-background: var(
 		--vscode-inputValidation-infoBackground,
 		transparent
