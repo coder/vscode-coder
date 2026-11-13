@@ -79,6 +79,8 @@ interface LoginContext {
 	isAutoLogin: boolean;
 	/** The session stored for the deployment's origin when the login started. */
 	stored: SessionAuth | undefined;
+	/** Only mTLS or a stored empty token can make an empty token work. */
+	triesEmptyToken: boolean;
 }
 
 /** A token to try after the stored one, and how to ask before it switches users. */
@@ -304,6 +306,9 @@ export class LoginCoordinator implements vscode.Disposable {
 			deployment: { safeHostname, url },
 			isAutoLogin: options.autoLogin ?? false,
 			stored,
+			triesEmptyToken:
+				stored?.token === "" ||
+				usesClientCertificate(vscode.workspace.getConfiguration()),
 		};
 		try {
 			try {
@@ -344,11 +349,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			}
 		}
 
-		// Skip the extra request unless mTLS could make an empty token work.
-		if (
-			stored?.token === "" ||
-			usesClientCertificate(vscode.workspace.getConfiguration())
-		) {
+		if (ctx.triesEmptyToken) {
 			this.logger.debug("Trying empty token");
 			const empty = await this.tryFallbackToken(ctx, {
 				token: "",
@@ -491,7 +492,7 @@ export class LoginCoordinator implements vscode.Disposable {
 					await this.loginWithOAuth(ctx.deployment),
 				);
 			case "legacy": {
-				const result = await this.loginWithToken(ctx.client);
+				const result = await this.loginWithToken(ctx);
 				const method =
 					result.success && result.token === "" ? "empty_token" : "cli_token";
 				return withLoginMethod(method, result);
@@ -579,42 +580,47 @@ export class LoginCoordinator implements vscode.Disposable {
 	/**
 	 * Session token authentication flow.
 	 */
-	private async loginWithToken(client: CoderApi): Promise<LoginAttemptResult> {
-		const url = client.getAxiosInstance().defaults.baseURL;
-		if (!url) {
-			throw new Error("No base URL set on REST client");
-		}
+	private async loginWithToken(ctx: LoginContext): Promise<LoginAttemptResult> {
 		// This prompt is for convenience; do not error if they close it since
 		// they may already have a token or already have the page opened.
-		await openInBrowser(url, "/cli-auth");
+		await openInBrowser(ctx.deployment.url, "/cli-auth");
 
-		return this.promptForToken(client);
+		// This login already sent it, so it was rejected or the user declined it.
+		const emptyTokenError = ctx.triesEmptyToken
+			? "Signing in without a token was already tried."
+			: undefined;
+		return this.promptForToken(ctx.client, emptyTokenError);
 	}
 
 	/**
 	 * Tokens are checked as typed, so only a valid one can be submitted. Empty
 	 * is the initial value, so it is checked only on submit; if rejected, the
-	 * prompt reopens with the error, which blocks submitting it again.
+	 * prompt reopens showing why and blocks submitting it again.
 	 */
 	private async promptForToken(
 		client: CoderApi,
-		emptyTokenError?: vscode.InputBoxValidationMessage,
+		emptyTokenError?: string,
 	): Promise<LoginAttemptResult> {
-		let validated: ValidToken | undefined;
+		// Keyed by token, since checks can finish out of order.
+		const users = new Map<string, User>();
 		const submitted = await vscode.window.showInputBox({
 			title: "Coder API Key",
 			password: true,
 			placeHolder: "Paste your API key.",
+			// A validation message only shows once the value changes.
+			prompt: emptyTokenError,
 			ignoreFocusOut: true,
 			validateInput: async (value) => {
 				if (value === "") {
-					return emptyTokenError;
+					return emptyTokenError === undefined
+						? undefined
+						: validationError(emptyTokenError);
 				}
 				const check = await checkToken(client, value);
 				if (!check.valid) {
-					return check.error;
+					return validationError(check.error);
 				}
-				validated = check;
+				users.set(value, check.user);
 				return undefined;
 			},
 		});
@@ -628,11 +634,10 @@ export class LoginCoordinator implements vscode.Disposable {
 				? { success: true, user: check.user, token: "" }
 				: this.promptForToken(client, check.error);
 		}
-		// Guards against a user validated for an earlier value.
-		if (validated?.token !== submitted) {
-			return { success: false, reason: "user_dismissed" };
-		}
-		return { success: true, user: validated.user, token: submitted };
+		const user = users.get(submitted);
+		return user
+			? { success: true, user, token: submitted }
+			: { success: false, reason: "user_dismissed" };
 	}
 
 	/**
@@ -697,40 +702,27 @@ function withLoginMethod(
 	return { ...result, method };
 }
 
-interface ValidToken {
-	valid: true;
-	token: string;
-	user: User;
-}
+type TokenCheck = { valid: true; user: User } | { valid: false; error: string };
 
-type TokenCheck =
-	| ValidToken
-	| { valid: false; error: vscode.InputBoxValidationMessage };
-
-/** Sign in with `token`; a failure carries the error to show under the prompt. */
+/** Sign in with `token`; a failure carries the message to show the user. */
 async function checkToken(
 	client: CoderApi,
 	token: string,
 ): Promise<TokenCheck> {
 	client.setSessionToken(token);
 	try {
-		const user = await client.getAuthenticatedUser();
-		return { valid: true, token, user };
+		return { valid: true, user: await client.getAuthenticatedUser() };
 	} catch (err) {
 		if (err instanceof CertificateError) {
 			// Also notify, since users sometimes miss the message under the prompt.
 			void err.showNotification();
-			return invalidToken(err.detail);
+			return { valid: false, error: err.detail };
 		}
-		return invalidToken(
-			`Failed to authenticate: ${getErrorMessage(err, "no response from the server")}`,
-		);
+		const message = getErrorMessage(err, "no response from the server");
+		return { valid: false, error: `Failed to authenticate: ${message}` };
 	}
 }
 
-function invalidToken(message: string): TokenCheck {
-	return {
-		valid: false,
-		error: { message, severity: vscode.InputBoxValidationSeverity.Error },
-	};
+function validationError(message: string): vscode.InputBoxValidationMessage {
+	return { message, severity: vscode.InputBoxValidationSeverity.Error };
 }

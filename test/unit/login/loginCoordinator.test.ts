@@ -505,6 +505,31 @@ describe("LoginCoordinator", () => {
 			});
 			expect(mockGetAuthenticatedUser).toHaveBeenCalledExactlyOnceWith("");
 		});
+
+		it("does not resend an empty token the login already tried", async () => {
+			const { coordinator, config, mockSuccessfulAuth } = createTestContext();
+			mockSuccessfulAuth();
+			config.set("coder.tlsCertFile", "/cert.pem");
+			let prompt: string | undefined;
+			let emptyError: unknown;
+			vi.mocked(vscode.window.showInputBox).mockImplementationOnce(
+				async (options) => {
+					prompt = options?.prompt;
+					emptyError = await options?.validateInput?.("");
+					return undefined;
+				},
+			);
+
+			await coordinator.ensureLoggedIn({
+				url: TEST_URL,
+				safeHostname: TEST_HOSTNAME,
+			});
+
+			const message = "Signing in without a token was already tried.";
+			expect(prompt).toBe(message);
+			expect(emptyError).toMatchObject({ message });
+			expect(mockGetAuthenticatedUser).toHaveBeenCalledExactlyOnceWith("");
+		});
 	});
 
 	describe("empty-token authentication", () => {
