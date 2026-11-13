@@ -41,13 +41,26 @@ export async function signIn(api: Api, email: string): Promise<Api> {
 	return api;
 }
 
-/** Opens a socket to `path`, absolute or relative to the API's host, as the API's user. */
-export function openSocket(api: Api, path: string): WebSocket {
+/**
+ * Opens a socket to `path`, absolute or relative to the API's host, as the
+ * API's user, and closes it once `until` settles. `until` runs before the
+ * socket connects, so its listeners catch frames sent with the handshake.
+ */
+export async function connect(
+	api: Api,
+	path: string,
+	until: (socket: WebSocket) => Promise<unknown> = awaitOpen,
+): Promise<void> {
 	const url = new URL(path, api.getAxiosInstance().defaults.baseURL);
 	url.protocol = url.protocol.replace("http", "ws");
-	return new WebSocket(url, {
+	const socket = new WebSocket(url, {
 		headers: { "Coder-Session-Token": api.getSessionToken() ?? "" },
 	});
+	try {
+		await until(socket);
+	} finally {
+		socket.terminate();
+	}
 }
 
 /** Resolves once the socket opens; rejects with the response if the server refuses it. */

@@ -7,7 +7,7 @@ import { startWorkspace, updateWorkspace } from "@/api/workspace";
 import { fullName } from "@/cli/cliBinary";
 import { serverFeatureSet } from "@/featureSet";
 
-import { awaitOpen, openSocket } from "./server";
+import { connect } from "./server";
 import {
 	awaitBuildSuccess,
 	awaitFollowUpBuild,
@@ -42,15 +42,10 @@ export async function ssh(
 		agent_id: agentId,
 		app_name: "vscode",
 	});
-	const socket = openSocket(
+	await connect(
 		scoped,
 		`/api/v2/workspaceagents/${agentId}/coordinate?version=2.0`,
 	);
-	try {
-		await awaitOpen(socket);
-	} finally {
-		socket.terminate();
-	}
 }
 
 /** Runs the extension's one-build update: a stop that queues a start. */
