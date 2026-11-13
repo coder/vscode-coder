@@ -7,17 +7,13 @@ import { LocalProxySettings, type LocalProxySetting } from "../settings/proxy";
 
 import { getProxyForUrl, joinNoProxy } from "./proxy";
 
-/**
- * Return whether the API will need a token for authorization.
- * If mTLS is in use (as specified by the cert or key files being set) then
- * token authorization is disabled. Otherwise, it is enabled.
- */
-export function needToken(cfg: Pick<WorkspaceConfiguration, "get">): boolean {
-	const certFile = expandPath(
-		String(cfg.get("coder.tlsCertFile") ?? "").trim(),
+/** Whether requests carry a TLS client certificate (mTLS). */
+export function usesClientCertificate(
+	cfg: Pick<WorkspaceConfiguration, "get">,
+): boolean {
+	return ["coder.tlsCertFile", "coder.tlsKeyFile"].some(
+		(key) => String(cfg.get(key) ?? "").trim() !== "",
 	);
-	const keyFile = expandPath(String(cfg.get("coder.tlsKeyFile") ?? "").trim());
-	return !certFile && !keyFile;
 }
 
 /**

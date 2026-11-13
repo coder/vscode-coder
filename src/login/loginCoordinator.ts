@@ -3,7 +3,7 @@ import { getErrorMessage } from "coder/site/src/api/errors";
 import * as vscode from "vscode";
 
 import { CoderApi } from "../api/coderApi";
-import { needToken } from "../api/httpAgent";
+import { usesClientCertificate } from "../api/httpAgent";
 import { HttpStatusCode } from "../api/httpStatusCode";
 import { openInBrowser, toSafeHost } from "../common/url";
 import { CertificateError } from "../error/certificateError";
@@ -40,9 +40,9 @@ import type {
 } from "../storage/secretsManager";
 
 export type LoginMethod =
-	| "mtls"
 	| "provided_token"
 	| "stored_token"
+	| "empty_token"
 	| "cli_token"
 	| "oauth";
 
@@ -72,13 +72,23 @@ export interface LoginOptions {
 	tokenSignInConfirmed?: boolean;
 }
 
-/** Session state shared by every attempt in the login chain. */
-interface LoginAttemptContext {
+/** State shared by every step of one login. */
+interface LoginContext {
 	client: CoderApi;
 	deployment: Deployment;
 	isAutoLogin: boolean;
-	/** Stored session for the deployment's origin, if any. */
-	auth: SessionAuth | undefined;
+	/** The session stored for the deployment's origin when the login started. */
+	stored: SessionAuth | undefined;
+	/** Only mTLS or a stored empty token can make an empty token work. */
+	triesEmptyToken: boolean;
+}
+
+/** A token to try after the stored one, and how to ask before it switches users. */
+interface FallbackToken {
+	token: string;
+	method: LoginMethod;
+	title: string;
+	detail: (username: string) => string;
 }
 
 /**
@@ -112,15 +122,7 @@ export class LoginCoordinator implements vscode.Disposable {
 	public ensureLoggedIn(
 		options: LoginOptions & { url: string },
 	): Promise<LoginResult> {
-		const { safeHostname, url } = options;
-		return this.executeWithGuard(() =>
-			this.attemptLogin(
-				{ safeHostname, url },
-				options.autoLogin ?? false,
-				options.token,
-				options.tokenSignInConfirmed ?? false,
-			),
-		);
+		return this.executeWithGuard(() => this.attemptLogin(options));
 	}
 
 	/**
@@ -177,11 +179,11 @@ export class LoginCoordinator implements vscode.Disposable {
 							return { success: false, reason: "no_url_provided" };
 						}
 
-						return this.attemptLogin(
-							{ url: newUrl, safeHostname },
-							false,
-							options.token,
-						);
+						return this.attemptLogin({
+							safeHostname,
+							url: newUrl,
+							token: options.token,
+						});
 					}
 					// User cancelled
 					return { success: false, reason: "user_dismissed" };
@@ -201,20 +203,21 @@ export class LoginCoordinator implements vscode.Disposable {
 	}
 
 	private async persistSessionAuth(
+		ctx: LoginContext,
 		result: Extract<LoginResult, { success: true }>,
-		deployment: Deployment,
 		registration: OAuth2ClientRegistrationResponse | undefined,
 	): Promise<void> {
-		const { safeHostname, url } = deployment;
-		const previous = await this.secretsManager.getSessionAuthForUrl(url);
-		const replaced = previous?.token === result.token ? undefined : previous;
-		// A refresh replaced the stored session during this login; keep it.
-		if (result.method === "stored_token" && replaced) {
+		const { safeHostname, url } = ctx.deployment;
+		const current = await this.secretsManager.getSessionAuthForUrl(url);
+		const replaced = current?.token === result.token ? undefined : current;
+		// Keep a session a refresh or another window stored while this login only
+		// re-checked the stored one. No stored session counts as the empty token.
+		const recheckedStored = result.token === (ctx.stored?.token ?? "");
+		if (recheckedStored && replaced) {
 			return;
 		}
-		const reusedOAuth = replaced ? undefined : previous?.oauth;
+		const reusedOAuth = replaced ? undefined : current?.oauth;
 
-		// Empty token is valid for mTLS
 		await this.secretsManager.setSessionAuth(safeHostname, {
 			url,
 			token: result.token,
@@ -227,15 +230,11 @@ export class LoginCoordinator implements vscode.Disposable {
 			void revokeOAuthTokens(replaced, registration, this.logger);
 		}
 
-		if (result.token) {
-			const configs = vscode.workspace.getConfiguration();
-			this.cliCredentialManager
-				.storeToken(url, result.token, configs)
-				.then((auth) => notifyKeyringSkipped(auth, configs))
-				.catch((error) =>
-					showStoreCredentialsError(error, configs, this.logger),
-				);
-		}
+		const configs = vscode.workspace.getConfiguration();
+		this.cliCredentialManager
+			.storeToken(url, result.token, configs)
+			.then((auth) => notifyKeyringSkipped(auth, configs))
+			.catch((error) => showStoreCredentialsError(error, configs, this.logger));
 	}
 
 	/**
@@ -264,7 +263,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			disposable = this.secretsManager.onDidChangeSessionAuth(
 				safeHostname,
 				async (auth) => {
-					if (auth?.token) {
+					if (auth) {
 						const client = CoderApi.create(auth.url, auth.token, this.logger);
 						try {
 							const user = await client.getAuthenticatedUser();
@@ -290,90 +289,146 @@ export class LoginCoordinator implements vscode.Disposable {
 	}
 
 	/**
-	 * Authenticate via OAuth, token, or mTLS, prompting as needed. On success,
+	 * Authenticate via OAuth or a token, prompting as needed. On success,
 	 * persists the session and revokes the OAuth session it replaces.
 	 */
 	private async attemptLogin(
-		deployment: Deployment,
-		isAutoLogin: boolean,
-		providedToken?: string,
-		tokenSignInConfirmed = false,
+		options: LoginOptions & { url: string },
 	): Promise<LoginResult> {
+		const { safeHostname, url } = options;
 		// Read before OAuth login replaces it; it revokes a replaced session saved
 		// without its own registration.
-		const registration = await this.secretsManager.getOAuthClientRegistration(
-			deployment.safeHostname,
-		);
-		const client = CoderApi.create(deployment.url, "", this.logger);
+		const registration =
+			await this.secretsManager.getOAuthClientRegistration(safeHostname);
+		const stored = await this.secretsManager.getSessionAuthForUrl(url);
+		const ctx: LoginContext = {
+			client: CoderApi.create(url, "", this.logger),
+			deployment: { safeHostname, url },
+			isAutoLogin: options.autoLogin ?? false,
+			stored,
+			triesEmptyToken:
+				stored?.token === "" ||
+				usesClientCertificate(vscode.workspace.getConfiguration()),
+		};
 		try {
 			try {
-				const buildInfo = await client.getBuildInfo();
+				const buildInfo = await ctx.client.getBuildInfo();
 				requireSupportedServerVersion(buildInfo.version);
 			} catch (err) {
-				this.showAuthError(err, isAutoLogin);
+				this.showAuthError(err, ctx.isAutoLogin);
 				return { success: false, reason: "auth_failed" };
 			}
-			const result = await this.runLoginAttempts(
-				client,
-				deployment,
-				isAutoLogin,
-				providedToken,
-				tokenSignInConfirmed,
-			);
+			const result = options.token
+				? await this.loginWithProvidedToken(
+						ctx,
+						options.token,
+						options.tokenSignInConfirmed ?? false,
+					)
+				: await this.runLoginAttempts(ctx);
 			if (result.success) {
-				await this.persistSessionAuth(result, deployment, registration);
+				await this.persistSessionAuth(ctx, result, registration);
 			}
 			return result;
 		} finally {
-			client.dispose();
+			ctx.client.dispose();
 		}
 	}
 
 	/**
-	 * Try each token source in turn. A source returns undefined on 401 to hand
-	 * over to the next one; any other failure is terminal since retrying more
-	 * tokens against an erroring server would just repeat the error.
+	 * A 401 hands over to the next token source; any other failure is terminal
+	 * since retrying more tokens against an erroring server would repeat it.
 	 */
-	private async runLoginAttempts(
-		client: CoderApi,
-		deployment: Deployment,
-		isAutoLogin: boolean,
-		providedToken: string | undefined,
-		tokenSignInConfirmed: boolean,
-	): Promise<LoginResult> {
-		if (!needToken(vscode.workspace.getConfiguration())) {
-			this.logger.debug("Attempting mTLS authentication (no token required)");
-			return withLoginMethod(
-				"mtls",
-				await this.tryMtlsAuth(client, isAutoLogin),
-			);
+	private async runLoginAttempts(ctx: LoginContext): Promise<LoginResult> {
+		const { client, deployment, isAutoLogin, stored } = ctx;
+		// A stored empty token is re-checked by the empty-token step below.
+		if (stored?.token) {
+			this.logger.debug("Trying stored session token");
+			const result = await this.tryTokenAuth(client, stored.token, isAutoLogin);
+			if (result !== "unauthorized") {
+				return withLoginMethod("stored_token", result);
+			}
 		}
 
-		const auth = await this.secretsManager.getSessionAuthForUrl(deployment.url);
-		const ctx: LoginAttemptContext = {
-			client,
-			deployment,
-			isAutoLogin,
-			auth,
-		};
-
-		if (providedToken) {
-			return this.loginWithProvidedToken(
-				ctx,
-				providedToken,
-				tokenSignInConfirmed,
-			);
+		if (ctx.triesEmptyToken) {
+			this.logger.debug("Trying empty token");
+			const empty = await this.tryFallbackToken(ctx, {
+				token: "",
+				method: "empty_token",
+				title: "Sign in without a session token?",
+				detail: (username) =>
+					`The deployment signs you in as "${username}" without a token`,
+			});
+			if (empty) {
+				return empty;
+			}
 		}
 
-		const stored = await this.tryStoredSession(ctx);
-		if (stored) {
-			return stored;
+		const cliToken = await this.readCliToken(deployment.url);
+		if (cliToken && cliToken !== stored?.token) {
+			this.logger.debug("Trying token from CLI credentials");
+			const cli = await this.tryFallbackToken(ctx, {
+				token: cliToken,
+				method: "cli_token",
+				title: "Sign in with the Coder CLI's session?",
+				detail: (username) =>
+					`The Coder CLI's session signs you in as "${username}"`,
+			});
+			if (cli) {
+				return cli;
+			}
 		}
-		const cli = await this.tryCliCredentials(ctx);
-		if (cli) {
-			return cli;
-		}
+
 		return this.askAuthMethod(ctx);
+	}
+
+	/**
+	 * Sign in with a fallback token, asking first if it replaces a stored session
+	 * of another user. Undefined hands over to the next source.
+	 */
+	private async tryFallbackToken(
+		ctx: LoginContext,
+		source: FallbackToken,
+	): Promise<LoginResult | undefined> {
+		const { client, deployment, isAutoLogin, stored } = ctx;
+		const result = await this.tryTokenAuth(client, source.token, isAutoLogin);
+		if (result === "unauthorized") {
+			return undefined;
+		}
+		if (
+			result.success &&
+			stored &&
+			stored.token !== source.token &&
+			stored.username !== result.user.username
+		) {
+			const confirmed = await this.confirmSignIn(
+				deployment.url,
+				{ title: source.title, detail: source.detail(result.user.username) },
+				// Fallback tokens are tried only after the stored one failed.
+				{ username: stored.username, expired: true },
+			);
+			if (!confirmed) {
+				return undefined;
+			}
+		}
+		return withLoginMethod(source.method, result);
+	}
+
+	/** The Coder CLI's token for `url`, if it has its own store and holds one. */
+	private async readCliToken(url: string): Promise<string | undefined> {
+		const configs = vscode.workspace.getConfiguration();
+		if (!(await this.cliCredentialManager.hasCliStore(url, configs))) {
+			return undefined;
+		}
+		const result = await withCancellableProgress(
+			({ signal }) =>
+				this.cliCredentialManager.readToken(url, configs, { signal }),
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: "Reading credentials from the Coder CLI",
+				cancellable: true,
+			},
+		);
+		return result.ok ? result.value : undefined;
 	}
 
 	/**
@@ -381,11 +436,11 @@ export class LoginCoordinator implements vscode.Disposable {
 	 * to another source could silently continue as a different user.
 	 */
 	private async loginWithProvidedToken(
-		ctx: LoginAttemptContext,
+		ctx: LoginContext,
 		providedToken: string,
 		tokenSignInConfirmed: boolean,
 	): Promise<LoginResult> {
-		const { client, deployment, isAutoLogin, auth } = ctx;
+		const { client, deployment, isAutoLogin, stored } = ctx;
 		this.logger.debug("Trying provided token");
 		const result = await this.tryTokenAuth(client, providedToken, isAutoLogin);
 		if (result === "unauthorized") {
@@ -403,13 +458,13 @@ export class LoginCoordinator implements vscode.Disposable {
 			// Silent when the link repeats the same user on the same origin, or an
 			// earlier prompt confirmed a sign-in that replaces nothing.
 			const silent =
-				auth?.username === result.user.username ||
-				(auth === undefined && tokenSignInConfirmed);
+				stored?.username === result.user.username ||
+				(stored === undefined && tokenSignInConfirmed);
 			if (!silent) {
 				// Checked silently, only to word the prompt.
 				const expired =
-					auth?.token !== undefined &&
-					(await this.tryTokenAuth(client, auth.token, true)) ===
+					stored?.token !== undefined &&
+					(await this.tryTokenAuth(client, stored.token, true)) ===
 						"unauthorized";
 				const confirmed = await this.confirmSignIn(
 					deployment.url,
@@ -417,7 +472,7 @@ export class LoginCoordinator implements vscode.Disposable {
 						title: "Sign in with the token from the link?",
 						detail: `The link contains a token that signs you in as "${result.user.username}"`,
 					},
-					auth && { username: auth.username, expired },
+					stored && { username: stored.username, expired },
 				);
 				if (!confirmed) {
 					return { success: false, reason: "user_dismissed" };
@@ -427,74 +482,8 @@ export class LoginCoordinator implements vscode.Disposable {
 		return withLoginMethod("provided_token", result);
 	}
 
-	/** Stored session for the deployment's origin, if it still works. */
-	private async tryStoredSession(
-		ctx: LoginAttemptContext,
-	): Promise<LoginResult | undefined> {
-		const { client, isAutoLogin, auth } = ctx;
-		if (!auth?.token) {
-			return undefined;
-		}
-		this.logger.debug("Trying stored session token");
-		const result = await this.tryTokenAuth(client, auth.token, isAutoLogin);
-		if (result === "unauthorized") {
-			return undefined;
-		}
-		return withLoginMethod("stored_token", result);
-	}
-
-	/** The CLI's own session, adopted after confirmation if it is another user's. */
-	private async tryCliCredentials(
-		ctx: LoginAttemptContext,
-	): Promise<LoginResult | undefined> {
-		const { client, deployment, isAutoLogin, auth } = ctx;
-		const configs = vscode.workspace.getConfiguration();
-		if (
-			!(await this.cliCredentialManager.hasCliStore(deployment.url, configs))
-		) {
-			return undefined;
-		}
-		const cliCredentialResult = await withCancellableProgress(
-			({ signal }) =>
-				this.cliCredentialManager.readToken(deployment.url, configs, {
-					signal,
-				}),
-			{
-				location: vscode.ProgressLocation.Notification,
-				title: "Reading credentials from the Coder CLI",
-				cancellable: true,
-			},
-		);
-		const cliToken = cliCredentialResult.ok
-			? cliCredentialResult.value
-			: undefined;
-		if (!cliToken || cliToken === auth?.token) {
-			return undefined;
-		}
-		this.logger.debug("Trying token from CLI credentials");
-		const result = await this.tryTokenAuth(client, cliToken, isAutoLogin);
-		if (result === "unauthorized") {
-			return undefined;
-		}
-		if (result.success && auth && auth.username !== result.user.username) {
-			const confirmed = await this.confirmSignIn(
-				deployment.url,
-				{
-					title: "Sign in with the Coder CLI's session?",
-					detail: `The Coder CLI's session signs you in as "${result.user.username}"`,
-				},
-				// The stored session reached this point only because it failed.
-				{ username: auth.username, expired: true },
-			);
-			if (!confirmed) {
-				return undefined;
-			}
-		}
-		return withLoginMethod("cli_token", result);
-	}
-
 	/** Last resort: ask the user how to authenticate. */
-	private async askAuthMethod(ctx: LoginAttemptContext): Promise<LoginResult> {
+	private async askAuthMethod(ctx: LoginContext): Promise<LoginResult> {
 		const authMethod = await maybeAskAuthMethod(ctx.client, this.logger);
 		switch (authMethod) {
 			case "oauth":
@@ -502,11 +491,12 @@ export class LoginCoordinator implements vscode.Disposable {
 					"oauth",
 					await this.loginWithOAuth(ctx.deployment),
 				);
-			case "legacy":
-				return withLoginMethod(
-					"cli_token",
-					await this.loginWithToken(ctx.client),
-				);
+			case "legacy": {
+				const result = await this.loginWithToken(ctx);
+				const method =
+					result.success && result.token === "" ? "empty_token" : "cli_token";
+				return withLoginMethod(method, result);
+			}
 			case undefined:
 				return { success: false, reason: "user_dismissed" };
 		}
@@ -536,19 +526,6 @@ export class LoginCoordinator implements vscode.Disposable {
 			"Sign In",
 		);
 		return action === "Sign In";
-	}
-
-	private async tryMtlsAuth(
-		client: CoderApi,
-		isAutoLogin: boolean,
-	): Promise<LoginAttemptResult> {
-		try {
-			const user = await client.getAuthenticatedUser();
-			return { success: true, token: "", user };
-		} catch (err) {
-			this.showAuthError(err, isAutoLogin);
-			return { success: false, reason: "auth_failed" };
-		}
 	}
 
 	/**
@@ -603,59 +580,64 @@ export class LoginCoordinator implements vscode.Disposable {
 	/**
 	 * Session token authentication flow.
 	 */
-	private async loginWithToken(client: CoderApi): Promise<LoginAttemptResult> {
-		const url = client.getAxiosInstance().defaults.baseURL;
-		if (!url) {
-			throw new Error("No base URL set on REST client");
-		}
+	private async loginWithToken(ctx: LoginContext): Promise<LoginAttemptResult> {
 		// This prompt is for convenience; do not error if they close it since
 		// they may already have a token or already have the page opened.
-		await openInBrowser(url, "/cli-auth");
+		await openInBrowser(ctx.deployment.url, "/cli-auth");
 
-		// For token auth, start with the existing token in the prompt or the last
-		// used token.  Once submitted, if there is a failure we will keep asking
-		// the user for a new token until they quit.
-		let user: User | undefined;
-		const validatedToken = await vscode.window.showInputBox({
+		// This login already sent it, so it was rejected or the user declined it.
+		const emptyTokenError = ctx.triesEmptyToken
+			? "Signing in without a token was already tried."
+			: undefined;
+		return this.promptForToken(ctx.client, emptyTokenError);
+	}
+
+	/**
+	 * Tokens are checked as typed, so only a valid one can be submitted. Empty
+	 * is the initial value, so it is checked only on submit; if rejected, the
+	 * prompt reopens showing why and blocks submitting it again.
+	 */
+	private async promptForToken(
+		client: CoderApi,
+		emptyTokenError?: string,
+	): Promise<LoginAttemptResult> {
+		// Keyed by token, since checks can finish out of order.
+		const users = new Map<string, User>();
+		const submitted = await vscode.window.showInputBox({
 			title: "Coder API Key",
 			password: true,
 			placeHolder: "Paste your API key.",
+			// A validation message only shows once the value changes.
+			prompt: emptyTokenError,
 			ignoreFocusOut: true,
 			validateInput: async (value) => {
-				if (!value) {
-					return null;
+				if (value === "") {
+					return emptyTokenError === undefined
+						? undefined
+						: validationError(emptyTokenError);
 				}
-				client.setSessionToken(value);
-				try {
-					user = await client.getAuthenticatedUser();
-					return null;
-				} catch (err) {
-					// For certificate errors show both a notification and add to the
-					// text under the input box, since users sometimes miss the
-					// notification.
-					if (err instanceof CertificateError) {
-						void err.showNotification();
-						return {
-							message: err.detail,
-							severity: vscode.InputBoxValidationSeverity.Error,
-						};
-					}
-					// This could be something like the header command erroring or an
-					// invalid session token.
-					const message = getErrorMessage(err, "no response from the server");
-					return {
-						message: "Failed to authenticate: " + message,
-						severity: vscode.InputBoxValidationSeverity.Error,
-					};
+				const check = await checkToken(client, value);
+				if (!check.valid) {
+					return validationError(check.error);
 				}
+				users.set(value, check.user);
+				return undefined;
 			},
 		});
 
-		if (user) {
-			return { success: true, user, token: validatedToken ?? "" };
+		if (submitted === undefined) {
+			return { success: false, reason: "user_dismissed" };
 		}
-
-		return { success: false, reason: "user_dismissed" };
+		if (submitted === "") {
+			const check = await checkToken(client, "");
+			return check.valid
+				? { success: true, user: check.user, token: "" }
+				: this.promptForToken(client, check.error);
+		}
+		const user = users.get(submitted);
+		return user
+			? { success: true, user, token: submitted }
+			: { success: false, reason: "user_dismissed" };
 	}
 
 	/**
@@ -718,4 +700,29 @@ function withLoginMethod(
 	result: LoginAttemptResult,
 ): LoginResult {
 	return { ...result, method };
+}
+
+type TokenCheck = { valid: true; user: User } | { valid: false; error: string };
+
+/** Sign in with `token`; a failure carries the message to show the user. */
+async function checkToken(
+	client: CoderApi,
+	token: string,
+): Promise<TokenCheck> {
+	client.setSessionToken(token);
+	try {
+		return { valid: true, user: await client.getAuthenticatedUser() };
+	} catch (err) {
+		if (err instanceof CertificateError) {
+			// Also notify, since users sometimes miss the message under the prompt.
+			void err.showNotification();
+			return { valid: false, error: err.detail };
+		}
+		const message = getErrorMessage(err, "no response from the server");
+		return { valid: false, error: `Failed to authenticate: ${message}` };
+	}
+}
+
+function validationError(message: string): vscode.InputBoxValidationMessage {
+	return { message, severity: vscode.InputBoxValidationSeverity.Error };
 }

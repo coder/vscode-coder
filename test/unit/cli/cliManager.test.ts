@@ -384,6 +384,14 @@ describe("CliManager", () => {
 			expect(await manager.holdsToken(URL, "t")).toBe(false);
 			expect(vscode.window.withProgress).not.toHaveBeenCalled();
 		});
+
+		it("skips the CLI for an empty token, which it never stores", async () => {
+			const { manager, mockCredManager } = setupCliManager();
+
+			expect(await manager.holdsToken(URL, "")).toBe(false);
+			expect(mockCredManager.hasCliStore).not.toHaveBeenCalled();
+			expect(vscode.window.withProgress).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("Binary Version Validation", () => {

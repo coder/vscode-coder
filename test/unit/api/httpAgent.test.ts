@@ -1,7 +1,7 @@
 import { vol } from "memfs";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { createHttpAgent, needToken } from "@/api/httpAgent";
+import { createHttpAgent, usesClientCertificate } from "@/api/httpAgent";
 
 import {
 	clearProxyEnv,
@@ -48,35 +48,26 @@ async function proxyForUrl(
 	return await getProxy(url);
 }
 
-describe("needToken", () => {
-	interface NeedTokenCase {
-		name: string;
-		settings: Settings;
-		expected: boolean;
-	}
-
-	it.each<NeedTokenCase>([
-		{ name: "no mTLS certificates", settings: {}, expected: true },
+describe("usesClientCertificate", () => {
+	it.each<{ name: string; settings: Settings; expected: boolean }>([
+		{ name: "no certificate", settings: {}, expected: false },
 		{
-			name: "cert file configured",
+			name: "a blank cert file",
+			settings: { "coder.tlsCertFile": "  " },
+			expected: false,
+		},
+		{
+			name: "a cert file",
 			settings: { "coder.tlsCertFile": "/cert.pem" },
-			expected: false,
+			expected: true,
 		},
 		{
-			name: "key file configured",
+			name: "a key file",
 			settings: { "coder.tlsKeyFile": "/key.pem" },
-			expected: false,
+			expected: true,
 		},
-		{
-			name: "both cert and key configured",
-			settings: {
-				"coder.tlsCertFile": "/cert.pem",
-				"coder.tlsKeyFile": "/key.pem",
-			},
-			expected: false,
-		},
-	])("returns $expected when $name", ({ settings, expected }) => {
-		expect(needToken(config(settings))).toBe(expected);
+	])("returns $expected with $name", ({ settings, expected }) => {
+		expect(usesClientCertificate(config(settings))).toBe(expected);
 	});
 });
 

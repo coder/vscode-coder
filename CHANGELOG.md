@@ -64,6 +64,20 @@
   but preserved during verified same-account token refreshes, including remote windows.
 - Canceled OAuth refreshes no longer overwrite replacement credentials or
   reopen sign-in prompts.
+- Sign in to deployments that use TLS client certificates for transport only.
+  With `coder.tlsCertFile` or `coder.tlsKeyFile` set and no stored token that
+  works, the extension tries an empty token, which still signs you in where the
+  certificate authenticates you, and then CLI credentials and the OAuth or
+  token prompt. If the empty token replaces an expired session with a different
+  user, the extension asks first. Submitting the token prompt empty also signs
+  in where the deployment needs no token.
+- An empty session token is no longer passed to `coder login`, which waited a
+  minute for a pasted token and then failed the connection. It now clears the
+  token the extension stored for the Coder CLI, leaving the CLI's own session
+  and the keyring alone. **Remove All** in **Manage Credentials** no longer
+  signs out the Coder CLI's own session for a deployment with an empty token.
+- Clearing or dismissing the token prompt after entering a valid token no
+  longer signs you in with an empty token.
 
 ## [v1.17.2](https://github.com/coder/vscode-coder/releases/tag/v1.17.2) 2026-10-28
 
