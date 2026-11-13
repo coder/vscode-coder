@@ -4,6 +4,7 @@ import type {
 	WorkspaceAgentMetadata,
 } from "coder/site/src/api/typesGenerated";
 
+import type { WorkspaceAction } from "./actions";
 import type { AgentDiagnostic } from "./diagnostics";
 
 // Re-export SDK types for convenience
@@ -12,7 +13,7 @@ export type { Workspace, WorkspaceAgent, WorkspaceAgentMetadata };
 export type WorkspaceFilter = "mine" | "shared" | "all";
 
 /** A workspace page in the dashboard, opened in the browser. */
-export type DashboardPage = "workspace" | "settings";
+export type DashboardPage = "workspace" | "settings" | "sharing";
 
 /** What the panel may offer for the current session. */
 export interface WorkspacesCapabilities {
@@ -56,6 +57,8 @@ export interface WorkspacesState {
 	readonly listedAt?: number;
 	/** Listed workspace IDs associated with Agent chats. */
 	readonly agentWorkspaceIds?: readonly string[];
+	/** Keyed by workspace ID: the action running there, prompts included. */
+	readonly pendingActions?: Readonly<Record<string, WorkspaceAction>>;
 }
 
 export interface OpenWorkspaceParams {
@@ -73,6 +76,11 @@ export interface AgentDiagnosticParams {
 	readonly workspaceId: string;
 	readonly agentId: string;
 	readonly diagnostic: AgentDiagnostic;
+}
+
+export interface WorkspaceActionParams {
+	readonly workspaceId: string;
+	readonly action: WorkspaceAction;
 }
 
 export interface SetFilterParams {

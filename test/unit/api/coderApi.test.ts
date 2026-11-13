@@ -40,6 +40,7 @@ import {
 import { WebSocketCloseCode } from "@/websocket/codes";
 
 import {
+	createAxiosError,
 	createMockLogger,
 	createMockUser,
 	MockConfigurationProvider,
@@ -828,8 +829,7 @@ describe("CoderApi", () => {
 		};
 
 		const VALID_BUILD = {
-			workspace_owner_name: "developer",
-			workspace_name: "dev",
+			id: "build-1",
 			build_number: 1,
 			job: { status: "succeeded" },
 		};
@@ -871,8 +871,8 @@ describe("CoderApi", () => {
 				valid: VALID_WORKSPACE,
 			},
 			{
-				method: "getWorkspaceBuildByNumber",
-				call: (api) => api.getWorkspaceBuildByNumber("developer", "dev", 1),
+				method: "getWorkspaceBuild",
+				call: (api) => api.getWorkspaceBuild("build-1"),
 				valid: VALID_BUILD,
 			},
 			{
@@ -927,8 +927,7 @@ describe("CoderApi", () => {
 
 	describe("waitForBuild", () => {
 		const BUILD = {
-			workspace_owner_name: "developer",
-			workspace_name: "dev",
+			id: "build-1",
 			build_number: 1,
 			job: { status: "succeeded" },
 		} as WorkspaceBuild;
@@ -952,11 +951,73 @@ describe("CoderApi", () => {
 			});
 		});
 
+		// Reads by owner and name 404 once a delete completes.
+		it("polls the build by ID", async () => {
+			api = createApi();
+			mockPoll({ status: "succeeded" });
+
+			await api.waitForBuild(BUILD);
+
+			expect(mockAdapter).toHaveBeenCalledWith(
+				expect.objectContaining({ url: "/api/v2/workspacebuilds/build-1" }),
+			);
+		});
+
 		it("throws when the build failed", async () => {
 			api = createApi();
 			mockPoll({ status: "failed" });
 
 			await expect(api.waitForBuild(BUILD)).rejects.toThrow("Build 1 failed");
+		});
+
+		it("polls through up to 3 transient failures in a row", async () => {
+			vi.useFakeTimers();
+			api = createApi();
+			mockAdapter
+				.mockRejectedValueOnce(new AxiosError("socket hang up", "ECONNRESET"))
+				.mockRejectedValueOnce(createAxiosError(503, "Service Unavailable"))
+				.mockRejectedValueOnce(new AxiosError("timeout", "ECONNABORTED"));
+			mockPoll({ status: "succeeded" });
+
+			const polled = expect(api.waitForBuild(BUILD)).resolves.toEqual({
+				status: "succeeded",
+			});
+			await vi.runAllTimersAsync();
+			await polled;
+			expect(mockAdapter).toHaveBeenCalledTimes(4);
+		});
+
+		it("gives up after more than 3 transient failures in a row", async () => {
+			vi.useFakeTimers();
+			api = createApi();
+			for (let i = 0; i < 4; i++) {
+				mockAdapter.mockRejectedValueOnce(
+					createAxiosError(502, `Bad Gateway ${i}`),
+				);
+			}
+
+			const polled = expect(api.waitForBuild(BUILD)).rejects.toThrow(
+				"Bad Gateway 3",
+			);
+			await vi.runAllTimersAsync();
+			await polled;
+		});
+
+		it("fails at once on a client error", async () => {
+			api = createApi();
+			mockAdapter.mockRejectedValueOnce(createAxiosError(404, "Not Found"));
+
+			await expect(api.waitForBuild(BUILD)).rejects.toThrow("Not Found");
+			expect(mockAdapter).toHaveBeenCalledOnce();
+		});
+
+		it("stops once its signal aborts", async () => {
+			api = createApi();
+
+			await expect(
+				api.waitForBuild(BUILD, AbortSignal.abort()),
+			).rejects.toSatisfy(axios.isCancel);
+			expect(mockAdapter).not.toHaveBeenCalled();
 		});
 
 		// The SDK version swallows poll errors, leaving callers hanging forever.

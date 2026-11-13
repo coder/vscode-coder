@@ -54,6 +54,7 @@ import type {
 	ParsedMessageEvent,
 	UnidirectionalStream,
 } from "@/websocket/eventStreamConnection";
+import type { OneWayWebSocket } from "@/websocket/oneWayWebSocket";
 /**
  * Subset of `ContextManager`'s public API that mocks (e.g. `MockContextManager`)
  * implement. Used by `createMockServiceContainer` so tests can pass either the
@@ -942,6 +943,22 @@ export function createMockStream(
 	} as unknown as IncomingMessage;
 }
 
+/** A socket that is already open and resolves `closed` once `close()` is called. */
+export function createMockOneWaySocket<T>(): OneWayWebSocket<T> {
+	let resolveClosed!: () => void;
+	const closed = new Promise<void>((resolve) => {
+		resolveClosed = resolve;
+	});
+	return {
+		url: "",
+		opened: Promise.resolve(),
+		closed,
+		addEventListener: vi.fn(),
+		removeEventListener: vi.fn(),
+		close: vi.fn(() => resolveClosed()),
+	} as unknown as OneWayWebSocket<T>;
+}
+
 /**
  * Mock status bar that integrates with vscode.window.createStatusBarItem.
  * Use this to inspect status bar state in tests.
@@ -1615,6 +1632,10 @@ export class MockWorkspacesClient {
 	readonly getWorkspaces = vi.fn(
 		(_req: { q: string }): Promise<WorkspacesResponse> =>
 			Promise.resolve({ workspaces: [], count: 0 }),
+	);
+
+	readonly getWorkspace = vi.fn((id: string): Promise<Workspace> =>
+		Promise.resolve(createWorkspace({ id })),
 	);
 
 	readonly getHost = vi.fn((): string | undefined => TEST_DEPLOYMENT.url);

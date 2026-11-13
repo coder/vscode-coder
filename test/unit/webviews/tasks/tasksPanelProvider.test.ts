@@ -25,6 +25,7 @@ import { createTestCoderApi } from "../../../mocks/coderApi";
 import {
 	createAxiosError,
 	createMockLogger,
+	createMockOneWaySocket,
 	createMockWebviewView,
 	MockConfigurationProvider,
 	MockUserInteraction,
@@ -38,22 +39,6 @@ import type {
 } from "coder/site/src/api/typesGenerated";
 
 import type { CoderApi } from "@/api/coderApi";
-import type { OneWayWebSocket } from "@/websocket/oneWayWebSocket";
-
-function mockStream<T>(): OneWayWebSocket<T> {
-	let resolveClosed!: () => void;
-	const closed = new Promise<void>((resolve) => {
-		resolveClosed = resolve;
-	});
-	return {
-		url: "",
-		opened: Promise.resolve(),
-		closed,
-		addEventListener: vi.fn(),
-		removeEventListener: vi.fn(),
-		close: vi.fn(() => resolveClosed()),
-	} as unknown as OneWayWebSocket<T>;
-}
 
 vi.mock("@/api/workspace", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@/api/workspace")>();
@@ -883,7 +868,7 @@ describe("TasksPanelProvider", () => {
 
 	describe("workspace log streaming", () => {
 		async function openBuildStream(h: ReturnType<typeof createHarness>) {
-			const stream = mockStream<ProvisionerJobLog>();
+			const stream = createMockOneWaySocket<ProvisionerJobLog>();
 			let onOutput!: (line: string) => void;
 			vi.mocked(streamBuildLogs).mockImplementation((_client, cb, _buildId) => {
 				onOutput = cb;
@@ -897,7 +882,7 @@ describe("TasksPanelProvider", () => {
 		}
 
 		async function openAgentStream(h: ReturnType<typeof createHarness>) {
-			const stream = mockStream<WorkspaceAgentLog[]>();
+			const stream = createMockOneWaySocket<WorkspaceAgentLog[]>();
 			let onOutput!: (line: string) => void;
 			vi.mocked(streamAgentLogs).mockImplementation((_client, cb, _agentId) => {
 				onOutput = cb;

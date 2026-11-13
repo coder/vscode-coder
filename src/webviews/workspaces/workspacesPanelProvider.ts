@@ -23,6 +23,7 @@ import type {
 import type { Commands } from "../../commands";
 import type { Logger } from "../../logging/logger";
 
+import type { WorkspaceActionRunner } from "./workspaceActionRunner";
 import type { WorkspaceStore } from "./workspaceStore";
 
 /** Methods whose failures warrant a dialog; others are logged only. */
@@ -30,6 +31,7 @@ const USER_ACTION_METHODS: ReadonlySet<string> = new Set([
 	WorkspacesApi.openWorkspace.method,
 	WorkspacesApi.viewInDashboard.method,
 	WorkspacesApi.runAgentDiagnostic.method,
+	WorkspacesApi.runWorkspaceAction.method,
 ]);
 
 type PanelCommands = Pick<
@@ -79,6 +81,10 @@ export class WorkspacesPanelProvider
 					p.page,
 				),
 			runAgentDiagnostic: (p) => this.runAgentDiagnostic(p),
+			runWorkspaceAction: (p) =>
+				this.store.followAction(p.workspaceId, p.action, () =>
+					this.actions.run(this.requireWorkspace(p.workspaceId), p.action),
+				),
 		}),
 	};
 
@@ -89,6 +95,7 @@ export class WorkspacesPanelProvider
 		private readonly extensionUri: vscode.Uri,
 		private readonly store: WorkspaceStore,
 		private readonly commands: PanelCommands,
+		private readonly actions: Pick<WorkspaceActionRunner, "run">,
 		private readonly logger: Logger,
 	) {}
 

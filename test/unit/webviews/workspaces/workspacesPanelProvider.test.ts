@@ -16,6 +16,7 @@ import {
 	type AgentDiagnostic,
 	type CommandDef,
 	type OpenWorkspaceParams,
+	type WorkspaceAction,
 	type WorkspacesState,
 } from "@repo/shared";
 
@@ -63,10 +64,12 @@ function setup() {
 		speedTest: vi.fn(() => Promise.resolve()),
 		supportBundle: vi.fn(() => Promise.resolve()),
 	} satisfies ConstructorParameters<typeof WorkspacesPanelProvider>[2];
+	const actions = { run: vi.fn(() => Promise.resolve()) };
 	const provider = new WorkspacesPanelProvider(
 		vscode.Uri.file("/test"),
 		store,
 		commands,
+		actions,
 		createMockLogger(),
 	);
 	onTestFinished(() => {
@@ -104,7 +107,15 @@ function setup() {
 		};
 	};
 
-	return { client, store, commands, provider, resolveView, ...resolveView() };
+	return {
+		client,
+		store,
+		commands,
+		actions,
+		provider,
+		resolveView,
+		...resolveView(),
+	};
 }
 
 /** A visible panel, answering its first lists with `responses`, in order. */
@@ -319,6 +330,22 @@ describe("WorkspacesPanelProvider", () => {
 			"Agent is no longer available",
 		);
 	});
+
+	it.each<WorkspaceAction>(["start", "stop", "restart", "update", "delete"])(
+		"runs %s on the listed workspace and re-reads it after",
+		async (action) => {
+			const h = await shown([alice()]);
+			await h.send(WorkspacesApi.runWorkspaceAction, {
+				workspaceId: "workspace-1",
+				action,
+			});
+			expect(h.actions.run).toHaveBeenCalledWith(
+				expect.objectContaining({ id: "workspace-1" }),
+				action,
+			);
+			expect(h.client.getWorkspace).toHaveBeenCalledWith("workspace-1");
+		},
+	);
 
 	interface FailedOpenCase {
 		name: string;

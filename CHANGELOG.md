@@ -15,6 +15,9 @@
   instead of the workspace's first agent.
 - Deep links that specify a query parameter more than once now show an error
   instead of silently using the first value.
+- If the workspace starts, stops, or gets a newer template version while you're
+  entering parameters for an update, the update is now skipped and the
+  workspace starts on its current version, the same as dismissing the prompt.
 
 ## [v1.18.0](https://github.com/coder/vscode-coder/releases/tag/v1.18.0) 2026-11-13
 

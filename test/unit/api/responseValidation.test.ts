@@ -60,16 +60,11 @@ const SCHEMAS: ReadonlyArray<{
 		name: "WorkspaceBuildSchema",
 		schema: WorkspaceBuildSchema,
 		minimal: {
-			workspace_owner_name: "developer",
-			workspace_name: "dev",
+			id: "build-1",
 			build_number: 1,
 			job: { status: "succeeded" },
 		},
-		incomplete: {
-			workspace_owner_name: "developer",
-			workspace_name: "dev",
-			build_number: 1,
-		},
+		incomplete: { id: "build-1", build_number: 1 },
 	},
 	{
 		name: "WorkspaceResourcesSchema",
