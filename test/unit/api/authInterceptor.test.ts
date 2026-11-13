@@ -148,14 +148,6 @@ function createTestContext() {
 		});
 	};
 
-	/** Sets up mTLS auth (no token) */
-	const setupMTLSAuth = async () => {
-		await secretsManager.setSessionAuth(TEST_HOSTNAME, {
-			url: TEST_URL,
-			token: "",
-		});
-	};
-
 	/** Creates interceptor with optional callback */
 	const createInterceptor = (
 		onAuthRequired?: AuthRequiredHandler,
@@ -177,7 +169,6 @@ function createTestContext() {
 			MockOAuthSessionManager,
 		setupOAuthTokens,
 		setupSessionToken,
-		setupMTLSAuth,
 		createInterceptor,
 	};
 }
@@ -259,6 +250,51 @@ describe("AuthInterceptor", () => {
 			expect(mockOAuthManager.refreshToken).not.toHaveBeenCalled();
 		});
 
+		it.each([
+			{ during: "a refresh that succeeds", refreshFails: false },
+			{ during: "a refresh that fails", refreshFails: true },
+			{ during: "token installation", refreshFails: false, onInstall: true },
+		])(
+			"does not retry or prompt when canceled during $during",
+			async ({ refreshFails, onInstall = false }) => {
+				const {
+					mockCoderApi,
+					mockOAuthManager,
+					axiosInstance,
+					setupOAuthTokens,
+					createInterceptor,
+				} = createTestContext();
+				await setupOAuthTokens();
+				const controller = new AbortController();
+				mockOAuthManager.refreshToken.mockImplementation(() => {
+					if (!onInstall) controller.abort();
+					return refreshFails
+						? Promise.reject(new Error("refresh failed"))
+						: Promise.resolve(createMockTokenResponse());
+				});
+				vi.mocked(mockCoderApi.setSessionToken).mockImplementation(() => {
+					controller.abort();
+				});
+				const retry = vi.spyOn(axiosInstance, "request");
+				const onAuthRequired = vi.fn(() => Promise.resolve(true));
+				createInterceptor(onAuthRequired);
+				const error = createAxiosError(
+					HttpStatusCode.UNAUTHORIZED,
+					"Unauthorized",
+					{ signal: controller.signal },
+				);
+
+				await expect(
+					axiosInstance.triggerResponseError(error),
+				).rejects.toMatchObject({ code: "ERR_CANCELED" });
+				expect(mockCoderApi.setSessionToken).toHaveBeenCalledTimes(
+					onInstall ? 1 : 0,
+				);
+				expect(retry).not.toHaveBeenCalled();
+				expect(onAuthRequired).not.toHaveBeenCalled();
+			},
+		);
+
 		it("falls through to callback if refresh fails", async () => {
 			const {
 				mockOAuthManager,
@@ -303,30 +339,52 @@ describe("AuthInterceptor", () => {
 			expect(onAuthRequired).toHaveBeenCalled();
 		});
 
-		it("retries request when callback returns true", async () => {
+		it.each([
+			{
+				name: "a session token",
+				token: "new-token-after-login",
+				canceled: false,
+			},
+			{ name: "mTLS", token: "", canceled: false },
+			{ name: "a canceled login", token: "replacement-token", canceled: true },
+		])("handles re-authentication with $name", async ({ token, canceled }) => {
 			const { secretsManager, axiosInstance, createInterceptor } =
 				createTestContext();
-
-			// Setup new token that will be available after re-auth
 			await secretsManager.setSessionAuth(TEST_HOSTNAME, {
 				url: TEST_URL,
-				token: "new-token-after-login",
+				token,
 			});
-
+			const controller = new AbortController();
+			const read = vi.spyOn(secretsManager, "getSessionAuthForUrl");
 			const retryResponse = { data: "success", status: 200 };
-			vi.spyOn(axiosInstance, "request").mockResolvedValue(retryResponse);
-
-			const onAuthRequired = vi.fn().mockResolvedValue(true);
+			const retry = vi
+				.spyOn(axiosInstance, "request")
+				.mockResolvedValue(retryResponse);
+			const onAuthRequired = vi.fn(() => {
+				if (canceled) controller.abort();
+				return Promise.resolve(true);
+			});
 			createInterceptor(onAuthRequired);
-
 			const error = createAxiosError(
 				HttpStatusCode.UNAUTHORIZED,
 				"Unauthorized",
+				{ signal: controller.signal },
 			);
-			const result = await axiosInstance.triggerResponseError(error);
+			const recovery = axiosInstance.triggerResponseError(error);
 
+			if (canceled) {
+				await expect(recovery).rejects.toMatchObject({ code: "ERR_CANCELED" });
+				expect(read).not.toHaveBeenCalled();
+				expect(retry).not.toHaveBeenCalled();
+			} else {
+				await expect(recovery).resolves.toEqual(retryResponse);
+				expect(retry).toHaveBeenCalledWith(
+					expect.objectContaining({
+						headers: expect.objectContaining({ "Coder-Session-Token": token }),
+					}),
+				);
+			}
 			expect(onAuthRequired).toHaveBeenCalled();
-			expect(result).toEqual(retryResponse);
 		});
 
 		it("does not retry with a token stored for another origin", async () => {
@@ -348,29 +406,6 @@ describe("AuthInterceptor", () => {
 				error,
 			);
 			expect(request).not.toHaveBeenCalled();
-		});
-
-		it("retries request with mTLS (no token)", async () => {
-			const { axiosInstance, setupMTLSAuth, createInterceptor } =
-				createTestContext();
-
-			// Setup mTLS auth - callback will "re-authenticate" but there's no token
-			await setupMTLSAuth();
-
-			const retryResponse = { data: "success", status: 200 };
-			vi.spyOn(axiosInstance, "request").mockResolvedValue(retryResponse);
-
-			const onAuthRequired = vi.fn().mockResolvedValue(true);
-			createInterceptor(onAuthRequired);
-
-			const error = createAxiosError(
-				HttpStatusCode.UNAUTHORIZED,
-				"Unauthorized",
-			);
-			const result = await axiosInstance.triggerResponseError(error);
-
-			expect(onAuthRequired).toHaveBeenCalled();
-			expect(result).toEqual(retryResponse);
 		});
 
 		it("rethrows when callback returns false", async () => {

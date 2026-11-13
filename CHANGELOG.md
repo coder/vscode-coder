@@ -60,6 +60,10 @@
 - Notifications show startup script names, app status messages, and Coder CLI
   errors as plain text. Template version messages and inbox titles keep
   `http(s)://` links; other links show as plain text.
+- Pending HTTP requests are canceled when the Coder deployment or account changes,
+  but preserved during verified same-account token refreshes, including remote windows.
+- Canceled OAuth refreshes no longer overwrite replacement credentials or
+  reopen sign-in prompts.
 
 ## [v1.17.2](https://github.com/coder/vscode-coder/releases/tag/v1.17.2) 2026-10-28
 

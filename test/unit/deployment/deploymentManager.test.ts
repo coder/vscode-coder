@@ -138,7 +138,7 @@ describe("DeploymentManager", () => {
 		});
 
 		it("clears state after logout", async () => {
-			const { manager } = createTestContext();
+			const { manager, mockClient } = createTestContext();
 			const user = createMockUser();
 
 			await manager.setDeployment({
@@ -148,6 +148,10 @@ describe("DeploymentManager", () => {
 				user,
 			});
 
+			manager.session.onDidChange(() => {
+				expect(mockClient.host).toBeUndefined();
+				expect(mockClient.token).toBeUndefined();
+			});
 			await manager.clearDeployment("credentials_removed");
 
 			expect(manager.getCurrentDeployment()).toBeNull();
@@ -192,6 +196,10 @@ describe("DeploymentManager", () => {
 			const { mockClient, secretsManager, contextManager, manager } =
 				createTestContext();
 			const user = createMockUser();
+			manager.session.onDidChange(() => {
+				expect(mockClient.host).toBe(TEST_URL);
+				expect(mockClient.token).toBe("test-token");
+			});
 
 			await manager.setDeployment({
 				url: TEST_URL,
@@ -570,6 +578,7 @@ describe("DeploymentManager", () => {
 			await flush();
 
 			expect(mockClient.token).toBe("rotated-token");
+			expect(mockClient.setSessionToken).toHaveBeenCalledWith("rotated-token");
 			expect(currentUserId(manager)).toBe("stable-user");
 			// No sign-in fired, so the workspace trees are not rebuilt.
 			expect(manager.session.current).toBe(sessionBefore);
@@ -704,6 +713,10 @@ describe("DeploymentManager", () => {
 				user: createMockUser(),
 			});
 			expect(manager.isAuthenticated()).toBe(true);
+			manager.session.onDidChange(() => {
+				expect(mockClient.host).toBeUndefined();
+				expect(mockClient.token).toBeUndefined();
+			});
 
 			manager.suspendSession("auth_failure");
 
