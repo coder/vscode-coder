@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   live-server:
-    name: Live Server Test (coder-preview)
+    name: Live Server Test (${{ github.event_name == 'schedule' && 'coder-preview' || 'pinned release' }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
