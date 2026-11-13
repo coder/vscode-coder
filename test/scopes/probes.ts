@@ -34,8 +34,8 @@ export const apiProbes = {
 		scoped.getWorkspaceByOwnerAndName(own.owner_name, own.name),
 	"getWorkspaceByOwnerAndName (shared)": ({ scoped, shared }) =>
 		scoped.getWorkspaceByOwnerAndName(shared.owner_name, shared.name),
-	getWorkspaceBuildByNumber: ({ scoped, own }) =>
-		scoped.getWorkspaceBuildByNumber(own.owner_name, own.name, 1),
+	getWorkspaceBuild: ({ scoped, own }) =>
+		scoped.getWorkspaceBuild(own.latest_build.id),
 	getWorkspaceBuildParameters: async ({ scoped, own }) =>
 		assertNonEmpty(
 			await scoped.getWorkspaceBuildParameters(own.latest_build.id),
@@ -60,17 +60,19 @@ export const apiProbes = {
 		assertNonEmpty(
 			await scoped.getTemplateVersionPresets(own.template_active_version_id),
 		),
-	watchWorkspace: receives((api, { own }) => api.watchWorkspace(own)),
-	watchAgentMetadata: receives(async (api, { admin, own }) =>
-		api.watchAgentMetadata(await currentAgentId(admin, own)),
+	watchWorkspace: receives(({ scoped, own }) => scoped.watchWorkspace(own)),
+	watchAgentMetadata: receives(async ({ scoped, admin, own }) =>
+		scoped.watchAgentMetadata(await currentAgentId(admin, own)),
 	),
-	watchBuildLogsByBuildId: opens((api, { own }) =>
-		api.watchBuildLogsByBuildId(own.latest_build.id, []),
+	watchBuildLogsByBuildId: opens(({ scoped, own }) =>
+		scoped.watchBuildLogsByBuildId(own.latest_build.id, []),
 	),
-	watchWorkspaceAgentLogs: opens(async (api, { admin, own }) =>
-		api.watchWorkspaceAgentLogs(await currentAgentId(admin, own), []),
+	watchWorkspaceAgentLogs: opens(async ({ scoped, admin, own }) =>
+		scoped.watchWorkspaceAgentLogs(await currentAgentId(admin, own), []),
 	),
-	watchInboxNotifications: opens((api) => api.watchInboxNotifications([], [])),
+	watchInboxNotifications: opens(({ scoped }) =>
+		scoped.watchInboxNotifications([], []),
+	),
 	"postWorkspaceBuild (update)": updateInOneBuild,
 } satisfies Partial<Record<ApiMethod | `${ApiMethod} (${string})`, Probe>>;
 
@@ -90,6 +92,9 @@ const TASKS_API =
 
 /** Coder API methods the extension calls that need no probe, with the reason. */
 export const unprobedMethods: Partial<Record<ApiMethod, string>> = {
+	waitForBuild: "Polls `getWorkspaceBuild`",
+	updateWorkspaceDormancy:
+		"No token scope covers dormant workspaces; the server keeps `workspace_dormant` internal",
 	startWorkspace: TASKS_API,
 	stopWorkspace: TASKS_API,
 	createTask: TASKS_API,

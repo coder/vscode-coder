@@ -1,5 +1,9 @@
+import { CoderApi } from "@/api/coderApi";
+
+import { createMockLogger } from "../../mocks/testHelpers";
+
 import { signInWithOAuth, type OAuthSession } from "./oauthLogin";
-import { createClient, PASSWORD, signIn } from "./server";
+import { createClient, PASSWORD, signIn, withErrorDetail } from "./server";
 import { createRunningWorkspace, createTemplate } from "./workspaces";
 
 import type { Api } from "coder/site/src/api/api";
@@ -11,8 +15,11 @@ import type {
 /** The server under test, as the probes see it. */
 export interface Deployment extends OAuthSession {
 	url: string;
-	/** The member, signed in with the OAuth `token`. */
-	scoped: Api;
+	/**
+	 * The extension's client, signed in as the member with the OAuth `token`.
+	 * Probes call only this.
+	 */
+	scoped: CoderApi;
 	/** The deployment owner, for setup that isn't under test. */
 	admin: Api;
 	/** Owned by the member. */
@@ -76,7 +83,9 @@ export async function setUpDeployment(url: string): Promise<Deployment> {
 	return {
 		url,
 		...oauth,
-		scoped: createClient(url, oauth.token),
+		scoped: withErrorDetail(
+			CoderApi.create(url, oauth.token, createMockLogger()),
+		),
 		admin,
 		own,
 		shared,

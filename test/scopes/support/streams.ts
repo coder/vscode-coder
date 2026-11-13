@@ -1,7 +1,4 @@
-import { CoderApi } from "@/api/coderApi";
 import { rawDataToString } from "@/websocket/oneWayWebSocket";
-
-import { createMockLogger } from "../../mocks/testHelpers";
 
 import { awaitOpen, connect } from "./server";
 
@@ -13,7 +10,6 @@ import type { UnidirectionalStream } from "@/websocket/eventStreamConnection";
 import type { Deployment, Probe } from "./deployment";
 
 type OpenStream = (
-	api: CoderApi,
 	deployment: Deployment,
 ) => Promise<UnidirectionalStream<unknown>>;
 
@@ -55,17 +51,8 @@ async function streamUrl(
 	deployment: Deployment,
 	open: OpenStream,
 ): Promise<string> {
-	const api = CoderApi.create(
-		deployment.url,
-		deployment.token,
-		createMockLogger(),
-	);
-	try {
-		const stream = await open(api, deployment);
-		const { url } = stream;
-		stream.close();
-		return url;
-	} finally {
-		api.dispose();
-	}
+	const stream = await open(deployment);
+	const { url } = stream;
+	stream.close();
+	return url;
 }
