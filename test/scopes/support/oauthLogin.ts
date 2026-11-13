@@ -67,7 +67,10 @@ export async function signInWithOAuth(
 			state: searchParams.get("state") ?? "",
 			code: searchParams.get("code"),
 			error:
-				error && `${error}: ${searchParams.get("error_description") ?? ""}`,
+				error &&
+				[error, searchParams.get("error_description")]
+					.filter(Boolean)
+					.join(": "),
 		});
 		return true;
 	});

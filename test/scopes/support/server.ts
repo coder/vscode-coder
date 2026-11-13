@@ -20,10 +20,15 @@ export function createClient(url: string, token?: string): Api {
 				error.response
 			) {
 				const { config, response } = error;
+				const request = [config?.method?.toUpperCase(), config?.url]
+					.filter(Boolean)
+					.join(" ");
 				const reason = [response.data?.message, response.data?.detail]
 					.filter(Boolean)
 					.join(": ");
-				error.message = `${config?.method?.toUpperCase()} ${config?.url}: ${response.status} ${reason}`;
+				error.message = [request, `${response.status} ${reason}`.trimEnd()]
+					.filter(Boolean)
+					.join(": ");
 			}
 			throw error;
 		});

@@ -145,6 +145,8 @@ async function awaitJobSuccess(
 		{ timeout: JOB_TIMEOUT_MS, interval: 500 },
 	);
 	if (job.status !== "succeeded") {
-		throw new Error(`${label}: job ${job.status}: ${job.error ?? ""}`);
+		throw new Error(
+			[`${label}: job ${job.status}`, job.error].filter(Boolean).join(": "),
+		);
 	}
 }
