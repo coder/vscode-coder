@@ -25,7 +25,7 @@ import {
 	appStatusNodes,
 	metadataNodes,
 } from "./AgentRow";
-import { WorkspaceActions } from "./WorkspaceActions";
+import { OpenActions, WorkspaceActions } from "./WorkspaceActions";
 import { WorkspaceHover, WorkspaceRow } from "./WorkspaceRow";
 
 import type { Workspace, WorkspaceAgent, WorkspacesState } from "@repo/shared";
@@ -37,6 +37,7 @@ export type WorkspaceCommands = Pick<
 	| "login"
 	| "openWorkspace"
 	| "viewInDashboard"
+	| "runWorkspaceAction"
 	| "refresh"
 	| "setFilter"
 	| "watchAgents"
@@ -86,10 +87,10 @@ export function WorkspacesPanel({
 				tooltip: <AgentHover agent={agent} />,
 				label: <AgentRow agent={agent} />,
 				action: (
-					<WorkspaceActions
+					<OpenActions
 						workspaceId={workspace.id}
-						name={name}
 						agentId={agent.id}
+						name={name}
 						api={api}
 					/>
 				),
@@ -116,22 +117,29 @@ export function WorkspacesPanel({
 			.map((agent) => agentNode(agent, expandedIds.includes(workspace.id)));
 		const name = workspace.name || "Unknown";
 		const hasAgentChat = agentWorkspaces.has(workspace.id);
+		const pendingAction = state?.pendingActions?.[workspace.id];
 		return {
 			id: workspace.id,
 			textValue: `${name}${hasAgentChat ? " Agent" : ""}${showOwner ? ` ${workspace.owner_name || "Unknown"}` : ""}`,
-			tooltip: <WorkspaceHover workspace={workspace} showOwner={showOwner} />,
+			tooltip: (
+				<WorkspaceHover
+					workspace={workspace}
+					showOwner={showOwner}
+					pendingAction={pendingAction}
+				/>
+			),
 			label: (
 				<WorkspaceRow
 					workspace={workspace}
 					showOwner={showOwner}
 					hasAgentChat={hasAgentChat}
+					pendingAction={pendingAction}
 				/>
 			),
 			action: (
 				<WorkspaceActions
-					workspaceId={workspace.id}
-					name={name}
-					status={workspace.latest_build.status}
+					workspace={workspace}
+					pendingAction={pendingAction}
 					api={api}
 				/>
 			),

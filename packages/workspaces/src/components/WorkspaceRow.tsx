@@ -1,9 +1,10 @@
-import { StatusPill } from "@repo/ui";
+import { Spinner, StatusPill } from "@repo/ui";
 
 import { RowHover } from "./RowHover";
 import { formatStatus, StatusDot } from "./StatusDot";
+import { ACTION_LABELS } from "./WorkspaceActions";
 
-import type { Workspace } from "@repo/shared";
+import type { Workspace, WorkspaceAction } from "@repo/shared";
 
 /** Health is only meaningful for the build that is running. */
 function workspaceStatus(workspace: Workspace): string {
@@ -16,13 +17,17 @@ function workspaceStatus(workspace: Workspace): string {
 export function WorkspaceHover({
 	workspace,
 	showOwner,
+	pendingAction,
 }: {
 	workspace: Workspace;
 	showOwner: boolean;
+	pendingAction?: WorkspaceAction;
 }) {
 	const template =
 		workspace.template_display_name || workspace.template_name || "Unknown";
-	const status = formatStatus(workspaceStatus(workspace));
+	const status = pendingAction
+		? ACTION_LABELS[pendingAction].pending
+		: formatStatus(workspaceStatus(workspace));
 	return (
 		<RowHover
 			title={workspace.name || "Unknown"}
@@ -41,14 +46,20 @@ export function WorkspaceRow({
 	workspace,
 	showOwner,
 	hasAgentChat,
+	pendingAction,
 }: {
 	workspace: Workspace;
 	showOwner: boolean;
 	hasAgentChat: boolean;
+	pendingAction?: WorkspaceAction;
 }) {
 	return (
 		<span className="workspace-label">
-			<StatusDot status={workspaceStatus(workspace)} />
+			{pendingAction ? (
+				<Spinner size="small" label={ACTION_LABELS[pendingAction].pending} />
+			) : (
+				<StatusDot status={workspaceStatus(workspace)} />
+			)}
 			<span className="workspace-name">{workspace.name || "Unknown"}</span>
 			{hasAgentChat && (
 				<StatusPill tone="info" className="workspace-agent-badge">

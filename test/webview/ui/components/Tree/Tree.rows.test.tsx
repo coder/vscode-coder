@@ -49,6 +49,49 @@ describe("Tree rows", () => {
 		).toHaveClass("ui-tree-item__action");
 	});
 
+	describe("re-rendering", () => {
+		const renders = vi.fn<(text: string) => void>();
+		function Label({ text }: { text: string }) {
+			renders(text);
+			return <span>{text}</span>;
+		}
+		/** Fresh node objects each time, as a consumer rebuilds them per render. */
+		const nodes = (child: string, className?: string): TreeNode[] => [
+			{
+				id: "parent",
+				label: <Label text="Parent" />,
+				textValue: "Parent",
+				className,
+				children: [
+					{ id: "child", label: <Label text={child} />, textValue: child },
+				],
+			},
+			{ id: "last", label: <Label text="Last" />, textValue: "Last" },
+		];
+
+		it("renders only the row whose own content changed", () => {
+			const view = renderTree({
+				"aria-label": "Rows",
+				nodes: nodes("Child"),
+				expandedIds: ["parent"],
+			});
+			renders.mockClear();
+
+			view.update({ nodes: nodes("Changed") });
+
+			expect(renders.mock.calls).toEqual([["Changed"]]);
+			expect(rowNames()).toEqual(["Parent", "Changed", "Last"]);
+		});
+
+		it("renders a row again when any field it shows changes", () => {
+			const view = renderTree({ "aria-label": "Rows", nodes: nodes("Child") });
+
+			view.update({ nodes: nodes("Child", "highlighted") });
+
+			expect(row("Parent")).toHaveClass("highlighted");
+		});
+	});
+
 	it("moves one hover between labels, defaulting to the text value", async () => {
 		stubElementBoxes();
 		render(

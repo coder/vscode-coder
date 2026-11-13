@@ -27,7 +27,8 @@
 	},
 	"dependencies": {
 		"@base-ui/react": "catalog:",
-		"@vscode/codicons": "catalog:"
+		"@vscode/codicons": "catalog:",
+		"react-fast-compare": "catalog:"
 	},
 	"peerDependencies": {
 		"react": "catalog:",
