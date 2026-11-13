@@ -13,9 +13,9 @@ import type { Probe } from "./support/deployment";
 type ApiMethod = keyof CoderApi;
 
 /**
- * One probe per Coder API method the extension calls, keyed `method` or
- * `method (variant)`; `oauthScopeProbes.test.ts` checks the keys. Mutating
- * probes leave `own` running with no build in progress, so any order works.
+ * One probe per Coder API method the extension calls, which
+ * `oauthScopeProbes.test.ts` checks. Mutating probes leave `own` running with
+ * no build in progress, so probes can run in any order.
  */
 export const apiProbes = {
 	getBuildInfo: ({ scoped }) => scoped.getBuildInfo(),
@@ -40,7 +40,7 @@ export const apiProbes = {
 		assertNonEmpty(
 			await scoped.getWorkspaceBuildParameters(own.latest_build.id),
 		),
-	// Empty: the test agent never connects
+	// No `assertNonEmpty`: the test agent never connects, so it has no logs.
 	getWorkspaceAgentLogs: async ({ scoped, admin, own }) =>
 		scoped.getWorkspaceAgentLogs(await currentAgentId(admin, own)),
 	getTemplate: ({ scoped, own }) => scoped.getTemplate(own.template_id),
@@ -76,8 +76,8 @@ export const apiProbes = {
 
 /**
  * CLI requests the source scan can't find. Unprobed: `ping` and `speedtest`
- * dial like `ssh`, `netcheck` calls `/workspaceagents/connection`, which has
- * no RBAC check, and `support bundle` reads what other probes cover.
+ * dial like `ssh`; `netcheck` calls `/workspaceagents/connection`, which has
+ * no RBAC check; `support bundle` only reads what other probes cover.
  */
 export const cliProbes: Record<string, Probe> = {
 	"coder ssh": (d) => ssh(d, d.own),

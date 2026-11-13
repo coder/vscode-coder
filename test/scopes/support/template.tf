@@ -1,6 +1,5 @@
-# Workspace template for the scopes suite. It needs no infrastructure or
-# modules; `terraform_data` uses the agent token so start builds list the agent
-# among their resources.
+# A template with no infrastructure. `terraform_data` references the agent
+# token so that start builds list the agent among their resources.
 terraform {
   required_providers {
     coder = { source = "coder/coder" }

@@ -13,7 +13,7 @@ export interface Deployment extends OAuthSession {
 	url: string;
 	/** The member, signed in with the OAuth `token`. */
 	scoped: Api;
-	/** The deployment owner, for setup the member's token isn't meant to do. */
+	/** The deployment owner, for setup that isn't under test. */
 	admin: Api;
 	/** Owned by the member. */
 	own: Workspace;
@@ -25,9 +25,8 @@ export interface Deployment extends OAuthSession {
 export type Probe = (deployment: Deployment) => Promise<unknown>;
 
 /**
- * Creates an admin, a member, a template, a workspace for each user with the
- * admin's shared to the member, and the member's OAuth session. Refuses a
- * server that already has users, since it takes the server over.
+ * Creates the users, workspaces, and OAuth session the probes need. Throws if
+ * the server already has users, since setup takes the server over.
  */
 export async function setUpDeployment(url: string): Promise<Deployment> {
 	const admin = createClient(url);
@@ -48,7 +47,7 @@ export async function setUpDeployment(url: string): Promise<Deployment> {
 	};
 	await admin.getAxiosInstance().post("/api/v2/users/first", firstUser);
 	await signIn(admin, firstUser.email);
-	// The extension registers its OAuth client, and servers ship with that off.
+	// Servers disallow the extension's OAuth client registration by default.
 	await admin.putOAuth2ProviderSettings({
 		dynamic_client_registration_enabled: true,
 	});

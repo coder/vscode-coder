@@ -4,16 +4,14 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { apiProbes, unprobedMethods } from "../scopes/probes";
 
-/** Repository root, whose tsconfig.json covers src/. */
 const ROOT = path.resolve(import.meta.dirname, "../..");
 
-/** Allows for type checking all of src/. */
 const TYPE_CHECK_TIMEOUT_MS = 60_000;
 
 /**
- * Finds every CoderApi method returning a promise (a request or stream, not
- * client configuration) that code under src/ references, through CoderApi
- * itself or any type it satisfies, like `Api` or `Pick<CoderApi, ...>`.
+ * Returns the CoderApi methods that code under src/ calls, through CoderApi or
+ * any type it satisfies, like `Api` or `Pick<CoderApi, ...>`. Only methods
+ * returning a promise count, since only those send requests or open streams.
  */
 function findApiMethodsUsedBySource(): Set<string> {
 	const config = ts.getParsedCommandLineOfConfigFile(
@@ -59,7 +57,10 @@ function findApiMethodsUsedBySource(): Set<string> {
 	return used;
 }
 
-/** The member read by `api.method` or `const { method } = api`, and the node its type comes from. */
+/**
+ * The member name in `api.method` or `const { method } = api`, and the node
+ * that owns it.
+ */
 function getMemberReference(
 	node: ts.Node,
 ): { name: string; object: ts.Node } | undefined {
@@ -113,7 +114,6 @@ function isPublicAsyncMethod(
 }
 
 describe("OAuth scope probes", () => {
-	/** Method names the probes cover, without their "(variant)" suffix. */
 	const probed = new Set(
 		Object.keys(apiProbes).map((key) => key.split(" ")[0]),
 	);

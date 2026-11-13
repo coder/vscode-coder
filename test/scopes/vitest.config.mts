@@ -7,7 +7,7 @@ const root = path.resolve(import.meta.dirname, "../..");
 export default defineConfig({
 	root,
 	resolve: {
-		// Same as the root config's extension project.
+		// Keep in sync with the root config's extension project.
 		alias: {
 			"@": path.join(root, "src"),
 			"@repo/webview-shared": path.join(root, "packages/webview-shared/src"),
@@ -17,7 +17,7 @@ export default defineConfig({
 	test: {
 		include: ["test/scopes/**/*.test.ts"],
 		environment: "node",
-		// Upper bounds for provisioner jobs.
+		// Long enough for provisioner jobs.
 		testTimeout: 120_000,
 		hookTimeout: 300_000,
 	},

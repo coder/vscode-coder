@@ -1,4 +1,4 @@
-# A throwaway deployment for `pnpm test:scopes`; see docs/TESTING.md.
+# A throwaway deployment for `pnpm test:scopes`.
 services:
   postgres:
     image: postgres:17

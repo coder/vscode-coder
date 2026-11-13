@@ -1,10 +1,8 @@
 name: OAuth Scopes
 
-# PRs use the release pinned in compose.yaml; nightly runs use the latest
-# preview to catch server changes before they ship.
+# Nightly runs use the latest preview to catch server changes before they ship.
 on:
   pull_request:
-    # Code the probes run or import
     paths:
       - src/**
       - test/mocks/**
@@ -14,7 +12,7 @@ on:
       - vitest.config.mts
       - .github/workflows/oauth-scopes.yaml
   schedule:
-    # Off the hour, when GitHub delays or drops fewer scheduled runs
+    # GitHub delays or drops fewer scheduled runs off the hour.
     - cron: "17 6 * * *"
   workflow_dispatch:
 

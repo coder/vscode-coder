@@ -21,7 +21,7 @@ import {
 import type { Api } from "coder/site/src/api/api";
 
 export interface OAuthSession {
-	/** The access token, refreshed once like a long session's. */
+	/** The access token after one refresh, as in a long session. */
 	token: string;
 	/** Scopes the extension put in its authorize URL. */
 	requestedScopes: string;
@@ -30,8 +30,8 @@ export interface OAuthSession {
 }
 
 /**
- * Runs the extension's OAuth login, consenting as `member` in place of the
- * browser, then its token refresh.
+ * Runs the extension's OAuth login and one token refresh, consenting as
+ * `member` in place of the browser.
  */
 export async function signInWithOAuth(
 	url: string,
@@ -52,7 +52,7 @@ export async function signInWithOAuth(
 		"coder.coder-remote",
 	);
 	let requestedScopes = "";
-	// Stands in for the browser. The consent page's Allow button posts the
+	// Stands in for the browser: the consent page's Allow button posts the
 	// authorize URL back, and the server redirects to the extension's callback.
 	vi.mocked(vscode.env.openExternal).mockImplementationOnce(async (uri) => {
 		const authorize = uri.toString();
@@ -78,7 +78,7 @@ export async function signInWithOAuth(
 	const login = await authorizer
 		.login(deployment, new MockProgress(), new MockCancellationToken())
 		.finally(() => authorizer.dispose());
-	// Stored as the extension stores a login, so the refresh reads it back.
+	// Store the login as the extension does, so the refresh can read it.
 	await secretsManager.setSessionAuth(deployment.safeHostname, {
 		url,
 		token: login.tokenResponse.access_token,

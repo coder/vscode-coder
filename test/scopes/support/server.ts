@@ -42,9 +42,9 @@ export async function signIn(api: Api, email: string): Promise<Api> {
 }
 
 /**
- * Opens a socket to `path`, absolute or relative to the API's host, as the
+ * Opens a socket to `path` (absolute, or relative to the API's host) as the
  * API's user, and closes it once `until` settles. `until` runs before the
- * socket connects, so its listeners catch frames sent with the handshake.
+ * socket connects, so it can't miss frames sent with the handshake.
  */
 export async function connect(
 	api: Api,

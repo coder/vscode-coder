@@ -10,7 +10,7 @@ import { setUpDeployment, type Deployment } from "./support/deployment";
 describe("OAuth scopes", () => {
 	let deployment: Deployment;
 
-	// The extension creates these on activation, which the suite skips.
+	// The extension creates these on activation, which the suite doesn't run.
 	beforeAll(() => {
 		new MockConfigurationProvider();
 		const proxySettings = LocalProxySettings.initialize();

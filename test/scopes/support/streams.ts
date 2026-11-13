@@ -12,7 +12,6 @@ import type { UnidirectionalStream } from "@/websocket/eventStreamConnection";
 
 import type { Deployment, Probe } from "./deployment";
 
-/** Opens a stream with the extension's client. */
 type OpenStream = (
 	api: CoderApi,
 	deployment: Deployment,
@@ -26,11 +25,9 @@ export function opens(open: OpenStream): Probe {
 
 /**
  * Passes on the first non-ping message. Fails on refusal, an error event, or
- * an early close (a failed per-message check).
+ * an early close, which means a per-message check failed.
  */
 export function receives(open: OpenStream): Probe {
-	// A plain socket listens before it connects, so unlike the extension's
-	// client (#1141) it cannot miss a message sent right after the handshake.
 	return async (deployment) =>
 		connect(deployment.scoped, await streamUrl(deployment, open), (socket) =>
 			Promise.all([awaitOpen(socket), awaitEvent(socket)]),
