@@ -344,8 +344,7 @@ export class LoginCoordinator implements vscode.Disposable {
 			}
 		}
 
-		// Only mTLS deployments sign in without a token, unless the stored session
-		// already uses an empty one.
+		// Skip the extra request unless mTLS could make an empty token work.
 		if (
 			stored?.token === "" ||
 			usesClientCertificate(vscode.workspace.getConfiguration())
@@ -589,45 +588,51 @@ export class LoginCoordinator implements vscode.Disposable {
 		// they may already have a token or already have the page opened.
 		await openInBrowser(url, "/cli-auth");
 
-		// Tokens are checked as typed, so only a valid one can be submitted. An
-		// empty token is checked on submit instead, and on failure the prompt
-		// reopens showing the error, which then blocks submitting it again.
-		let emptyTokenError: vscode.InputBoxValidationMessage | undefined;
-		for (;;) {
-			let validated: { token: string; user: User } | undefined;
-			const submitted = await vscode.window.showInputBox({
-				title: "Coder API Key",
-				password: true,
-				placeHolder: "Paste your API key.",
-				ignoreFocusOut: true,
-				validateInput: async (value) => {
-					if (!value) {
-						return emptyTokenError ?? null;
-					}
-					const result = await checkToken(client, value);
-					if ("user" in result) {
-						validated = { token: value, user: result.user };
-						return null;
-					}
-					return result;
-				},
-			});
+		return this.promptForToken(client);
+	}
 
-			if (submitted === undefined) {
-				return { success: false, reason: "user_dismissed" };
-			}
-			if (submitted) {
-				// A user validated for an earlier value must not sign in this one.
-				return validated?.token === submitted
-					? { success: true, user: validated.user, token: submitted }
-					: { success: false, reason: "user_dismissed" };
-			}
-			const result = await checkToken(client, "");
-			if ("user" in result) {
-				return { success: true, user: result.user, token: "" };
-			}
-			emptyTokenError = result;
+	/**
+	 * Tokens are checked as typed, so only a valid one can be submitted. Empty
+	 * is the initial value, so it is checked only on submit; if rejected, the
+	 * prompt reopens with the error, which blocks submitting it again.
+	 */
+	private async promptForToken(
+		client: CoderApi,
+		emptyTokenError?: vscode.InputBoxValidationMessage,
+	): Promise<LoginAttemptResult> {
+		let validated: ValidToken | undefined;
+		const submitted = await vscode.window.showInputBox({
+			title: "Coder API Key",
+			password: true,
+			placeHolder: "Paste your API key.",
+			ignoreFocusOut: true,
+			validateInput: async (value) => {
+				if (value === "") {
+					return emptyTokenError;
+				}
+				const check = await checkToken(client, value);
+				if (!check.valid) {
+					return check.error;
+				}
+				validated = check;
+				return undefined;
+			},
+		});
+
+		if (submitted === undefined) {
+			return { success: false, reason: "user_dismissed" };
 		}
+		if (submitted === "") {
+			const check = await checkToken(client, "");
+			return check.valid
+				? { success: true, user: check.user, token: "" }
+				: this.promptForToken(client, check.error);
+		}
+		// Guards against a user validated for an earlier value.
+		if (validated?.token !== submitted) {
+			return { success: false, reason: "user_dismissed" };
+		}
+		return { success: true, user: validated.user, token: submitted };
 	}
 
 	/**
@@ -692,30 +697,40 @@ function withLoginMethod(
 	return { ...result, method };
 }
 
-/** The token's user, or the error to show under the token prompt. */
+interface ValidToken {
+	valid: true;
+	token: string;
+	user: User;
+}
+
+type TokenCheck =
+	| ValidToken
+	| { valid: false; error: vscode.InputBoxValidationMessage };
+
+/** Sign in with `token`; a failure carries the error to show under the prompt. */
 async function checkToken(
 	client: CoderApi,
 	token: string,
-): Promise<{ user: User } | vscode.InputBoxValidationMessage> {
+): Promise<TokenCheck> {
 	client.setSessionToken(token);
 	try {
-		return { user: await client.getAuthenticatedUser() };
+		const user = await client.getAuthenticatedUser();
+		return { valid: true, token, user };
 	} catch (err) {
-		// For certificate errors show both a notification and add to the text
-		// under the input box, since users sometimes miss the notification.
 		if (err instanceof CertificateError) {
+			// Also notify, since users sometimes miss the message under the prompt.
 			void err.showNotification();
-			return {
-				message: err.detail,
-				severity: vscode.InputBoxValidationSeverity.Error,
-			};
+			return invalidToken(err.detail);
 		}
-		// This could be something like the header command erroring or an invalid
-		// session token.
-		const message = getErrorMessage(err, "no response from the server");
-		return {
-			message: "Failed to authenticate: " + message,
-			severity: vscode.InputBoxValidationSeverity.Error,
-		};
+		return invalidToken(
+			`Failed to authenticate: ${getErrorMessage(err, "no response from the server")}`,
+		);
 	}
+}
+
+function invalidToken(message: string): TokenCheck {
+	return {
+		valid: false,
+		error: { message, severity: vscode.InputBoxValidationSeverity.Error },
+	};
 }
