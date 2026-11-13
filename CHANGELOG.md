@@ -56,6 +56,11 @@
   order mark, which PowerShell and some Windows editors add, is ignored.
 - OAuth sign-in errors now appear in a dialog, so server text can't become a
   link.
+- Switching to another deployment or account now cancels the previous
+  session's pending requests, in local and remote windows, and canceled
+  requests no longer refresh the token or show a sign-in prompt. Token
+  refreshes for the same account keep pending requests running.
+- A canceled OAuth token refresh no longer overwrites newer credentials.
 - Startup script names, app status messages, and Coder CLI errors now appear as
   plain text in notifications. Template version messages and inbox titles keep
   their `http(s)://` links; other links appear as plain text.
