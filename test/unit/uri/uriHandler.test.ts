@@ -369,7 +369,7 @@ describe("uriHandler", () => {
 				expectTrustPrompt(
 					expect.stringMatching(
 						new RegExp(
-							`${TEST_URL}.*workspace "o/w".*not logged in.*SSH configuration`,
+							`${TEST_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*workspace "o/w".*not logged in.*SSH configuration`,
 							"is",
 						),
 					),

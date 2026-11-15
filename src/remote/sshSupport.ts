@@ -101,17 +101,13 @@ export function computeSshProperties(
 
 	const merged: SshProperties = {};
 	configs.forEach((config) => {
-		// In OpenSSH * matches any number of characters and ? matches exactly one.
-		if (
-			!new RegExp(
-				"^" +
-					config.host
-						.replace(/\./g, "\\.")
-						.replace(/\*/g, ".*")
-						.replace(/\?/g, ".") +
-					"$",
-			).test(host)
-		) {
+		// In OpenSSH * matches any number of characters and ? matches exactly one;
+		// every other character is literal.
+		const pattern = config.host
+			.replace(/[.+^${}()|[\]\\]/g, "\\$&")
+			.replace(/\*/g, ".*")
+			.replace(/\?/g, ".");
+		if (!new RegExp(`^${pattern}$`).test(host)) {
 			return;
 		}
 		config.properties.forEach(([key, value]) => {

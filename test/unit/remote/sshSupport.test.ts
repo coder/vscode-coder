@@ -156,6 +156,15 @@ Host coder-vscode.example.com--*
 		expect(props.remotecommand).toBe("exec /bin/bash -l");
 	});
 
+	it.each(["a+b", "a(b", "[a]", "a\\b", "a$b"])(
+		"matches Host %s literally",
+		(pattern) => {
+			const config = `Host ${pattern}\n  User coder`;
+			expect(computeSshProperties(pattern, config)).toEqual({ user: "coder" });
+			expect(computeSshProperties("ab", config)).toEqual({});
+		},
+	);
+
 	it("properly escapes meaningful regex characters", () => {
 		const properties = computeSshProperties(
 			"coder-vscode.dev.coder.com--matalfi--dogfood",

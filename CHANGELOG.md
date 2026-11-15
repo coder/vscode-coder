@@ -5,6 +5,13 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Fixed
+
+- SSH config `Host` patterns containing regular expression characters such as
+  `+`, `(` or `[` are now matched literally instead of mismatching or failing.
+
 ## [v1.18.0](https://github.com/coder/vscode-coder/releases/tag/v1.18.0) 2026-11-13
 
 ### Security
