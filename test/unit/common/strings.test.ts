@@ -6,8 +6,24 @@ import {
 	escapeNotificationLinks,
 	escapeProxyCommandArg,
 	escapeProxyCommandPath,
+	escapeRegExp,
 	escapeShellArg,
 } from "@/common/strings";
+
+describe("escapeRegExp", () => {
+	it.each(["https://coder.example.com", "a+b(c)[d]{e}", "^$.*+?|\\", "plain"])(
+		"matches %j literally",
+		(text) => {
+			const regex = new RegExp(`^${escapeRegExp(text)}$`);
+			expect(regex.test(text)).toBe(true);
+			expect(regex.test(`${text}x`)).toBe(false);
+		},
+	);
+
+	it("does not let . match other characters", () => {
+		expect(new RegExp(escapeRegExp("a.b")).test("axb")).toBe(false);
+	});
+});
 
 describe("escapeNotificationLinks", () => {
 	// Copy of VS Code's notification link pattern (src/vs/base/common/linkedText.ts).

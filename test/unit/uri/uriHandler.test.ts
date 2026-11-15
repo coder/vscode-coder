@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { escapeRegExp } from "@/common/strings";
 import { toSafeHost } from "@/common/url";
 import { OPEN_CODER_OUTPUT_ACTION } from "@/error/inputValidationError";
 import { CALLBACK_PATH } from "@/oauth/constants";
@@ -369,7 +370,7 @@ describe("uriHandler", () => {
 				expectTrustPrompt(
 					expect.stringMatching(
 						new RegExp(
-							`${TEST_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*workspace "o/w".*not logged in.*SSH configuration`,
+							`${escapeRegExp(TEST_URL)}.*workspace "o/w".*not logged in.*SSH configuration`,
 							"is",
 						),
 					),

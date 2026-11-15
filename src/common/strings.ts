@@ -15,6 +15,15 @@ export function escapeNotificationLinks(
 		: text.replaceAll("](", "] (");
 }
 
+const REGEXP_SYNTAX_CHARACTERS = new Set("\\^$.*+?()[]{}|");
+
+/** Escape `text` so a `RegExp` matches it literally. */
+export function escapeRegExp(text: string): string {
+	return Array.from(text, (char) =>
+		REGEXP_SYNTAX_CHARACTERS.has(char) ? `\\${char}` : char,
+	).join("");
+}
+
 /** `toLowerCase` typed for indexing `Lowercase`-keyed records without a cast. */
 export function lowercase<T extends string>(value: T): Lowercase<T> {
 	return value.toLowerCase() as Lowercase<T>;
