@@ -877,6 +877,7 @@
 		"eslint-plugin-storybook": "^10.6.6",
 		"jsdom": "^31.0.0",
 		"memfs": "^4.80.0",
+		"nanotar": "^0.3.0",
 		"oxfmt": "^0.77.0",
 		"oxlint": "^1.92.0",
 		"oxlint-plugin-eslint": "^1.92.0",
