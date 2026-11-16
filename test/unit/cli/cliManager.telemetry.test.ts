@@ -33,6 +33,7 @@ vi.mock("proper-lockfile", () => ({
 }));
 
 vi.mock("@/pgp");
+vi.mock("@/releaseDigests");
 
 vi.mock("@/cli/cliExec", async () => {
 	const actual =

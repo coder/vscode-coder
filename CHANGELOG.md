@@ -7,6 +7,14 @@
 
 ## Unreleased
 
+### Changed
+
+- The Coder CLI is now verified with Coder's new release signing key, from the
+  `.v2.asc` signature next to the binary. CLIs from deployments released before
+  the new key are instead checked against the SHA-256 digests of Coder's
+  published releases, which ship with the extension; any other CLI asks before
+  it runs, as a missing signature did.
+
 ### Fixed
 
 - SSH config `Host` patterns containing regular expression characters such as

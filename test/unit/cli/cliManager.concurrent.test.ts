@@ -27,6 +27,7 @@ import {
 } from "../../mocks/testHelpers";
 
 vi.mock("@/pgp");
+vi.mock("@/releaseDigests");
 
 vi.mock("@/cli/cliBinary", async () => {
 	const actual = await vi.importActual<typeof cliBinary>("@/cli/cliBinary");

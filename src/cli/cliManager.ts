@@ -26,6 +26,7 @@ import {
 } from "../instrumentation/cli";
 import { showStoreCredentialsError } from "../login/credentials";
 import * as pgp from "../pgp";
+import * as releaseDigests from "../releaseDigests";
 import { withCancellableProgress, withOptionalProgress } from "../ui/progress";
 import { vscodeProposed } from "../vscode/proposed";
 
@@ -50,6 +51,7 @@ type ResolvedBinary =
 
 type CliVerifyResult =
 	| { kind: "verified" }
+	| { kind: "release_digest" }
 	| { kind: "bypassed" }
 	| { kind: "sig_not_found"; status: number };
 
@@ -646,15 +648,16 @@ export class CliManager {
 								tempFile,
 								[
 									// A signature placed at the same level as the binary.  It must be
-									// named exactly the same with an appended `.asc` (such as
-									// coder-windows-amd64.exe.asc or coder-linux-amd64.asc).
-									binSource + ".asc",
+									// named exactly the same with an appended `.v2.asc` (such as
+									// coder-windows-amd64.exe.v2.asc or coder-linux-amd64.v2.asc).
+									binSource + ".v2.asc",
 									// The releases.coder.com bucket does not include the leading "v",
 									// and unlike what we get from buildinfo it uses a truncated version
 									// with only major.minor.patch.  The signature name follows the same
 									// rule as above.
-									`https://releases.coder.com/coder-cli/${parsedVersion.major}.${parsedVersion.minor}.${parsedVersion.patch}/${binName}.asc`,
+									`https://releases.coder.com/coder-cli/${parsedVersion.major}.${parsedVersion.minor}.${parsedVersion.patch}/${binName}.v2.asc`,
 								],
+								{ version: parsedVersion, binName },
 							);
 							verifySpan.setProperty("outcome", result.kind);
 							if (result.kind === "sig_not_found") {
@@ -876,6 +879,9 @@ export class CliManager {
 	 * If the first successfully downloaded signature is valid or it is invalid
 	 * and the user indicates to use the binary anyway, return, otherwise throw.
 	 *
+	 * If the first signature could not be downloaded but the binary matches the
+	 * bundled digest of the release it claims to be, return.
+	 *
 	 * If no signatures could be downloaded, return if the user indicates to use
 	 * the binary anyway, otherwise throw.
 	 */
@@ -883,6 +889,7 @@ export class CliManager {
 		client: AxiosInstance,
 		cliPath: string,
 		sources: string[],
+		release: { version: semver.SemVer; binName: string },
 	): Promise<CliVerifyResult> {
 		const publicKeys = await pgp.readPublicKeys(this.output);
 		for (let i = 0; i < sources.length; ++i) {
@@ -900,6 +907,21 @@ export class CliManager {
 			);
 			if (result.kind === "verified" || result.kind === "bypassed") {
 				return { kind: result.kind };
+			}
+			// Deployments older than the current release key have no signature it
+			// made, so check the binary against the digests of past releases before
+			// asking to look elsewhere.
+			if (
+				i === 0 &&
+				(await releaseDigests.isReleasedBinary(
+					await releaseDigests.readReleaseDigests(this.output),
+					cliPath,
+					release.version,
+					release.binName,
+					this.output,
+				))
+			) {
+				return { kind: "release_digest" };
 			}
 			// If we failed to download, try the next source.
 			let nextPrompt = "";

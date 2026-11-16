@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import * as pgp from "@/pgp";
+import * as releaseDigests from "@/releaseDigests";
 
 import { createMockStream } from "../../mocks/testHelpers";
 import { expectPathsEqual } from "../../utils/platform";
@@ -43,6 +44,7 @@ vi.mock("proper-lockfile", () => ({
 }));
 
 vi.mock("@/pgp");
+vi.mock("@/releaseDigests");
 
 vi.mock("@/cli/cliExec", async () => {
 	const actual =
@@ -808,6 +810,36 @@ describe("CliManager", () => {
 			expectPathsEqual(await t.manager.fetchBinary(t.mockApi), BINARY_PATH);
 			expect(pgp.verifySignature).toHaveBeenCalled();
 			expect(expectFileInDir(BINARY_DIR, ".asc")).toBeDefined();
+		});
+
+		it("downloads the v2 signature next to the binary", async () => {
+			const t = setupVerify();
+			t.withSignatureResponses([200]);
+			await t.manager.fetchBinary(t.mockApi);
+			expect(t.mockAxios.get).toHaveBeenLastCalledWith(
+				`/bin/${BINARY_NAME}.v2.asc`,
+				expect.anything(),
+			);
+		});
+
+		it("accepts a released binary when the deployment has no v2 signature", async () => {
+			const t = setupVerify();
+			t.withSignatureResponses([404]);
+			vi.mocked(releaseDigests.isReleasedBinary).mockResolvedValueOnce(true);
+			expectPathsEqual(await t.manager.fetchBinary(t.mockApi), BINARY_PATH);
+			expect(pgp.verifySignature).not.toHaveBeenCalled();
+			expect(t.mockAxios.get).toHaveBeenCalledTimes(2);
+		});
+
+		it("does not check release digests when a v2 signature exists", async () => {
+			const t = setupVerify();
+			t.withSignatureResponses([200]);
+			t.withInvalidSignature();
+			t.mockUI.setResponse("Signature does not match", undefined);
+			await expect(t.manager.fetchBinary(t.mockApi)).rejects.toThrow(
+				"Signature verification aborted",
+			);
+			expect(releaseDigests.isReleasedBinary).not.toHaveBeenCalled();
 		});
 
 		it("tries fallback signature on 404", async () => {
