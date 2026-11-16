@@ -111,6 +111,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: publish
+    permissions:
+      id-token: write # Allows generating an OIDC token.
     steps:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -127,9 +129,8 @@ jobs:
 
       - name: Publish to Open VSX
         env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
           VSIX: ${{ needs.package.outputs.vsix }}
-        run: ovsx publish "$VSIX" $PRE_RELEASE_FLAG
+        run: ovsx publish "$VSIX" $PRE_RELEASE_FLAG --trusted-publishing
 
   publish-github:
     name: Create GitHub ${{ endsWith(github.ref_name, '-pre') && 'Pre-Release' || 'Release' }}
