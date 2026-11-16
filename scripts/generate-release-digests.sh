@@ -67,7 +67,7 @@ embedded_digests() {
 			break
 		fi
 	done
-	(cd "$out" && find . -maxdepth 1 -type f -name 'coder-*' ! -name '*.asc' -printf '%f\n' | sort | while read -r name; do
+	(cd "$out" && find . -maxdepth 1 -type f -regextype posix-extended -regex '\./coder-(linux|darwin|windows)-[a-z0-9]+(\.exe)?' -printf '%f\n' | sort | while read -r name; do
 		echo "$name $(sha256sum "$name" | cut -d' ' -f1)"
 	done)
 }
