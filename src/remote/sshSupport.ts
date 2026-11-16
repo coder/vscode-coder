@@ -1,6 +1,6 @@
 import * as childProcess from "child_process";
 
-import { lowercase } from "../common/strings";
+import { escapeRegExp, lowercase } from "../common/strings";
 
 /**
  * Matches the OpenSSH version number from `ssh -V` output.
@@ -44,6 +44,20 @@ export function sshVersionSupportsSetEnv(sshVersionString: string): boolean {
 		return true;
 	}
 	return false;
+}
+
+/** OpenSSH `Host` pattern: `*` matches any run of characters, `?` exactly one. */
+function matchesHostPattern(host: string, pattern: string): boolean {
+	const source = Array.from(pattern, (char) => {
+		if (char === "*") {
+			return ".*";
+		}
+		if (char === "?") {
+			return ".";
+		}
+		return escapeRegExp(char);
+	}).join("");
+	return new RegExp(`^${source}$`).test(host);
 }
 
 /** Keyed by lowercase directive name, so wrong-cased lookups fail to compile. */
@@ -101,17 +115,7 @@ export function computeSshProperties(
 
 	const merged: SshProperties = {};
 	configs.forEach((config) => {
-		// In OpenSSH * matches any number of characters and ? matches exactly one.
-		if (
-			!new RegExp(
-				"^" +
-					config.host
-						.replace(/\./g, "\\.")
-						.replace(/\*/g, ".*")
-						.replace(/\?/g, ".") +
-					"$",
-			).test(host)
-		) {
+		if (!matchesHostPattern(host, config.host)) {
 			return;
 		}
 		config.properties.forEach(([key, value]) => {
