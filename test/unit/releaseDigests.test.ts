@@ -1,95 +1,79 @@
 import { createHash } from "node:crypto";
-import fs from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import * as semver from "semver";
 import { describe, expect, it } from "vitest";
 
-import * as releaseDigests from "@/releaseDigests";
+import {
+	type Digests,
+	ReleaseDigests,
+	readReleaseDigests,
+} from "@/releaseDigests";
 
+import { createMockLogger } from "../mocks/testHelpers";
 import { getFixturePath } from "../utils/fixtures";
 
-describe("releaseDigests", () => {
+describe("ReleaseDigests", () => {
 	// Just a text file, not an actual binary.
 	const cliPath = getFixturePath("pgp", "cli");
-	const version = new semver.SemVer("v2.33.0");
+	const cliDigest = createHash("sha256")
+		.update(readFileSync(cliPath))
+		.digest("hex");
+	const version = new semver.SemVer("2.33.0");
 
-	async function digestsFor(
-		versionKey: string,
-		binName: string,
-	): Promise<releaseDigests.ReleaseDigests> {
-		const digest = createHash("sha256")
-			.update(await fs.readFile(cliPath))
-			.digest("hex");
-		return { [versionKey]: { [binName]: digest } };
+	function withDigests(digests: Digests): ReleaseDigests {
+		return new ReleaseDigests(digests, createMockLogger());
 	}
 
-	it("reads bundled release digests", async () => {
-		const digests = await releaseDigests.readReleaseDigests();
-		for (const binaries of Object.values(digests)) {
-			for (const digest of Object.values(binaries)) {
-				expect(digest).toMatch(/^[0-9a-f]{64}$/);
-			}
-		}
+	it("lists past releases in the bundled digests", async () => {
+		const digests = withDigests(
+			readReleaseDigests(path.resolve(__dirname, "../../release-digests.json")),
+		);
+		await expect(
+			digests.check(cliPath, version, "coder-linux-amd64"),
+		).resolves.toBe("mismatch");
 	});
 
 	it("matches the released binary", async () => {
-		const digests = await digestsFor("2.33.0", "coder-linux-amd64");
+		const digests = withDigests({
+			"2.33.0": { "coder-linux-amd64": cliDigest },
+		});
 		await expect(
-			releaseDigests.isReleasedBinary(
-				digests,
-				cliPath,
-				version,
-				"coder-linux-amd64",
-			),
-		).resolves.toBe(true);
+			digests.check(cliPath, version, "coder-linux-amd64"),
+		).resolves.toBe("match");
 	});
 
-	it("ignores pre-release and build metadata in the version", async () => {
-		const digests = await digestsFor("2.33.0", "coder-linux-amd64");
+	it("ignores build metadata in the version", async () => {
+		const digests = withDigests({
+			"2.33.0": { "coder-linux-amd64": cliDigest },
+		});
 		await expect(
-			releaseDigests.isReleasedBinary(
-				digests,
+			digests.check(
 				cliPath,
 				new semver.SemVer("v2.33.0+abc123"),
 				"coder-linux-amd64",
 			),
-		).resolves.toBe(true);
+		).resolves.toBe("match");
 	});
 
-	it("rejects a binary with a different digest", async () => {
-		const digests = {
+	it("reports a binary that differs from its release", async () => {
+		const digests = withDigests({
 			"2.33.0": { "coder-linux-amd64": "0".repeat(64) },
-		};
+		});
 		await expect(
-			releaseDigests.isReleasedBinary(
-				digests,
-				cliPath,
-				version,
-				"coder-linux-amd64",
-			),
-		).resolves.toBe(false);
+			digests.check(cliPath, version, "coder-linux-amd64"),
+		).resolves.toBe("mismatch");
 	});
 
-	it("rejects a released binary of another version", async () => {
-		const digests = await digestsFor("2.32.0", "coder-linux-amd64");
+	it.each([
+		["another version", "2.32.0", "coder-linux-amd64"],
+		["another platform", "2.33.0", "coder-darwin-arm64"],
+	])("does not match a binary released for %s", async (_, release, binName) => {
+		const digests = withDigests({
+			[release]: { [binName]: cliDigest },
+		});
 		await expect(
-			releaseDigests.isReleasedBinary(
-				digests,
-				cliPath,
-				version,
-				"coder-linux-amd64",
-			),
-		).resolves.toBe(false);
-	});
-
-	it("rejects a released binary of another platform", async () => {
-		const digests = await digestsFor("2.33.0", "coder-darwin-arm64");
-		await expect(
-			releaseDigests.isReleasedBinary(
-				digests,
-				cliPath,
-				version,
-				"coder-linux-amd64",
-			),
-		).resolves.toBe(false);
+			digests.check(cliPath, version, "coder-linux-amd64"),
+		).resolves.toBe("unlisted");
 	});
 });

@@ -15,6 +15,7 @@ import * as cliBinary from "@/cli/cliBinary";
 import * as cliExec from "@/cli/cliExec";
 import { CliManager } from "@/cli/cliManager";
 import * as pgp from "@/pgp";
+import { ReleaseDigests } from "@/releaseDigests";
 import { PathResolver } from "@/storage/pathResolver";
 
 import { createTestTelemetryService } from "../../mocks/telemetry";
@@ -27,7 +28,6 @@ import {
 } from "../../mocks/testHelpers";
 
 vi.mock("@/pgp");
-vi.mock("@/releaseDigests");
 
 vi.mock("@/cli/cliBinary", async () => {
 	const actual = await vi.importActual<typeof cliBinary>("@/cli/cliBinary");
@@ -89,6 +89,7 @@ function setupManager(testDir: string): CliManager {
 		createMockLogger(),
 		new PathResolver(testDir, "/code/log"),
 		createMockCliCredentialManager(),
+		new ReleaseDigests({}, createMockLogger()),
 		createTestTelemetryService(),
 	);
 }

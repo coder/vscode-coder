@@ -9,11 +9,10 @@
 
 ### Changed
 
-- The Coder CLI is now verified with Coder's new release signing key, from the
-  `.v2.asc` signature next to the binary. CLIs from deployments released before
-  the new key are instead checked against the SHA-256 digests of Coder's
-  published releases, which ship with the extension; any other CLI asks before
-  it runs, as a missing signature did.
+- The Coder CLI is now verified with Coder's new release signing key. CLIs from
+  deployments released before that key are checked against the digests of
+  Coder's releases that ship with the extension, and a CLI that differs from
+  its release is reported like an invalid signature.
 
 ### Fixed
 

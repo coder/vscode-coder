@@ -33,7 +33,6 @@ vi.mock("proper-lockfile", () => ({
 }));
 
 vi.mock("@/pgp");
-vi.mock("@/releaseDigests");
 
 vi.mock("@/cli/cliExec", async () => {
 	const actual =
@@ -312,6 +311,19 @@ describe("CliManager telemetry", () => {
 				expect(verify.measurements.durationMs).toBeGreaterThanOrEqual(0);
 				expect(verify.traceId).toBe(download.traceId);
 				expect(verify.parentEventId).toBe(download.eventId);
+			});
+
+			it("emits outcome=release_digest when the binary matches its release", async () => {
+				const t = setupVerify();
+				t.withSignatureResponses([404]);
+				t.withReleasedBinary(mockBinaryContent(TEST_VERSION));
+
+				await t.manager.fetchBinary(t.mockApi);
+
+				t.expectProps("cli.download.verify", {
+					outcome: "release_digest",
+					result: "success",
+				});
 			});
 
 			it("emits outcome=bypassed when user runs anyway despite invalid signature", async () => {

@@ -26,7 +26,6 @@ import {
 } from "../instrumentation/cli";
 import { showStoreCredentialsError } from "../login/credentials";
 import * as pgp from "../pgp";
-import * as releaseDigests from "../releaseDigests";
 import { withCancellableProgress, withOptionalProgress } from "../ui/progress";
 import { vscodeProposed } from "../vscode/proposed";
 
@@ -39,6 +38,7 @@ import type { Api } from "coder/site/src/api/api";
 import type { IncomingMessage } from "node:http";
 
 import type { Logger } from "../logging/logger";
+import type { ReleaseDigests } from "../releaseDigests";
 import type { PathResolver } from "../storage/pathResolver";
 import type { TelemetryService } from "../telemetry/service";
 import type { Span } from "../telemetry/span";
@@ -71,6 +71,7 @@ export class CliManager {
 			CliCredentialManager,
 			"storeToken" | "hasCliStore" | "holdsToken" | "deleteToken"
 		>,
+		private readonly releaseDigests: ReleaseDigests,
 		telemetry: TelemetryService,
 	) {
 		this.binaryLock = new BinaryLock(output);
@@ -879,8 +880,9 @@ export class CliManager {
 	 * If the first successfully downloaded signature is valid or it is invalid
 	 * and the user indicates to use the binary anyway, return, otherwise throw.
 	 *
-	 * If the first signature could not be downloaded but the binary matches the
-	 * bundled digest of the release it claims to be, return.
+	 * If the first signature could not be downloaded, check the binary against
+	 * the digest of the release it claims to be: return if it matches, and treat
+	 * it like an invalid signature if it does not.
 	 *
 	 * If no signatures could be downloaded, return if the user indicates to use
 	 * the binary anyway, otherwise throw.
@@ -911,17 +913,21 @@ export class CliManager {
 			// Deployments older than the current release key have no signature it
 			// made, so check the binary against the digests of past releases before
 			// asking to look elsewhere.
-			if (
-				i === 0 &&
-				(await releaseDigests.isReleasedBinary(
-					await releaseDigests.readReleaseDigests(this.output),
+			if (i === 0) {
+				const digest = await this.releaseDigests.check(
 					cliPath,
 					release.version,
 					release.binName,
-					this.output,
-				))
-			) {
-				return { kind: "release_digest" };
+				);
+				if (digest === "match") {
+					return { kind: "release_digest" };
+				}
+				if (digest === "mismatch") {
+					return this.confirmRunUnverified(
+						"Binary does not match its release",
+						`The binary is not the ${release.binName} that Coder released in ${release.version.version}. The binary may have been tampered with.`,
+					);
+				}
 			}
 			// If we failed to download, try the next source.
 			let nextPrompt = "";
@@ -991,26 +997,42 @@ export class CliManager {
 			);
 			return { kind: "verified" };
 		} catch (error) {
-			const action = await vscodeProposed.window.showWarningMessage(
+			return this.confirmRunUnverified(
 				// VerificationError should be the only thing that throws, but
 				// unfortunately caught errors are always type unknown.
 				error instanceof pgp.VerificationError
 					? error.summary()
 					: "Failed to verify signature",
-				{
-					useCustom: true,
-					modal: true,
-					detail: `${errToStr(error)} Would you like to accept this risk and run the binary anyway?`,
-				},
-				"Run anyway",
+				errToStr(error),
+				error,
 			);
-			if (!action) {
-				this.output.info("Binary was rejected at user request");
-				throw new Error("Signature verification aborted", { cause: error });
-			}
-			this.output.info("Binary will be ran anyway at user request");
-			return { kind: "bypassed" };
 		}
+	}
+
+	/**
+	 * Ask whether to run a binary that failed verification anyway. Throw if the
+	 * user declines.
+	 */
+	private async confirmRunUnverified(
+		message: string,
+		reason: string,
+		cause?: unknown,
+	): Promise<{ kind: "bypassed" }> {
+		const action = await vscodeProposed.window.showWarningMessage(
+			message,
+			{
+				useCustom: true,
+				modal: true,
+				detail: `${reason} Would you like to accept this risk and run the binary anyway?`,
+			},
+			"Run anyway",
+		);
+		if (!action) {
+			this.output.info("Binary was rejected at user request");
+			throw new Error("Signature verification aborted", { cause });
+		}
+		this.output.info("Binary will be ran anyway at user request");
+		return { kind: "bypassed" };
 	}
 
 	/**

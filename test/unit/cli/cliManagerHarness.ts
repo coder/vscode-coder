@@ -1,6 +1,7 @@
 import globalAxios, { type AxiosInstance } from "axios";
 import { type Api } from "coder/site/src/api/api";
 import { fs as memfs, vol } from "memfs";
+import { createHash } from "node:crypto";
 import EventEmitter from "node:events";
 import * as fs from "node:fs";
 import { type IncomingMessage } from "node:http";
@@ -10,6 +11,7 @@ import { expect, vi } from "vitest";
 import * as cliExec from "@/cli/cliExec";
 import { CliManager } from "@/cli/cliManager";
 import * as pgp from "@/pgp";
+import { type Digests, ReleaseDigests } from "@/releaseDigests";
 import { PathResolver } from "@/storage/pathResolver";
 
 import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";
@@ -50,10 +52,12 @@ export function setupCliManager(basePath: string = BASE_PATH) {
 	const mockProgress = new MockProgressReporter();
 	const mockUI = new MockUserInteraction();
 	const mockCredManager = createMockCliCredentialManager();
+	const releasedDigests: Digests = {};
 	const manager = new CliManager(
 		createMockLogger(),
 		new PathResolver(basePath, "/code/log"),
 		mockCredManager,
+		new ReleaseDigests(releasedDigests, createMockLogger()),
 		createTestTelemetryService(telemetrySink),
 	);
 
@@ -153,6 +157,13 @@ export function setupCliManager(basePath: string = BASE_PATH) {
 			.mocked(pgp.verifySignature)
 			.mockRejectedValueOnce(createVerificationError("Invalid signature"));
 
+	/** List `content` as the released binary of `TEST_VERSION`. */
+	const withReleasedBinary = (content: string) => {
+		releasedDigests[TEST_VERSION] = {
+			[BINARY_NAME]: createHash("sha256").update(content).digest("hex"),
+		};
+	};
+
 	/** Fail the download via a read- or write-stream error. */
 	const withStreamError = (type: "read" | "write", message: string) => {
 		if (type === "write") {
@@ -212,6 +223,7 @@ export function setupCliManager(basePath: string = BASE_PATH) {
 		withInterruptedDownload,
 		withSignatureResponses,
 		withInvalidSignature,
+		withReleasedBinary,
 		withStreamError,
 		withTrailingWriteFlush,
 		event,

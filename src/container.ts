@@ -1,3 +1,4 @@
+import path from "node:path";
 import * as vscode from "vscode";
 
 import { CliCredentialManager } from "./cli/cliCredentialManager";
@@ -8,6 +9,7 @@ import { FlightRecorder } from "./logging/flightRecorder";
 import { prefixLogger } from "./logging/prefixLogger";
 import { LoginCoordinator } from "./login/loginCoordinator";
 import { OAuthCallback } from "./oauth/oauthCallback";
+import { ReleaseDigests, readReleaseDigests } from "./releaseDigests";
 import {
 	CONNECTION_LOG_BUFFER_SIZE_SETTING,
 	readConnectionLogBufferSize,
@@ -122,6 +124,12 @@ export class ServiceContainer implements vscode.Disposable {
 			this.logger,
 			this.pathResolver,
 			this.cliCredentialManager,
+			new ReleaseDigests(
+				readReleaseDigests(
+					path.join(context.extensionPath, "release-digests.json"),
+				),
+				this.logger,
+			),
 			this.telemetryService,
 		);
 		this.contextManager = new ContextManager(context);
