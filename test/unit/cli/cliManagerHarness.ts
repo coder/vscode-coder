@@ -10,8 +10,8 @@ import { expect, vi } from "vitest";
 
 import * as cliExec from "@/cli/cliExec";
 import { CliManager } from "@/cli/cliManager";
+import { type Digests, ReleaseDigests } from "@/cli/releaseDigests";
 import * as pgp from "@/pgp";
-import { type Digests, ReleaseDigests } from "@/releaseDigests";
 import { PathResolver } from "@/storage/pathResolver";
 
 import { createTestTelemetryService, TestSink } from "../../mocks/telemetry";

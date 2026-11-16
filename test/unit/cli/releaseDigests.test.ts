@@ -8,10 +8,10 @@ import {
 	type Digests,
 	ReleaseDigests,
 	readReleaseDigests,
-} from "@/releaseDigests";
+} from "@/cli/releaseDigests";
 
-import { createMockLogger } from "../mocks/testHelpers";
-import { getFixturePath } from "../utils/fixtures";
+import { createMockLogger } from "../../mocks/testHelpers";
+import { getFixturePath } from "../../utils/fixtures";
 
 describe("ReleaseDigests", () => {
 	// Just a text file, not an actual binary.
@@ -21,13 +21,15 @@ describe("ReleaseDigests", () => {
 		.digest("hex");
 	const version = new semver.SemVer("2.33.0");
 
-	function withDigests(digests: Digests): ReleaseDigests {
+	function createDigests(digests: Digests): ReleaseDigests {
 		return new ReleaseDigests(digests, createMockLogger());
 	}
 
 	it("lists past releases in the bundled digests", async () => {
-		const digests = withDigests(
-			readReleaseDigests(path.resolve(__dirname, "../../release-digests.json")),
+		const digests = createDigests(
+			readReleaseDigests(
+				path.resolve(__dirname, "../../../release-digests.json"),
+			),
 		);
 		await expect(
 			digests.check(cliPath, version, "coder-linux-amd64"),
@@ -35,7 +37,7 @@ describe("ReleaseDigests", () => {
 	});
 
 	it("matches the released binary", async () => {
-		const digests = withDigests({
+		const digests = createDigests({
 			"2.33.0": { "coder-linux-amd64": cliDigest },
 		});
 		await expect(
@@ -44,7 +46,7 @@ describe("ReleaseDigests", () => {
 	});
 
 	it("ignores build metadata in the version", async () => {
-		const digests = withDigests({
+		const digests = createDigests({
 			"2.33.0": { "coder-linux-amd64": cliDigest },
 		});
 		await expect(
@@ -57,7 +59,7 @@ describe("ReleaseDigests", () => {
 	});
 
 	it("reports a binary that differs from its release", async () => {
-		const digests = withDigests({
+		const digests = createDigests({
 			"2.33.0": { "coder-linux-amd64": "0".repeat(64) },
 		});
 		await expect(
@@ -65,15 +67,31 @@ describe("ReleaseDigests", () => {
 		).resolves.toBe("mismatch");
 	});
 
-	it.each([
-		["another version", "2.32.0", "coder-linux-amd64"],
-		["another platform", "2.33.0", "coder-darwin-arm64"],
-	])("does not match a binary released for %s", async (_, release, binName) => {
-		const digests = withDigests({
-			[release]: { [binName]: cliDigest },
-		});
-		await expect(
-			digests.check(cliPath, version, "coder-linux-amd64"),
-		).resolves.toBe("unlisted");
-	});
+	interface OtherReleaseCase {
+		name: string;
+		release: string;
+		binName: string;
+	}
+	it.each<OtherReleaseCase>([
+		{
+			name: "another version",
+			release: "2.32.0",
+			binName: "coder-linux-amd64",
+		},
+		{
+			name: "another platform",
+			release: "2.33.0",
+			binName: "coder-darwin-arm64",
+		},
+	])(
+		"does not match a binary released for $name",
+		async ({ release, binName }) => {
+			const digests = createDigests({
+				[release]: { [binName]: cliDigest },
+			});
+			await expect(
+				digests.check(cliPath, version, "coder-linux-amd64"),
+			).resolves.toBe("unlisted");
+		},
+	);
 });

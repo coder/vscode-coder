@@ -38,12 +38,12 @@ import type { Api } from "coder/site/src/api/api";
 import type { IncomingMessage } from "node:http";
 
 import type { Logger } from "../logging/logger";
-import type { ReleaseDigests } from "../releaseDigests";
 import type { PathResolver } from "../storage/pathResolver";
 import type { TelemetryService } from "../telemetry/service";
 import type { Span } from "../telemetry/span";
 
 import type { CliCredentialManager } from "./cliCredentialManager";
+import type { ReleaseDigests } from "./releaseDigests";
 
 type ResolvedBinary =
 	| { binPath: string; stat: Stats; source: "file_path" | "directory" }
@@ -647,18 +647,7 @@ export class CliManager {
 							const result = await this.verifyBinarySignatures(
 								client,
 								tempFile,
-								[
-									// A signature placed at the same level as the binary.  It must be
-									// named exactly the same with an appended `.v2.asc` (such as
-									// coder-windows-amd64.exe.v2.asc or coder-linux-amd64.v2.asc).
-									binSource + ".v2.asc",
-									// The releases.coder.com bucket does not include the leading "v",
-									// and unlike what we get from buildinfo it uses a truncated version
-									// with only major.minor.patch.  The signature name follows the same
-									// rule as above.
-									`https://releases.coder.com/coder-cli/${parsedVersion.major}.${parsedVersion.minor}.${parsedVersion.patch}/${binName}.v2.asc`,
-								],
-								{ version: parsedVersion, binName },
+								{ source: binSource, version: parsedVersion, name: binName },
 							);
 							verifySpan.setProperty("outcome", result.kind);
 							if (result.kind === "sig_not_found") {
@@ -890,9 +879,20 @@ export class CliManager {
 	private async verifyBinarySignatures(
 		client: AxiosInstance,
 		cliPath: string,
-		sources: string[],
-		release: { version: semver.SemVer; binName: string },
+		binary: { source: string; version: semver.SemVer; name: string },
 	): Promise<CliVerifyResult> {
+		const { major, minor, patch } = binary.version;
+		const sources = [
+			// A signature placed at the same level as the binary.  It must be
+			// named exactly the same with an appended `.v2.asc` (such as
+			// coder-windows-amd64.exe.v2.asc or coder-linux-amd64.v2.asc).
+			binary.source + ".v2.asc",
+			// The releases.coder.com bucket does not include the leading "v",
+			// and unlike what we get from buildinfo it uses a truncated version
+			// with only major.minor.patch.  The signature name follows the same
+			// rule as above.
+			`https://releases.coder.com/coder-cli/${major}.${minor}.${patch}/${binary.name}.v2.asc`,
+		];
 		const publicKeys = await pgp.readPublicKeys(this.output);
 		for (let i = 0; i < sources.length; ++i) {
 			const source = sources[i];
@@ -910,23 +910,23 @@ export class CliManager {
 			if (result.kind === "verified" || result.kind === "bypassed") {
 				return { kind: result.kind };
 			}
-			// Deployments older than the current release key have no signature it
-			// made, so check the binary against the digests of past releases before
-			// asking to look elsewhere.
+			// A deployment released before the current key has no signature from it,
+			// so check the release digests before asking to look elsewhere.
 			if (i === 0) {
 				const digest = await this.releaseDigests.check(
 					cliPath,
-					release.version,
-					release.binName,
+					binary.version,
+					binary.name,
 				);
 				if (digest === "match") {
 					return { kind: "release_digest" };
 				}
 				if (digest === "mismatch") {
-					return this.confirmRunUnverified(
+					await this.confirmRunAnyway(
 						"Binary does not match its release",
-						`The binary is not the ${release.binName} that Coder released in ${release.version.version}. The binary may have been tampered with.`,
+						`The binary does not match ${binary.name} from Coder's ${binary.version.version} release. It may have been tampered with.`,
 					);
+					return { kind: "bypassed" };
 				}
 			}
 			// If we failed to download, try the next source.
@@ -997,7 +997,7 @@ export class CliManager {
 			);
 			return { kind: "verified" };
 		} catch (error) {
-			return this.confirmRunUnverified(
+			await this.confirmRunAnyway(
 				// VerificationError should be the only thing that throws, but
 				// unfortunately caught errors are always type unknown.
 				error instanceof pgp.VerificationError
@@ -1006,18 +1006,16 @@ export class CliManager {
 				errToStr(error),
 				error,
 			);
+			return { kind: "bypassed" };
 		}
 	}
 
-	/**
-	 * Ask whether to run a binary that failed verification anyway. Throw if the
-	 * user declines.
-	 */
-	private async confirmRunUnverified(
+	/** Ask whether to run a binary that failed verification. Throw if declined. */
+	private async confirmRunAnyway(
 		message: string,
 		reason: string,
 		cause?: unknown,
-	): Promise<{ kind: "bypassed" }> {
+	): Promise<void> {
 		const action = await vscodeProposed.window.showWarningMessage(
 			message,
 			{
@@ -1032,7 +1030,6 @@ export class CliManager {
 			throw new Error("Signature verification aborted", { cause });
 		}
 		this.output.info("Binary will be ran anyway at user request");
-		return { kind: "bypassed" };
 	}
 
 	/**

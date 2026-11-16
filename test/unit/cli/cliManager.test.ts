@@ -863,6 +863,10 @@ describe("CliManager", () => {
 			t.mockUI.setResponse("Signature not found", "Download signature");
 			expectPathsEqual(await t.manager.fetchBinary(t.mockApi), BINARY_PATH);
 			expect(t.mockAxios.get).toHaveBeenCalledTimes(3);
+			expect(t.mockAxios.get).toHaveBeenCalledWith(
+				`https://releases.coder.com/coder-cli/${TEST_VERSION}/${BINARY_NAME}.v2.asc`,
+				expect.anything(),
+			);
 			expect(expectFileInDir(BINARY_DIR, ".asc")).toBeDefined();
 		});
 

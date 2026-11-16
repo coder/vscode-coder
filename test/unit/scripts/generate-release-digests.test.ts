@@ -68,18 +68,39 @@ describe("generate-release-digests", () => {
 		});
 	});
 
-	it.each([
-		["a verified signature by Coder", CODER_SUBJECT, "ok", true],
-		[
-			"a signer that only shares Coder's name",
-			"CN=Coder Technologies Inc.,O=Someone Else",
-			"ok",
-			false,
-		],
-		["a failed verification", CODER_SUBJECT, "failed", false],
-	])("checks Authenticode output with %s", (_, subject, result, expected) => {
-		expect(isSignedByCoder(verifyOutput(subject, result))).toBe(expected);
-	});
+	interface SignerCase {
+		name: string;
+		subject: string;
+		result: string;
+		signedByCoder: boolean;
+	}
+	it.each<SignerCase>([
+		{
+			name: "a verified signature by Coder",
+			subject: CODER_SUBJECT,
+			result: "ok",
+			signedByCoder: true,
+		},
+		{
+			name: "a signer that only shares Coder's name",
+			subject: "CN=Coder Technologies Inc.,O=Someone Else",
+			result: "ok",
+			signedByCoder: false,
+		},
+		{
+			name: "a failed verification",
+			subject: CODER_SUBJECT,
+			result: "failed",
+			signedByCoder: false,
+		},
+	])(
+		"checks Authenticode output with $name",
+		({ subject, result, signedByCoder }) => {
+			expect(isSignedByCoder(verifyOutput(subject, result))).toBe(
+				signedByCoder,
+			);
+		},
+	);
 
 	it("reads the release version and commit from Go build info", () => {
 		const moduleInfo = [

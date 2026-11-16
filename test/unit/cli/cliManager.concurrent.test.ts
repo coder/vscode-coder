@@ -14,8 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as cliBinary from "@/cli/cliBinary";
 import * as cliExec from "@/cli/cliExec";
 import { CliManager } from "@/cli/cliManager";
+import { ReleaseDigests } from "@/cli/releaseDigests";
 import * as pgp from "@/pgp";
-import { ReleaseDigests } from "@/releaseDigests";
 import { PathResolver } from "@/storage/pathResolver";
 
 import { createTestTelemetryService } from "../../mocks/telemetry";

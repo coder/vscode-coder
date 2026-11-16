@@ -4,7 +4,7 @@ import { pipeline } from "node:stream/promises";
 
 import type * as semver from "semver";
 
-import type { Logger } from "./logging/logger";
+import type { Logger } from "../logging/logger";
 
 /**
  * SHA-256 digests of the Coder CLI binaries in releases that are not signed
@@ -18,13 +18,12 @@ export type Digests = Record<string, Record<string, string>>;
  * How a binary compares with the release it claims to be: the same digest, a
  * different digest, or a release and platform with no digest.
  */
-export type ReleaseDigestResult = "match" | "mismatch" | "unlisted";
+type ReleaseDigestResult = "match" | "mismatch" | "unlisted";
 
 export function readReleaseDigests(digestsPath: string): Digests {
 	return JSON.parse(readFileSync(digestsPath, "utf8")) as Digests;
 }
 
-/** Checks CLI binaries against the digests of past Coder releases. */
 export class ReleaseDigests {
 	constructor(
 		private readonly digests: Digests,
@@ -33,7 +32,7 @@ export class ReleaseDigests {
 
 	/**
 	 * Compare the file at cliPath with the released binName of this version. A
-	 * released binary of another version or platform does not match.
+	 * genuine binary of another version or platform does not match.
 	 */
 	public async check(
 		cliPath: string,

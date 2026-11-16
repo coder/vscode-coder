@@ -9,10 +9,11 @@
 
 ### Changed
 
-- The Coder CLI is now verified with Coder's new release signing key. CLIs from
-  deployments released before that key are checked against the digests of
-  Coder's releases that ship with the extension, and a CLI that differs from
-  its release is reported like an invalid signature.
+- The Coder CLI is now verified with Coder's new release signing key. A CLI
+  from a deployment released before that key is instead compared with the
+  SHA-256 digests of Coder's releases, which ship with the extension. A CLI
+  that does not match its release gets the same warning as an invalid
+  signature.
 
 ### Fixed
 
