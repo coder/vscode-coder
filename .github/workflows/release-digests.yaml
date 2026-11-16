@@ -1,0 +1,44 @@
+name: Release Digests
+
+# release-digests.json must be exactly what the script generates.
+on:
+  pull_request:
+    paths:
+      - release-digests.json
+      - scripts/generate-release-digests.mts
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    name: Reproduce Release Digests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup pnpm, Node.js, and dependencies
+        uses: ./.github/actions/pnpm-setup
+
+      # The script parses this version's output; apt has an older format.
+      - name: Install osslsigncode 2.16
+        working-directory: ${{ runner.temp }}
+        run: |
+          gh release download 2.16 --repo mtrojnar/osslsigncode --pattern "$ARCHIVE"
+          echo "109c711ac07fc2ce1e3756d6247d92bbf23e55c4aa809a4b34cca3c4f2913fc6  $ARCHIVE" | sha256sum --check
+          tar -xzf "$ARCHIVE"
+          echo "$PWD/osslsigncode-2.16-linux-amd64" >> "$GITHUB_PATH"
+        env:
+          ARCHIVE: osslsigncode-2.16-linux-amd64.tar.gz
+          GH_TOKEN: ${{ github.token }}
+
+      - run: node scripts/generate-release-digests.mts > release-digests.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - run: git diff --exit-code release-digests.json
