@@ -23,6 +23,7 @@ export default defineConfig({
 					environment: "node",
 					globals: true,
 					setupFiles: ["test/unit/setup.ts"],
+					fakeTimers: { fakeNodeBuiltins: true },
 				},
 				resolve: {
 					alias: {

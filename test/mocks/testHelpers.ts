@@ -32,7 +32,6 @@ import type {
 	WorkspaceStatus,
 } from "coder/site/src/api/typesGenerated";
 import type { WebSocketEventType } from "coder/site/src/utils/OneWayWebSocket";
-import type { IncomingMessage } from "node:http";
 
 import type { AgentMetadataEvent } from "@/api/agentMetadata";
 import type { CoderApi } from "@/api/coderApi";
@@ -49,11 +48,13 @@ import type { SecretsManager } from "@/storage/secretsManager";
 import type { TelemetryService } from "@/telemetry/service";
 import type { ContextManager } from "@/vscode/contextManager";
 import type {
+	CloseEvent,
 	EventHandler,
 	EventPayloadMap,
 	ParsedMessageEvent,
 	UnidirectionalStream,
 } from "@/websocket/eventStreamConnection";
+import type { OneWayStream } from "@/websocket/oneWayWebSocket";
 /**
  * Subset of `ContextManager`'s public API that mocks (e.g. `MockContextManager`)
  * implement. Used by `createMockServiceContainer` so tests can pass either the
@@ -560,14 +561,17 @@ export class InMemorySecretStorage implements vscode.SecretStorage {
 	}
 }
 
-export function createMockCliCredentialManager(): CliCredentialManager {
+export function createMockCliCredentialManager(): Pick<
+	CliCredentialManager,
+	"storeToken" | "readToken" | "deleteToken" | "holdsToken" | "hasCliStore"
+> {
 	return {
 		storeToken: vi.fn().mockResolvedValue(undefined),
 		readToken: vi.fn().mockResolvedValue(undefined),
 		deleteToken: vi.fn().mockResolvedValue(true),
 		holdsToken: vi.fn().mockResolvedValue(false),
 		hasCliStore: vi.fn().mockResolvedValue(true),
-	} as unknown as CliCredentialManager;
+	};
 }
 
 export function createMockLogger(): Logger {
@@ -899,7 +903,7 @@ export function createMockStream(
 		// If defined will throw an error instead of closing normally
 		error?: NodeJS.ErrnoException;
 	} = {},
-): IncomingMessage {
+) {
 	const { chunkSize = 8, delay = 1, error } = options;
 
 	const buffer = Buffer.from(content);
@@ -939,7 +943,22 @@ export function createMockStream(
 			}
 		}),
 		destroy: vi.fn(),
-	} as unknown as IncomingMessage;
+	};
+}
+
+/** A socket that is already open and resolves `closed` once `close()` is called. */
+export function createMockOneWaySocket<T>(): OneWayStream<T> {
+	const closed = Promise.withResolvers<CloseEvent>();
+	return {
+		url: "",
+		opened: Promise.resolve(),
+		closed: closed.promise,
+		addEventListener: vi.fn(),
+		removeEventListener: vi.fn(),
+		close: vi.fn((code = 1000, reason = "") =>
+			closed.resolve({ code, reason, wasClean: true }),
+		),
+	};
 }
 
 /**
@@ -1615,6 +1634,10 @@ export class MockWorkspacesClient {
 	readonly getWorkspaces = vi.fn(
 		(_req: { q: string }): Promise<WorkspacesResponse> =>
 			Promise.resolve({ workspaces: [], count: 0 }),
+	);
+
+	readonly getWorkspace = vi.fn((id: string): Promise<Workspace> =>
+		Promise.resolve(createWorkspace({ id })),
 	);
 
 	readonly getHost = vi.fn((): string | undefined => TEST_DEPLOYMENT.url);

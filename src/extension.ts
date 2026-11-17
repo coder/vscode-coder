@@ -29,6 +29,7 @@ import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
 import { initVscodeProposed } from "./vscode/proposed";
 import { TasksPanelProvider } from "./webviews/tasks/tasksPanelProvider";
+import { WorkspaceActionRunner } from "./webviews/workspaces/workspaceActionRunner";
 import { WorkspacesPanelProvider } from "./webviews/workspaces/workspacesPanelProvider";
 import { WorkspaceStore } from "./webviews/workspaces/workspaceStore";
 import { WorkspaceProvider } from "./workspace/workspacesProvider";
@@ -301,6 +302,13 @@ async function doActivate(
 			ctx.extensionUri,
 			workspaceStore,
 			commands,
+			new WorkspaceActionRunner(
+				client,
+				deploymentManager.session,
+				commands,
+				telemetryService,
+				output,
+			),
 			output,
 		);
 

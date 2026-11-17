@@ -165,6 +165,12 @@ const DIAGNOSTIC_VERBS: Readonly<Record<AgentDiagnostic, string>> = {
 	supportBundle: "create a support bundle for",
 };
 
+const DASHBOARD_PATHS: Readonly<Record<DashboardPage, string>> = {
+	workspace: "",
+	settings: "/settings",
+	sharing: "/settings/sharing",
+};
+
 const openDefaults = {
 	openRecent: false,
 	useDefaultDirectory: true,
@@ -1020,7 +1026,7 @@ export class Commands {
 		const workspaceId = createWorkspaceIdentifier(workspace);
 		await openInBrowser(
 			this.requireExtensionBaseUrl(),
-			`/@${workspaceId}${page === "settings" ? "/settings" : ""}`,
+			`/@${workspaceId}${DASHBOARD_PATHS[page]}`,
 		);
 	}
 

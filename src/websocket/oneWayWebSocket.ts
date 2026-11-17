@@ -29,10 +29,14 @@ export interface OneWayWebSocketInit {
 	options?: ClientOptions;
 }
 
-export class OneWayWebSocket<
-	TData = unknown,
-> implements UnidirectionalStream<TData> {
+/** A one-way stream that reports when it opens and closes. */
+export interface OneWayStream<TData> extends UnidirectionalStream<TData> {
 	/** Rejects if the handshake fails. */
+	readonly opened: Promise<void>;
+	readonly closed: Promise<CloseEvent>;
+}
+
+export class OneWayWebSocket<TData = unknown> implements OneWayStream<TData> {
 	readonly opened: Promise<void>;
 	readonly closed: Promise<CloseEvent>;
 	readonly #socket: Ws;

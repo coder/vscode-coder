@@ -1,11 +1,13 @@
 import {
 	isAxiosError,
+	isCancel,
 	type AxiosHeaders,
 	type AxiosInstance,
 	type AxiosResponseHeaders,
 	type AxiosResponseTransformer,
 } from "axios";
 import { Api } from "coder/site/src/api/api";
+import { setTimeout as sleep } from "node:timers/promises";
 import * as vscode from "vscode";
 
 import { isSameOrigin } from "../common/url";
@@ -172,25 +174,50 @@ export class CoderApi extends Api implements vscode.Disposable {
 	/**
 	 * Reimplemented because the SDK version polls inside a voided IIFE that
 	 * swallows errors, hanging callers forever if a poll throws (e.g. on
-	 * failed response validation).
+	 * failed response validation). Builds outlast network blips, so up to
+	 * `MAX_POLL_FAILURES` transient failures in a row are polled through.
 	 */
 	override waitForBuild = async (
 		build: WorkspaceBuild,
+		signal?: AbortSignal,
 	): Promise<ProvisionerJob | undefined> => {
+		let failures = 0;
 		while (true) {
-			const { job } = await this.getWorkspaceBuildByNumber(
-				build.workspace_owner_name,
-				build.workspace_name,
-				build.build_number,
+			const job = await this.getWorkspaceBuild(build.id, signal).then(
+				(polled) => {
+					failures = 0;
+					return polled.job;
+				},
+				(error: unknown) => {
+					if (!isTransientError(error) || ++failures > MAX_POLL_FAILURES) {
+						throw error;
+					}
+					return undefined;
+				},
 			);
-			if (job.status === "failed") {
+			if (job?.status === "failed") {
 				throw new Error(`Build ${build.build_number} failed`);
 			}
-			if (job.status === "succeeded" || job.status === "canceled") {
+			if (job?.status === "succeeded" || job?.status === "canceled") {
 				return job;
 			}
-			await new Promise((resolve) => setTimeout(resolve, 1000));
+			await sleep(1000, undefined, { signal });
 		}
+	};
+
+	/**
+	 * Reads a build by ID, as `coder` does while it waits. Reads by owner and
+	 * name 404 once a delete completes, because they skip deleted workspaces.
+	 */
+	getWorkspaceBuild = async (
+		buildId: string,
+		signal?: AbortSignal,
+	): Promise<WorkspaceBuild> => {
+		const { data } = await this.getAxiosInstance().get<WorkspaceBuild>(
+			`/api/v2/workspacebuilds/${buildId}`,
+			{ signal },
+		);
+		return data;
 	};
 
 	hasAuthConfigChangedSince(version: number | undefined): boolean {
@@ -736,6 +763,17 @@ function wrapWithValidation(api: CoderApi): void {
 		methods[name] = async (...args) =>
 			parseApiResponse(schema, await method(...args), name, api.getHost());
 	}
+}
+
+const MAX_POLL_FAILURES = 3;
+
+/** No response, or a 5xx; a cancelled request is not transient. */
+function isTransientError(error: unknown): boolean {
+	return (
+		isAxiosError(error) &&
+		!isCancel(error) &&
+		(!error.response || error.response.status >= 500)
+	);
 }
 
 function getSize(headers: AxiosHeaders, data: unknown): number | undefined {

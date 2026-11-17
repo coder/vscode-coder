@@ -102,7 +102,10 @@ export class LoginCoordinator implements vscode.Disposable {
 		private readonly secretsManager: SecretsManager,
 		private readonly mementoManager: MementoManager,
 		private readonly logger: Logger,
-		private readonly cliCredentialManager: CliCredentialManager,
+		private readonly cliCredentialManager: Pick<
+			CliCredentialManager,
+			"hasCliStore" | "readToken" | "storeToken"
+		>,
 		private readonly authTelemetry: AuthTelemetry,
 		oauthCallback: OAuthCallback,
 		extensionId: string,
