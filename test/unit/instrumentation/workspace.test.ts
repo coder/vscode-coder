@@ -11,6 +11,8 @@ import { createTelemetryHarness } from "../../mocks/telemetry";
 
 import type { TelemetryService } from "@/telemetry/service";
 
+import type { WorkspaceAction } from "@repo/shared";
+
 const WORKSPACE_NAME = "testuser/test-workspace";
 
 function setup<T>(make: (svc: TelemetryService, name: string) => T) {
@@ -22,9 +24,7 @@ const newOps = (svc: TelemetryService, name: string) =>
 	new WorkspaceOperationTelemetry(svc, name);
 
 describe("WorkspaceOperationTelemetry", () => {
-	const ACTIONS = ["start", "stop", "restart", "update", "delete"] as const;
-
-	it.each(ACTIONS)(
+	it.each<WorkspaceAction>(["start", "stop", "restart", "update", "delete"])(
 		"traces %s as workspace.<action>.triggered with result=success",
 		async (action) => {
 			const { sink, instance: ops } = setup(newOps);

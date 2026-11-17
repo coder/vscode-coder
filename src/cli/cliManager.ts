@@ -65,7 +65,10 @@ export class CliManager {
 	constructor(
 		private readonly output: Logger,
 		private readonly pathResolver: PathResolver,
-		private readonly cliCredentialManager: CliCredentialManager,
+		private readonly cliCredentialManager: Pick<
+			CliCredentialManager,
+			"storeToken" | "hasCliStore" | "holdsToken" | "deleteToken"
+		>,
 		telemetry: TelemetryService,
 	) {
 		this.binaryLock = new BinaryLock(output);

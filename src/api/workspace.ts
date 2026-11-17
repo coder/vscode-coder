@@ -28,7 +28,7 @@ import type {
 	EventHandler,
 	UnidirectionalStream,
 } from "../websocket/eventStreamConnection";
-import type { OneWayWebSocket } from "../websocket/oneWayWebSocket";
+import type { OneWayStream } from "../websocket/oneWayWebSocket";
 
 import type { CoderApi } from "./coderApi";
 
@@ -422,7 +422,7 @@ export async function streamBuildLogs(
 	client: Pick<CoderApi, "getAxiosInstance" | "watchBuildLogsByBuildId">,
 	onOutput: (line: string) => void,
 	buildId: string,
-): Promise<OneWayWebSocket<ProvisionerJobLog>> {
+): Promise<OneWayStream<ProvisionerJobLog>> {
 	const socket = await client.watchBuildLogsByBuildId(buildId, []);
 
 	socket.addEventListener("message", (data) => {
@@ -452,7 +452,7 @@ export async function streamAgentLogs(
 	client: CoderApi,
 	onOutput: (line: string) => void,
 	agentId: string,
-): Promise<OneWayWebSocket<WorkspaceAgentLog[]>> {
+): Promise<OneWayStream<WorkspaceAgentLog[]>> {
 	const socket = await client.watchWorkspaceAgentLogs(agentId, []);
 
 	socket.addEventListener("message", (data) => {
@@ -477,7 +477,7 @@ export async function streamAgentLogs(
 
 /** Handshake errors are left to `socket.opened`, which rejects with them. */
 function onErrorAfterOpen<T>(
-	socket: OneWayWebSocket<T>,
+	socket: OneWayStream<T>,
 	handler: EventHandler<T, "error">,
 ): void {
 	let isOpen = false;
