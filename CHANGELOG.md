@@ -11,6 +11,8 @@
 
 - SSH config `Host` patterns containing regular expression characters such as
   `+`, `(` or `[` are now matched literally instead of mismatching or failing.
+- Ping and speed test from an agent in the sidebar now target that agent
+  instead of the workspace's first agent.
 
 ## [v1.18.0](https://github.com/coder/vscode-coder/releases/tag/v1.18.0) 2026-11-13
 

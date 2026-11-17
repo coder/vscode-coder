@@ -55,3 +55,12 @@ export function extractAgents(
 		return acc.concat(resource.agents ?? []);
 	}, [] as WorkspaceAgent[]);
 }
+
+export function findAgent(
+	workspace: Workspace,
+	agentId: string,
+): WorkspaceAgent | undefined {
+	return extractAgents(workspace.latest_build.resources).find(
+		(agent) => agent.id === agentId,
+	);
+}

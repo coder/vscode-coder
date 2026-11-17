@@ -24,6 +24,7 @@ export type DiagnosticErrorCategory =
 	| "error";
 export type DiagnosticAbortStage =
 	| "workspace_picker"
+	| "unavailable"
 	| "input"
 	| "prompt"
 	| "save_dialog"
