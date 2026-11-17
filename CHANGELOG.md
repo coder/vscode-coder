@@ -13,6 +13,8 @@
   `+`, `(` or `[` are now matched literally instead of mismatching or failing.
 - Ping and speed test from an agent in the sidebar now target that agent
   instead of the workspace's first agent.
+- Deep links that specify a query parameter more than once now show an error
+  instead of silently using the first value.
 
 ## [v1.18.0](https://github.com/coder/vscode-coder/releases/tag/v1.18.0) 2026-11-13
 
