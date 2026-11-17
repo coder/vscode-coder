@@ -315,7 +315,6 @@ describe("CliManager telemetry", () => {
 
 			it("emits outcome=release_digest when the binary matches its release", async () => {
 				const t = setupVerify();
-				t.withSignatureResponses([404]);
 				t.withReleasedBinary(mockBinaryContent(TEST_VERSION));
 
 				await t.manager.fetchBinary(t.mockApi);

@@ -861,17 +861,17 @@ export class CliManager {
 	}
 
 	/**
-	 * Download detached signatures one at a time and use them to verify the
-	 * binary.  The first signature is always downloaded, but the next signatures
-	 * are only tried if the previous ones did not exist and the user indicates
-	 * they want to try the next source.
+	 * If Coder's release digests list the version and platform the binary claims
+	 * to be, the digest decides: return if it matches, and treat it like an
+	 * invalid signature if it does not.
+	 *
+	 * Otherwise download detached signatures one at a time and use them to verify
+	 * the binary.  The first signature is always downloaded, but the next
+	 * signatures are only tried if the previous ones did not exist and the user
+	 * indicates they want to try the next source.
 	 *
 	 * If the first successfully downloaded signature is valid or it is invalid
 	 * and the user indicates to use the binary anyway, return, otherwise throw.
-	 *
-	 * If the first signature could not be downloaded, check the binary against
-	 * the digest of the release it claims to be: return if it matches, and treat
-	 * it like an invalid signature if it does not.
 	 *
 	 * If no signatures could be downloaded, return if the user indicates to use
 	 * the binary anyway, otherwise throw.
@@ -893,6 +893,21 @@ export class CliManager {
 			// rule as above.
 			`https://releases.coder.com/coder-cli/${major}.${minor}.${patch}/${binary.name}.v2.asc`,
 		];
+		const digest = await this.releaseDigests.check(
+			cliPath,
+			binary.version,
+			binary.name,
+		);
+		if (digest === "match") {
+			return { kind: "release_digest" };
+		}
+		if (digest === "mismatch") {
+			await this.confirmRunAnyway(
+				"Binary does not match its release",
+				`The binary does not match ${binary.name} from Coder's ${binary.version.version} release. It may have been tampered with.`,
+			);
+			return { kind: "bypassed" };
+		}
 		const publicKeys = await pgp.readPublicKeys(this.output);
 		for (let i = 0; i < sources.length; ++i) {
 			const source = sources[i];
@@ -909,25 +924,6 @@ export class CliManager {
 			);
 			if (result.kind === "verified" || result.kind === "bypassed") {
 				return { kind: result.kind };
-			}
-			// A deployment released before the current key has no signature from it,
-			// so check the release digests before asking to look elsewhere.
-			if (i === 0) {
-				const digest = await this.releaseDigests.check(
-					cliPath,
-					binary.version,
-					binary.name,
-				);
-				if (digest === "match") {
-					return { kind: "release_digest" };
-				}
-				if (digest === "mismatch") {
-					await this.confirmRunAnyway(
-						"Binary does not match its release",
-						`The binary does not match ${binary.name} from Coder's ${binary.version.version} release. It may have been tampered with.`,
-					);
-					return { kind: "bypassed" };
-				}
 			}
 			// If we failed to download, try the next source.
 			let nextPrompt = "";

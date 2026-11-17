@@ -822,18 +822,17 @@ describe("CliManager", () => {
 
 		it("accepts a released binary without a signature, without asking", async () => {
 			const t = setupVerify();
-			t.withSignatureResponses([404]);
 			t.withReleasedBinary(mockBinaryContent(TEST_VERSION));
 			expectPathsEqual(await t.manager.fetchBinary(t.mockApi), BINARY_PATH);
+			expect(pgp.verifySignature).not.toHaveBeenCalled();
 			expect(t.mockUI.getMessageCalls()).toEqual([]);
 		});
 
-		it("prefers an invalid signature over a matching release digest", async () => {
+		it("rejects a binary that does not match its release, despite a valid signature", async () => {
 			const t = setupVerify();
 			t.withSignatureResponses([200]);
-			t.withInvalidSignature();
-			t.withReleasedBinary(mockBinaryContent(TEST_VERSION));
-			t.mockUI.setResponse("Signature does not match", undefined);
+			t.withReleasedBinary("another binary");
+			t.mockUI.setResponse("Binary does not match its release", undefined);
 			await expect(t.manager.fetchBinary(t.mockApi)).rejects.toThrow(
 				"Signature verification aborted",
 			);
@@ -841,20 +840,9 @@ describe("CliManager", () => {
 
 		it("allows running a binary that does not match its release", async () => {
 			const t = setupVerify();
-			t.withSignatureResponses([404]);
 			t.withReleasedBinary("another binary");
 			t.mockUI.setResponse("Binary does not match its release", "Run anyway");
 			expectPathsEqual(await t.manager.fetchBinary(t.mockApi), BINARY_PATH);
-		});
-
-		it("aborts on a binary that does not match its release", async () => {
-			const t = setupVerify();
-			t.withSignatureResponses([404]);
-			t.withReleasedBinary("another binary");
-			t.mockUI.setResponse("Binary does not match its release", undefined);
-			await expect(t.manager.fetchBinary(t.mockApi)).rejects.toThrow(
-				"Signature verification aborted",
-			);
 		});
 
 		it("tries fallback signature on 404", async () => {
