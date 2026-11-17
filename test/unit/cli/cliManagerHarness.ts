@@ -1,7 +1,6 @@
 import globalAxios, { type AxiosInstance } from "axios";
 import { type Api } from "coder/site/src/api/api";
 import { fs as memfs, vol } from "memfs";
-import { createHash } from "node:crypto";
 import EventEmitter from "node:events";
 import * as fs from "node:fs";
 import { type IncomingMessage } from "node:http";
@@ -10,7 +9,7 @@ import { expect, vi } from "vitest";
 
 import * as cliExec from "@/cli/cliExec";
 import { CliManager } from "@/cli/cliManager";
-import { type Digests, ReleaseDigests } from "@/cli/releaseDigests";
+import { ReleaseSignatures } from "@/cli/releaseSignatures";
 import * as pgp from "@/pgp";
 import { PathResolver } from "@/storage/pathResolver";
 
@@ -32,6 +31,7 @@ export const PLATFORM = "linux";
 export const ARCH = "amd64";
 export const BINARY_NAME = `coder-${PLATFORM}-${ARCH}`;
 export const BINARY_PATH = `${BINARY_DIR}/${BINARY_NAME}`;
+const SIGNATURES_PATH = "/release-signatures.json";
 
 export type CliManagerHarness = ReturnType<typeof setupCliManager>;
 
@@ -42,6 +42,7 @@ export type CliManagerHarness = ReturnType<typeof setupCliManager>;
 export function setupCliManager(basePath: string = BASE_PATH) {
 	vi.resetAllMocks();
 	vol.reset();
+	memfs.writeFileSync(SIGNATURES_PATH, "{}");
 
 	const telemetrySink = new TestSink();
 	const mockApi = createMockApi(TEST_VERSION, TEST_URL);
@@ -52,12 +53,11 @@ export function setupCliManager(basePath: string = BASE_PATH) {
 	const mockProgress = new MockProgressReporter();
 	const mockUI = new MockUserInteraction();
 	const mockCredManager = createMockCliCredentialManager();
-	const releasedDigests: Digests = {};
 	const manager = new CliManager(
 		createMockLogger(),
 		new PathResolver(basePath, "/code/log"),
 		mockCredManager,
-		new ReleaseDigests(releasedDigests, createMockLogger()),
+		new ReleaseSignatures(SIGNATURES_PATH, createMockLogger()),
 		createTestTelemetryService(telemetrySink),
 	);
 
@@ -157,11 +157,14 @@ export function setupCliManager(basePath: string = BASE_PATH) {
 			.mocked(pgp.verifySignature)
 			.mockRejectedValueOnce(createVerificationError("Invalid signature"));
 
-	/** List `content` as the released binary of `TEST_VERSION`. */
-	const withReleasedBinary = (content: string) => {
-		releasedDigests[TEST_VERSION] = {
-			[BINARY_NAME]: createHash("sha256").update(content).digest("hex"),
-		};
+	/** Bundle a signature for the `TEST_VERSION` release of the binary. */
+	const withBundledSignature = (): string => {
+		const signature = "mock-bundled-signature";
+		memfs.writeFileSync(
+			SIGNATURES_PATH,
+			JSON.stringify({ [TEST_VERSION]: { [BINARY_NAME]: signature } }),
+		);
+		return signature;
 	};
 
 	/** Fail the download via a read- or write-stream error. */
@@ -223,7 +226,7 @@ export function setupCliManager(basePath: string = BASE_PATH) {
 		withInterruptedDownload,
 		withSignatureResponses,
 		withInvalidSignature,
-		withReleasedBinary,
+		withBundledSignature,
 		withStreamError,
 		withTrailingWriteFlush,
 		event,

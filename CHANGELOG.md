@@ -9,10 +9,10 @@
 
 ### Changed
 
-- The Coder CLI is now compared with the SHA-256 digests of Coder's releases,
-  which ship with the extension, and a CLI from a later release is verified
-  with Coder's new release signing key. A CLI that does not match its release
-  gets the same warning as an invalid signature.
+- The Coder CLI is now verified with Coder's new release signing key. A CLI
+  from a release that Coder published before that key (2.29.0 to 2.39.4) is
+  verified with the signature that Coder made for that release with the new
+  key, which ships with the extension.
 
 ### Fixed
 

@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 
 import { CliCredentialManager } from "./cli/cliCredentialManager";
 import { CliManager } from "./cli/cliManager";
-import { ReleaseDigests, readReleaseDigests } from "./cli/releaseDigests";
+import { ReleaseSignatures } from "./cli/releaseSignatures";
 import { watchConfigurationChanges } from "./configWatcher";
 import { AuthTelemetry } from "./instrumentation/auth";
 import { FlightRecorder } from "./logging/flightRecorder";
@@ -124,10 +124,8 @@ export class ServiceContainer implements vscode.Disposable {
 			this.logger,
 			this.pathResolver,
 			this.cliCredentialManager,
-			new ReleaseDigests(
-				readReleaseDigests(
-					path.join(context.extensionPath, "release-digests.json"),
-				),
+			new ReleaseSignatures(
+				path.join(context.extensionPath, "release-signatures.json"),
 				this.logger,
 			),
 			this.telemetryService,

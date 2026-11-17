@@ -259,10 +259,10 @@ fails).
 
 Phase `cli.download.verify` covers binary signature verification:
 
-| Attribute    | Values                                                    |
-| ------------ | --------------------------------------------------------- |
-| `outcome`    | `verified`, `release_digest`, `bypassed`, `sig_not_found` |
-| `sig_status` | HTTP status (only with `sig_not_found`)                   |
+| Attribute    | Values                                  |
+| ------------ | --------------------------------------- |
+| `outcome`    | `verified`, `bypassed`, `sig_not_found` |
+| `sig_status` | HTTP status (only with `sig_not_found`) |
 
 #### `cli.configure`
 

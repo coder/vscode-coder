@@ -313,18 +313,6 @@ describe("CliManager telemetry", () => {
 				expect(verify.parentEventId).toBe(download.eventId);
 			});
 
-			it("emits outcome=release_digest when the binary matches its release", async () => {
-				const t = setupVerify();
-				t.withReleasedBinary(mockBinaryContent(TEST_VERSION));
-
-				await t.manager.fetchBinary(t.mockApi);
-
-				t.expectProps("cli.download.verify", {
-					outcome: "release_digest",
-					result: "success",
-				});
-			});
-
 			it("emits outcome=bypassed when user runs anyway despite invalid signature", async () => {
 				const t = setupVerify();
 				t.withSignatureResponses([200]);

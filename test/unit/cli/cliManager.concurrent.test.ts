@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as cliBinary from "@/cli/cliBinary";
 import * as cliExec from "@/cli/cliExec";
 import { CliManager } from "@/cli/cliManager";
-import { ReleaseDigests } from "@/cli/releaseDigests";
+import { ReleaseSignatures } from "@/cli/releaseSignatures";
 import * as pgp from "@/pgp";
 import { PathResolver } from "@/storage/pathResolver";
 
@@ -89,7 +89,10 @@ function setupManager(testDir: string): CliManager {
 		createMockLogger(),
 		new PathResolver(testDir, "/code/log"),
 		createMockCliCredentialManager(),
-		new ReleaseDigests({}, createMockLogger()),
+		new ReleaseSignatures(
+			path.join(testDir, "release-signatures.json"),
+			createMockLogger(),
+		),
 		createTestTelemetryService(),
 	);
 }
