@@ -337,6 +337,16 @@ describe("uriHandler", () => {
 			expectUriError("localWorkspaceFolder must be specified");
 		});
 
+		it("rejects a repeated parameter", async () => {
+			const t = createTestContext();
+
+			await t.open(withUrl("owner=o&workspace=w&url=https://other"));
+
+			expectUriError("url must be specified only once");
+			expect(maybeAskUrl).not.toHaveBeenCalled();
+			expect(t.commands.open).not.toHaveBeenCalled();
+		});
+
 		it("throws for unknown path", async () => {
 			const t = createTestContext();
 

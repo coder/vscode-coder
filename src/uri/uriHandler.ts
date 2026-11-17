@@ -48,10 +48,7 @@ export function registerUriHandler(deps: UriHandlerDeps): vscode.Disposable {
 				if (!handler) {
 					throw new Error(`Unknown path ${uri.path}`);
 				}
-				await handler({
-					...deps,
-					params: new URLSearchParams(uri.query),
-				});
+				await handler({ ...deps, params: parseQuery(uri.query) });
 			} catch (error) {
 				if (error instanceof UserDeclinedError) {
 					output.info("URI handling cancelled by the user", summarizeUri(uri));
@@ -78,6 +75,19 @@ export function registerUriHandler(deps: UriHandlerDeps): vscode.Disposable {
 			}
 		},
 	});
+}
+
+/** `URLSearchParams.get` returns the first of repeated keys; reject them instead. */
+function parseQuery(query: string): URLSearchParams {
+	const params = new URLSearchParams(query);
+	const seen = new Set<string>();
+	for (const key of params.keys()) {
+		if (seen.has(key)) {
+			throw new Error(`${key} must be specified only once`);
+		}
+		seen.add(key);
+	}
+	return params;
 }
 
 function getRequiredParam(params: URLSearchParams, name: string): string {
