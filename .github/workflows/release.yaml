@@ -1,52 +1,188 @@
 name: Release
-run-name: ${{ endsWith(github.ref_name, '-pre') && 'Pre-Release' || 'Release' }} ${{ github.ref_name }}
+run-name: ${{ inputs.prerelease && 'Pre-Release' || 'Release' }} ${{ inputs.version }}
+
+# A release is dispatched on main with a version and a commit on main. Nobody pushes the tag:
+# once a member of clients other than the dispatcher approves the "release-approval"
+# environment, the approve job creates it as the coder-release-publisher App, which is the only
+# actor the tag ruleset lets create v* tags. Its key is in Cloud KMS, and only the approve job of
+# main's copy of this file, in release-approval, may sign with it. See CONTRIBUTING.md.
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. v1.19.0. Must match package.json at the commit"
+        required: true
+        type: string
+      commit:
+        description: "Full SHA of the commit on main to release"
+        required: true
+        type: string
+      prerelease:
+        description: "Publish as a pre-release (vsce/ovsx --pre-release)"
+        required: true
+        type: boolean
+        default: false
 
-permissions:
-  contents: read
+permissions: {}
 
 # Build releases from a clean install.
 cache-mode: none
 
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.version }}
+  cancel-in-progress: false
+
 env:
-  PRE_RELEASE_FLAG: ${{ endsWith(github.ref_name, '-pre') && '--pre-release' || '' }}
+  PRE_RELEASE_FLAG: ${{ inputs.prerelease && '--pre-release' || '' }}
 
 jobs:
-  package:
-    name: Package
+  # The jobs below run the scripts of the commit they build, so only a commit that went through
+  # review on main may be released.
+  validate:
+    name: Check the request
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    outputs:
-      vsix: ${{ steps.package.outputs.vsix }}
-      vsce-version: ${{ steps.package.outputs.vsce-version }}
+    timeout-minutes: 5
+    if: github.repository == 'coder/vscode-coder'
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify tag is on main
-        if: env.PRE_RELEASE_FLAG == ''
+      - name: Check the request
+        env:
+          VERSION: ${{ inputs.version }}
+          COMMIT: ${{ inputs.commit }}
         run: |
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "Error: Release tags must be pushed from the main branch"
-            exit 1
+          set -euo pipefail
+          fail() { echo "::error::$*"; exit 1; }
+
+          # Also stops a run started from a tag or from another branch.
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || fail "This workflow only runs on main, not on $GITHUB_REF."
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "version must look like v1.2.3, got '$VERSION'."
+          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "commit must be a full 40-character SHA, got '$COMMIT'."
+          git merge-base --is-ancestor "$COMMIT" "$GITHUB_SHA" || fail "$COMMIT is not on main."
+
+          PACKAGE_VERSION="$(git show "$COMMIT:package.json" | jq -r .version)"
+          [[ "${VERSION#v}" == "$PACKAGE_VERSION" ]] || fail "version $VERSION does not match package.json ($PACKAGE_VERSION) at $COMMIT."
+
+  # A release is tagged only after a reviewer of the "release-approval" environment approves
+  # this job, and it is built and published only once it is tagged.
+  approve:
+    name: Approve and tag the release
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release-approval
+    permissions:
+      contents: read
+      id-token: write # Cloud KMS signs the App's JWT
+    steps:
+      # For the tags and the history of main. Nothing from the tree runs in this job.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      # Here and not in the validate job, because the tags can change while the run waits for
+      # approval.
+      - name: Check the tag
+        id: check
+        env:
+          VERSION: ${{ inputs.version }}
+          COMMIT: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*"; exit 1; }
+
+          # Checked by the validate job too, and again in the job that may tag.
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "version must look like v1.2.3, got '$VERSION'."
+          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "commit must be a full 40-character SHA, got '$COMMIT'."
+          git merge-base --is-ancestor "$COMMIT" "$GITHUB_SHA" || fail "$COMMIT is not on main."
+
+          # A re-run finds the tag that the first attempt created.
+          if existing="$(git rev-parse --verify --quiet "refs/tags/$VERSION^{commit}")"; then
+            [[ "$existing" == "$COMMIT" ]] || fail "Tag $VERSION already exists at $existing, not at $COMMIT."
+            echo "Tag $VERSION already exists at $COMMIT."
+            echo "create=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          # Each release needs a commit of its own.
+          released="$(git tag --points-at "$COMMIT" --list 'v*' | paste -sd ' ' -)"
+          [[ -z "$released" ]] || fail "$COMMIT was already released as $released. Release a newer commit."
+
+          # Versions only go up, and a release never comes from before the last one.
+          tags="$(git tag --list 'v*' --sort=-version:refname)"
+          latest="$(grep -E -m 1 '^v[0-9]+\.[0-9]+\.[0-9]+$' <<<"$tags" || true)"
+          if [[ -n "$latest" ]]; then
+            printf '%s\n' "$latest" "$VERSION" | sort -V -C || fail "$VERSION is not newer than $latest, the latest release."
+            git merge-base --is-ancestor "$latest" "$COMMIT" || fail "$COMMIT is older than the commit released as $latest."
+          fi
+
+          echo "create=true" >> "$GITHUB_OUTPUT"
+
+      # The App can also write to other repositories, so the token is asked for this one only.
+      - name: Generate release App token
+        id: app_token
+        if: steps.check.outputs.create == 'true'
+        uses: coder/github-app-token-action@00eaec58ee1bfea9c8b48655b7ab7470b07739e5 # main 2026-11-17
+        with:
+          client-id: ${{ secrets.CODER_RELEASE_PUBLISHER_APP_ID }}
+          kms-key: ${{ secrets.CODER_RELEASE_PUBLISHER_APP_KMS_KEY }}
+          workload-identity-provider: ${{ secrets.APP_KEYS_WORKLOAD_ID_PROVIDER }}
+          owner: coder
+          repositories: vscode-coder
+          permissions: |
+            contents: write
+            workflows: write
+
+      # An annotated tag, through the API: nothing is pushed from this job's checkout.
+      - name: Create the tag
+        if: steps.check.outputs.create == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          VERSION: ${{ inputs.version }}
+          COMMIT: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          tag_object="$(gh api "repos/$GITHUB_REPOSITORY/git/tags" \
+            -f tag="$VERSION" -f message="Release $VERSION" -f object="$COMMIT" -f type=commit \
+            --jq .sha)"
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$VERSION" -f sha="$tag_object" >/dev/null
+          echo "Created tag $VERSION at $COMMIT."
+
+  package:
+    name: Package
+    needs: approve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      vsix: ${{ steps.package.outputs.vsix }}
+      vsce-version: ${{ steps.package.outputs.vsce-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit }}
+          persist-credentials: false
 
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/pnpm-setup
 
       - name: Validate version matches package.json
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          TAG_VERSION="${TAG_VERSION%-pre}"
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
-            echo "Error: Tag version ($TAG_VERSION) does not match package.json version ($PACKAGE_VERSION)"
+          if [ "${VERSION#v}" != "$PACKAGE_VERSION" ]; then
+            echo "Error: Version ($VERSION) does not match package.json version ($PACKAGE_VERSION)"
             exit 1
           fi
 
@@ -55,8 +191,10 @@ jobs:
 
       - name: Package extension
         id: package
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          VSIX="$(node -p "require('./package.json').name")-${GITHUB_REF_NAME#v}.vsix"
+          VSIX="$(node -p "require('./package.json').name")-${VERSION#v}.vsix"
           pnpm vsce package --no-dependencies $PRE_RELEASE_FLAG --out "$VSIX"
           echo "vsix=$VSIX" >> "$GITHUB_OUTPUT"
           echo "vsce-version=$(pnpm exec vsce --version)" >> "$GITHUB_OUTPUT"
@@ -71,7 +209,6 @@ jobs:
   publish-vscode:
     name: Publish to VS Marketplace
     needs: package
-    if: github.repository == 'coder/vscode-coder'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: publish
@@ -107,7 +244,6 @@ jobs:
   publish-ovsx:
     name: Publish to Open VSX
     needs: package
-    if: github.repository == 'coder/vscode-coder'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: publish
@@ -133,7 +269,7 @@ jobs:
         run: ovsx publish "$VSIX" $PRE_RELEASE_FLAG --trusted-publishing
 
   publish-github:
-    name: Create GitHub ${{ endsWith(github.ref_name, '-pre') && 'Pre-Release' || 'Release' }}
+    name: Create GitHub ${{ inputs.prerelease && 'Pre-Release' || 'Release' }}
     needs: package
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -147,10 +283,12 @@ jobs:
         with:
           name: ${{ needs.package.outputs.vsix }}
 
+      # The tag already exists (the approve job created it), so this only creates the release.
       - name: Create draft release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
-          prerelease: ${{ env.PRE_RELEASE_FLAG != '' }}
+          tag_name: ${{ inputs.version }}
+          prerelease: ${{ inputs.prerelease }}
           draft: true
           files: ${{ needs.package.outputs.vsix }}
           generate_release_notes: true
