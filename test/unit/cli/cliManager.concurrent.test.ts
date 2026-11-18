@@ -90,7 +90,7 @@ function setupManager(testDir: string): CliManager {
 		new PathResolver(testDir, "/code/log"),
 		createMockCliCredentialManager(),
 		new ReleaseSignatures(
-			path.join(testDir, "release-signatures.json"),
+			path.join(__dirname, "../../../release-signatures.json"),
 			createMockLogger(),
 		),
 		createTestTelemetryService(),

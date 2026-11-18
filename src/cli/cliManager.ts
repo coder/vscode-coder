@@ -879,6 +879,16 @@ export class CliManager {
 		cliPath: string,
 		binary: { source: string; version: semver.SemVer; name: string },
 	): Promise<CliVerifyResult> {
+		const publicKeys = await pgp.readPublicKeys(this.output);
+		const bundledSignature = await this.releaseSignatures.find(
+			binary.version,
+			binary.name,
+		);
+		if (bundledSignature) {
+			const signaturePath = cliPath + ".asc";
+			await fs.writeFile(signaturePath, bundledSignature);
+			return this.verifyWithSignature(cliPath, publicKeys, signaturePath);
+		}
 		const { major, minor, patch } = binary.version;
 		const sources = [
 			// A signature placed at the same level as the binary.  It must be
@@ -891,16 +901,6 @@ export class CliManager {
 			// rule as above.
 			`https://releases.coder.com/coder-cli/${major}.${minor}.${patch}/${binary.name}.v2.asc`,
 		];
-		const publicKeys = await pgp.readPublicKeys(this.output);
-		const bundledSignature = await this.releaseSignatures.find(
-			binary.version,
-			binary.name,
-		);
-		if (bundledSignature) {
-			const signaturePath = cliPath + ".asc";
-			await fs.writeFile(signaturePath, bundledSignature);
-			return this.verifyWithSignature(cliPath, publicKeys, signaturePath);
-		}
 		for (let i = 0; i < sources.length; ++i) {
 			const source = sources[i];
 			// For the primary source we use the common client, but for the rest we do

@@ -9,9 +9,9 @@
 
 ### Changed
 
-- The Coder CLI is now verified with Coder's new release signing key. Coder
-  2.29.0 to 2.39.4 were released before that key, so the extension ships with
-  new signatures for them.
+- The extension now verifies the Coder CLI with Coder's new release signing key.
+  For Coder 2.29.0 to 2.39.4, which predate the key, it uses signatures that
+  ship with the extension.
 
 ### Fixed
 

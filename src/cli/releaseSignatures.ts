@@ -1,8 +1,11 @@
 import fs from "node:fs/promises";
+import { z } from "zod";
 
 import type * as semver from "semver";
 
 import type { Logger } from "../logging/logger";
+
+const SignaturesSchema = z.record(z.string(), z.record(z.string(), z.string()));
 
 /**
  * Signatures for the releases Coder published before its current release key.
@@ -10,7 +13,7 @@ import type { Logger } from "../logging/logger";
  * file, keyed by version (major.minor.patch) and then by binary name.
  */
 export class ReleaseSignatures {
-	private signatures?: Record<string, Record<string, string>>;
+	private signatures?: z.infer<typeof SignaturesSchema>;
 
 	constructor(
 		private readonly signaturesPath: string,
@@ -26,9 +29,9 @@ export class ReleaseSignatures {
 			return undefined;
 		}
 		const release = `${version.major}.${version.minor}.${version.patch}`;
-		this.signatures ??= JSON.parse(
-			await fs.readFile(this.signaturesPath, "utf8"),
-		) as Record<string, Record<string, string>>;
+		this.signatures ??= SignaturesSchema.parse(
+			JSON.parse(await fs.readFile(this.signaturesPath, "utf8")),
+		);
 		const signature = this.signatures[release]?.[binName];
 		if (signature) {
 			this.logger.info("Using the bundled signature for", binName, release);
