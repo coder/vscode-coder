@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 
+import { parseMultiSelectValue } from "@repo/shared";
+
 import type { Api } from "coder/site/src/api/api";
 import type {
 	TemplateVersionParameter,
@@ -100,18 +102,6 @@ function promptSpec(
 			? "No previous value was set."
 			: `Previous value ${formatValue(storedValue)} is no longer available.`;
 	return { driftNote };
-}
-
-/** Multi-select values are stored as a JSON-encoded string array. */
-function parseMultiSelectValue(raw: string): string[] | null {
-	try {
-		const parsed: unknown = JSON.parse(raw);
-		return Array.isArray(parsed) && parsed.every((v) => typeof v === "string")
-			? parsed
-			: null;
-	} catch {
-		return null;
-	}
 }
 
 /** Truncates and JSON-quotes a value for safe display in a placeholder. */

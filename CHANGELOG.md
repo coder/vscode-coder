@@ -7,6 +7,13 @@
 
 ## Unreleased
 
+### Added
+
+- Updating a workspace whose template uses dynamic parameters works like the
+  dashboard: the update goes ahead when the current values are still valid, and
+  a form asks only for missing or invalid ones.
+- The update prompts show the new template version's message.
+
 ### Changed
 
 - The extension now verifies the Coder CLI with Coder's new release signing key.
@@ -24,6 +31,8 @@
 - If the workspace starts, stops, or gets a newer template version while you're
   entering parameters for an update, the update is now skipped and the
   workspace starts on its current version, the same as dismissing the prompt.
+- A failed workspace update shows the server's error detail instead of the HTTP
+  status.
 
 ## [v1.18.0](https://github.com/coder/vscode-coder/releases/tag/v1.18.0) 2026-11-13
 
