@@ -25,7 +25,7 @@ export async function writeJsonArrayExport(
 		for await (const event of events) {
 			yield (
 				(count === 0 ? "\n" : ",\n") +
-					JSON.stringify(serializeTelemetryEvent(event))
+				JSON.stringify(serializeTelemetryEvent(event))
 			);
 			count += 1;
 		}

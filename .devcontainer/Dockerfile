@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/devcontainers/typescript-node:24-trixie@sha256:91dc841966e9b47195a1a6290a8ef9bba5ba43c02aa22f87f8669c16bb6f0f6e
+FROM mcr.microsoft.com/devcontainers/typescript-node:24-trixie@sha256:e1fd824e03c68d8f406ef45b574023a2d683a5acc98906743f8d60aaf78b0174
 
 # VS Code/Electron share Chromium's native library requirements; playwright
 # install-deps tracks that list upstream. Electron also requires libgtk-3-0t64
