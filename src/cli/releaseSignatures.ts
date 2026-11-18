@@ -10,6 +10,8 @@ import type { Logger } from "../logging/logger";
  * file, keyed by version (major.minor.patch) and then by binary name.
  */
 export class ReleaseSignatures {
+	private signatures?: Record<string, Record<string, string>>;
+
 	constructor(
 		private readonly signaturesPath: string,
 		private readonly logger: Logger,
@@ -21,10 +23,10 @@ export class ReleaseSignatures {
 		binName: string,
 	): Promise<string | undefined> {
 		const release = `${version.major}.${version.minor}.${version.patch}`;
-		const signatures = JSON.parse(
+		this.signatures ??= JSON.parse(
 			await fs.readFile(this.signaturesPath, "utf8"),
 		) as Record<string, Record<string, string>>;
-		const signature = signatures[release]?.[binName];
+		const signature = this.signatures[release]?.[binName];
 		if (signature) {
 			this.logger.info("Using the bundled signature for", binName, release);
 		}
