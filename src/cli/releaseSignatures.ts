@@ -22,6 +22,9 @@ export class ReleaseSignatures {
 		version: semver.SemVer,
 		binName: string,
 	): Promise<string | undefined> {
+		if (version.prerelease.length > 0) {
+			return undefined;
+		}
 		const release = `${version.major}.${version.minor}.${version.patch}`;
 		this.signatures ??= JSON.parse(
 			await fs.readFile(this.signaturesPath, "utf8"),

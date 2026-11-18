@@ -36,7 +36,7 @@ describe("ReleaseSignatures", () => {
 			binName,
 		);
 
-	it.each(["2.29.0", "2.29.0-devel+abc123"])(
+	it.each(["2.29.0", "2.29.0+abc123"])(
 		"finds the signature of the release for %s",
 		async (version) => {
 			const signatures = await readSignatures();
@@ -49,6 +49,8 @@ describe("ReleaseSignatures", () => {
 	it.each([
 		["0.0.1", "coder-linux-amd64"],
 		["2.29.0", "coder-plan9-amd64"],
+		["2.29.0-devel+abc123", "coder-linux-amd64"],
+		["2.33.0-rc.1", "coder-linux-amd64"],
 	])("finds no signature for %s %s", async (version, binName) => {
 		expect(await find(version, binName)).toBeUndefined();
 	});
