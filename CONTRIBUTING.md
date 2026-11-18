@@ -86,23 +86,31 @@ Webviews" to see webview changes.
 
 ## Releasing
 
-For both stable and pre-releases:
+Releases take two people: one starts the release, and a member of the `clients`
+team other than them approves it. Nobody pushes release tags; only the release
+workflow can create them, after the approval.
 
 1. Check that the changelog lists all the important changes.
-2. Update the package.json version and add a version heading to the changelog.
+2. Update the package.json version and add a version heading to the changelog,
+   and merge that to `main`.
+3. Run the [Release workflow](https://github.com/coder/vscode-coder/actions/workflows/release.yaml) on `main`
+   (Actions → Release → Run workflow) with:
+   - `version`: `v<version>` (e.g. `v1.19.0`), matching package.json at the
+     commit.
+   - `commit`: the full SHA of the commit on `main` to release.
+   - `prerelease`: checked for a pre-release (published with `--pre-release`).
 
-### Stable Release
+   From the command line:
 
-1. Push a tag `v<version>` (e.g. `v1.15.0`) from the `main` branch. The release
-   pipeline will only run for tags on `main`.
-2. The pipeline builds, publishes to the VS Code Marketplace and Open VSX, and
-   creates a draft GitHub release.
-3. Update the draft release with the changelog contents and publish it.
+   ```sh
+   gh workflow run release.yaml --ref main \
+     -f version=v1.19.0 -f commit="$(git rev-parse origin/main)" -f prerelease=false
+   ```
 
-### Pre-Release
+4. A member of `clients` other than you approves the `release-approval`
+   deployment. The workflow then tags the commit, builds it, publishes to the
+   VS Code Marketplace and Open VSX, and creates a draft GitHub release.
+5. Update the draft release with the changelog contents and publish it.
 
-1. Push a tag `v<version>-pre` (e.g. `v1.15.0-pre`) from any branch. The version
-   in the tag must match package.json (the `-pre` suffix is stripped during
-   validation). Pre-release tags are not restricted to `main`.
-2. The pipeline builds with `--pre-release`, publishes to both marketplaces, and
-   creates a draft pre-release on GitHub.
+Versions only go up, every release (pre-release or stable) gets its own tag
+`v<version>` and its own commit, and only commits on `main` can be released.
