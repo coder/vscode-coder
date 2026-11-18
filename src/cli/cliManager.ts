@@ -43,6 +43,7 @@ import type { TelemetryService } from "../telemetry/service";
 import type { Span } from "../telemetry/span";
 
 import type { CliCredentialManager } from "./cliCredentialManager";
+import type { ReleaseSignatures } from "./releaseSignatures";
 
 type ResolvedBinary =
 	| { binPath: string; stat: Stats; source: "file_path" | "directory" }
@@ -69,6 +70,7 @@ export class CliManager {
 			CliCredentialManager,
 			"storeToken" | "hasCliStore" | "holdsToken" | "deleteToken"
 		>,
+		private readonly releaseSignatures: ReleaseSignatures,
 		telemetry: TelemetryService,
 	) {
 		this.binaryLock = new BinaryLock(output);
@@ -644,17 +646,7 @@ export class CliManager {
 							const result = await this.verifyBinarySignatures(
 								client,
 								tempFile,
-								[
-									// A signature placed at the same level as the binary.  It must be
-									// named exactly the same with an appended `.asc` (such as
-									// coder-windows-amd64.exe.asc or coder-linux-amd64.asc).
-									binSource + ".asc",
-									// The releases.coder.com bucket does not include the leading "v",
-									// and unlike what we get from buildinfo it uses a truncated version
-									// with only major.minor.patch.  The signature name follows the same
-									// rule as above.
-									`https://releases.coder.com/coder-cli/${parsedVersion.major}.${parsedVersion.minor}.${parsedVersion.patch}/${binName}.asc`,
-								],
+								{ source: binSource, version: parsedVersion, name: binName },
 							);
 							verifySpan.setProperty("outcome", result.kind);
 							if (result.kind === "sig_not_found") {
@@ -868,10 +860,13 @@ export class CliManager {
 	}
 
 	/**
-	 * Download detached signatures one at a time and use them to verify the
-	 * binary.  The first signature is always downloaded, but the next signatures
-	 * are only tried if the previous ones did not exist and the user indicates
-	 * they want to try the next source.
+	 * If a signature for the version and platform the binary claims to be ships
+	 * with the extension, use it to verify the binary like a downloaded one.
+	 *
+	 * Otherwise download detached signatures one at a time and use them to verify
+	 * the binary.  The first signature is always downloaded, but the next
+	 * signatures are only tried if the previous ones did not exist and the user
+	 * indicates they want to try the next source.
 	 *
 	 * If the first successfully downloaded signature is valid or it is invalid
 	 * and the user indicates to use the binary anyway, return, otherwise throw.
@@ -882,9 +877,30 @@ export class CliManager {
 	private async verifyBinarySignatures(
 		client: AxiosInstance,
 		cliPath: string,
-		sources: string[],
+		binary: { source: string; version: semver.SemVer; name: string },
 	): Promise<CliVerifyResult> {
 		const publicKeys = await pgp.readPublicKeys(this.output);
+		const bundledSignature = await this.releaseSignatures.find(
+			binary.version,
+			binary.name,
+		);
+		if (bundledSignature) {
+			const signaturePath = cliPath + ".asc";
+			await fs.writeFile(signaturePath, bundledSignature);
+			return this.verifyWithSignature(cliPath, publicKeys, signaturePath);
+		}
+		const { major, minor, patch } = binary.version;
+		const sources = [
+			// A signature placed at the same level as the binary.  It must be
+			// named exactly the same with an appended `.v2.asc` (such as
+			// coder-windows-amd64.exe.v2.asc or coder-linux-amd64.v2.asc).
+			binary.source + ".v2.asc",
+			// The releases.coder.com bucket does not include the leading "v",
+			// and unlike what we get from buildinfo it uses a truncated version
+			// with only major.minor.patch.  The signature name follows the same
+			// rule as above.
+			`https://releases.coder.com/coder-cli/${major}.${minor}.${patch}/${binary.name}.v2.asc`,
+		];
 		for (let i = 0; i < sources.length; ++i) {
 			const source = sources[i];
 			// For the primary source we use the common client, but for the rest we do
@@ -960,6 +976,18 @@ export class CliManager {
 		if (status !== HttpStatusCode.OK) {
 			return { kind: "sig_unavailable", status };
 		}
+		return this.verifyWithSignature(cliPath, publicKeys, signaturePath);
+	}
+
+	/**
+	 * Use a detached signature to verify the binary.  Throw if the signature is
+	 * invalid and the user declined to run the binary.
+	 */
+	private async verifyWithSignature(
+		cliPath: string,
+		publicKeys: pgp.Key[],
+		signaturePath: string,
+	): Promise<{ kind: "verified" } | { kind: "bypassed" }> {
 		try {
 			await pgp.verifySignature(
 				publicKeys,

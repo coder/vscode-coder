@@ -19,7 +19,7 @@ describe("pgp", () => {
 	it("reads bundled public keys", async () => {
 		const keys = await pgp.readPublicKeys();
 		expect(keys.length).toBe(1);
-		expect(keys[0].getKeyID().toHex()).toBe("6a5a671b5e40a3b9");
+		expect(keys[0].getKeyID().toHex()).toBe("6e3a8e5613707520");
 	});
 
 	it("cannot read non-existent signature", async () => {

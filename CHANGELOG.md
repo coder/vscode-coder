@@ -7,6 +7,12 @@
 
 ## Unreleased
 
+### Changed
+
+- The extension now verifies the Coder CLI with Coder's new release signing key.
+  For Coder 2.29.0 to 2.39.4, which predate the key, it uses signatures that
+  ship with the extension.
+
 ### Fixed
 
 - SSH config `Host` patterns containing regular expression characters such as

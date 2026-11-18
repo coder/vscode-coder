@@ -810,12 +810,46 @@ describe("CliManager", () => {
 			expect(expectFileInDir(BINARY_DIR, ".asc")).toBeDefined();
 		});
 
+		it("verifies with the v2 signature next to the binary", async () => {
+			const t = setupVerify();
+			t.withSignatureResponses([200]);
+			expectPathsEqual(await t.manager.fetchBinary(t.mockApi), BINARY_PATH);
+			expect(t.mockAxios.get).toHaveBeenCalledWith(
+				`/bin/${BINARY_NAME}.v2.asc`,
+				expect.anything(),
+			);
+		});
+
+		it("verifies a released binary with its bundled signature, without a download or asking", async () => {
+			const t = setupVerify();
+			const signature = t.withBundledSignature();
+			expectPathsEqual(await t.manager.fetchBinary(t.mockApi), BINARY_PATH);
+			const signaturePath = vi.mocked(pgp.verifySignature).mock.calls[0][2];
+			expect(memfs.readFileSync(signaturePath, "utf8")).toBe(signature);
+			expect(t.mockAxios.get).toHaveBeenCalledTimes(1);
+			expect(t.mockUI.getMessageCalls()).toEqual([]);
+		});
+
+		it("aborts on rejection of a binary that does not match its bundled signature", async () => {
+			const t = setupVerify();
+			t.withBundledSignature();
+			t.withInvalidSignature();
+			t.mockUI.setResponse("Signature does not match", undefined);
+			await expect(t.manager.fetchBinary(t.mockApi)).rejects.toThrow(
+				"Signature verification aborted",
+			);
+		});
+
 		it("tries fallback signature on 404", async () => {
 			const t = setupVerify();
 			t.withSignatureResponses([404, 200]);
 			t.mockUI.setResponse("Signature not found", "Download signature");
 			expectPathsEqual(await t.manager.fetchBinary(t.mockApi), BINARY_PATH);
 			expect(t.mockAxios.get).toHaveBeenCalledTimes(3);
+			expect(t.mockAxios.get).toHaveBeenCalledWith(
+				`https://releases.coder.com/coder-cli/${TEST_VERSION}/${BINARY_NAME}.v2.asc`,
+				expect.anything(),
+			);
 			expect(expectFileInDir(BINARY_DIR, ".asc")).toBeDefined();
 		});
 

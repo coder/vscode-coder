@@ -9,6 +9,7 @@ import { expect, vi } from "vitest";
 
 import * as cliExec from "@/cli/cliExec";
 import { CliManager } from "@/cli/cliManager";
+import { ReleaseSignatures } from "@/cli/releaseSignatures";
 import * as pgp from "@/pgp";
 import { PathResolver } from "@/storage/pathResolver";
 
@@ -30,6 +31,7 @@ export const PLATFORM = "linux";
 export const ARCH = "amd64";
 export const BINARY_NAME = `coder-${PLATFORM}-${ARCH}`;
 export const BINARY_PATH = `${BINARY_DIR}/${BINARY_NAME}`;
+const SIGNATURES_PATH = "/release-signatures.json";
 
 export type CliManagerHarness = ReturnType<typeof setupCliManager>;
 
@@ -40,6 +42,7 @@ export type CliManagerHarness = ReturnType<typeof setupCliManager>;
 export function setupCliManager(basePath: string = BASE_PATH) {
 	vi.resetAllMocks();
 	vol.reset();
+	memfs.writeFileSync(SIGNATURES_PATH, "{}");
 
 	const telemetrySink = new TestSink();
 	const mockApi = createMockApi(TEST_VERSION, TEST_URL);
@@ -54,6 +57,7 @@ export function setupCliManager(basePath: string = BASE_PATH) {
 		createMockLogger(),
 		new PathResolver(basePath, "/code/log"),
 		mockCredManager,
+		new ReleaseSignatures(SIGNATURES_PATH, createMockLogger()),
 		createTestTelemetryService(telemetrySink),
 	);
 
@@ -153,6 +157,16 @@ export function setupCliManager(basePath: string = BASE_PATH) {
 			.mocked(pgp.verifySignature)
 			.mockRejectedValueOnce(createVerificationError("Invalid signature"));
 
+	/** Bundle a signature for the `TEST_VERSION` release of the binary. */
+	const withBundledSignature = (): string => {
+		const signature = "mock-bundled-signature";
+		memfs.writeFileSync(
+			SIGNATURES_PATH,
+			JSON.stringify({ [TEST_VERSION]: { [BINARY_NAME]: signature } }),
+		);
+		return signature;
+	};
+
 	/** Fail the download via a read- or write-stream error. */
 	const withStreamError = (type: "read" | "write", message: string) => {
 		if (type === "write") {
@@ -212,6 +226,7 @@ export function setupCliManager(basePath: string = BASE_PATH) {
 		withInterruptedDownload,
 		withSignatureResponses,
 		withInvalidSignature,
+		withBundledSignature,
 		withStreamError,
 		withTrailingWriteFlush,
 		event,

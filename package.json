@@ -21,6 +21,7 @@
 		"dist/**/*.{js,css,ttf}",
 		"media/*.{png,svg}",
 		"pgp-public.key",
+		"release-signatures.json",
 		"CHANGELOG.md",
 		"LICENSE"
 	],

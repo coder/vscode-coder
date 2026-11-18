@@ -1,7 +1,9 @@
+import path from "node:path";
 import * as vscode from "vscode";
 
 import { CliCredentialManager } from "./cli/cliCredentialManager";
 import { CliManager } from "./cli/cliManager";
+import { ReleaseSignatures } from "./cli/releaseSignatures";
 import { watchConfigurationChanges } from "./configWatcher";
 import { AuthTelemetry } from "./instrumentation/auth";
 import { FlightRecorder } from "./logging/flightRecorder";
@@ -122,6 +124,10 @@ export class ServiceContainer implements vscode.Disposable {
 			this.logger,
 			this.pathResolver,
 			this.cliCredentialManager,
+			new ReleaseSignatures(
+				path.join(context.extensionPath, "release-signatures.json"),
+				this.logger,
+			),
 			this.telemetryService,
 		);
 		this.contextManager = new ContextManager(context);
