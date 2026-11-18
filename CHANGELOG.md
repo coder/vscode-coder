@@ -5,10 +5,14 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
-## Unreleased
+## [v1.18.1](https://github.com/coder/vscode-coder/releases/tag/v1.18.1) 2026-11-18
 
-### Changed
+### Security
 
+- Deep links that repeat a query parameter now show an error instead of using
+  the first value, so an encoded `&` in a value such as a folder path can no
+  longer add or replace parameters like `url` or `token`
+  ([GHSA-wrpj-428x-rw52](https://github.com/coder/vscode-coder/security/advisories/GHSA-wrpj-428x-rw52)).
 - The extension now verifies the Coder CLI with Coder's new release signing key.
   For Coder 2.29.0 to 2.39.4, which predate the key, it uses signatures that
   ship with the extension.
@@ -19,8 +23,6 @@
   `+`, `(` or `[` are now matched literally instead of mismatching or failing.
 - Ping and speed test from an agent in the sidebar now target that agent
   instead of the workspace's first agent.
-- Deep links that specify a query parameter more than once now show an error
-  instead of silently using the first value.
 - If the workspace starts, stops, or gets a newer template version while you're
   entering parameters for an update, the update is now skipped and the
   workspace starts on its current version, the same as dismissing the prompt.
