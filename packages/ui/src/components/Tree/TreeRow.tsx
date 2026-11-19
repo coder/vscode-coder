@@ -1,4 +1,5 @@
 import { type CSSProperties, memo } from "react";
+import isEqual from "react-fast-compare";
 
 import { cx } from "#cx";
 
@@ -83,4 +84,21 @@ export const TreeRow = memo(function TreeRow({
 			</div>
 		</div>
 	);
-});
+}, sameRowProps);
+
+/**
+ * Compares every field a row renders, whatever fields a node has. A node's
+ * `children` are left out: the row renders only its own node, and
+ * `expanded` already says whether they show.
+ */
+function sameRowProps(a: TreeRowProps, b: TreeRowProps): boolean {
+	const { row: rowA, ...propsA } = a;
+	const { row: rowB, ...propsB } = b;
+	const { node: nodeA, ...placeA } = rowA;
+	const { node: nodeB, ...placeB } = rowB;
+	const { children: _childrenA, ...ownA } = nodeA;
+	const { children: _childrenB, ...ownB } = nodeB;
+	return (
+		isEqual(propsA, propsB) && isEqual(placeA, placeB) && isEqual(ownA, ownB)
+	);
+}

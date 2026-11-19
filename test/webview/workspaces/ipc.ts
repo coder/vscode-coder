@@ -24,6 +24,11 @@ export function captureSent(): SentMessage[] {
 	return sent;
 }
 
+/**
+ * Push state as the extension does. The webview writes it into the React
+ * Query cache, which notifies subscribers in a `setTimeout(0)` batch, so
+ * wait one macrotask inside `act` for components to re-render.
+ */
 export const pushState = (state: WorkspacesState) =>
 	act(async () => {
 		window.dispatchEvent(
@@ -31,5 +36,5 @@ export const pushState = (state: WorkspacesState) =>
 				data: { type: WorkspacesApi.stateChanged.method, data: state },
 			}),
 		);
-		await Promise.resolve();
+		await new Promise((resolve) => setTimeout(resolve, 0));
 	});
