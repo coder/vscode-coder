@@ -166,6 +166,20 @@ show delay, except within a row's action bar, where crossing between buttons is
 instant, the exception native grants a dense cluster of targets. Ctrl+K Ctrl+I opens the focused
 row's hover with no delay at all, and moving the focus closes it.
 
+## TreeFindWidget
+
+`TreeFindWidget` is VS Code's tree find widget (`.monaco-tree-type-filter`),
+which Modern UI leaves as is. It is controlled through `value` and
+`onChange`, and it filters nothing itself: the consumer narrows its own
+`nodes`. It is absolutely positioned at the top right of the nearest
+positioned ancestor, so keep that ancestor out of the scrolling element, or
+make it a sticky row, to float the widget while the list scrolls.
+
+It takes focus when it mounts, and `ref` reaches its input to refocus it.
+Escape and the close button call `onClose`; Enter and Arrow Down call
+`onFocusList`, where native hands focus back to the tree. `label` is the
+accessible name and the placeholder, "Type to search" by default, as native.
+
 ## Overlays
 
 `Tooltip`, `ContextMenu`, and `DropdownMenu` wrap the Base UI primitives,

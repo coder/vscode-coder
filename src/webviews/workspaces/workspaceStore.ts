@@ -2,8 +2,17 @@ import { isAxiosError } from "axios";
 import { isDeepStrictEqual } from "node:util";
 import * as vscode from "vscode";
 
+import {
+	ACTIVE_BUILD_STATUSES,
+	type Workspace,
+	type WorkspaceAction,
+	type WorkspaceFilter,
+	type WorkspaceListStatus,
+	type WorkspacesState,
+} from "@repo/shared";
+
 import { HttpStatusCode } from "../../api/httpStatusCode";
-import { extractAllAgents } from "../../api/models";
+import { extractAgents, extractAllAgents } from "../../api/models";
 import { errToStr } from "../../error/normalize";
 import { AgentMetadataTracker } from "../../workspace/agentMetadataTracker";
 import {
@@ -14,14 +23,6 @@ import {
 } from "../../workspace/filters";
 
 import { Poller, type NextRun, type RetryOptions } from "./poller";
-
-import type {
-	Workspace,
-	WorkspaceAction,
-	WorkspaceFilter,
-	WorkspaceListStatus,
-	WorkspacesState,
-} from "@repo/shared";
 
 import type { AgentMetadataClient } from "../../api/agentMetadata";
 import type { CoderApi } from "../../api/coderApi";
@@ -36,10 +37,31 @@ interface WorkspacesClient extends AgentMetadataClient {
 	): Promise<{ readonly workspaces: readonly Workspace[] }>;
 }
 
-const RETRY: RetryOptions = { initialDelayMs: 5_000, maxDelayMs: 60_000 };
 const LOADING: WorkspaceListStatus = { kind: "loading" };
 const READY: WorkspaceListStatus = { kind: "ready" };
 const MINUTE_MS = 60_000;
+
+/** Delay before the next list while a workspace is changing, as the dashboard polls. */
+const CHANGING_POLL_MS = 5_000;
+/** Delay before the next list once nothing is changing, as the dashboard polls. */
+const SETTLED_POLL_MS = 30_000;
+/** A failed list retries after 5 seconds, doubling up to a minute. */
+const RETRY: RetryOptions = { initialDelayMs: 5_000, maxDelayMs: 60_000 };
+
+/** True while a build runs, or while a running workspace's agents come up. */
+function isChanging(workspace: Workspace): boolean {
+	const { status, resources } = workspace.latest_build;
+	return (
+		ACTIVE_BUILD_STATUSES.has(status) ||
+		(status === "running" &&
+			extractAgents(resources).some(
+				(agent) =>
+					agent.status === "connecting" ||
+					agent.lifecycle_state === "created" ||
+					agent.lifecycle_state === "starting",
+			))
+	);
+}
 
 /** A deleted workspace answers 404 or 410. */
 function isGone(error: unknown): boolean {
@@ -77,6 +99,8 @@ export class WorkspaceStore implements vscode.Disposable {
 	private listedAt: number | undefined;
 	private agentWorkspaceIds: readonly string[] = [];
 	private agentLookupSupported = true;
+	/** The workspaces the last Agent lookup covered; it runs again when they change. */
+	private agentLookupKey: string | undefined;
 	private status = LOADING;
 	/** Agents the webview is showing, listed or not. */
 	private requestedAgents: readonly string[] = [];
@@ -84,6 +108,7 @@ export class WorkspaceStore implements vscode.Disposable {
 	/** Actions running, which may not have queued their build yet. */
 	private readonly acting = new Map<string, WorkspaceAction>();
 	private visible = false;
+	private restored = false;
 	private disposed = false;
 
 	constructor(
@@ -140,6 +165,15 @@ export class WorkspaceStore implements vscode.Disposable {
 		return visible ? this.poller.run() : this.settled;
 	}
 
+	/** Nothing lists until the stored session is checked, so signed out is real. */
+	public markSessionRestored(): Promise<void> {
+		if (this.disposed || this.restored) {
+			return this.settled;
+		}
+		this.restored = true;
+		return this.visible ? this.poller.run() : this.settled;
+	}
+
 	public setFilter(filter: WorkspaceFilter): Promise<void> {
 		if (this.disposed || filter === this.filter) {
 			return this.settled;
@@ -150,7 +184,7 @@ export class WorkspaceStore implements vscode.Disposable {
 		}
 		this.filter = filter;
 		this.listedAt = undefined;
-		this.agentLookupSupported = true;
+		this.forgetAgentLookup();
 		return this.reload();
 	}
 
@@ -212,7 +246,7 @@ export class WorkspaceStore implements vscode.Disposable {
 			return this.settled;
 		}
 		this.unsupportedFilters.clear();
-		this.agentLookupSupported = true;
+		this.forgetAgentLookup();
 		return this.reload(this.workspaces);
 	}
 
@@ -230,7 +264,7 @@ export class WorkspaceStore implements vscode.Disposable {
 	}
 
 	private async list(token: vscode.CancellationToken): Promise<NextRun> {
-		if (this.disposed) {
+		if (this.disposed || !this.restored) {
 			return "idle";
 		}
 		const session = this.sessionState.current;
@@ -241,10 +275,9 @@ export class WorkspaceStore implements vscode.Disposable {
 		if (!this.visible) {
 			return "idle";
 		}
-		const { getQuery, pollIntervalMs } = WORKSPACE_FILTERS[this.filter];
 		try {
 			const { workspaces } = await this.client.getWorkspaces({
-				q: getQuery(session),
+				q: WORKSPACE_FILTERS[this.filter].getQuery(session),
 			});
 			// Cancelled by a filter switch, a refresh, a session change, or disposal.
 			if (token.isCancellationRequested) {
@@ -254,9 +287,7 @@ export class WorkspaceStore implements vscode.Disposable {
 			this.listedAt = Math.floor(Date.now() / MINUTE_MS) * MINUTE_MS;
 			this.setList(workspaces);
 			await this.loadAgentWorkspaces(workspaces, token);
-			return this.visible && pollIntervalMs !== undefined
-				? { delayMs: pollIntervalMs }
-				: "idle";
+			return this.nextPoll(workspaces);
 		} catch (error) {
 			if (token.isCancellationRequested) {
 				return "idle";
@@ -278,31 +309,40 @@ export class WorkspaceStore implements vscode.Disposable {
 		}
 	}
 
+	private nextPoll(workspaces: readonly Workspace[]): NextRun {
+		const polls = WORKSPACE_FILTERS[this.filter].pollIntervalMs !== undefined;
+		if (!this.visible || !polls) {
+			return "idle";
+		}
+		const changing = workspaces.some(isChanging);
+		return { delayMs: changing ? CHANGING_POLL_MS : SETTLED_POLL_MS };
+	}
+
 	private async loadAgentWorkspaces(
 		workspaces: readonly Workspace[],
 		token: vscode.CancellationToken,
 	): Promise<void> {
+		const workspaceIds = workspaces.map((workspace) => workspace.id);
+		const key = workspaceIds.toSorted().join(",");
 		if (
 			!this.agentLookupSupported ||
-			!this.visible ||
-			token.isCancellationRequested ||
-			workspaces.length === 0
+			key === this.agentLookupKey ||
+			workspaceIds.length === 0 ||
+			!this.visible
 		) {
 			return;
 		}
 		try {
-			const chats = await this.client.experimental.getChatsByWorkspace(
-				workspaces.map((workspace) => workspace.id),
-			);
-			if (this.disposed || token.isCancellationRequested) {
+			const chats =
+				await this.client.experimental.getChatsByWorkspace(workspaceIds);
+			if (token.isCancellationRequested) {
 				return;
 			}
-			this.agentWorkspaceIds = workspaces
-				.filter((workspace) => Boolean(chats[workspace.id]))
-				.map((workspace) => workspace.id);
+			this.agentLookupKey = key;
+			this.agentWorkspaceIds = workspaceIds.filter((id) => Boolean(chats[id]));
 			this.publish();
 		} catch (error) {
-			if (this.disposed || token.isCancellationRequested) {
+			if (token.isCancellationRequested) {
 				return;
 			}
 			const status = isAxiosError(error) ? error.response?.status : undefined;
@@ -317,6 +357,12 @@ export class WorkspaceStore implements vscode.Disposable {
 				this.logger.warn("Failed to look up Agent workspaces:", error);
 			}
 		}
+	}
+
+	/** Look up Agent workspaces on the next list, even if refused before. */
+	private forgetAgentLookup(): void {
+		this.agentLookupSupported = true;
+		this.agentLookupKey = undefined;
 	}
 
 	/**
@@ -377,7 +423,7 @@ export class WorkspaceStore implements vscode.Disposable {
 	private handleSessionChange(): void {
 		this.unsupportedFilters.clear();
 		this.listedAt = undefined;
-		this.agentLookupSupported = true;
+		this.forgetAgentLookup();
 		this.agentWorkspaceIds = [];
 		this.requestedAgents = [];
 		this.acting.clear();

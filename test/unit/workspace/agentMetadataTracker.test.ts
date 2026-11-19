@@ -127,16 +127,14 @@ describe("AgentMetadataTracker", () => {
 		expect(client.metadataStreams.has("agent-1")).toBe(true);
 	});
 
-	it("reopens a socket that died, ignoring what the old one still says", async () => {
+	it("keeps a dropped socket, which reconnects on its own", async () => {
 		const { opened, tracker, stream } = await setup("agent-1");
-		const old = stream("agent-1");
-		old.emit("close", died);
-		old.close.mockImplementation(() => old.pushError(new Error("closing")));
+		stream("agent-1").emit("close", died);
 		await tracker.watch(["agent-1"]);
-		expect(opened).toHaveBeenCalledTimes(2);
+		expect(opened).toHaveBeenCalledOnce();
+		expect(tracker.metadata).toMatchObject({ "agent-1": { kind: "failed" } });
 
 		stream("agent-1").pushMessage({ data: [agentMetadata()] });
-		old.pushError(new Error("stale"));
 		expect(tracker.metadata).toEqual({ "agent-1": REPORTED_METADATA });
 	});
 

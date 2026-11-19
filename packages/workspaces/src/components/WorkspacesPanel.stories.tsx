@@ -167,6 +167,7 @@ const api = {
 	refresh: fn(),
 	setFilter: fn(),
 	watchAgents: fn(),
+	onShowSearch: () => () => undefined,
 } as const;
 
 const meta: Meta<typeof WorkspacesPanel> = {
@@ -193,6 +194,25 @@ export default meta;
 type Story = StoryObj<typeof WorkspacesPanel>;
 
 export const Collapsed: Story = {};
+
+export const Searching: Story = {
+	args: {
+		api: {
+			...api,
+			onShowSearch: (open) => {
+				open();
+				return () => undefined;
+			},
+		},
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await userEvent.type(
+			await canvas.findByRole("searchbox", { name: "Search workspaces" }),
+			"alice",
+		);
+	},
+};
 
 export const Expanded: Story = {
 	play: async ({ canvasElement }) => {

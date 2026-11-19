@@ -292,12 +292,16 @@ async function doActivate(
 
 	contextManager.set("coder.workspacesPanelEnabled", workspacesPanelEnabled);
 
-	if (workspacesPanelEnabled) {
-		const workspaceStore = new WorkspaceStore(
-			client,
-			output,
-			deploymentManager.session,
-		);
+	const workspaceStore = workspacesPanelEnabled
+		? new WorkspaceStore(client, output, deploymentManager.session)
+		: undefined;
+	// Until the stored session is checked, signed out means "not known yet".
+	const markSessionRestored = () => {
+		contextManager.set("coder.loaded", true);
+		void workspaceStore?.markSessionRestored();
+	};
+
+	if (workspaceStore) {
 		const workspacesPanelProvider = new WorkspacesPanelProvider(
 			ctx.extensionUri,
 			workspaceStore,
@@ -314,6 +318,9 @@ async function doActivate(
 
 		commandManager.register("coder.workspaces.refresh", () =>
 			workspacesPanelProvider.refresh(),
+		);
+		commandManager.register("coder.workspaces.search", () =>
+			workspacesPanelProvider.showSearch(),
 		);
 
 		ctx.subscriptions.push(
@@ -532,7 +539,7 @@ async function doActivate(
 	// Initialize deployment manager with stored deployment (if any).
 	// Skip if already set by remote.setup above.
 	if (deploymentManager.getCurrentDeployment()) {
-		contextManager.set("coder.loaded", true);
+		markSessionRestored();
 	} else if (deployment) {
 		output.info(`Initializing deployment: ${deployment.url}`);
 		tracer
@@ -552,11 +559,11 @@ async function doActivate(
 				);
 			})
 			.finally(() => {
-				contextManager.set("coder.loaded", true);
+				markSessionRestored();
 			});
 	} else {
 		output.info("Not currently logged in");
-		contextManager.set("coder.loaded", true);
+		markSessionRestored();
 
 		// Handle autologin, if not already logged in.
 		const cfg = vscode.workspace.getConfiguration();

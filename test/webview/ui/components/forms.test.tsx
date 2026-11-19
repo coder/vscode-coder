@@ -16,6 +16,7 @@ import {
 	SelectValue,
 	type SelectProps,
 	Textarea,
+	TreeFindWidget,
 } from "@repo/ui";
 
 import { qs } from "../../helpers";
@@ -193,6 +194,46 @@ describe("SearchInput", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
 		expect(screen.getByRole("searchbox", { name: "Search" })).toHaveFocus();
+	});
+});
+
+describe("TreeFindWidget", () => {
+	function renderFindWidget() {
+		const onClose = vi.fn();
+		const onFocusList = vi.fn();
+		const Harness = () => {
+			const [value, setValue] = useState("");
+			return (
+				<TreeFindWidget
+					value={value}
+					onChange={setValue}
+					onClose={onClose}
+					onFocusList={onFocusList}
+				/>
+			);
+		};
+		render(<Harness />);
+		return { onClose, onFocusList };
+	}
+
+	it("takes focus, and hands it back to the list on Enter or Arrow Down", async () => {
+		const user = userEvent.setup();
+		const { onFocusList } = renderFindWidget();
+		const input = screen.getByRole("searchbox", { name: "Type to search" });
+		expect(input).toHaveFocus();
+
+		await user.type(input, "dev{Enter}");
+		expect(input).toHaveValue("dev");
+		await user.keyboard("{ArrowDown}");
+		expect(onFocusList).toHaveBeenCalledTimes(2);
+	});
+
+	it("closes on Escape and from its close button", async () => {
+		const user = userEvent.setup();
+		const { onClose } = renderFindWidget();
+		await user.keyboard("{Escape}");
+		await user.click(screen.getByRole("button", { name: "Close" }));
+		expect(onClose).toHaveBeenCalledTimes(2);
 	});
 });
 

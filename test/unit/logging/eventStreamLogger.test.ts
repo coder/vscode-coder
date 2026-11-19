@@ -71,7 +71,7 @@ describe("EventStreamLogger", () => {
 		);
 	});
 
-	it("logs errors with error object", () => {
+	it("logs errors as warnings, with the error object", () => {
 		const logger = createMockLogger();
 		const eventStreamLogger = new EventStreamLogger(
 			logger,
@@ -81,6 +81,6 @@ describe("EventStreamLogger", () => {
 
 		eventStreamLogger.logError(error, "Failed to connect");
 
-		expect(logger.error).toHaveBeenCalledWith(expect.any(String), error);
+		expect(logger.warn).toHaveBeenCalledWith(expect.any(String), error);
 	});
 });

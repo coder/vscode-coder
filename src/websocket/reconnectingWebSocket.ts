@@ -385,6 +385,9 @@ export class ReconnectingWebSocket<
 					return;
 				}
 				this.#telemetry.opened(this.#route);
+				if (reason !== "initial_connect") {
+					this.#logger.info(`WebSocket reconnected for ${this.#route}`);
+				}
 				// Reset backoff on successful connection
 				this.#backoffMs = this.#options.initialBackoffMs;
 				this.#certRefreshAttempted = false;

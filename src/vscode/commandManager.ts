@@ -41,6 +41,7 @@ export const CODER_COMMAND_IDS = [
 	"coder.supportBundle:views",
 	"coder.tasks.refresh",
 	"coder.workspaces.refresh",
+	"coder.workspaces.search",
 ] as const;
 
 export type CoderCommandId = (typeof CODER_COMMAND_IDS)[number];

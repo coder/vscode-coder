@@ -31,6 +31,18 @@ body {
 	white-space: nowrap;
 }
 
+/* A zero-height sticky row anchors the find widget, so it floats over the
+   list as it scrolls. Sticky stops at the panel's padding, so the translate
+   lifts it over that padding without moving the list. */
+.workspaces-search {
+	position: sticky;
+	top: 0;
+	/* Sticky makes a stacking context; stay above the tree's pinned rows */
+	z-index: 20;
+	height: 0;
+	translate: 0 calc(-1 * var(--ui-spacing-40));
+}
+
 .workspaces-filter-bar .workspace-filter {
 	flex: none;
 	height: 22px;

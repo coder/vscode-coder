@@ -38,3 +38,13 @@ export const pushState = (state: WorkspacesState) =>
 		);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 	});
+
+/** Ask the webview to show its search box, as the title bar button does. */
+export const pushShowSearch = () =>
+	act(() => {
+		window.dispatchEvent(
+			new MessageEvent("message", {
+				data: { type: WorkspacesApi.showSearch.method },
+			}),
+		);
+	});

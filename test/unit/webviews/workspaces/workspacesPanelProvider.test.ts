@@ -56,6 +56,7 @@ function setup() {
 		createMockLogger(),
 		new TestSessionStore(),
 	);
+	void store.markSessionRestored();
 	const commands = {
 		login: vi.fn(() => Promise.resolve()),
 		openWorkspaceFromSidebar: vi.fn(() => Promise.resolve()),

@@ -10,31 +10,31 @@ export type WorkspaceAction =
 	| "update"
 	| "delete";
 
-/** Builds in flight, or a workspace that is gone, allow no action. */
-const INACTIVE_STATUSES: ReadonlySet<WorkspaceStatus> = new Set([
+/** Statuses of a build in flight. */
+export const ACTIVE_BUILD_STATUSES: ReadonlySet<WorkspaceStatus> = new Set([
 	"pending",
 	"starting",
 	"stopping",
 	"canceling",
 	"deleting",
-	"deleted",
 ]);
 
 /** Actions allowed now, in display order, as in the dashboard's `abilitiesByWorkspaceStatus`. */
 export function workspaceActions(
 	workspace: Workspace,
 ): readonly WorkspaceAction[] {
-	if (INACTIVE_STATUSES.has(workspace.latest_build.status)) {
+	const { status, transition, has_external_agent } = workspace.latest_build;
+	// A build in flight, or a workspace that is gone, allows no action.
+	if (ACTIVE_BUILD_STATUSES.has(status) || status === "deleted") {
 		return [];
 	}
 	// `coder start` reactivates a dormant workspace before starting it.
 	if (workspace.dormant_at) {
 		return ["start", "delete"];
 	}
-	if (workspace.latest_build.has_external_agent) {
+	if (has_external_agent) {
 		return ["delete"];
 	}
-	const { status, transition } = workspace.latest_build;
 	// A policy that forces the active version leaves only an update.
 	const updateOnly =
 		workspace.outdated &&
