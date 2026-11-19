@@ -58,8 +58,8 @@ describe("CommandManager", () => {
 			const { manager } = makeHarness();
 			const handler = vi.fn((a: number, b: number) => a + b);
 
-			manager.register("coder.refreshWorkspaces", handler);
-			const result = await getRegisteredCallback("coder.refreshWorkspaces")(
+			manager.register("coder.workspaces.refresh", handler);
+			const result = await getRegisteredCallback("coder.workspaces.refresh")(
 				2,
 				3,
 			);
@@ -83,15 +83,15 @@ describe("CommandManager", () => {
 	describe("telemetry", () => {
 		it("emits one command.invoked event with success and a numeric durationMs on success", async () => {
 			const { manager, sink } = makeHarness();
-			manager.register("coder.refreshWorkspaces", () => "ok");
+			manager.register("coder.workspaces.refresh", () => "ok");
 
-			await getRegisteredCallback("coder.refreshWorkspaces")();
+			await getRegisteredCallback("coder.workspaces.refresh")();
 
 			expect(sink.events).toHaveLength(1);
 			expect(sink.events[0]).toMatchObject({
 				eventName: "command.invoked",
 				properties: {
-					command_id: "coder.refreshWorkspaces",
+					command_id: "coder.workspaces.refresh",
 					result: "success",
 				},
 			});

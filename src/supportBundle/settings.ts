@@ -38,6 +38,7 @@ const COLLECTED_SETTINGS: readonly string[] = [
 	"coder.tlsCertFile",
 	"coder.tlsKeyFile",
 	"coder.useKeyring",
+	"coder.workspacesPanel.enabled",
 	"remote.SSH.connectTimeout",
 	"remote.SSH.logLevel",
 	"remote.SSH.reconnectionGraceTime",

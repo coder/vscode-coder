@@ -194,6 +194,12 @@
 					"default": false,
 					"scope": "application"
 				},
+				"coder.workspacesPanel.enabled": {
+					"markdownDescription": "Show workspaces in the Coder sidebar as a single panel where you can filter, check status, and start, stop, or update them. Disable to use the legacy My Workspaces, Shared Workspaces, and All Workspaces tree views instead.",
+					"type": "boolean",
+					"default": true,
+					"scope": "application"
+				},
 				"coder.sshFlags": {
 					"markdownDescription": "Additional flags to pass to the `coder ssh` command when establishing SSH connections. Enter each flag as a separate array item; values are passed verbatim and in order. See the [CLI ssh reference](https://coder.com/docs/reference/cli/ssh) for available flags.\n\nNote: `--network-info-dir` and `--ssh-host-prefix` are ignored (managed internally). Prefer `#coder.proxyLogDirectory#` over `--log-dir`/`-l` for full functionality.",
 					"type": "array",
@@ -334,22 +340,25 @@
 					"id": "coderTasks",
 					"title": "Coder Tasks (Deprecated)",
 					"icon": "media/tasks-logo.svg"
-				},
-				{
-					"id": "coderExperimentalWorkspaces",
-					"title": "Coder Workspaces",
-					"icon": "media/shorthand-logo.svg"
 				}
 			]
 		},
 		"views": {
 			"coder": [
 				{
+					"type": "webview",
+					"id": "coder.workspacesPanel",
+					"name": "Workspaces",
+					"icon": "media/logo-white.svg",
+					"when": "config.coder.workspacesPanel.enabled"
+				},
+				{
 					"id": "myWorkspaces",
 					"name": "My Workspaces",
 					"visibility": "visible",
 					"icon": "media/logo-white.svg",
-					"initialSize": 2
+					"initialSize": 2,
+					"when": "!config.coder.workspacesPanel.enabled"
 				},
 				{
 					"id": "sharedWorkspaces",
@@ -357,7 +366,7 @@
 					"visibility": "visible",
 					"icon": "media/logo-white.svg",
 					"initialSize": 1,
-					"when": "coder.authenticated"
+					"when": "!config.coder.workspacesPanel.enabled && coder.authenticated"
 				},
 				{
 					"id": "allWorkspaces",
@@ -365,7 +374,7 @@
 					"visibility": "visible",
 					"icon": "media/logo-white.svg",
 					"initialSize": 1,
-					"when": "coder.authenticated && coder.isOwner"
+					"when": "!config.coder.workspacesPanel.enabled && coder.authenticated && coder.isOwner"
 				}
 			],
 			"coderTasks": [
@@ -381,15 +390,6 @@
 					"name": "Coder Tasks",
 					"icon": "media/tasks-logo.svg",
 					"when": "coder.authenticated && coder.tasksSupported"
-				}
-			],
-			"coderExperimentalWorkspaces": [
-				{
-					"type": "webview",
-					"id": "coder.workspacesPanel",
-					"name": "Coder Workspaces",
-					"icon": "media/shorthand-logo.svg",
-					"when": "coder.workspacesPanelEnabled"
 				}
 			]
 		},
@@ -468,12 +468,6 @@
 				"command": "coder.workspace.update",
 				"title": "Update Workspace",
 				"category": "Coder"
-			},
-			{
-				"command": "coder.refreshWorkspaces",
-				"title": "Refresh Workspace",
-				"category": "Coder",
-				"icon": "$(refresh)"
 			},
 			{
 				"command": "coder.speedTest",
@@ -562,6 +556,16 @@
 				"icon": "$(search)"
 			},
 			{
+				"command": "coder.workspaces.showPanel",
+				"title": "Switch to Workspaces Panel",
+				"category": "Coder"
+			},
+			{
+				"command": "coder.workspaces.showTreeViews",
+				"title": "Switch to Legacy Tree Views",
+				"category": "Coder"
+			},
+			{
 				"command": "coder.applyRecommendedSettings",
 				"title": "Apply Recommended SSH Settings",
 				"category": "Coder"
@@ -643,10 +647,6 @@
 					"when": "coder.workspace.updatable"
 				},
 				{
-					"command": "coder.refreshWorkspaces",
-					"when": "coder.authenticated"
-				},
-				{
 					"command": "coder.viewLogs",
 					"when": "true"
 				},
@@ -699,11 +699,19 @@
 				},
 				{
 					"command": "coder.workspaces.refresh",
-					"when": "false"
+					"when": "coder.authenticated"
 				},
 				{
 					"command": "coder.workspaces.search",
 					"when": "false"
+				},
+				{
+					"command": "coder.workspaces.showPanel",
+					"when": "!config.coder.workspacesPanel.enabled"
+				},
+				{
+					"command": "coder.workspaces.showTreeViews",
+					"when": "config.coder.workspacesPanel.enabled"
 				},
 				{
 					"command": "coder.applyRecommendedSettings"
@@ -726,6 +734,16 @@
 					"when": "coder.authenticated && (view == myWorkspaces || view == coder.workspacesPanel)"
 				},
 				{
+					"command": "coder.workspaces.showPanel",
+					"group": "view@1",
+					"when": "view == myWorkspaces"
+				},
+				{
+					"command": "coder.workspaces.showTreeViews",
+					"group": "view@1",
+					"when": "view == coder.workspacesPanel"
+				},
+				{
 					"command": "coder.login",
 					"when": "!coder.authenticated && (view == myWorkspaces || view == coder.workspacesPanel)"
 				},
@@ -735,19 +753,9 @@
 					"group": "navigation@1"
 				},
 				{
-					"command": "coder.refreshWorkspaces",
-					"when": "coder.authenticated && view == myWorkspaces",
-					"group": "navigation@2"
-				},
-				{
 					"command": "coder.searchMyWorkspaces",
 					"when": "coder.authenticated && view == myWorkspaces",
 					"group": "navigation@3"
-				},
-				{
-					"command": "coder.refreshWorkspaces",
-					"when": "coder.authenticated && view == sharedWorkspaces",
-					"group": "navigation@2"
 				},
 				{
 					"command": "coder.searchSharedWorkspaces",
@@ -766,8 +774,8 @@
 				},
 				{
 					"command": "coder.workspaces.refresh",
-					"when": "coder.authenticated && view == coder.workspacesPanel",
-					"group": "navigation@1"
+					"when": "coder.authenticated && (view == myWorkspaces || view == sharedWorkspaces || view == allWorkspaces || view == coder.workspacesPanel)",
+					"group": "navigation@2"
 				},
 				{
 					"command": "coder.workspaces.search",

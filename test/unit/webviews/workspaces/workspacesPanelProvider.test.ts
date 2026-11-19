@@ -269,6 +269,18 @@ describe("WorkspacesPanelProvider", () => {
 		);
 	});
 
+	it("does not report an earlier failure when refreshed while hidden", async () => {
+		const h = setup();
+		h.client.getWorkspaces.mockRejectedValueOnce(new Error("offline"));
+		h.hooks.setVisible(true);
+		await h.store.settled;
+		h.hooks.setVisible(false);
+
+		await h.provider.refresh();
+		expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+		expect(h.client.getWorkspaces).toHaveBeenCalledOnce();
+	});
+
 	interface OpenCase {
 		name: string;
 		params: OpenWorkspaceParams;

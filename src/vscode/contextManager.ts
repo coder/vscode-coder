@@ -7,7 +7,6 @@ const CONTEXT_DEFAULTS = {
 	"coder.tasksSupported": false,
 	"coder.workspace.connected": false,
 	"coder.workspace.updatable": false,
-	"coder.workspacesPanelEnabled": false,
 } as const;
 
 type CoderContext = keyof typeof CONTEXT_DEFAULTS;

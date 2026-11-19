@@ -5,6 +5,33 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Added
+
+- A Workspaces panel is now the Coder Remote sidebar, replacing the legacy My
+  Workspaces, Shared Workspaces, and All Workspaces tree views. From one place
+  you can:
+  - Switch between your workspaces, workspaces shared with you, and, for
+    owners, all workspaces.
+  - Search the listed workspaces by name, owner, or template with `Ctrl+F`
+    (`Cmd+F` on macOS).
+  - See at a glance whether each workspace and agent is healthy, and which
+    workspaces have a Coder Agents chat.
+  - Expand a workspace to see its agents, dev containers, app statuses, and
+    agent metadata.
+  - Start, stop, restart, update, and delete workspaces without leaving the
+    editor. You're asked to confirm before deleting a workspace or
+    interrupting the one you're connected to.
+  - Open a workspace or a specific agent, or go to its dashboard, sharing, or
+    settings page.
+  - Ping, run a speed test, or collect a support bundle for a specific agent.
+  - Keep working from the last results if your deployment can't be reached.
+- To switch back to the legacy tree views, choose **Switch to Legacy Tree
+  Views** from the panel's **...** menu, or set `coder.workspacesPanel.enabled`
+  to `false`. No reload is needed, and **Switch to Workspaces Panel** switches
+  back.
+
 ## [v1.18.1](https://github.com/coder/vscode-coder/releases/tag/v1.18.1) 2026-11-18
 
 ### Security

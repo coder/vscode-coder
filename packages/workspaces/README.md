@@ -2,21 +2,8 @@
 
 This package contains the Workspaces webview panel for the Coder VS Code extension.
 
-## Enabling the Feature
-
-The workspaces panel is controlled by the `coder.experimental.workspacesPanel` configuration setting.
-
-To enable via settings.json:
-
-1. Open your VS Code settings.json (Cmd/Ctrl + Shift + P → "Preferences: Open User Settings (JSON)")
-2. Add the following:
-
-```json
-{
-	"coder.experimental.workspacesPanel": true
-}
-```
-
-3. Reload VS Code
-
-The **Coder Workspaces** activity bar icon opens the **Coder Workspaces** view when the setting is enabled.
+The panel is the default view in the **Coder Remote** sidebar. Setting
+`coder.workspacesPanel.enabled` to `false` shows the My Workspaces, Shared
+Workspaces, and All Workspaces tree views instead. The sidebar shows either the
+panel or the tree views, never both, and switches as soon as the setting
+changes.

@@ -155,8 +155,14 @@ export class WorkspacesPanelProvider
 		this.syncVisibility();
 	}
 
-	/** List again, reporting a failure since the user asked for it. */
+	/**
+	 * List again, reporting a failure since the user asked for it. A hidden
+	 * panel does nothing: it lists when shown, and its last status may be stale.
+	 */
 	public async refresh(): Promise<void> {
+		if (!this.view?.visible) {
+			return;
+		}
 		await this.store.refresh();
 		const { status } = this.store.state;
 		if (status.kind === "failed") {
