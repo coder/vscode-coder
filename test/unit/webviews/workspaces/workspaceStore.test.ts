@@ -31,7 +31,8 @@ const withAgent = () =>
 
 const ids = (state?: WorkspacesState) => state?.workspaces.map((w) => w.id);
 
-function setup() {
+/** A store whose stored session is still being checked. */
+function setupRestoring() {
 	const client = new MockWorkspacesClient();
 	const session = new TestSessionStore();
 	const store = new WorkspaceStore(client, createMockLogger(), session);
@@ -50,6 +51,12 @@ function setup() {
 			return store.setVisible(true);
 		},
 	};
+}
+
+function setup() {
+	const h = setupRestoring();
+	void h.store.markSessionRestored();
+	return h;
 }
 
 type Store = ReturnType<typeof setup>;
@@ -92,6 +99,25 @@ describe("WorkspaceStore", () => {
 		expect(h.store.findWorkspace("gone")).toBeUndefined();
 	});
 
+	it("stays loading, even signed out, until the stored session is checked", async () => {
+		const h = setupRestoring();
+		h.session.signOut();
+		await h.store.setVisible(true);
+		expect(h.store.state).toMatchObject({
+			capabilities: { authenticated: false },
+			status: { kind: "loading" },
+		});
+		expect(h.client.getWorkspaces).not.toHaveBeenCalled();
+
+		h.session.signInAs();
+		await h.store.markSessionRestored();
+		expect(h.client.getWorkspaces).toHaveBeenCalledOnce();
+		expect(h.store.state).toMatchObject({
+			capabilities: { authenticated: true },
+			status: { kind: "ready" },
+		});
+	});
+
 	it("polls the filters that poll, saying nothing until the list or the minute changes", async () => {
 		vi.useFakeTimers({ now: 0 });
 		onTestFinished(() => {
@@ -101,17 +127,52 @@ describe("WorkspaceStore", () => {
 		const second = [workspace({ id: "second" })];
 		h.client.getWorkspaces.mockResolvedValue({ workspaces: second, count: 1 });
 
-		await vi.advanceTimersByTimeAsync(5_000);
+		await vi.advanceTimersByTimeAsync(30_000);
 		expect(h.states.map(ids)).toEqual([["first"], ["second"]]);
-		await vi.advanceTimersByTimeAsync(5_000);
-		expect(h.states).toHaveLength(2);
-		await vi.advanceTimersByTimeAsync(50_000);
+		await vi.advanceTimersByTimeAsync(30_000);
 		expect(h.states.map((state) => state.listedAt)).toEqual([0, 0, 60_000]);
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(h.states).toHaveLength(3);
 
 		await h.store.setFilter("shared");
 		const fetches = h.client.getWorkspaces.mock.calls.length;
 		await vi.advanceTimersByTimeAsync(60_000);
 		expect(h.client.getWorkspaces).toHaveBeenCalledTimes(fetches);
+	});
+
+	interface ChangingCase {
+		name: string;
+		changing: Workspace;
+	}
+
+	it.each<ChangingCase>([
+		{
+			name: "a build runs",
+			changing: workspace({ latest_build: { status: "starting" } }),
+		},
+		{
+			name: "an agent connects",
+			changing: workspace({ agents: [agent({ status: "connecting" })] }),
+		},
+		{
+			name: "an agent starts",
+			changing: workspace({
+				agents: [agent({ lifecycle_state: "starting" })],
+			}),
+		},
+	])("polls every 5 seconds while $name", async ({ changing }) => {
+		vi.useFakeTimers();
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
+		const h = await shown([changing], [changing]);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(h.client.getWorkspaces).toHaveBeenCalledTimes(3);
+		// The default answer lists nothing changing, so polling slows down.
+		await vi.advanceTimersByTimeAsync(29_000);
+		expect(h.client.getWorkspaces).toHaveBeenCalledTimes(3);
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(h.client.getWorkspaces).toHaveBeenCalledTimes(4);
 	});
 
 	interface LoadingCase {
@@ -251,6 +312,28 @@ describe("WorkspaceStore", () => {
 			expect(h.client.experimental.getChatsByWorkspace).toHaveBeenCalledOnce();
 		});
 
+		it("looks up again only when the listed workspaces change, or on refresh", async () => {
+			vi.useFakeTimers();
+			onTestFinished(() => {
+				vi.useRealTimers();
+			});
+			const h = setup();
+			const lookup = h.client.experimental.getChatsByWorkspace;
+			const both = () => [withAgent(), workspace({ id: "second" })];
+			await h.show([withAgent()], [withAgent()], both());
+			expect(lookup).toHaveBeenCalledOnce();
+
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect(lookup).toHaveBeenCalledOnce();
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect(lookup).toHaveBeenLastCalledWith(["workspace-1", "second"]);
+			expect(lookup).toHaveBeenCalledTimes(2);
+
+			h.client.respondOnce(both());
+			await h.store.refresh();
+			expect(lookup).toHaveBeenCalledTimes(3);
+		});
+
 		it("shows the workspace list while associations are pending", async () => {
 			const h = setup();
 			const lookup = Promise.withResolvers<Record<string, string>>();
@@ -275,8 +358,8 @@ describe("WorkspaceStore", () => {
 			h.client.experimental.getChatsByWorkspace.mockRejectedValueOnce(
 				createAxiosError(404, "not found"),
 			);
-			await h.show([withAgent()], [withAgent()]);
-			await vi.advanceTimersByTimeAsync(5_000);
+			await h.show([withAgent()], [withAgent(), workspace({ id: "second" })]);
+			await vi.advanceTimersByTimeAsync(30_000);
 			expect(h.client.getWorkspaces).toHaveBeenCalledTimes(2);
 			expect(h.client.experimental.getChatsByWorkspace).toHaveBeenCalledOnce();
 			h.client.respondOnce([withAgent()]);

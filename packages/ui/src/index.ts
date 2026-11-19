@@ -90,5 +90,9 @@ export {
 	type TooltipProviderProps,
 } from "./components/Tooltip/Tooltip";
 export { Tree, type TreeProps } from "./components/Tree/Tree";
+export {
+	TreeFindWidget,
+	type TreeFindWidgetProps,
+} from "./components/TreeFindWidget/TreeFindWidget";
 export type { TreeNode } from "./components/Tree/treeModel";
 export { useVscodeTheme, type VscodeThemeKind } from "./useVscodeTheme";

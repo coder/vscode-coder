@@ -22,7 +22,7 @@ import {
 	row,
 	stubElementBoxes,
 } from "../../ui/components/Tree/treeTestHelpers";
-import { captureSent, pushState } from "../ipc";
+import { captureSent, pushShowSearch, pushState } from "../ipc";
 
 import type { WorkspaceAgentStatus } from "coder/site/src/api/typesGenerated";
 
@@ -561,6 +561,19 @@ describe("WorkspacesPanel", () => {
 		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 	});
 
+	it("shows loading, not the login, while the session is checked", async () => {
+		await setup({ ...SIGNED_OUT, status: { kind: "loading" } });
+		expect(
+			screen.getByRole("status", { name: "Loading workspaces" }),
+		).toBeVisible();
+		expect(
+			screen.queryByRole("heading", { name: "Welcome to Coder" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /^Workspace filter:/ }),
+		).not.toBeInTheDocument();
+	});
+
 	it("offers to log in when signed out", async () => {
 		const { user, drain } = await setup(SIGNED_OUT);
 		expect(
@@ -681,4 +694,64 @@ describe("WorkspacesPanel", () => {
 			);
 		},
 	);
+
+	describe("search", () => {
+		it("opens from the title bar, matches the owner, and closes on Escape", async () => {
+			const { user } = await setup();
+			expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+
+			pushShowSearch();
+			const search = screen.getByRole("searchbox", {
+				name: "Search workspaces",
+			});
+			expect(search).toHaveFocus();
+			await user.type(search, "BOB");
+			expect(screen.getByRole("treeitem", { name: "beta" })).toBeVisible();
+			expect(
+				screen.queryByRole("treeitem", { name: "alpha" }),
+			).not.toBeInTheDocument();
+
+			await user.keyboard("{Escape}");
+			expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+			expect(screen.getByRole("treeitem", { name: "alpha" })).toBeVisible();
+			expect(screen.getByRole("tree", { name: "Workspaces" })).toHaveFocus();
+		});
+
+		it("takes Ctrl+F from VS Code, but leaves it Ctrl+Shift+F", async () => {
+			const { user } = await setup();
+			const forwarded = vi.fn<(event: KeyboardEvent) => void>();
+			window.addEventListener("keydown", forwarded);
+			onTestFinished(() => window.removeEventListener("keydown", forwarded));
+			const forwardedKeys = () => forwarded.mock.calls.map(([e]) => e.key);
+
+			await user.keyboard("{Control>}{Shift>}F{/Shift}{/Control}");
+			expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+			expect(forwardedKeys()).toContain("F");
+
+			await user.keyboard("{Control>}f{/Control}");
+			expect(
+				screen.getByRole("searchbox", { name: "Search workspaces" }),
+			).toHaveFocus();
+			expect(forwardedKeys()).not.toContain("f");
+		});
+
+		it("closes from its close button", async () => {
+			const { user } = await setup();
+			pushShowSearch();
+			await user.click(screen.getByRole("button", { name: "Close" }));
+			expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+		});
+
+		it("says when nothing matches", async () => {
+			const { user } = await setup();
+			pushShowSearch();
+			await user.type(
+				screen.getByRole("searchbox", { name: "Search workspaces" }),
+				"nothing",
+			);
+			expect(
+				screen.getByRole("heading", { name: "No matching workspaces" }),
+			).toBeVisible();
+		});
+	});
 });

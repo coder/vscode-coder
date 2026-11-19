@@ -14,10 +14,11 @@ import {
 	Tooltip,
 	TooltipProvider,
 	Tree,
+	TreeFindWidget,
 	type TreeNode,
 } from "@repo/ui";
 import { format, formatISO } from "date-fns";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { AgentActions } from "./AgentActions";
 import {
@@ -26,6 +27,7 @@ import {
 	appStatusNodes,
 	metadataNodes,
 } from "./AgentRow";
+import { useWorkspaceSearch } from "./useWorkspaceSearch";
 import { WorkspaceActions } from "./WorkspaceActions";
 import { WorkspaceHover, WorkspaceRow } from "./WorkspaceRow";
 
@@ -43,6 +45,7 @@ export type WorkspaceCommands = Pick<
 	| "refresh"
 	| "setFilter"
 	| "watchAgents"
+	| "onShowSearch"
 >;
 
 const FILTERS = [
@@ -50,6 +53,16 @@ const FILTERS = [
 	{ value: "mine", label: "Mine" },
 	{ value: "shared", label: "Shared" },
 ] as const;
+
+/** A plain substring match, until the panel gets a search bar that queries. */
+function matchesSearch(workspace: Workspace, query: string): boolean {
+	return [
+		workspace.name,
+		workspace.owner_name,
+		workspace.template_display_name,
+		workspace.template_name,
+	].some((text) => text.toLowerCase().includes(query));
+}
 
 function workspaceAgents(workspace: Workspace) {
 	return workspace.latest_build.resources.flatMap(
@@ -66,7 +79,15 @@ export function WorkspacesPanel({
 }) {
 	const [expandedIds, setExpandedIds] = useState<readonly string[]>([]);
 	const [selectedItemId, setSelectedItemId] = useState<string>();
-	const workspaces = state?.capabilities.authenticated ? state.workspaces : [];
+	const { inputRef: searchRef, ...search } = useWorkspaceSearch(
+		api.onShowSearch,
+	);
+	const treeRef = useRef<HTMLDivElement>(null);
+	const focusTree = () => treeRef.current?.focus();
+	const listed = state?.capabilities.authenticated ? state.workspaces : [];
+	const workspaces = search.query
+		? listed.filter((workspace) => matchesSearch(workspace, search.query))
+		: listed;
 	const showOwner = state?.filter !== "mine";
 	const filterLabel = FILTERS.find(
 		({ value }) => value === state?.filter,
@@ -154,7 +175,12 @@ export function WorkspacesPanel({
 		syncWatch();
 	}, [watchedKey]);
 
-	if (state && !state.capabilities.authenticated) {
+	// Until the stored session is checked, signed out shows as loading.
+	if (
+		state &&
+		!state.capabilities.authenticated &&
+		state.status.kind !== "loading"
+	) {
 		return (
 			<EmptyState
 				title="Welcome to Coder"
@@ -168,7 +194,22 @@ export function WorkspacesPanel({
 	return (
 		<TooltipProvider>
 			<section className="workspaces-panel" aria-label="Workspaces">
-				{state && (
+				{state?.capabilities.authenticated && search.isOpen && (
+					<div className="workspaces-search">
+						<TreeFindWidget
+							label="Search workspaces"
+							value={search.value}
+							onChange={search.setValue}
+							onClose={() => {
+								search.close();
+								focusTree();
+							}}
+							onFocusList={focusTree}
+							ref={searchRef}
+						/>
+					</div>
+				)}
+				{state?.capabilities.authenticated && (
 					<div className="workspaces-filter-bar">
 						<DropdownMenu>
 							<DropdownMenuTrigger
@@ -221,7 +262,7 @@ export function WorkspacesPanel({
 					</div>
 				)}
 				{state?.status.kind === "failed" &&
-					(nodes.length > 0 ? (
+					(listed.length > 0 ? (
 						<Banner
 							severity="warning"
 							className="workspaces-stale"
@@ -251,6 +292,7 @@ export function WorkspacesPanel({
 							/>
 						)}
 						<Tree
+							ref={treeRef}
 							aria-label="Workspaces"
 							nodes={nodes}
 							expandedIds={expandedIds}
@@ -274,6 +316,11 @@ export function WorkspacesPanel({
 					</>
 				) : loading ? (
 					<LoadingState label="Loading workspaces" />
+				) : search.query ? (
+					<EmptyState
+						title="No matching workspaces"
+						description={`No workspaces match "${search.value.trim()}".`}
+					/>
 				) : (
 					state.status.kind !== "failed" && (
 						<EmptyState

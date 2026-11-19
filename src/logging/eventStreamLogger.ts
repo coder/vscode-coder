@@ -69,7 +69,7 @@ export class EventStreamLogger {
 	logError(error: unknown, message: string): void {
 		const time = formatTime(Date.now() - this.startedAt);
 		const errorMsg = message || errToStr(error, "connection error");
-		this.logger.error(
+		this.logger.warn(
 			`✗ WS ${shortId(this.id)} error ${this.url} ${time} - ${errorMsg}`,
 			error,
 		);

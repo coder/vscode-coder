@@ -166,6 +166,10 @@ export class WorkspacesPanelProvider
 		}
 	}
 
+	public showSearch(): void {
+		notifyWebview(this.view?.webview, WorkspacesApi.showSearch);
+	}
+
 	private syncVisibility(): void {
 		void this.store.setVisible(this.view?.visible ?? false);
 	}

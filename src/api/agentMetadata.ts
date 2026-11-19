@@ -38,8 +38,6 @@ export interface AgentMetadataWatcher {
 	readonly dispose: () => void;
 	metadata?: AgentMetadataEvent[];
 	error?: unknown;
-	/** True once the socket closed on its own, so it reports nothing more. */
-	closed: boolean;
 }
 
 /**
@@ -56,7 +54,6 @@ export async function createAgentMetadataWatcher(
 	const onChange = new vscode.EventEmitter<null>();
 	const watcher: AgentMetadataWatcher = {
 		onChange: onChange.event,
-		closed: false,
 		dispose: () => {
 			if (!disposed) {
 				disposed = true;
@@ -100,7 +97,6 @@ export async function createAgentMetadataWatcher(
 	socket.addEventListener("error", handleError);
 
 	socket.addEventListener("close", (event) => {
-		watcher.closed = true;
 		if (event.code !== WebSocketCloseCode.NORMAL) {
 			handleError(
 				new Error(

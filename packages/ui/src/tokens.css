@@ -257,6 +257,15 @@
 		transparent
 	);
 
+	/* Tree find widget (listFilterWidget); high contrast leaves the shadow
+	   unset, dropping it like native */
+	--ui-list-filter-widget-background: var(--vscode-listFilterWidget-background);
+	--ui-list-filter-widget-shadow: var(
+		--vscode-listFilterWidget-shadow,
+		transparent
+	);
+	--ui-widget-border: var(--vscode-widget-border, transparent);
+
 	/* Menus */
 	--ui-menu-background: var(--vscode-menu-background);
 	--ui-menu-foreground: var(--vscode-menu-foreground);

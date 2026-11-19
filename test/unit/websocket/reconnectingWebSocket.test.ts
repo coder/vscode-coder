@@ -60,6 +60,24 @@ describe("ReconnectingWebSocket", () => {
 			ws.close();
 		});
 
+		it("logs a reconnect that succeeds, but not the first connect", async () => {
+			const logger = createMockLogger();
+			const { ws, sockets } = await createReconnectingWebSocket({ logger });
+			sockets[0].fireOpen();
+			expect(logger.info).not.toHaveBeenCalled();
+
+			sockets[0].fireClose({
+				code: WebSocketCloseCode.ABNORMAL,
+				reason: "Network error",
+			});
+			await vi.advanceTimersByTimeAsync(300);
+			sockets[1].fireOpen();
+			expect(logger.info).toHaveBeenCalledExactlyOnceWith(
+				expect.stringMatching(/^WebSocket reconnected for /),
+			);
+			ws.close();
+		});
+
 		it.each([
 			{ code: WebSocketCloseCode.NORMAL, name: "Normal Closure" },
 			{ code: WebSocketCloseCode.GOING_AWAY, name: "Going Away" },
@@ -1109,6 +1127,7 @@ function createMockSocket(): MockSocket {
 type FlushSpy = ReturnType<typeof vi.fn<(reason: string) => void>>;
 
 interface FactoryOptions {
+	logger?: ReturnType<typeof createMockLogger>;
 	onDispose?: () => void;
 	onCertificateRefreshNeeded?: () => Promise<boolean>;
 	flush?: (reason: string) => void;
@@ -1175,7 +1194,10 @@ async function fromFactory<T>(
 ): Promise<ReconnectingWebSocket<T>> {
 	return await ReconnectingWebSocket.create(
 		factory,
-		{ ...createMockLogger(), flush: options.flush ?? vi.fn() },
+		{
+			...(options.logger ?? createMockLogger()),
+			flush: options.flush ?? vi.fn(),
+		},
 		{
 			telemetry: options.telemetry ?? NOOP_TELEMETRY_REPORTER,
 			route: options.route ?? "/api/v2/test",

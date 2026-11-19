@@ -36,14 +36,18 @@ class WatchedAgent {
 		return this.current;
 	}
 
-	/** Open the socket unless one is open or opening. Resolves once it settled. */
+	/**
+	 * Open the socket unless it is open or opening. Resolves once it settled.
+	 * An open socket reconnects on its own, so it is never replaced.
+	 */
 	public ensureOpen(): Promise<void> {
-		if (!this.opening && (!this.watcher || this.watcher.closed)) {
-			this.opening = this.open().finally(() => {
-				this.opening = undefined;
-			});
+		if (this.watcher) {
+			return Promise.resolve();
 		}
-		return this.opening ?? Promise.resolve();
+		this.opening ??= this.open().finally(() => {
+			this.opening = undefined;
+		});
+		return this.opening;
 	}
 
 	public close(): void {
@@ -64,7 +68,6 @@ class WatchedAgent {
 			watcher.dispose();
 			return;
 		}
-		this.watcher?.dispose();
 		this.watcher = watcher;
 		watcher.onChange(() => this.reportFrom(watcher));
 		// A report may arrive before the subscription.

@@ -21,6 +21,8 @@ export const WorkspacesApi = {
 	// Notifications
 	/** The whole state, whenever any of it changes */
 	stateChanged: defineNotification<WorkspacesState>("stateChanged"),
+	/** Open the search box, or focus it if open */
+	showSearch: defineNotification<void>("showSearch"),
 	// Commands
 	/** Webview signals its subscription is live and asks for the state */
 	ready: defineCommand<void>("ready"),
