@@ -22,7 +22,6 @@ export const CODER_COMMAND_IDS = [
 	"coder.createWorkspace",
 	"coder.navigateToWorkspace",
 	"coder.navigateToWorkspaceSettings",
-	"coder.refreshWorkspaces",
 	"coder.viewLogs",
 	"coder.openSshConfig",
 	"coder.exportTelemetry",
@@ -42,6 +41,8 @@ export const CODER_COMMAND_IDS = [
 	"coder.tasks.refresh",
 	"coder.workspaces.refresh",
 	"coder.workspaces.search",
+	"coder.workspaces.showPanel",
+	"coder.workspaces.showTreeViews",
 ] as const;
 
 export type CoderCommandId = (typeof CODER_COMMAND_IDS)[number];

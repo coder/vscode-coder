@@ -34,9 +34,12 @@ import { WorkspacesPanelProvider } from "./webviews/workspaces/workspacesPanelPr
 import { WorkspaceStore } from "./webviews/workspaces/workspaceStore";
 import { WorkspaceProvider } from "./workspace/workspacesProvider";
 
+import type { WorkspaceFilter } from "@repo/shared";
+
 const MY_WORKSPACES_TREE_ID = "myWorkspaces";
 const SHARED_WORKSPACES_TREE_ID = "sharedWorkspaces";
 const ALL_WORKSPACES_TREE_ID = "allWorkspaces";
+const WORKSPACES_PANEL_SETTING = "coder.workspacesPanel.enabled";
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 	const serviceContainer = new ServiceContainer(ctx);
@@ -174,30 +177,6 @@ async function doActivate(
 	);
 	ctx.subscriptions.push(announcementManager);
 
-	const myWorkspacesProvider = new WorkspaceProvider(
-		"mine",
-		client,
-		output,
-		deploymentManager.session,
-	);
-	ctx.subscriptions.push(myWorkspacesProvider);
-
-	const allWorkspacesProvider = new WorkspaceProvider(
-		"all",
-		client,
-		output,
-		deploymentManager.session,
-	);
-	ctx.subscriptions.push(allWorkspacesProvider);
-
-	const sharedWorkspacesProvider = new WorkspaceProvider(
-		"shared",
-		client,
-		output,
-		deploymentManager.session,
-	);
-	ctx.subscriptions.push(sharedWorkspacesProvider);
-
 	// The deprecated Tasks panel only shows on deployments old enough to
 	// still support it, which requires fetching the deployment version.
 	const updateTasksSupported = async () => {
@@ -222,31 +201,6 @@ async function doActivate(
 			void updateTasksSupported();
 		}),
 	);
-
-	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API
-	// (so we can see when it is visible) but otherwise they have the same effect.
-	const registerWorkspaceTreeView = (
-		viewId: string,
-		provider: WorkspaceProvider,
-	) => {
-		const tree = vscode.window.createTreeView(viewId, {
-			treeDataProvider: provider,
-		});
-		ctx.subscriptions.push(tree);
-		provider.setVisibility(tree.visible);
-		tree.onDidChangeVisibility(
-			(event) => provider.setVisibility(event.visible),
-			undefined,
-			ctx.subscriptions,
-		);
-	};
-
-	registerWorkspaceTreeView(MY_WORKSPACES_TREE_ID, myWorkspacesProvider);
-	registerWorkspaceTreeView(
-		SHARED_WORKSPACES_TREE_ID,
-		sharedWorkspacesProvider,
-	);
-	registerWorkspaceTreeView(ALL_WORKSPACES_TREE_ID, allWorkspacesProvider);
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
@@ -286,53 +240,99 @@ async function doActivate(
 		),
 	);
 
-	const workspacesPanelEnabled = vscode.workspace
-		.getConfiguration("coder")
-		.get<boolean>("experimental.workspacesPanel", false);
-
-	contextManager.set("coder.workspacesPanelEnabled", workspacesPanelEnabled);
-
-	const workspaceStore = workspacesPanelEnabled
-		? new WorkspaceStore(client, output, deploymentManager.session)
-		: undefined;
+	// The `when` clauses show either the workspaces panel or the tree views, as
+	// the setting picks. Both stay registered and only fetch while visible.
+	const workspaceStore = new WorkspaceStore(
+		client,
+		output,
+		deploymentManager.session,
+	);
 	// Until the stored session is checked, signed out means "not known yet".
 	const markSessionRestored = () => {
 		contextManager.set("coder.loaded", true);
-		void workspaceStore?.markSessionRestored();
+		void workspaceStore.markSessionRestored();
 	};
-
-	if (workspaceStore) {
-		const workspacesPanelProvider = new WorkspacesPanelProvider(
-			ctx.extensionUri,
-			workspaceStore,
+	const workspacesPanelProvider = new WorkspacesPanelProvider(
+		ctx.extensionUri,
+		workspaceStore,
+		commands,
+		new WorkspaceActionRunner(
+			client,
+			deploymentManager.session,
 			commands,
-			new WorkspaceActionRunner(
-				client,
-				deploymentManager.session,
-				commands,
-				telemetryService,
-				output,
-			),
+			telemetryService,
 			output,
-		);
+		),
+		output,
+	);
 
-		commandManager.register("coder.workspaces.refresh", () =>
-			workspacesPanelProvider.refresh(),
-		);
-		commandManager.register("coder.workspaces.search", () =>
-			workspacesPanelProvider.showSearch(),
-		);
-
-		ctx.subscriptions.push(
-			workspaceStore,
+	ctx.subscriptions.push(
+		workspaceStore,
+		workspacesPanelProvider,
+		vscode.window.registerWebviewViewProvider(
+			WorkspacesPanelProvider.viewType,
 			workspacesPanelProvider,
-			vscode.window.registerWebviewViewProvider(
-				WorkspacesPanelProvider.viewType,
-				workspacesPanelProvider,
-				{ webviewOptions: { retainContextWhenHidden: true } },
+			{ webviewOptions: { retainContextWhenHidden: true } },
+		),
+	);
+
+	// createTreeView, unlike registerTreeDataProvider, gives us the tree view API
+	// (so we can see when it is visible) but otherwise they have the same effect.
+	const createWorkspaceTree = (viewId: string, filter: WorkspaceFilter) => {
+		const provider = new WorkspaceProvider(
+			filter,
+			client,
+			output,
+			deploymentManager.session,
+		);
+		const tree = vscode.window.createTreeView(viewId, {
+			treeDataProvider: provider,
+		});
+		provider.setVisibility(tree.visible);
+		ctx.subscriptions.push(
+			provider,
+			tree,
+			tree.onDidChangeVisibility((event) =>
+				provider.setVisibility(event.visible),
 			),
 		);
-	}
+		return provider;
+	};
+	const workspaceTrees = [
+		createWorkspaceTree(MY_WORKSPACES_TREE_ID, "mine"),
+		createWorkspaceTree(SHARED_WORKSPACES_TREE_ID, "shared"),
+		createWorkspaceTree(ALL_WORKSPACES_TREE_ID, "all"),
+	];
+
+	commandManager.register("coder.workspaces.search", () =>
+		workspacesPanelProvider.showSearch(),
+	);
+	commandManager.register("coder.workspaces.showPanel", () =>
+		vscode.workspace
+			.getConfiguration()
+			.update(
+				WORKSPACES_PANEL_SETTING,
+				true,
+				vscode.ConfigurationTarget.Global,
+			),
+	);
+	commandManager.register("coder.workspaces.showTreeViews", () =>
+		vscode.workspace
+			.getConfiguration()
+			.update(
+				WORKSPACES_PANEL_SETTING,
+				false,
+				vscode.ConfigurationTarget.Global,
+			),
+	);
+
+	// Hidden views skip the refresh and list again when shown.
+	commandManager.register("coder.workspaces.refresh", async () => {
+		await Promise.all([
+			workspacesPanelProvider.refresh(),
+			...workspaceTrees.map((tree) => tree.fetchAndRefresh()),
+		]);
+	});
 
 	ctx.subscriptions.push(
 		registerUriHandler({
@@ -377,11 +377,6 @@ async function doActivate(
 		"coder.navigateToWorkspaceSettings",
 		commands.navigateToWorkspaceSettings.bind(commands),
 	);
-	commandManager.register("coder.refreshWorkspaces", () => {
-		void myWorkspacesProvider.fetchAndRefresh();
-		void sharedWorkspacesProvider.fetchAndRefresh();
-		void allWorkspacesProvider.fetchAndRefresh();
-	});
 	commandManager.register("coder.viewLogs", commands.viewLogs.bind(commands));
 	commandManager.register(
 		"coder.openSshConfig",
