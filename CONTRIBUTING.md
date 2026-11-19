@@ -114,8 +114,8 @@ workflow can create them, after the approval.
    VS Code Marketplace and Open VSX, and creates a draft GitHub release.
 5. Update the draft release with the changelog contents and publish it.
 
-Versions only go up, every release (pre-release or stable) gets its own tag
-`v<version>` and its own commit, and every release contains the latest release
-on `main`. Stable releases come from `main`. A pre-release can come from any
-branch of this repository, so its approver also reviews what the branch adds
-on top of `main`. The workflow itself always runs on `main`.
+Versions only go up, and every release (pre-release or stable) gets its own tag
+`v<version>` and its own commit. Stable releases come from `main`. A
+pre-release can come from any branch of this repository, so its approver also
+reviews what the branch adds on top of `main`. The workflow itself always runs
+on `main`.

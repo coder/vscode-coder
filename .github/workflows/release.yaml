@@ -105,7 +105,6 @@ jobs:
         run: |
           set -euo pipefail
           fail() { echo "::error::$*"; exit 1; }
-          latest_release() { git tag --list 'v*' --sort=-version:refname "$@" | grep -E -m 1 '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; }
 
           # A re-run finds the tag that the first attempt created.
           if existing="$(git rev-parse --verify --quiet "refs/tags/$VERSION^{commit}")"; then
@@ -119,15 +118,10 @@ jobs:
           released="$(git tag --points-at "$COMMIT" --list 'v*' | paste -sd ' ' -)"
           [[ -z "$released" ]] || fail "$COMMIT was already released as $released. Release a newer commit."
 
-          latest="$(latest_release)"
+          # Checked before tagging, because the Marketplace only rejects an older version at publish.
+          latest="$(git tag --list 'v*' --sort=-version:refname | grep -E -m 1 '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)"
           if [[ -n "$latest" ]]; then
             printf '%s\n' "$latest" "$VERSION" | sort -V -C || fail "$VERSION is not newer than $latest, the latest release."
-          fi
-
-          # Only releases on main count here, so a pre-release from a branch does not block the next release.
-          latest_on_main="$(latest_release --merged "$GITHUB_SHA")"
-          if [[ -n "$latest_on_main" ]]; then
-            git merge-base --is-ancestor "$latest_on_main" "$COMMIT" || fail "$COMMIT does not contain $latest_on_main, the latest release on main."
           fi
 
           echo "create=true" >> "$GITHUB_OUTPUT"
