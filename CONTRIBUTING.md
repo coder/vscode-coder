@@ -97,7 +97,9 @@ workflow can create them, after the approval.
    (Actions → Release → Run workflow) with:
    - `version`: `v<version>` (e.g. `v1.19.0`), matching package.json at the
      commit.
-   - `commit`: the full SHA of the commit on `main` to release.
+   - `commit`: the full SHA of the commit to release. It must be on `main`,
+     except for a pre-release, which can come from any branch of this
+     repository.
    - `prerelease`: checked for a pre-release (published with `--pre-release`).
 
    From the command line:
@@ -113,4 +115,7 @@ workflow can create them, after the approval.
 5. Update the draft release with the changelog contents and publish it.
 
 Versions only go up, every release (pre-release or stable) gets its own tag
-`v<version>` and its own commit, and only commits on `main` can be released.
+`v<version>` and its own commit, and every release contains the latest release
+on `main`. Stable releases come from `main`. A pre-release can come from any
+branch of this repository, so its approver also reviews what the branch adds
+on top of `main`. The workflow itself always runs on `main`.
