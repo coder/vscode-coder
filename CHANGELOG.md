@@ -5,7 +5,7 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
-## Unreleased
+## [v1.18.2](https://github.com/coder/vscode-coder/releases/tag/v1.18.2) (Pre-release) 2026-11-20
 
 ### Added
 
