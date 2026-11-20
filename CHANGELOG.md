@@ -45,6 +45,11 @@
 - The session type now reaches the workspace with every OpenSSH version.
 - On Devin 3.12.32 and later, workspace hosts go into the file set in
   `remote.devinSSH.configFile`.
+- A window that crashed or lost power no longer shows as an ongoing
+  connection in the connection log for days: the workspace agent now closes the
+  connection once it stops answering keep-alives, on the same schedule as
+  `ServerAliveInterval` and `ServerAliveCountMax`. Needs an agent that supports
+  it.
 
 ## [v1.18.1](https://github.com/coder/vscode-coder/releases/tag/v1.18.1) 2026-11-18
 

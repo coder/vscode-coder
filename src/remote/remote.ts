@@ -55,7 +55,10 @@ import {
 	sshHostOf,
 } from "./authority";
 import {
+	applyClientAliveEnvironment,
 	applySshEnvironment,
+	CLIENT_ALIVE_COUNT_MAX_ENV,
+	CLIENT_ALIVE_INTERVAL_ENV,
 	SESSION_TYPE_ENV,
 	SSH_PROXY_SETTINGS,
 } from "./environment";
@@ -430,6 +433,12 @@ export class Remote {
 				}),
 			);
 			const remoteCommand = computedSshProperties.remotecommand;
+			disposables.push(
+				applyClientAliveEnvironment(
+					this.extensionContext.environmentVariableCollection,
+					computedSshProperties,
+				),
+			);
 
 			this.logger.info("Modifying settings...");
 			const overrides = buildSshOverrides(
@@ -982,7 +991,7 @@ export class Remote {
 			LogLevel: "ERROR",
 			ServerAliveInterval: "10",
 			ServerAliveCountMax: "3",
-			SendEnv: SESSION_TYPE_ENV,
+			SendEnv: `${SESSION_TYPE_ENV} ${CLIENT_ALIVE_INTERVAL_ENV} ${CLIENT_ALIVE_COUNT_MAX_ENV}`,
 		};
 
 		// Write our file before including it, so the include never dangles.
