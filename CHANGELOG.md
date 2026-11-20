@@ -5,6 +5,26 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Added
+
+- The agent status bar item warns before a workspace runs out of memory. It
+  turns yellow at `coder.memoryMonitor.warningThreshold` (80% of the memory
+  limit by default) or when memory pressure slows the workspace, and red when
+  processes are killed for running out of memory. Click it to open `top`, or
+  restart the workspace from its tooltip.
+- **Coder: Show Top Processes** and **Coder: Restart Workspace** for the
+  connected workspace.
+
+### Changed
+
+- A failed agent metadata load no longer turns the status bar item yellow;
+  that color now means memory needs attention.
+- Restarting the workspace this window is connected to, from the Workspaces
+  panel or the memory warning, reloads the window and reconnects once the
+  workspace is back, instead of leaving the window disconnected.
+
 ## [v1.18.2](https://github.com/coder/vscode-coder/releases/tag/v1.18.2) (Pre-release) 2026-11-20
 
 ### Added

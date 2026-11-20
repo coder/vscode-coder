@@ -19,6 +19,8 @@ export const CODER_COMMAND_IDS = [
 	"coder.openFromSidebar",
 	"coder.openAppStatus",
 	"coder.workspace.update",
+	"coder.workspace.showTopProcesses",
+	"coder.workspace.restart",
 	"coder.createWorkspace",
 	"coder.navigateToWorkspace",
 	"coder.navigateToWorkspaceSettings",

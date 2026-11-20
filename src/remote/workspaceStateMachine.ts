@@ -107,6 +107,13 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 			case "stopped":
 			case "failed": {
 				this.buildLogStream.close();
+				if (this.startupMode === "restart") {
+					this.startupMode = "start";
+					// The restart queued its start behind this stop.
+					if (workspace.latest_build.status === "stopped") {
+						this.queuedStopBuild = workspace.latest_build.id;
+					}
+				}
 				if (workspace.latest_build.id === this.queuedStopBuild) {
 					if (workspace.latest_build.status === "failed") {
 						throw new Error(

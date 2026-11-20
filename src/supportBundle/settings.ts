@@ -25,6 +25,7 @@ const COLLECTED_SETTINGS: readonly string[] = [
 	"coder.enableDownloads",
 	"coder.httpClientLogLevel",
 	"coder.insecure",
+	"coder.memoryMonitor.warningThreshold",
 	"coder.networkThreshold.latencyMs",
 	"coder.oauth.enabled",
 	"coder.proxyBypass",

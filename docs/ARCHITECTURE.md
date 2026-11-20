@@ -153,6 +153,25 @@ The extension provides several sidebar panels:
 There are also notifications for outdated workspace templates and for workspaces
 that are close to shutting down.
 
+## Workspace memory
+
+In a remote window, `MemoryMonitor` ([`src/memory/`](../src/memory/)) polls a
+`MemoryUsageSource` every 10 seconds and feeds the agent status bar item. The
+source is the only part that knows where samples come from:
+
+- `createRemoteFileUsage` ([`src/memory/remoteFiles.ts`](../src/memory/remoteFiles.ts))
+  ports [coder/clistat](https://github.com/coder/clistat)'s memory reading
+  (`coder stat mem`) to cgroup and `/proc` files read over the window's
+  `vscode-remote://` connection, since the extension runs on the client and
+  cannot run `coder stat` in the workspace. The commit it follows is at the top
+  of the file; when clistat changes how it measures memory, update the port.
+  Used memory is what the kernel cannot reclaim: `MemTotal - MemAvailable`
+  without a limit (as `free` and `top` report it), and usage minus the file
+  LRU lists and reclaimable slab under a cgroup limit. clistat subtracts only
+  `inactive_file` today; aligning it is planned.
+- A server endpoint (coder/coder#32542) would be another source, chosen in
+  `src/remote/remote.ts`. Nothing else changes.
+
 ## Logging
 
 The extension logs to the "Coder" output channel, a `LogOutputChannel` that gates

@@ -235,6 +235,23 @@ describe("WorkspaceStateMachine", () => {
 			});
 		}
 
+		it("waits for the start a restart queued behind its stop", async () => {
+			const { sm, progress } = setup("restart");
+			const ws = workspaceAtBuild(2, { status: "stopped", transition: "stop" });
+
+			expect(await sm.processWorkspace(ws, progress)).toBe(false);
+			expect(await sm.processWorkspace(ws, progress)).toBe(false);
+			expect(startWorkspace).not.toHaveBeenCalled();
+		});
+
+		it("starts the workspace itself when the restart's stop failed", async () => {
+			const { sm, progress } = setup("restart");
+			const ws = workspaceAtBuild(2, { status: "failed", transition: "stop" });
+
+			expect(await sm.processWorkspace(ws, progress)).toBe(false);
+			expect(startWorkspace).toHaveBeenCalledOnce();
+		});
+
 		it("triggers update instead of start when mode is 'update'", async () => {
 			const { sm, progress } = setup("update");
 			const ws = createWorkspace({ latest_build: { status: "stopped" } });

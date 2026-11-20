@@ -12,13 +12,18 @@ import {
 	startWorkspaceViaApi,
 	updateWorkspaceViaApi,
 } from "@/api/workspace";
+import { MementoManager } from "@/storage/mementoManager";
 import { WorkspaceActionRunner } from "@/webviews/workspaces/workspaceActionRunner";
 
 import { workspace } from "@repo/mocks";
 
 import { createTestCoderApi } from "../../../mocks/coderApi";
 import { createTelemetryHarness } from "../../../mocks/telemetry";
-import { createMockLogger, TestSessionStore } from "../../../mocks/testHelpers";
+import {
+	createMockLogger,
+	InMemoryMemento,
+	TestSessionStore,
+} from "../../../mocks/testHelpers";
 
 import type {
 	Workspace,
@@ -74,10 +79,12 @@ function setup(latest: Workspace, warningChoice?: string) {
 		workspace: undefined as Workspace | undefined,
 		updateWorkspace: vi.fn(() => Promise.resolve()),
 	};
+	const mementoManager = new MementoManager(new InMemoryMemento());
 	const runner = new WorkspaceActionRunner(
 		createTestCoderApi({ overrides: client }),
 		session,
 		connected,
+		mementoManager,
 		service,
 		createMockLogger(),
 	);
@@ -91,7 +98,15 @@ function setup(latest: Workspace, warningChoice?: string) {
 		restart: vi.mocked(restartWorkspace).mock.calls.length,
 		update: vi.mocked(updateWorkspaceViaApi).mock.calls.length,
 	});
-	return { runner, client, connected, session, triggered, writes };
+	return {
+		runner,
+		client,
+		connected,
+		session,
+		mementoManager,
+		triggered,
+		writes,
+	};
 }
 
 const NO_WRITES = { post: 0, build: 0, start: 0, restart: 0, update: 0 };
@@ -181,6 +196,49 @@ describe("WorkspaceActionRunner", () => {
 
 		expect(connected.updateWorkspace).toHaveBeenCalledOnce();
 		expect(client.getWorkspace).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["v2.36.0", { on_success: { transition: "start" } }, "restart"],
+		["v2.35.0", {}, "start"],
+	] as const)(
+		"restarts the connected workspace on %s by queueing a stop, then reloading",
+		async (version, followUp, mode) => {
+			const latest = withStatus("running");
+			const h = setup(latest, "Restart");
+			h.connected.workspace = latest;
+			h.client.getBuildInfo.mockResolvedValue({ version } as never);
+			h.client.postWorkspaceBuild.mockResolvedValue({
+				...latest.latest_build,
+				transition: "stop",
+			});
+
+			await h.runner.run(latest, "restart");
+
+			expect(h.client.postWorkspaceBuild).toHaveBeenCalledWith(latest.id, {
+				transition: "stop",
+				...followUp,
+				reason: "vscode_connection",
+			});
+			expect(await h.mementoManager.getAndClearStartupMode()).toBe(mode);
+			expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+				"workbench.action.reloadWindow",
+			);
+			expect(h.writes()).toEqual({ ...NO_WRITES, post: 1 });
+			expect(h.triggered("restart")).toHaveLength(1);
+		},
+	);
+
+	it("does not reload when the server queued something other than a stop", async () => {
+		const latest = withStatus("running");
+		const h = setup(latest, "Restart");
+		h.connected.workspace = latest;
+
+		await expect(h.runner.run(latest, "restart")).rejects.toThrow(
+			"queued a start, not a stop",
+		);
+		expect(await h.mementoManager.getAndClearStartupMode()).toBe("none");
+		expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
 	});
 
 	it.each([
