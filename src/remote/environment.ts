@@ -11,7 +11,11 @@ import type {
 
 import type { WatchedSetting } from "../configWatcher";
 
+import type { SshProperties } from "./sshSupport";
+
 export const SESSION_TYPE_ENV = "CODER_SSH_SESSION_TYPE";
+export const CLIENT_ALIVE_INTERVAL_ENV = "CODER_SSH_CLIENT_ALIVE_INTERVAL";
+export const CLIENT_ALIVE_COUNT_MAX_ENV = "CODER_SSH_CLIENT_ALIVE_COUNT_MAX";
 
 type Environment = Record<string, string | undefined>;
 type SshProxyEnvironment = Partial<
@@ -79,11 +83,7 @@ export function applySshEnvironment(
 	collection.persistent = false;
 	// Drop stale vars from a prior connect (e.g. NO_PROXY set last time, not now).
 	collection.clear();
-	for (const [key, value] of Object.entries(values)) {
-		if (value) {
-			collection.replace(key, value);
-		}
-	}
+	replaceInCollection(collection, values);
 
 	return {
 		dispose() {
@@ -91,6 +91,43 @@ export function applySshEnvironment(
 			collection.clear();
 		},
 	};
+}
+
+/**
+ * Forward the resolved `ServerAliveInterval` and `ServerAliveCountMax` through
+ * `SendEnv`, so the agent drops a dead connection on the same schedule.
+ */
+export function applyClientAliveEnvironment(
+	collection: Pick<GlobalEnvironmentVariableCollection, "replace" | "delete">,
+	properties: SshProperties,
+	env: Environment = process.env,
+): { dispose(): void } {
+	const values: Environment = {
+		[CLIENT_ALIVE_INTERVAL_ENV]: properties.serveraliveinterval,
+		[CLIENT_ALIVE_COUNT_MAX_ENV]: properties.serveralivecountmax,
+	};
+	const restoreEnv = applyEnvironment(values, env);
+	replaceInCollection(collection, values);
+
+	return {
+		dispose() {
+			restoreEnv.dispose();
+			for (const key of Object.keys(values)) {
+				collection.delete(key);
+			}
+		},
+	};
+}
+
+function replaceInCollection(
+	collection: Pick<GlobalEnvironmentVariableCollection, "replace">,
+	values: Environment,
+): void {
+	for (const [key, value] of Object.entries(values)) {
+		if (value) {
+			collection.replace(key, value);
+		}
+	}
 }
 
 /** The proxy portion of the SSH environment, derived from VS Code's settings. */

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getProxyForUrl } from "@/api/proxy";
 import {
+	applyClientAliveEnvironment,
 	applySshEnvironment,
 	getSshProxyEnvironment,
 } from "@/remote/environment";
@@ -235,6 +236,31 @@ describe("applySshEnvironment", () => {
 	});
 });
 
+describe("applyClientAliveEnvironment", () => {
+	it("forwards the resolved ServerAlive values and removes only its own on dispose", () => {
+		const env: Environment = { KEEP: "1" };
+		const collection = fakeEnvCollection();
+		collection.replace("KEEP", "1");
+		const expected = {
+			KEEP: "1",
+			CODER_SSH_CLIENT_ALIVE_INTERVAL: "10",
+			CODER_SSH_CLIENT_ALIVE_COUNT_MAX: "3",
+		};
+
+		const applied = applyClientAliveEnvironment(
+			collection,
+			{ serveraliveinterval: "10", serveralivecountmax: "3", hostname: "h" },
+			env,
+		);
+		expect(env).toEqual(expected);
+		expect(collection.vars).toEqual(expected);
+
+		applied.dispose();
+		expect(env).toEqual({ KEEP: "1" });
+		expect(collection.vars).toEqual({ KEEP: "1" });
+	});
+});
+
 function fakeEnvCollection() {
 	const vars: Record<string, string> = {};
 	return {
@@ -246,6 +272,9 @@ function fakeEnvCollection() {
 			for (const key of Object.keys(vars)) {
 				delete vars[key];
 			}
+		},
+		delete: (variable: string) => {
+			delete vars[variable];
 		},
 		vars,
 	};

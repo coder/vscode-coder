@@ -68,7 +68,7 @@ Host coder-cursor.dev.coder.com--*
   LogLevel ERROR
   PermitLocalCommand no
   ProxyCommand /tmp/coder --global-config /home/kyle/.config/Cursor/User/globalStorage/coder.coder-remote/dev.coder.com ssh --stdio --usage-app=cursor --network-info-dir /home/kyle/.config/Cursor/User/globalStorage/coder.coder-remote/net --ssh-host-prefix coder-cursor.dev.coder.com-- %h
-  SendEnv CODER_SSH_SESSION_TYPE
+  SendEnv CODER_SSH_SESSION_TYPE CODER_SSH_CLIENT_ALIVE_INTERVAL CODER_SSH_CLIENT_ALIVE_COUNT_MAX
   ServerAliveCountMax 3
   ServerAliveInterval 10
   StrictHostKeyChecking no
@@ -84,7 +84,10 @@ sources. The session app goes to the CLI as `--usage-app` and to the agent as
 `CODER_SSH_SESSION_TYPE`, set in the environment ssh inherits and forwarded
 with `SendEnv`. It is the editor's URI scheme when both the CLI and the
 deployment accept custom session app names, and `vscode` otherwise. Any `SetEnv`
-of that variable is dropped, since ssh sends it after `SendEnv`.
+of that variable is dropped, since ssh sends it after `SendEnv`. The resolved
+`ServerAliveInterval` and `ServerAliveCountMax` are forwarded the same way, as
+`CODER_SSH_CLIENT_ALIVE_INTERVAL` and `CODER_SSH_CLIENT_ALIVE_COUNT_MAX`, so the
+agent closes a connection whose client stopped answering on the same schedule.
 
 After writing, `ssh -G` resolves the host with the Remote - SSH extension's ssh
 executable, falling back to a built-in parser, to detect a `RemoteCommand`.

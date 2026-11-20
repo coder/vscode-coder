@@ -584,10 +584,12 @@ describe("Remote", () => {
 			});
 		}
 
-		it("writes the app name and forwards the session type", async () => {
+		it("writes the app name and forwards the session type and keep-alive", async () => {
 			const config = await writeConfig();
 			expect(config.proxycommand).toContain("--usage-app=future-editor-next ");
-			expect(config.sendenv).toBe("CODER_SSH_SESSION_TYPE");
+			expect(config.sendenv).toBe(
+				"CODER_SSH_SESSION_TYPE CODER_SSH_CLIENT_ALIVE_INTERVAL CODER_SSH_CLIENT_ALIVE_COUNT_MAX",
+			);
 			expect(config.permitlocalcommand).toBe("no");
 		});
 
