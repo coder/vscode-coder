@@ -17,7 +17,10 @@ import {
 } from "../../mocks/testHelpers";
 
 const proxyEnv = { HTTP_PROXY: proxy, HTTPS_PROXY: proxy };
-const sessionEnv = { CODER_TRACE_SESSION_ID: sessionId };
+const sessionEnv = {
+	CODER_TRACE_SESSION_ID: sessionId,
+	CODER_SSH_SESSION_TYPE: "vscode",
+};
 type Environment = Record<string, string | undefined>;
 
 beforeEach(() => {
@@ -121,6 +124,7 @@ describe("applySshEnvironment", () => {
 		const applied = applySshEnvironment(
 			config(withProxy({ "coder.proxyBypass": "internal.example.com" })),
 			collection,
+			"vscode",
 			env,
 		);
 
@@ -133,11 +137,11 @@ describe("applySshEnvironment", () => {
 		expect(collection.vars).toEqual({});
 	});
 
-	it("sets the session ID even when no proxy is configured", () => {
+	it("sets the session ID and type even when no proxy is configured", () => {
 		const env: Environment = {};
 		const collection = fakeEnvCollection();
 
-		applySshEnvironment(config(), collection, env);
+		applySshEnvironment(config(), collection, "vscode", env);
 
 		expect(env).toEqual(sessionEnv);
 		expect(collection.vars).toEqual(sessionEnv);
@@ -154,6 +158,7 @@ describe("applySshEnvironment", () => {
 		applySshEnvironment(
 			config(withProxy({ "http.proxySupport": "off" })),
 			collection,
+			"vscode",
 			env,
 		);
 
@@ -171,6 +176,7 @@ describe("applySshEnvironment", () => {
 		const applied = applySshEnvironment(
 			config(withProxy()),
 			fakeEnvCollection(),
+			"vscode",
 			env,
 		);
 
@@ -187,6 +193,7 @@ describe("applySshEnvironment", () => {
 		const applied = applySshEnvironment(
 			config(withProxy()),
 			fakeEnvCollection(),
+			"vscode",
 			env,
 		);
 		expect(env.HTTP_PROXY).toBe(proxy);
@@ -201,6 +208,7 @@ describe("applySshEnvironment", () => {
 		const applied = applySshEnvironment(
 			config(withProxy()),
 			fakeEnvCollection(),
+			"vscode",
 		);
 
 		try {
@@ -215,6 +223,7 @@ describe("applySshEnvironment", () => {
 		const applied = applySshEnvironment(
 			config(withProxy()),
 			fakeEnvCollection(),
+			"vscode",
 		);
 
 		try {

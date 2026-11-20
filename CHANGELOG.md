@@ -7,6 +7,12 @@
 
 ## Unreleased
 
+### Security
+
+- Workspace hosts now set `PermitLocalCommand no`, so a `LocalCommand` in your
+  SSH config no longer runs for workspaces. Add `PermitLocalCommand yes` to
+  `coder.sshConfig` to allow it.
+
 ### Added
 
 - A Workspaces panel is now the Coder Remote sidebar, replacing the legacy My
@@ -31,6 +37,14 @@
   Views** from the panel's **...** menu, or set `coder.workspacesPanel.enabled`
   to `false`. No reload is needed, and **Switch to Workspaces Panel** switches
   back.
+
+### Fixed
+
+- `RemoteCommand` set through an SSH config `Include` or `Match` block is now
+  detected.
+- The session type now reaches the workspace with every OpenSSH version.
+- On Devin 3.12.32 and later, workspace hosts go into the file set in
+  `remote.devinSSH.configFile`.
 
 ## [v1.18.1](https://github.com/coder/vscode-coder/releases/tag/v1.18.1) 2026-11-18
 

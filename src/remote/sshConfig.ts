@@ -29,10 +29,11 @@ export interface SshValues {
 	ConnectTimeout: string;
 	StrictHostKeyChecking: string;
 	UserKnownHostsFile: string;
+	PermitLocalCommand: string;
 	LogLevel: string;
 	ServerAliveInterval: string;
 	ServerAliveCountMax: string;
-	SetEnv?: string;
+	SendEnv: string;
 }
 
 /**
@@ -76,6 +77,9 @@ const KEY_ONLY_REGEX = /^[a-zA-Z0-9-]+$/;
 
 /** Characters that would break a value out of its config line. */
 const UNSAFE_CHARS_REGEX = /[\r\n\0]/;
+
+/** A SetEnv argument; quotes may hold spaces. */
+const SETENV_ARG_REGEX = /(?:"[^"]*"|[^\s"])+/g;
 
 interface BlockMarkers {
 	start: string;
@@ -220,7 +224,17 @@ export function parseCoderSshOptions(raw: string): Record<string, string> {
 	return parseSshConfig(sshOptionLines);
 }
 
-/** Parse "Key value" or "Key=value" lines, accumulating SetEnv values. */
+/** Directives ssh accumulates across lines, so merged values extend them. */
+const ACCUMULATED_KEYS: Readonly<Record<string, string>> = {
+	setenv: "SetEnv",
+	sendenv: "SendEnv",
+};
+
+function accumulate(existing: string | undefined, value: string): string {
+	return [existing, value].filter(Boolean).join(" ");
+}
+
+/** Parse "Key value" or "Key=value" lines, accumulating SetEnv and SendEnv. */
 export function parseSshConfig(lines: string[]): Record<string, string> {
 	return lines.reduce(
 		(acc, line) => {
@@ -237,10 +251,10 @@ export function parseSshConfig(lines: string[]): Record<string, string> {
 
 			const value = line.slice(key.length + 1);
 
-			if (key.toLowerCase() === "setenv") {
+			const accumulated = ACCUMULATED_KEYS[key.toLowerCase()];
+			if (accumulated) {
 				if (value !== "") {
-					const existing = acc["SetEnv"];
-					acc["SetEnv"] = existing ? `${existing} ${value}` : value;
+					acc[accumulated] = accumulate(acc[accumulated], value);
 				}
 			} else {
 				acc[key] = value;
@@ -270,13 +284,9 @@ export function mergeSshConfigValues(
 			const value = overrides[correctCaseKey];
 			delete caseInsensitiveOverrides[lower];
 
-			// SetEnv concatenates instead of replacing.
-			if (lower === "setenv") {
-				if (value === "") {
-					merged["SetEnv"] = config[key];
-				} else {
-					merged["SetEnv"] = `${config[key]} ${value}`;
-				}
+			const accumulated = ACCUMULATED_KEYS[lower];
+			if (accumulated) {
+				merged[accumulated] = accumulate(config[key], value);
 				return;
 			}
 
@@ -296,14 +306,36 @@ export function mergeSshConfigValues(
 		const correctCaseKey = caseInsensitiveOverrides[lower];
 		const value = overrides[correctCaseKey];
 
-		if (lower === "setenv" && merged["SetEnv"]) {
-			merged["SetEnv"] = `${merged["SetEnv"]} ${value}`;
+		const accumulated = ACCUMULATED_KEYS[lower];
+		if (accumulated && merged[accumulated]) {
+			merged[accumulated] = accumulate(merged[accumulated], value);
 		} else {
 			merged[correctCaseKey] = value;
 		}
 	});
 
 	return merged;
+}
+
+/** Drop `name` from SetEnv, and SetEnv itself once empty. */
+export function withoutSetEnv(
+	options: Record<string, string>,
+	name: string,
+): Record<string, string> {
+	const result: Record<string, string> = {};
+	for (const [key, value] of Object.entries(options)) {
+		if (lowercase(key) !== "setenv") {
+			result[key] = value;
+			continue;
+		}
+		const kept = (value.match(SETENV_ARG_REGEX) ?? []).filter(
+			(arg) => !arg.replaceAll('"', "").startsWith(`${name}=`),
+		);
+		if (kept.length > 0) {
+			result[key] = kept.join(" ");
+		}
+	}
+	return result;
 }
 
 export class SshConfig {

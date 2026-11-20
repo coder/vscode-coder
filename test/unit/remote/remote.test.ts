@@ -14,7 +14,7 @@ import {
 	Remote,
 	workspaceLabelSuffix,
 } from "@/remote/remote";
-import { sshSupportsSetEnv } from "@/remote/sshSupport";
+import { resolveSshProperties } from "@/remote/sshSupport";
 import { MementoManager } from "@/storage/mementoManager";
 import { PathResolver } from "@/storage/pathResolver";
 import { SecretsManager } from "@/storage/secretsManager";
@@ -80,7 +80,7 @@ vi.mock(import("@/cli/cliExec"), async (importOriginal) => ({
 }));
 vi.mock(import("@/remote/sshSupport"), async (importOriginal) => ({
 	...(await importOriginal()),
-	sshSupportsSetEnv: vi.fn(),
+	resolveSshProperties: vi.fn(),
 }));
 
 const SAFE_HOSTNAME = "coder.example.com";
@@ -493,7 +493,10 @@ describe("Remote", () => {
 		command.replace(/--network-info-dir \S+/, "--network-info-dir <dir>");
 
 	describe("session app", () => {
-		function mockClient(version = "2.38.0") {
+		function mockClient(
+			version = "2.38.0",
+			sshConfigOptions: Record<string, string> = {},
+		) {
 			const client = new Api();
 			vi.spyOn(client, "getBuildInfo").mockResolvedValue({
 				version,
@@ -509,7 +512,7 @@ describe("Remote", () => {
 			vi.spyOn(client, "getDeploymentSSHConfig").mockResolvedValue({
 				hostname_prefix: "",
 				hostname_suffix: "",
-				ssh_config_options: {},
+				ssh_config_options: sshConfigOptions,
 			});
 			return client;
 		}
@@ -566,13 +569,13 @@ describe("Remote", () => {
 			},
 		);
 
-		async function writeConfig(setEnv = true) {
+		async function writeConfig(sshConfigOptions?: Record<string, string>) {
 			const { remote } = createRemote();
 			useEditor("cursor");
-			vi.mocked(sshSupportsSetEnv).mockReturnValue(setEnv);
+			vi.mocked(resolveSshProperties).mockRejectedValue(new Error("no ssh"));
 			const method = "writeRemoteSshConfig";
 			return remote[method]({
-				workspaceClient: mockClient(),
+				workspaceClient: mockClient(undefined, sshConfigOptions),
 				parts: parseRemoteAuthority(REMOTE_AUTHORITY)!,
 				binaryPath: "/mock/coder",
 				logDir: "/mock/log",
@@ -581,14 +584,18 @@ describe("Remote", () => {
 			});
 		}
 
-		it("writes the same verbatim app name to both SSH mechanisms", async () => {
+		it("writes the app name and forwards the session type", async () => {
 			const config = await writeConfig();
 			expect(config.proxycommand).toContain("--usage-app=future-editor-next ");
-			expect(config.setenv).toBe("CODER_SSH_SESSION_TYPE=future-editor-next");
+			expect(config.sendenv).toBe("CODER_SSH_SESSION_TYPE");
+			expect(config.permitlocalcommand).toBe("no");
 		});
 
-		it("omits SetEnv when unsupported by OpenSSH", async () => {
-			expect((await writeConfig(false)).setenv).toBeUndefined();
+		it("drops a SetEnv that would replace the forwarded session type", async () => {
+			const config = await writeConfig({
+				SetEnv: "CODER_SSH_SESSION_TYPE=spoofed FOO=1",
+			});
+			expect(config.setenv).toBe("FOO=1");
 		});
 	});
 
