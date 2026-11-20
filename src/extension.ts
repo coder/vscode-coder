@@ -23,6 +23,7 @@ import {
 	ActivationTelemetry,
 	type ActivationTracer,
 } from "./instrumentation/activation";
+import { showTopProcesses } from "./memory/topProcesses";
 import { OAuthSessionManager } from "./oauth/sessionManager";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
@@ -252,17 +253,19 @@ async function doActivate(
 		contextManager.set("coder.loaded", true);
 		void workspaceStore.markSessionRestored();
 	};
+	const workspaceActions = new WorkspaceActionRunner(
+		client,
+		deploymentManager.session,
+		commands,
+		mementoManager,
+		telemetryService,
+		output,
+	);
 	const workspacesPanelProvider = new WorkspacesPanelProvider(
 		ctx.extensionUri,
 		workspaceStore,
 		commands,
-		new WorkspaceActionRunner(
-			client,
-			deploymentManager.session,
-			commands,
-			telemetryService,
-			output,
-		),
+		workspaceActions,
 		output,
 	);
 
@@ -365,6 +368,12 @@ async function doActivate(
 		"coder.workspace.update",
 		commands.updateWorkspace.bind(commands),
 	);
+	commandManager.register("coder.workspace.showTopProcesses", showTopProcesses);
+	commandManager.register("coder.workspace.restart", async () => {
+		if (commands.workspace) {
+			await workspaceActions.run(commands.workspace, "restart");
+		}
+	});
 	commandManager.register(
 		"coder.createWorkspace",
 		commands.createWorkspace.bind(commands),

@@ -233,6 +233,14 @@
 					"minimum": 0,
 					"default": 250
 				},
+				"coder.memoryMonitor.warningThreshold": {
+					"markdownDescription": "Percent of the workspace memory limit at which the Coder status bar item warns you. It also warns when memory pressure slows the workspace or processes are killed for running out of memory. Set to `0` to turn off memory warnings; usage is still shown in the tooltip.",
+					"type": "number",
+					"minimum": 0,
+					"maximum": 99,
+					"default": 80,
+					"scope": "application"
+				},
 				"coder.connectionLogBuffer.size": {
 					"markdownDescription": "Maximum number of log entries below the Coder output channel's log level to keep in memory. When a connection fails terminally or you collect a support bundle, the extension replays them into the channel so a bundle can carry the detail leading up to the failure without debug logging enabled beforehand. Capture is best-effort, since the channel writes on its own schedule. Set to `0` to disable.",
 					"type": "number",
@@ -470,6 +478,16 @@
 				"category": "Coder"
 			},
 			{
+				"command": "coder.workspace.showTopProcesses",
+				"title": "Show Top Processes",
+				"category": "Coder"
+			},
+			{
+				"command": "coder.workspace.restart",
+				"title": "Restart Workspace",
+				"category": "Coder"
+			},
+			{
 				"command": "coder.speedTest",
 				"title": "Speed Test Workspace",
 				"category": "Coder"
@@ -645,6 +663,14 @@
 				{
 					"command": "coder.workspace.update",
 					"when": "coder.workspace.updatable"
+				},
+				{
+					"command": "coder.workspace.showTopProcesses",
+					"when": "coder.workspace.connected"
+				},
+				{
+					"command": "coder.workspace.restart",
+					"when": "coder.workspace.connected"
 				},
 				{
 					"command": "coder.viewLogs",

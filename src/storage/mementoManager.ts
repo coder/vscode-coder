@@ -22,8 +22,10 @@ const PENDING_TTL_MS = 5 * 60 * 1000;
  * - "start":   User-initiated open/restart; auto-start without prompting.
  * - "update":  User-initiated restart + update; use `coder update` to apply
  *              the latest template version, auto-starting without prompting.
+ * - "restart": A stop was queued with the start to follow it; wait for the
+ *              server's start instead of starting it again.
  */
-export type StartupMode = "none" | "start" | "update";
+export type StartupMode = "none" | "start" | "update" | "restart";
 
 interface Stamped<T> {
 	value: T;

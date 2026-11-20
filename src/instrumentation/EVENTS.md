@@ -18,6 +18,7 @@ new ones live in `CONVENTIONS.md`.
 | [HTTP](#http)                                   | `http.requests`                                                                                                                                                                                                                                                        |
 | [WebSocket connections](#websocket-connections) | `connection.state_transitioned`, `connection.opened`, `connection.dropped`, `connection.reconnect_resolved`, `connection.unreachable`                                                                                                                                  |
 | [Workspace](#workspace)                         | `workspace.{start,stop,restart,update,delete}.triggered`, `workspace.start.prompted`, `workspace.update.prompted`, `workspace.open`, `workspace.picker.prompted`, `workspace.dev_container.open`, `workspace.state_transitioned`, `workspace.agent.state_transitioned` |
+| [Memory](#memory)                               | `memory.state_transitioned`                                                                                                                                                                                                                                            |
 
 Signal kinds, which each category groups its events by:
 
@@ -577,3 +578,19 @@ monitored session (not only the connected agent during connection setup).
 | `status.from`, `status.to`                   | WorkspaceAgentStatus (`from` is `none` initially)    |
 | `lifecycle_state.from`, `lifecycle_state.to` | WorkspaceAgentLifecycle (`from` is `none` initially) |
 | `observed_duration_ms` (measurement)         | omitted on first observation                         |
+
+## Memory
+
+### Logs
+
+#### `memory.state_transitioned`
+
+Emitted by `MemoryTelemetry` when the polled workspace memory changes state.
+
+| Attribute                        | Values                                                              |
+| -------------------------------- | ------------------------------------------------------------------- |
+| `from`, `to`                     | `unavailable`, `normal`, `high`, `processes_killed`                 |
+| `trigger`                        | `usage`, `pressure`, `oom_kill` (for `high` and `processes_killed`) |
+| `source`                         | `cgroup`, `host` (what bounds the memory)                           |
+| `usage_percent` (measurement)    | memory used, in percent of the limit                                |
+| `pressure_percent` (measurement) | PSI `some avg10`; omitted when the kernel has no PSI                |

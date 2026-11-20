@@ -12,6 +12,7 @@ import {
 	WorkspaceUpdateCancelledError,
 } from "../../api/updateParameters";
 import {
+	postBuild,
 	restartWorkspace,
 	runBuild,
 	startWorkspaceViaApi,
@@ -26,12 +27,16 @@ import { serverFeatureSet } from "../../featureSet";
 import { WorkspaceOperationTelemetry } from "../../instrumentation/workspace";
 import { vscodeProposed } from "../../vscode/proposed";
 
-import type { Workspace } from "coder/site/src/api/typesGenerated";
+import type {
+	Workspace,
+	WorkspaceBuild,
+} from "coder/site/src/api/typesGenerated";
 
 import type { CoderApi } from "../../api/coderApi";
 import type { Commands } from "../../commands";
 import type { SessionState } from "../../deployment/sessionStore";
 import type { Logger } from "../../logging/logger";
+import type { MementoManager } from "../../storage/mementoManager";
 import type { TelemetryReporter } from "../../telemetry/reporter";
 
 const RESTART_WARNING =
@@ -47,6 +52,7 @@ export class WorkspaceActionRunner {
 		private readonly client: CoderApi,
 		private readonly session: SessionState,
 		private readonly connected: Pick<Commands, "workspace" | "updateWorkspace">,
+		private readonly mementoManager: Pick<MementoManager, "setStartupMode">,
 		private readonly telemetry: TelemetryReporter,
 		private readonly logger: Logger,
 	) {}
@@ -74,7 +80,7 @@ export class WorkspaceActionRunner {
 			}
 			const latest = await this.reread(listed, action, abort.signal);
 			if (latest) {
-				await this.perform(ctx, latest, action, telemetry);
+				await this.perform(ctx, latest, action, connected, telemetry);
 			}
 		} catch (error) {
 			if (abort.signal.aborted) {
@@ -171,6 +177,7 @@ export class WorkspaceActionRunner {
 		ctx: BuildContext,
 		workspace: Workspace,
 		action: WorkspaceAction,
+		connected: boolean,
 		telemetry: WorkspaceOperationTelemetry,
 	): Promise<void> {
 		if (action === "update") {
@@ -186,10 +193,40 @@ export class WorkspaceActionRunner {
 		const builds = {
 			start: () => startWorkspaceViaApi(ctx, workspace),
 			stop: () => runBuild(ctx, workspace.id, { transition: "stop" }),
-			restart: () => restartWorkspace(ctx, workspace),
+			restart: () =>
+				connected
+					? this.restartConnected(ctx, workspace)
+					: restartWorkspace(ctx, workspace),
 			delete: () => runBuild(ctx, workspace.id, { transition: "delete" }),
 		}[action];
 		await telemetry.traceAction(action, builds);
+	}
+
+	/**
+	 * Queues the stop, with the start behind it where the server supports
+	 * that, then reloads so the remote setup reconnects once it is running,
+	 * instead of this window losing its connection.
+	 */
+	private async restartConnected(
+		ctx: BuildContext,
+		workspace: Workspace,
+	): Promise<WorkspaceBuild> {
+		const { version } = await this.client.getBuildInfo();
+		const queuesStart = serverFeatureSet(semver.parse(version)).onSuccessBuild;
+		const stop = await postBuild(
+			ctx.client,
+			workspace.id,
+			queuesStart
+				? { transition: "stop", on_success: { transition: "start" } }
+				: { transition: "stop" },
+			ctx.signal,
+		);
+		if (stop.transition !== "stop") {
+			throw new Error(`The server queued a ${stop.transition}, not a stop`);
+		}
+		await this.mementoManager.setStartupMode(queuesStart ? "restart" : "start");
+		await vscode.commands.executeCommand("workbench.action.reloadWindow");
+		return stop;
 	}
 
 	/** Writes each line to the Coder output, tagged with the workspace. */

@@ -7,8 +7,6 @@ import * as vscode from "vscode";
 
 import {
 	createAgentMetadataWatcher,
-	getEventValue,
-	formatEventLabel,
 	formatMetadataError,
 } from "../api/agentMetadata";
 import { AuthInterceptor } from "../api/authInterceptor";
@@ -31,10 +29,13 @@ import {
 } from "../featureSet";
 import { Inbox } from "../inbox";
 import { AuthTelemetry } from "../instrumentation/auth";
+import { MemoryTelemetry } from "../instrumentation/memory";
 import {
 	RemoteSetupTelemetry,
 	type RemoteSetupTracer,
 } from "../instrumentation/remoteSetup";
+import { MemoryMonitor } from "../memory/monitor";
+import { createRemoteFileUsage } from "../memory/remoteFiles";
 import { OAuthSessionManager } from "../oauth/sessionManager";
 import {
 	type CliAuth,
@@ -48,6 +49,7 @@ import { createStatusBarItem } from "../ui/statusBar";
 import { vscodeProposed } from "../vscode/proposed";
 import { WorkspaceMonitor } from "../workspace/workspaceMonitor";
 
+import { AgentStatusBar } from "./agentStatusBar";
 import {
 	type AuthorityParts,
 	classifySshHost,
@@ -1025,50 +1027,43 @@ export class Remote {
 	}
 
 	/**
-	 * Creates and manages a status bar item that displays metadata information for a given workspace agent.
-	 * The status bar item updates dynamically based on changes to the agent's metadata,
-	 * and hides itself if no metadata is available or an error occurs.
+	 * Creates the agent status bar item, fed by the agent's metadata and by the
+	 * workspace memory this window measures.
 	 */
 	private async createAgentMetadataStatusBar(
 		agent: WorkspaceAgent,
 		client: CoderApi,
 	): Promise<vscode.Disposable[]> {
-		const statusBarItem = createStatusBarItem("agentMetadata");
+		const statusBar = new AgentStatusBar(createStatusBarItem("agentMetadata"));
 
 		const agentWatcher = await createAgentMetadataWatcher(agent.id, client);
-
-		const onChangeDisposable = agentWatcher.onChange(() => {
+		const onMetadataChange = agentWatcher.onChange(() => {
 			if (agentWatcher.error) {
-				const errMessage = formatMetadataError(agentWatcher.error);
-				this.logger.warn(errMessage);
-
-				statusBarItem.text = "$(warning) Agent Status Unavailable";
-				statusBarItem.tooltip = errMessage;
-				statusBarItem.color = new vscode.ThemeColor(
-					"statusBarItem.warningForeground",
-				);
-				statusBarItem.backgroundColor = new vscode.ThemeColor(
-					"statusBarItem.warningBackground",
-				);
-				statusBarItem.show();
-				return;
-			}
-
-			if (agentWatcher.metadata && agentWatcher.metadata.length > 0) {
-				statusBarItem.text =
-					"$(dashboard) " + getEventValue(agentWatcher.metadata[0]);
-				statusBarItem.tooltip = agentWatcher.metadata
-					.map((metadata) => formatEventLabel(metadata))
-					.join("\n");
-				statusBarItem.color = undefined;
-				statusBarItem.backgroundColor = undefined;
-				statusBarItem.show();
+				const message = formatMetadataError(agentWatcher.error);
+				this.logger.warn(message);
+				statusBar.setMetadata({ kind: "error", message });
+			} else if (agentWatcher.metadata && agentWatcher.metadata.length > 0) {
+				statusBar.setMetadata({
+					kind: "values",
+					events: agentWatcher.metadata,
+				});
 			} else {
-				statusBarItem.hide();
+				statusBar.setMetadata({ kind: "none" });
 			}
 		});
 
-		return [statusBarItem, agentWatcher, onChangeDisposable];
+		const monitor = new MemoryMonitor(
+			createRemoteFileUsage(),
+			new MemoryTelemetry(this.serviceContainer.getTelemetryService()),
+			this.logger,
+		);
+		return [
+			statusBar,
+			agentWatcher,
+			onMetadataChange,
+			monitor,
+			monitor.onDidChange((status) => statusBar.setMemory(status)),
+		];
 	}
 
 	// closeRemote ends the current remote session.
