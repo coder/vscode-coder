@@ -1,35 +1,60 @@
-import { describe, it, expect } from "vitest";
+import { spawnSync } from "node:child_process";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { describe, it, expect, onTestFinished } from "vitest";
 
 import {
 	computeSshProperties,
-	sshSupportsSetEnv,
-	sshVersionSupportsSetEnv,
+	resolveSshProperties,
 } from "@/remote/sshSupport";
 
-const supports = {
-	"OpenSSH_8.9p1 Ubuntu-3ubuntu0.1, OpenSSL 3.0.2 15 Mar 2022": true,
-	"OpenSSH_for_Windows_8.1p1, LibreSSL 3.0.2": true,
-	"OpenSSH_9.0p1, LibreSSL 3.3.6": true,
-	// Version extracted from OpenSSH, not from LibreSSL after the comma
-	"OpenSSH_7.4p1, LibreSSL_8.1.0": false,
-	"OpenSSH_7.6p1 Ubuntu-4ubuntu0.7, OpenSSL 1.0.2n 7 Dec 2017": false,
-	"OpenSSH_7.4p1, OpenSSL 1.0.2k-fips  26 Jan 2017": false,
-};
-
-Object.entries(supports).forEach(([version, expected]) => {
-	it(version, () => {
-		expect(sshVersionSupportsSetEnv(version)).toBe(expected);
-	});
-});
-
-/**
- * Spawning real `ssh` is slow on Windows CI runners, so allow a larger budget there.
- */
-it(
-	"current shell supports ssh",
-	{ timeout: process.platform === "win32" ? 30_000 : undefined },
+describe.skipIf(spawnSync("ssh", ["-V"]).error)(
+	"resolveSshProperties",
+	{ timeout: 30_000 },
 	() => {
-		expect(sshSupportsSetEnv()).toBeTruthy();
+		it("follows Include and Match with ssh on PATH", async () => {
+			// Windows OpenSSH reads only ~/ include paths as absolute.
+			const dir = await fs.mkdtemp(path.join(os.homedir(), "coder-ssh-g-"));
+			onTestFinished(() => fs.rm(dir, { recursive: true, force: true }));
+			const config = path.join(dir, "config");
+			const included = path.join(dir, "included");
+			const includePath = path
+				.relative(os.homedir(), included)
+				.replaceAll("\\", "/");
+			await fs.writeFile(
+				config,
+				`Host coder-*\n  PermitLocalCommand no\nMatch all\n  Include "~/${includePath}"\n`,
+			);
+			await fs.writeFile(
+				included,
+				"Host *\n  RemoteCommand tmux attach\n  PermitLocalCommand yes\n",
+			);
+
+			const properties = await resolveSshProperties(
+				undefined,
+				"coder-ws",
+				config,
+			);
+			expect(properties.remotecommand).toBe("tmux attach");
+			expect(properties.permitlocalcommand).toBe("no");
+		});
+
+		it("rejects a broken config or a Windows batch file", async () => {
+			const missing = path.join(os.tmpdir(), "coder-ssh-g-missing", "config");
+			await expect(
+				resolveSshProperties(undefined, "coder-ws", missing),
+			).rejects.toThrow();
+
+			const realPlatform = process.platform;
+			Object.defineProperty(process, "platform", { value: "win32" });
+			onTestFinished(() => {
+				Object.defineProperty(process, "platform", { value: realPlatform });
+			});
+			await expect(
+				resolveSshProperties("C:\\wrappers\\ssh.BAT", "coder-ws", undefined),
+			).rejects.toThrow("batch");
+		});
 	},
 );
 

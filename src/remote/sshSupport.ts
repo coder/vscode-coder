@@ -1,50 +1,12 @@
 import * as childProcess from "child_process";
+import { promisify } from "node:util";
 
 import { escapeRegExp, lowercase } from "../common/strings";
+import { getCliProcessEnv } from "../settings/cli";
 
-/**
- * Matches the OpenSSH version number from `ssh -V` output.
- * [^,]* prevents greedy matching across comma-separated components.
- */
-const openSSHVersionRegex = /OpenSSH[^,]*_([\d.]+)/;
+const execFile = promisify(childProcess.execFile);
 
-/** Check if the local SSH installation supports the `SetEnv` directive. */
-export function sshSupportsSetEnv(): boolean {
-	try {
-		// Run `ssh -V` to get the version string.
-		const spawned = childProcess.spawnSync("ssh", ["-V"]);
-		// The version string outputs to stderr.
-		return sshVersionSupportsSetEnv(spawned.stderr.toString().trim());
-	} catch {
-		return false;
-	}
-}
-
-/**
- * Check if an SSH version string supports the `SetEnv` directive.
- * Requires OpenSSH 7.8 or later.
- */
-export function sshVersionSupportsSetEnv(sshVersionString: string): boolean {
-	const match = openSSHVersionRegex.exec(sshVersionString);
-	if (match?.[1]) {
-		const installedVersion = match[1];
-		const parts = installedVersion.split(".");
-		if (parts.length < 2) {
-			return false;
-		}
-		// 7.8 is the first version that supports SetEnv
-		const major = Number.parseInt(parts[0], 10);
-		const minor = Number.parseInt(parts[1], 10);
-		if (major < 7) {
-			return false;
-		}
-		if (major === 7 && minor < 8) {
-			return false;
-		}
-		return true;
-	}
-	return false;
-}
+const RESOLVE_TIMEOUT_MS = 5_000;
 
 /** OpenSSH `Host` pattern: `*` matches any run of characters, `?` exactly one. */
 function matchesHostPattern(host: string, pattern: string): boolean {
@@ -62,6 +24,40 @@ function matchesHostPattern(host: string, pattern: string): boolean {
 
 /** Keyed by lowercase directive name, so wrong-cased lookups fail to compile. */
 export type SshProperties = Record<Lowercase<string>, string>;
+
+/**
+ * Effective SSH properties for a host as OpenSSH resolves them (`ssh -G`),
+ * following Include and Match. Runs `sshPath`, or `ssh` on PATH when unset.
+ * @throws {Error} when ssh is a Windows batch file (which needs a shell),
+ * fails, times out, or prints no config.
+ */
+export async function resolveSshProperties(
+	sshPath: string | undefined,
+	host: string,
+	configFile: string | undefined,
+): Promise<SshProperties> {
+	const ssh = sshPath || "ssh";
+	if (process.platform === "win32" && /\.(bat|cmd)$/i.test(ssh)) {
+		throw new Error(`${ssh} is a batch file, which needs a shell to run`);
+	}
+	const configArgs = configFile ? ["-F", configFile] : [];
+	const { stdout } = await execFile(ssh, ["-G", ...configArgs, "--", host], {
+		env: getCliProcessEnv(),
+		timeout: RESOLVE_TIMEOUT_MS,
+	});
+
+	const properties: SshProperties = {};
+	for (const line of stdout.split(/\r?\n/)) {
+		const space = line.indexOf(" ");
+		if (space > 0) {
+			properties[lowercase(line.slice(0, space))] ??= line.slice(space + 1);
+		}
+	}
+	if (!properties.hostname) {
+		throw new Error("ssh -G printed no hostname");
+	}
+	return properties;
+}
 
 interface HostBlock {
 	host: string;

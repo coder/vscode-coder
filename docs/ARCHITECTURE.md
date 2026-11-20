@@ -66,10 +66,11 @@ connection:
 Host coder-cursor.dev.coder.com--*
   ConnectTimeout 0
   LogLevel ERROR
+  PermitLocalCommand no
   ProxyCommand /tmp/coder --global-config /home/kyle/.config/Cursor/User/globalStorage/coder.coder-remote/dev.coder.com ssh --stdio --usage-app=cursor --network-info-dir /home/kyle/.config/Cursor/User/globalStorage/coder.coder-remote/net --ssh-host-prefix coder-cursor.dev.coder.com-- %h
+  SendEnv CODER_SSH_SESSION_TYPE
   ServerAliveCountMax 3
   ServerAliveInterval 10
-  SetEnv CODER_SSH_SESSION_TYPE=cursor
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
 ```
@@ -78,16 +79,21 @@ Options merge from three sources, highest priority first: the
 `coder.sshConfig` setting, `--ssh-option` flags from a `coder config-ssh`
 block, and the deployment's SSH config. Only the deployment's options are
 deny-listed (`DENIED_DEPLOYMENT_KEYS` in `src/remote/sshConfig.ts`), since the
-other two are the user's own. `SetEnv` is written only when the local ssh
-supports it, and `--usage-app` only when both the CLI and the deployment
-accept custom session app names; otherwise the session reports as `vscode`.
+other two are the user's own. `SetEnv` and `SendEnv` values accumulate across
+sources. The session app goes to the CLI as `--usage-app` and to the agent as
+`CODER_SSH_SESSION_TYPE`, set in the environment ssh inherits and forwarded
+with `SendEnv`. It is the editor's URI scheme when both the CLI and the
+deployment accept custom session app names, and `vscode` otherwise. Any `SetEnv`
+of that variable is dropped, since ssh sends it after `SendEnv`.
+
+After writing, `ssh -G` resolves the host with the Remote - SSH extension's ssh
+executable, falling back to a built-in parser, to detect a `RemoteCommand`.
 
 Which main file gains the include depends on the Remote - SSH extension.
 Microsoft's and Cursor's pass `remote.SSH.configFile` to ssh with `-F`, and
 VSCodium's parses the file itself instead of running ssh, so all three connect
-through it. Antigravity and Windsurf/Devin renamed the setting but spawn ssh
-without `-F`, so ssh reads `~/.ssh/config` regardless; we ignore the renamed
-setting there rather than add the include where the connection never looks.
+through it. Devin passes `remote.devinSSH.configFile` from 3.12.32. Antigravity
+spawns ssh without `-F`, so we ignore its renamed setting.
 
 If any step fails, we show an error message. Once the error message is closed
 we close the remote so the Remote - SSH connection does not continue to

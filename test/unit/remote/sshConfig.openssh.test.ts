@@ -24,9 +24,11 @@ const sshValues = (
 	ConnectTimeout: "0",
 	StrictHostKeyChecking: "no",
 	UserKnownHostsFile: "/dev/null",
+	PermitLocalCommand: "no",
 	LogLevel: "ERROR",
 	ServerAliveInterval: "10",
 	ServerAliveCountMax: "3",
+	SendEnv: "CODER_SSH_SESSION_TYPE",
 });
 
 let tempDir: string | undefined;
