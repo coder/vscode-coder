@@ -3,6 +3,7 @@ import * as jsonc from "jsonc-parser";
 import * as fs from "node:fs/promises";
 
 import {
+	devinOrWindsurfKey,
 	getRemoteSshExtension,
 	type RemoteSshExtensionId,
 } from "./sshExtension";
@@ -123,7 +124,7 @@ export function buildSshOverrides(
 	}
 
 	for (const { name, key } of getSshSettings(config)) {
-		const effectiveKey = effectiveSettingKey(config, key);
+		const effectiveKey = devinOrWindsurfKey(config, key);
 		if (name === "connectTimeout") {
 			// Default 15s is too short for startup scripts; enforce a minimum.
 			const timeout = config.get<number>(effectiveKey);
@@ -203,32 +204,6 @@ function getSshSettings(config: Pick<WorkspaceConfiguration, "inspect">) {
 	if (!namespace) return [];
 	return PROVIDER_SETTINGS[extensionId].map(
 		(name) => ({ name, key: `${namespace}.${name}` }) as const,
-	);
-}
-
-/** Devin reads deprecated Windsurf values only when its own key is unset. */
-function effectiveSettingKey(
-	config: Pick<WorkspaceConfiguration, "inspect">,
-	key: string,
-): string {
-	if (
-		!key.startsWith("remote.devinSSH.") ||
-		hasExplicitValue(config.inspect(key))
-	) {
-		return key;
-	}
-	const fallbackKey = key.replace("remote.devinSSH.", "remote.windsurfSSH.");
-	return hasExplicitValue(config.inspect(fallbackKey)) ? fallbackKey : key;
-}
-
-function hasExplicitValue(
-	setting: ReturnType<WorkspaceConfiguration["inspect"]>,
-): boolean {
-	return (
-		setting !== undefined &&
-		(setting.globalValue !== undefined ||
-			setting.workspaceValue !== undefined ||
-			setting.workspaceFolderValue !== undefined)
 	);
 }
 

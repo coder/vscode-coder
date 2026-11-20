@@ -13,6 +13,7 @@ import {
 	type ManagedPermissions,
 	type SshValues,
 	validateDeploymentSshOptions,
+	withoutSetEnv,
 } from "@/remote/sshConfig";
 
 import { createMockLogger } from "../../mocks/testHelpers";
@@ -42,9 +43,11 @@ const BASE_SSH_VALUES = {
 	ConnectTimeout: "0",
 	StrictHostKeyChecking: "no",
 	UserKnownHostsFile: "/dev/null",
+	PermitLocalCommand: "no",
 	LogLevel: "ERROR",
 	ServerAliveInterval: "10",
 	ServerAliveCountMax: "3",
+	SendEnv: "CODER_SSH_SESSION_TYPE",
 } as const satisfies SshValues;
 
 const USER_OVERRIDES = {
@@ -62,7 +65,9 @@ const BENIGN_DEPLOYMENT_OPTIONS = {
 const deploymentBlock = `Host coder-vscode.dev.coder.com--*
   ConnectTimeout 0
   LogLevel ERROR
+  PermitLocalCommand no
   ProxyCommand some-command-here
+  SendEnv CODER_SSH_SESSION_TYPE
   ServerAliveCountMax 3
   ServerAliveInterval 10
   StrictHostKeyChecking no
@@ -178,7 +183,9 @@ describe("SshConfig.update", () => {
 Host coder-vscode.dev.coder.com--*
   ConnectTimeout 500
   ExtraKey ExtraValue
+  PermitLocalCommand no
   ProxyCommand some-command-here
+  SendEnv CODER_SSH_SESSION_TYPE
   ServerAliveCountMax 3
   ServerAliveInterval 10
   UserKnownHostsFile /dev/null
@@ -611,9 +618,15 @@ describe("parseSshConfig", () => {
 			expected: { ConnectTimeout: "10", LogLevel: "DEBUG" },
 		},
 		{
-			name: "accumulates non-empty SetEnv values",
-			input: ["SetEnv A=1", "setenv=B=2 C=3", "SetEnv="],
-			expected: { SetEnv: "A=1 B=2 C=3" },
+			name: "accumulates non-empty SetEnv and SendEnv values",
+			input: [
+				"SetEnv A=1",
+				"setenv=B=2 C=3",
+				"SetEnv=",
+				"SendEnv X",
+				"sendenv Y",
+			],
+			expected: { SetEnv: "A=1 B=2 C=3", SendEnv: "X Y" },
 		},
 		{
 			name: "skips malformed lines",
@@ -646,10 +659,10 @@ describe("mergeSshConfigValues", () => {
 			expected: { Add: "value" },
 		},
 		{
-			name: "combines SetEnv and ignores an empty override",
-			config: { SetEnv: "A=1" },
-			overrides: { setenv: "B=2" },
-			expected: { SetEnv: "A=1 B=2" },
+			name: "combines SetEnv and SendEnv overrides",
+			config: { SetEnv: "A=1", SendEnv: "X" },
+			overrides: { setenv: "B=2", sendenv: "Y" },
+			expected: { SetEnv: "A=1 B=2", SendEnv: "X Y" },
 		},
 		{
 			name: "keeps SetEnv for an empty override",
@@ -665,6 +678,33 @@ describe("mergeSshConfigValues", () => {
 		},
 	])("$name", ({ config, overrides, expected }) => {
 		expect(mergeSshConfigValues(config, overrides)).toEqual(expected);
+	});
+});
+
+describe("withoutSetEnv", () => {
+	interface WithoutSetEnvCase {
+		name: string;
+		options: Record<string, string>;
+		expected: Record<string, string>;
+	}
+	it.each<WithoutSetEnvCase>([
+		{
+			name: "keeps other variables and options",
+			options: { setenv: 'A=1 "NAME=x y" B="2 3"', LogLevel: "ERROR" },
+			expected: { setenv: 'A=1 B="2 3"', LogLevel: "ERROR" },
+		},
+		{
+			name: "drops SetEnv once empty",
+			options: { SetEnv: "NAME=x" },
+			expected: {},
+		},
+		{
+			name: "keeps a longer name with the same prefix",
+			options: { SetEnv: "NAME_EXTRA=x" },
+			expected: { SetEnv: "NAME_EXTRA=x" },
+		},
+	])("$name", ({ options, expected }) => {
+		expect(withoutSetEnv(options, "NAME")).toEqual(expected);
 	});
 });
 

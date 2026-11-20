@@ -182,9 +182,11 @@ function sshValues(host: string, proxyCommand: string): SshValues {
 		ConnectTimeout: "0",
 		StrictHostKeyChecking: "no",
 		UserKnownHostsFile: "NUL",
+		PermitLocalCommand: "no",
 		LogLevel: "ERROR",
 		ServerAliveInterval: "10",
 		ServerAliveCountMax: "3",
+		SendEnv: "CODER_SSH_SESSION_TYPE",
 	};
 }
 
