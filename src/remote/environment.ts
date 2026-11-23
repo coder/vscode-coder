@@ -11,6 +11,8 @@ import type {
 
 import type { WatchedSetting } from "../configWatcher";
 
+export const SESSION_TYPE_ENV = "CODER_SSH_SESSION_TYPE";
+
 type Environment = Record<string, string | undefined>;
 type SshProxyEnvironment = Partial<
 	Record<"HTTP_PROXY" | "HTTPS_PROXY" | "NO_PROXY", string>
@@ -49,8 +51,9 @@ export const SSH_PROXY_SETTINGS: ReadonlyArray<
 /**
  * Apply the SSH environment that the spawned `coder ssh` ProxyCommand inherits.
  * Includes the proxy config (HTTP_PROXY/HTTPS_PROXY/NO_PROXY), read by the coder
- * CLI like any Go HTTP client, and the session ID via CODER_TRACE_SESSION_ID so
- * the CLI reuses the plugin's session ID instead of generating its own. Applied
+ * CLI like any Go HTTP client, the session ID via CODER_TRACE_SESSION_ID so
+ * the CLI reuses the plugin's session ID instead of generating its own, and
+ * CODER_SSH_SESSION_TYPE, which ssh forwards to the agent through `SendEnv`. Applied
  * via both process.env (ssh spawned as a child, `remote.SSH.useLocalServer=true`)
  * and the terminal env collection (ssh spawned in a terminal,
  * `useLocalServer=false`, which can't see process.env), since the mode isn't
@@ -63,11 +66,13 @@ export function applySshEnvironment(
 		GlobalEnvironmentVariableCollection,
 		"persistent" | "replace" | "clear"
 	>,
+	sessionApp: string,
 	env: Environment = process.env,
 ): { dispose(): void } {
 	const values: Environment = {
 		...getSshProxyEnvironment(cfg),
 		CODER_TRACE_SESSION_ID: sessionId,
+		[SESSION_TYPE_ENV]: sessionApp,
 	};
 	const restoreEnv = applyEnvironment(values, env);
 

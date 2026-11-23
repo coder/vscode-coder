@@ -42,9 +42,11 @@ const BASE_SSH_VALUES = {
 	ConnectTimeout: "0",
 	StrictHostKeyChecking: "no",
 	UserKnownHostsFile: "/dev/null",
+	PermitLocalCommand: "no",
 	LogLevel: "ERROR",
 	ServerAliveInterval: "10",
 	ServerAliveCountMax: "3",
+	SendEnv: "CODER_SSH_SESSION_TYPE",
 } as const satisfies SshValues;
 
 const USER_OVERRIDES = {
@@ -55,14 +57,15 @@ const USER_OVERRIDES = {
 const BENIGN_DEPLOYMENT_OPTIONS = {
 	ConnectTimeout: "30",
 	IdentityFile: "~/.ssh/coder identity",
-	SetEnv: "CODER_SSH_SESSION_TYPE=vscode",
 	serveraliveinterval: "5",
 } as const;
 
 const deploymentBlock = `Host coder-vscode.dev.coder.com--*
   ConnectTimeout 0
   LogLevel ERROR
+  PermitLocalCommand no
   ProxyCommand some-command-here
+  SendEnv CODER_SSH_SESSION_TYPE
   ServerAliveCountMax 3
   ServerAliveInterval 10
   StrictHostKeyChecking no
@@ -178,7 +181,9 @@ describe("SshConfig.update", () => {
 Host coder-vscode.dev.coder.com--*
   ConnectTimeout 500
   ExtraKey ExtraValue
+  PermitLocalCommand no
   ProxyCommand some-command-here
+  SendEnv CODER_SSH_SESSION_TYPE
   ServerAliveCountMax 3
   ServerAliveInterval 10
   UserKnownHostsFile /dev/null
@@ -611,9 +616,15 @@ describe("parseSshConfig", () => {
 			expected: { ConnectTimeout: "10", LogLevel: "DEBUG" },
 		},
 		{
-			name: "accumulates non-empty SetEnv values",
-			input: ["SetEnv A=1", "setenv=B=2 C=3", "SetEnv="],
-			expected: { SetEnv: "A=1 B=2 C=3" },
+			name: "accumulates non-empty SetEnv and SendEnv values",
+			input: [
+				"SetEnv A=1",
+				"setenv=B=2 C=3",
+				"SetEnv=",
+				"SendEnv X",
+				"sendenv Y",
+			],
+			expected: { SetEnv: "A=1 B=2 C=3", SendEnv: "X Y" },
 		},
 		{
 			name: "skips malformed lines",
@@ -646,10 +657,10 @@ describe("mergeSshConfigValues", () => {
 			expected: { Add: "value" },
 		},
 		{
-			name: "combines SetEnv and ignores an empty override",
-			config: { SetEnv: "A=1" },
-			overrides: { setenv: "B=2" },
-			expected: { SetEnv: "A=1 B=2" },
+			name: "combines SetEnv and SendEnv overrides",
+			config: { SetEnv: "A=1", SendEnv: "X" },
+			overrides: { setenv: "B=2", sendenv: "Y" },
+			expected: { SetEnv: "A=1 B=2", SendEnv: "X Y" },
 		},
 		{
 			name: "keeps SetEnv for an empty override",
@@ -766,6 +777,22 @@ describe("validateDeploymentSshOptions", () => {
 				{},
 			),
 		).not.toThrow();
+	});
+
+	it("ignores options that expose the client even when the user sets them", () => {
+		const ignored = {
+			setenv: "A=1",
+			SENDENV: "SECRET",
+			User: "${SECRET}",
+			RemoteForward: "/tmp/d /var/run/docker.sock",
+		};
+		const kept = { ConnectTimeout: "30", LocalForward: "8080 localhost:80" };
+		expect(
+			validateDeploymentSshOptions(
+				{ ...ignored, ...kept },
+				{ SetEnv: "B=2", User: "me" },
+			),
+		).toEqual({ options: kept, ignored: Object.keys(ignored) });
 	});
 
 	it("collects every denied option into one error", () => {

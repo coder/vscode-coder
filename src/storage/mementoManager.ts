@@ -9,8 +9,9 @@ const MAX_URLS = 10;
 
 const DEPLOYMENT_ACCESS_PREFIX = "coder.access.";
 const SURFACED_BANNERS_PREFIX = "coder.surfacedBanners.";
+const DISMISSED_SSH_OPTIONS_PREFIX = "coder.dismissedSshOptions.";
 
-const SurfacedBannersSchema = z.array(z.string());
+const KeysSchema = z.array(z.string());
 
 /** Pending values expire after this duration to guard against stale
  * state from crashes or interrupted reloads. */
@@ -108,42 +109,53 @@ export class MementoManager {
 	}
 
 	public getSurfacedBanners(safeHostname: string): string[] {
-		const raw = this.memento.get<unknown>(
-			`${SURFACED_BANNERS_PREFIX}${safeHostname}`,
+		return this.getKeys(SURFACED_BANNERS_PREFIX + safeHostname);
+	}
+
+	public addSurfacedBanners(
+		safeHostname: string,
+		bannerKeys: readonly string[],
+	): Promise<void> {
+		return this.addKeys(SURFACED_BANNERS_PREFIX + safeHostname, bannerKeys);
+	}
+
+	public getDismissedSshOptions(safeHostname: string): string[] {
+		return this.getKeys(DISMISSED_SSH_OPTIONS_PREFIX + safeHostname);
+	}
+
+	public addDismissedSshOptions(
+		safeHostname: string,
+		options: readonly string[],
+	): Promise<void> {
+		return this.addKeys(DISMISSED_SSH_OPTIONS_PREFIX + safeHostname, options);
+	}
+
+	/** Clear all per-deployment state (access timestamp, stored key sets). */
+	public async clearDeploymentData(safeHostname: string): Promise<void> {
+		await Promise.all(
+			[
+				DEPLOYMENT_ACCESS_PREFIX,
+				SURFACED_BANNERS_PREFIX,
+				DISMISSED_SSH_OPTIONS_PREFIX,
+			].map((prefix) => this.memento.update(prefix + safeHostname, undefined)),
 		);
-		const result = SurfacedBannersSchema.safeParse(raw);
+	}
+
+	private getKeys(key: string): string[] {
+		const result = KeysSchema.safeParse(this.memento.get<unknown>(key));
 		return result.success ? result.data : [];
 	}
 
 	/**
-	 * Merge banner keys into the surfaced set. The read-modify-write lives
-	 * here so a future atomic Memento update can be adopted in one place.
+	 * Merge keys into a stored set. The read-modify-write lives here so a
+	 * future atomic Memento update can be adopted in one place.
 	 */
-	public async addSurfacedBanners(
-		safeHostname: string,
-		bannerKeys: readonly string[],
-	): Promise<void> {
-		const existing = this.getSurfacedBanners(safeHostname);
-		const merged = new Set([...existing, ...bannerKeys]);
+	private async addKeys(key: string, keys: readonly string[]): Promise<void> {
+		const existing = this.getKeys(key);
+		const merged = new Set([...existing, ...keys]);
 		if (merged.size > existing.length) {
-			await this.memento.update(`${SURFACED_BANNERS_PREFIX}${safeHostname}`, [
-				...merged,
-			]);
+			await this.memento.update(key, [...merged]);
 		}
-	}
-
-	/** Clear all per-deployment state (access timestamp, surfaced banners). */
-	public async clearDeploymentData(safeHostname: string): Promise<void> {
-		await Promise.all([
-			this.memento.update(
-				`${DEPLOYMENT_ACCESS_PREFIX}${safeHostname}`,
-				undefined,
-			),
-			this.memento.update(
-				`${SURFACED_BANNERS_PREFIX}${safeHostname}`,
-				undefined,
-			),
-		]);
 	}
 
 	private async setStamped<T>(key: string, value: T): Promise<void> {

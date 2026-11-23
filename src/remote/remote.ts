@@ -16,8 +16,11 @@ import { CoderApi } from "../api/coderApi";
 import { HttpStatusCode } from "../api/httpStatusCode";
 import { extractAgents } from "../api/models";
 import { version as cliVersion } from "../cli/cliExec";
-import { expandPath } from "../common/fs";
-import { escapeCommandArg, escapeProxyCommandPath } from "../common/strings";
+import {
+	escapeCommandArg,
+	escapeProxyCommandPath,
+	lowercase,
+} from "../common/strings";
 import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
 	watchConfigurationChanges,
@@ -55,7 +58,11 @@ import {
 	parseRemoteAuthority,
 	sshHostOf,
 } from "./authority";
-import { applySshEnvironment, SSH_PROXY_SETTINGS } from "./environment";
+import {
+	applySshEnvironment,
+	SESSION_TYPE_ENV,
+	SSH_PROXY_SETTINGS,
+} from "./environment";
 import { migrateAuthToSecretsStorage } from "./migration";
 import {
 	SshConfig,
@@ -65,12 +72,12 @@ import {
 	parseSshConfig,
 	validateDeploymentSshOptions,
 } from "./sshConfig";
-import { getRemoteSshConfigFile } from "./sshExtension";
+import { getRemoteSshConfigFile, getRemoteSshPath } from "./sshExtension";
 import { applySettingOverrides, buildSshOverrides } from "./sshOverrides";
 import { SshProcessMonitor } from "./sshProcess";
 import {
 	computeSshProperties,
-	sshSupportsSetEnv,
+	resolveSshProperties,
 	type SshProperties,
 } from "./sshSupport";
 import { createManagedPermissions } from "./windowsAcl";
@@ -264,12 +271,6 @@ export class Remote {
 		const { args, parts, workspaceName, baseUrl, token, disposables } = context;
 
 		try {
-			disposables.push(
-				applySshEnvironment(
-					vscode.workspace.getConfiguration(),
-					this.extensionContext.environmentVariableCollection,
-				),
-			);
 			// Create OAuth session manager for this remote deployment
 			const remoteOAuthManager = OAuthSessionManager.create(
 				{ url: baseUrl, safeHostname: parts.safeHostname },
@@ -324,6 +325,13 @@ export class Remote {
 						baseUrl,
 						safeHostname: parts.safeHostname,
 					}),
+			);
+			disposables.push(
+				applySshEnvironment(
+					vscode.workspace.getConfiguration(),
+					this.extensionContext.environmentVariableCollection,
+					sessionApp,
+				),
 			);
 
 			// Write token to keyring or file
@@ -884,11 +892,6 @@ export class Remote {
 		return ["--log-dir", escapeProxyCommandPath(logDir), "-v"];
 	}
 
-	private getMainSshConfigPath(): string {
-		const configured = getRemoteSshConfigFile();
-		return expandPath(configured || path.join("~", ".ssh", "config"));
-	}
-
 	// updateSSHConfig updates the SSH configuration with a wildcard that handles
 	// all Coder entries.
 	private async updateSSHConfig({
@@ -901,8 +904,13 @@ export class Remote {
 	}: SshConfigOptions): Promise<SshProperties> {
 		// Taken from the authority, so a legacy host keeps working.
 		const { hostPrefix, safeHostname, sshHost } = parts;
+		// -F skips /etc/ssh/ssh_config, so use it only when Remote-SSH does.
+		const configFile = getRemoteSshConfigFile();
 		// One file per (host prefix, deployment); the user's config gains one shared include.
-		const sshConfig = new SshConfig(this.getMainSshConfigPath(), this.logger);
+		const sshConfig = new SshConfig(
+			configFile ?? path.join(os.homedir(), ".ssh", "config"),
+			this.logger,
+		);
 		await sshConfig.load();
 		// Never loaded: update() regenerates it without reading the old content.
 		const coderConfig = new SshConfig(
@@ -925,10 +933,15 @@ export class Remote {
 		let deploymentSshConfig = {};
 		try {
 			const deploymentConfig = await workspaceClient.getDeploymentSSHConfig();
-			deploymentSshConfig = validateDeploymentSshOptions(
+			const { options, ignored } = validateDeploymentSshOptions(
 				deploymentConfig.ssh_config_options,
 				{ ...configSshOptions, ...userConfig },
 			);
+			deploymentSshConfig = options;
+			if (ignored.length > 0) {
+				this.logger.warn("Ignoring deployment SSH options", ignored);
+				this.warnIgnoredSshOptions(safeHostname, ignored);
+			}
 		} catch (error) {
 			if (!isAxiosError(error)) {
 				throw error;
@@ -969,13 +982,12 @@ export class Remote {
 			ConnectTimeout: "0",
 			StrictHostKeyChecking: "no",
 			UserKnownHostsFile: "/dev/null",
+			PermitLocalCommand: "no",
 			LogLevel: "ERROR",
 			ServerAliveInterval: "10",
 			ServerAliveCountMax: "3",
+			SendEnv: SESSION_TYPE_ENV,
 		};
-		if (sshSupportsSetEnv()) {
-			sshValues.SetEnv = `CODER_SSH_SESSION_TYPE=${sessionApp}`;
-		}
 
 		// Write our file before including it, so the include never dangles.
 		await coderConfig.update(sshValues, sshConfigOverrides);
@@ -984,11 +996,40 @@ export class Remote {
 			safeHostname,
 		);
 
-		// Mirror SSH's parse order; RemoteCommand can come from the user's config.
-		return computeSshProperties(
-			parts.sshHost,
-			`${coderConfig.getRaw()}\n${sshConfig.getRaw()}`,
-		);
+		try {
+			return await resolveSshProperties(
+				getRemoteSshPath(),
+				parts.sshHost,
+				configFile,
+			);
+		} catch (error) {
+			this.logger.warn("ssh -G failed, parsing the SSH config instead", error);
+			return computeSshProperties(
+				parts.sshHost,
+				`${coderConfig.getRaw()}\n${sshConfig.getRaw()}`,
+			);
+		}
+	}
+
+	/** Stays hidden while every ignored option was already dismissed. */
+	private warnIgnoredSshOptions(safeHostname: string, ignored: string[]): void {
+		const memento = this.serviceContainer.getMementoManager();
+		const dismissed = new Set(memento.getDismissedSshOptions(safeHostname));
+		const keys = ignored.map(lowercase);
+		if (keys.every((key) => dismissed.has(key))) {
+			return;
+		}
+		const dontShow = "Don't Show Again";
+		void vscode.window
+			.showWarningMessage(
+				`Ignored SSH options from the Coder deployment that could expose your machine: ${ignored.join(", ")}. To use them, add them to the "coder.sshConfig" setting.`,
+				dontShow,
+			)
+			.then((choice) =>
+				choice === dontShow
+					? memento.addDismissedSshOptions(safeHostname, keys)
+					: undefined,
+			);
 	}
 
 	private watchSettings(

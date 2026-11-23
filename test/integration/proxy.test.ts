@@ -24,6 +24,7 @@ suite("Proxy", () => {
 		const sshEnvironment = applySshEnvironment(
 			vscode.workspace.getConfiguration(),
 			envCollection,
+			"vscode",
 		);
 
 		try {

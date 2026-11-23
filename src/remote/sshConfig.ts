@@ -29,10 +29,11 @@ export interface SshValues {
 	ConnectTimeout: string;
 	StrictHostKeyChecking: string;
 	UserKnownHostsFile: string;
+	PermitLocalCommand: string;
 	LogLevel: string;
 	ServerAliveInterval: string;
 	ServerAliveCountMax: string;
-	SetEnv?: string;
+	SendEnv: string;
 }
 
 /**
@@ -130,6 +131,18 @@ const DENIED_DEPLOYMENT_KEYS: ReadonlySet<Lowercase<string>> = new Set([
 ]);
 
 /**
+ * Options that send local environment variables (directly or through `${VAR}`
+ * expansion) or local sockets to the workspace. Ignored rather than rejected,
+ * since the server accepts them.
+ */
+const IGNORED_DEPLOYMENT_KEYS: ReadonlySet<Lowercase<string>> = new Set([
+	"sendenv",
+	"setenv",
+	"user",
+	"remoteforward",
+]);
+
+/**
  * Connection-critical options Coder always writes itself, so the error must
  * not suggest overriding them in coder.sshConfig.
  */
@@ -140,15 +153,15 @@ const PINNED_KEYS: ReadonlySet<Lowercase<string>> = new Set([
 ]);
 
 /**
- * Validate SSH options sent by the Coder deployment. Keys in `userOverrides`
- * are exempt from the deny list: the user's value wins the merge, so the
- * deployment's value is never written.
+ * Validate SSH options sent by the Coder deployment, removing the ignored ones.
+ * Keys in `userOverrides` are exempt from the deny list: the user's value wins
+ * the merge, so the deployment's value is never written.
  * @throws {Error} when an option is malformed or denied.
  */
 export function validateDeploymentSshOptions(
 	options: Record<string, unknown>,
 	userOverrides: Record<string, string>,
-): Record<string, string> {
+): { options: Record<string, string>; ignored: string[] } {
 	validateSshConfigOptions(options);
 	const overridden = new Set(Object.keys(userOverrides).map(lowercase));
 	const denied = Object.keys(options).filter((key) => {
@@ -169,7 +182,15 @@ export function validateDeploymentSshOptions(
 		}
 		throw new Error(message);
 	}
-	return options;
+	const ignored = Object.keys(options).filter((key) =>
+		IGNORED_DEPLOYMENT_KEYS.has(lowercase(key)),
+	);
+	return {
+		options: Object.fromEntries(
+			Object.entries(options).filter(([key]) => !ignored.includes(key)),
+		),
+		ignored,
+	};
 }
 
 /** Validate the key and value of every option in the record. */
@@ -220,7 +241,17 @@ export function parseCoderSshOptions(raw: string): Record<string, string> {
 	return parseSshConfig(sshOptionLines);
 }
 
-/** Parse "Key value" or "Key=value" lines, accumulating SetEnv values. */
+/** Directives ssh accumulates across lines, so merged values extend them. */
+const ACCUMULATED_KEYS: Readonly<Record<string, string>> = {
+	setenv: "SetEnv",
+	sendenv: "SendEnv",
+};
+
+function accumulate(existing: string | undefined, value: string): string {
+	return [existing, value].filter(Boolean).join(" ");
+}
+
+/** Parse "Key value" or "Key=value" lines, accumulating SetEnv and SendEnv. */
 export function parseSshConfig(lines: string[]): Record<string, string> {
 	return lines.reduce(
 		(acc, line) => {
@@ -237,10 +268,10 @@ export function parseSshConfig(lines: string[]): Record<string, string> {
 
 			const value = line.slice(key.length + 1);
 
-			if (key.toLowerCase() === "setenv") {
+			const accumulated = ACCUMULATED_KEYS[key.toLowerCase()];
+			if (accumulated) {
 				if (value !== "") {
-					const existing = acc["SetEnv"];
-					acc["SetEnv"] = existing ? `${existing} ${value}` : value;
+					acc[accumulated] = accumulate(acc[accumulated], value);
 				}
 			} else {
 				acc[key] = value;
@@ -270,13 +301,9 @@ export function mergeSshConfigValues(
 			const value = overrides[correctCaseKey];
 			delete caseInsensitiveOverrides[lower];
 
-			// SetEnv concatenates instead of replacing.
-			if (lower === "setenv") {
-				if (value === "") {
-					merged["SetEnv"] = config[key];
-				} else {
-					merged["SetEnv"] = `${config[key]} ${value}`;
-				}
+			const accumulated = ACCUMULATED_KEYS[lower];
+			if (accumulated) {
+				merged[accumulated] = accumulate(config[key], value);
 				return;
 			}
 
@@ -296,8 +323,9 @@ export function mergeSshConfigValues(
 		const correctCaseKey = caseInsensitiveOverrides[lower];
 		const value = overrides[correctCaseKey];
 
-		if (lower === "setenv" && merged["SetEnv"]) {
-			merged["SetEnv"] = `${merged["SetEnv"]} ${value}`;
+		const accumulated = ACCUMULATED_KEYS[lower];
+		if (accumulated && merged[accumulated]) {
+			merged[accumulated] = accumulate(merged[accumulated], value);
 		} else {
 			merged[correctCaseKey] = value;
 		}
