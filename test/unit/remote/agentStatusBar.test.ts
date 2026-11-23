@@ -92,14 +92,6 @@ describe("AgentStatusBar", () => {
 			command: TOP,
 		},
 		{
-			name: "killed processes use the error color",
-			metadata: VALUES,
-			status: memory("processes_killed", 97, "oom_kill"),
-			text: "$(dashboard) 0.006/4 cores (0%) · $(error) Memory 97%",
-			background: "statusBarItem.errorBackground",
-			command: TOP,
-		},
-		{
 			name: "a metadata error alone is not colored",
 			metadata: ERROR,
 			status: memory("normal"),

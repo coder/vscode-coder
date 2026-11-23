@@ -11,9 +11,8 @@
 
 - The agent status bar item warns before a workspace runs out of memory. It
   turns yellow at `coder.memoryMonitor.warningThreshold` (80% of the memory
-  limit by default) or when memory pressure slows the workspace, and red when
-  processes are killed for running out of memory. Click it to open `top`, or
-  restart the workspace from its tooltip.
+  limit by default) or when memory pressure slows the workspace. Click it to
+  open `top`, or restart the workspace from its tooltip.
 - **Coder: Show Top Processes** and **Coder: Restart Workspace** for the
   connected workspace.
 

@@ -7,11 +7,6 @@ export interface MemorySample {
 	readonly totalBytes: number;
 	/** PSI `some avg10` in percent; undefined when it is not known. */
 	readonly pressure?: number;
-	/**
-	 * Cumulative OOM kills, and which counter they come from; counts from
-	 * different counters are not compared. Undefined when they are not known.
-	 */
-	readonly oomKills?: { readonly count: number; readonly counter: string };
 	/** Whether a cgroup limit or the host's memory bounds usage. */
 	readonly source: "cgroup" | "host";
 }

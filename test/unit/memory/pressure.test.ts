@@ -4,15 +4,9 @@ import { MemoryPressureTracker } from "@/memory/pressure";
 
 import type { MemorySample } from "@/memory/usage";
 
-/** `percent` used; `p` is PSI, `k` the OOM kill count of `counter`. */
-function s(percent: number, p?: number, k = 0, counter = "a"): MemorySample {
-	return {
-		usedBytes: percent,
-		totalBytes: 100,
-		pressure: p,
-		oomKills: { count: k, counter },
-		source: "cgroup",
-	};
+/** `percent` used; `p` is PSI. */
+function s(percent: number, p?: number): MemorySample {
+	return { usedBytes: percent, totalBytes: 100, pressure: p, source: "cgroup" };
 }
 
 describe("MemoryPressureTracker", () => {
@@ -38,54 +32,15 @@ describe("MemoryPressureTracker", () => {
 			states: ["high", "high", "high", "normal"],
 		},
 		{
-			name: "treats earlier OOM kills as the baseline and warns on a new one",
-			samples: [s(30, undefined, 9), s(30, undefined, 9), s(30, undefined, 10)],
-			states: ["normal", "normal", "processes_killed"],
-		},
-		{
-			name: "starts a new OOM baseline when the counter changes",
-			samples: [
-				s(30, undefined, 1),
-				s(30, undefined, 9, "b"),
-				s(30, undefined, 10, "b"),
-			],
-			states: ["normal", "normal", "processes_killed"],
-		},
-		{
-			name: "counts OOM kills that happened while readings were unavailable",
-			samples: [s(30, undefined, 1), undefined, s(30, undefined, 2)],
-			states: ["normal", "unavailable", "processes_killed"],
-		},
-		{
-			name: "leaves Processes killed by the same calm rule",
-			samples: [
-				s(90, undefined, 0),
-				s(90, undefined, 1),
-				s(50, undefined, 1),
-				s(50, undefined, 1),
-			],
-			states: ["normal", "processes_killed", "processes_killed", "normal"],
-		},
-		{
 			name: "keeps a warning while calm samples arrive close together",
 			gapMs: 500,
-			samples: [
-				s(90, undefined, 0),
-				s(90, undefined, 1),
-				s(50, undefined, 1),
-				s(50, undefined, 1),
-			],
-			states: [
-				"normal",
-				"processes_killed",
-				"processes_killed",
-				"processes_killed",
-			],
+			samples: [s(90), s(90), s(50), s(50)],
+			states: ["normal", "high", "high", "high"],
 		},
 		{
 			name: "never warns with a threshold of 0",
 			threshold: 0,
-			samples: [s(99, 90, 0), s(99, 90, 4)],
+			samples: [s(99, 90), s(99, 90)],
 			states: ["normal", "normal"],
 		},
 	])("$name", ({ samples, states, threshold = 80, gapMs = 10_000 }) => {

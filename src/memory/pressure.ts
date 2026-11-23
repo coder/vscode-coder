@@ -15,14 +15,10 @@ const USAGE_WINDOW = 3;
  */
 const CALM_MS = 10_000;
 
-export type MemoryState =
-	| "unavailable"
-	| "normal"
-	| "high"
-	| "processes_killed";
+export type MemoryState = "unavailable" | "normal" | "high";
 
 /** What put memory in its current non-normal state. */
-export type MemoryTrigger = "usage" | "pressure" | "oom_kill";
+export type MemoryTrigger = "usage" | "pressure";
 
 /** A state computed from a successful read. */
 export interface MemoryReading {
@@ -37,15 +33,13 @@ export type MemoryStatus = { readonly state: "unavailable" } | MemoryReading;
 
 /**
  * Turns memory samples into a state with hysteresis, so a single spike does
- * not warn and usage hovering at the threshold does not flap. OOM kills that
- * happened before the first sample are the baseline, not a new state.
+ * not warn and usage hovering at the threshold does not flap.
  */
 export class MemoryPressureTracker {
 	private status: MemoryStatus = { state: "unavailable" };
 	private recentHigh: boolean[] = [];
 	private calmSince: number | undefined;
 	private threshold: number | undefined;
-	private lastOomKills: MemorySample["oomKills"];
 
 	public constructor(private readonly now: () => number = Date.now) {}
 
@@ -73,7 +67,6 @@ export class MemoryPressureTracker {
 		}
 
 		const percent = Math.round((sample.usedBytes / sample.totalBytes) * 100);
-		const killed = this.oomKilled(sample.oomKills);
 		const base = { sample, percent };
 		if (threshold <= 0) {
 			return { ...base, state: "normal" };
@@ -90,10 +83,6 @@ export class MemoryPressureTracker {
 		this.calmSince = calm ? (this.calmSince ?? this.now()) : undefined;
 
 		const previous = this.status;
-		if (killed) {
-			this.calmSince = undefined;
-			return { ...base, state: "processes_killed", trigger: "oom_kill" };
-		}
 		if (isWarning(previous)) {
 			return this.calmSince !== undefined &&
 				this.now() - this.calmSince >= CALM_MS
@@ -108,24 +97,10 @@ export class MemoryPressureTracker {
 		}
 		return { ...base, state: "normal" };
 	}
-
-	/**
-	 * Whether the OOM kill count rose since the last known count. A different
-	 * counter (the server moved cgroups) starts a new baseline instead.
-	 */
-	private oomKilled(oomKills: MemorySample["oomKills"]): boolean {
-		const last = this.lastOomKills;
-		this.lastOomKills = oomKills ?? last;
-		return (
-			oomKills !== undefined &&
-			oomKills.counter === last?.counter &&
-			oomKills.count > last.count
-		);
-	}
 }
 
 export function isWarning(
 	status: MemoryStatus,
-): status is MemoryReading & { state: "high" | "processes_killed" } {
-	return status.state === "high" || status.state === "processes_killed";
+): status is MemoryReading & { state: "high" } {
+	return status.state === "high";
 }

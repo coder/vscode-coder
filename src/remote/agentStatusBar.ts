@@ -17,7 +17,6 @@ const RESTART_COMMAND = "coder.workspace.restart";
 
 const BACKGROUNDS: Readonly<Partial<Record<MemoryState, vscode.ThemeColor>>> = {
 	high: new vscode.ThemeColor("statusBarItem.warningBackground"),
-	processes_killed: new vscode.ThemeColor("statusBarItem.errorBackground"),
 };
 
 /** What the template's agent metadata currently provides. */
@@ -102,8 +101,6 @@ function renderMemoryText(
 	onlyPart: boolean,
 ): string | undefined {
 	switch (memory.state) {
-		case "processes_killed":
-			return `$(error) Memory ${memory.percent}%`;
 		case "high":
 			return `$(warning) Memory ${memory.percent}%`;
 		case "normal":
@@ -157,8 +154,6 @@ function renderTooltip(
 
 function memoryWarningSentence(memory: MemoryStatus): string | undefined {
 	switch (memory.state) {
-		case "processes_killed":
-			return "$(error) **Out of memory.**  \nProcesses were killed.";
 		case "high":
 			return memory.trigger === "pressure"
 				? "$(warning) **Memory pressure is high.**  \nThe workspace is slowing down."

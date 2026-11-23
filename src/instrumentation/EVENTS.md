@@ -587,10 +587,10 @@ monitored session (not only the connected agent during connection setup).
 
 Emitted by `MemoryTelemetry` when the polled workspace memory changes state.
 
-| Attribute                        | Values                                                              |
-| -------------------------------- | ------------------------------------------------------------------- |
-| `from`, `to`                     | `unavailable`, `normal`, `high`, `processes_killed`                 |
-| `trigger`                        | `usage`, `pressure`, `oom_kill` (for `high` and `processes_killed`) |
-| `source`                         | `cgroup`, `host` (what bounds the memory)                           |
-| `usage_percent` (measurement)    | memory used, in percent of the limit                                |
-| `pressure_percent` (measurement) | PSI `some avg10`; omitted when the kernel has no PSI                |
+| Attribute                        | Values                                         |
+| -------------------------------- | ---------------------------------------------- |
+| `from`, `to`                     | `unavailable`, `normal`, `high`                |
+| `trigger`                        | `usage`, `pressure` (for `high`)               |
+| `source`                         | `cgroup`, `host` (what bounds the memory)      |
+| `usage_percent` (measurement)    | memory used, in percent of the limit           |
+| `pressure_percent` (measurement) | PSI `some avg10`; omitted when it is not known |

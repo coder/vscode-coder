@@ -30,46 +30,74 @@ describe("createRemoteFileUsage", () => {
 		expected: MemorySample | undefined;
 	}>([
 		{
-			name: "Kata VM: no cgroup limit, host memory, cgroup OOM counter, no PSI",
+			name: "Kata VM: no cgroup limit, host memory, no PSI",
 			files: {
 				"/proc/self/cgroup": "0::/init\n",
 				"/sys/fs/cgroup/init/memory.max": "max\n",
-				"/sys/fs/cgroup/init/memory.events": "oom 0\noom_kill 0\n",
 				"/proc/meminfo": MEMINFO_16G,
-				"/proc/vmstat": "nr_free_pages 1\noom_kill 7\n",
 			},
 			expected: {
 				usedBytes: 4 * GiB,
 				totalBytes: 16 * GiB,
 				pressure: undefined,
-				oomKills: { count: 0, counter: "/sys/fs/cgroup/init/memory.events" },
 				source: "host",
 			},
 		},
 		{
-			name: "container: limit with least room wins, usage at the limit owner minus reclaimable memory, kills from the outermost cgroup",
+			name: "cgroup v2: used is summed from one memory.stat read, not the fresher memory.current",
+			files: {
+				"/proc/self/cgroup": "0::/\n",
+				"/sys/fs/cgroup/memory.max": String(8 * GiB),
+				"/sys/fs/cgroup/memory.current": String(6 * GiB),
+				// shmem stays counted: it is in file but not on the file LRU lists.
+				"/sys/fs/cgroup/memory.stat": `anon ${GiB}\nfile ${2 * GiB}\nkernel ${0.5 * GiB}\nsock 0\nshmem ${0.5 * GiB}\nactive_file ${GiB}\ninactive_file ${0.5 * GiB}\nslab_reclaimable ${0.25 * GiB}`,
+				"/sys/fs/cgroup/memory.pressure": PSI,
+				"/proc/meminfo": MEMINFO_16G,
+			},
+			expected: {
+				usedBytes: 1.75 * GiB,
+				totalBytes: 8 * GiB,
+				pressure: 25.5,
+				source: "cgroup",
+			},
+		},
+		{
+			name: "cgroup v2 without the kernel key (Linux before 5.18): limit with least room wins, usage at the limit owner",
 			files: {
 				"/proc/self/cgroup": "0::/user/app\n",
 				"/sys/fs/cgroup/user/app/memory.max": "max",
 				// 0.75 GiB of room, counting siblings under the limit owner.
 				"/sys/fs/cgroup/user/memory.max": String(2 * GiB),
 				"/sys/fs/cgroup/user/memory.current": String(2 * GiB),
-				// shmem stays counted: it is not on the file LRU lists.
 				"/sys/fs/cgroup/user/memory.stat": `anon 1\nshmem ${0.25 * GiB}\nactive_file ${0.25 * GiB}\ninactive_file ${0.25 * GiB}\nslab_reclaimable ${0.25 * GiB}`,
 				"/sys/fs/cgroup/user/memory.pressure": PSI,
-				"/sys/fs/cgroup/user/memory.events": "oom_kill 3\n",
 				// 1 GiB of room, so it is not hit first.
 				"/sys/fs/cgroup/memory.max": String(8 * GiB),
 				"/sys/fs/cgroup/memory.current": String(7 * GiB),
 				"/sys/fs/cgroup/memory.stat": "inactive_file 0",
-				"/sys/fs/cgroup/memory.events": "oom_kill 4\n",
 			},
 			expected: {
 				usedBytes: 1.25 * GiB,
 				totalBytes: 2 * GiB,
 				pressure: 25.5,
-				oomKills: { count: 4, counter: "/sys/fs/cgroup/memory.events" },
 				source: "cgroup",
+			},
+		},
+		{
+			name: "cgroup v2 limit above host memory (overcommit): the host has less room, with host PSI",
+			files: {
+				"/proc/self/cgroup": "0::/\n",
+				"/sys/fs/cgroup/memory.max": String(64 * GiB),
+				"/sys/fs/cgroup/memory.current": String(GiB),
+				"/sys/fs/cgroup/memory.stat": "anon 1",
+				"/proc/meminfo": MEMINFO_16G,
+				"/proc/pressure/memory": PSI,
+			},
+			expected: {
+				usedBytes: 4 * GiB,
+				totalBytes: 16 * GiB,
+				pressure: 25.5,
+				source: "host",
 			},
 		},
 		{
@@ -84,12 +112,11 @@ describe("createRemoteFileUsage", () => {
 				usedBytes: 2 * GiB,
 				totalBytes: 4 * GiB,
 				pressure: undefined,
-				oomKills: undefined,
 				source: "cgroup",
 			},
 		},
 		{
-			name: "cgroup v1 limit (sysbox, older Docker), with host PSI",
+			name: "cgroup v1 limit (sysbox, older Docker): host PSI is machine-wide, so it is left out",
 			files: {
 				"/proc/self/cgroup":
 					"5:cpu,cpuacct:/docker/abc\n4:memory:/docker/abc\n",
@@ -99,35 +126,29 @@ describe("createRemoteFileUsage", () => {
 				"/sys/fs/cgroup/memory/memory.limit_in_bytes": String(8 * GiB),
 				"/sys/fs/cgroup/memory/memory.usage_in_bytes": String(3 * GiB),
 				"/sys/fs/cgroup/memory/memory.stat": `cache 1\ntotal_active_file ${0.5 * GiB}\ntotal_inactive_file ${0.5 * GiB}\n`,
-				"/sys/fs/cgroup/memory/memory.oom_control": "under_oom 0\noom_kill 2\n",
 				"/proc/meminfo": MEMINFO_16G,
-				"/proc/pressure/memory": "some avg10=0.00 avg60=0 total=0\n",
-				"/proc/vmstat": "oom_kill 5\n",
+				"/proc/pressure/memory": PSI,
 			},
 			expected: {
 				usedBytes: 2 * GiB,
 				totalBytes: 8 * GiB,
-				pressure: 0,
-				oomKills: {
-					count: 2,
-					counter: "/sys/fs/cgroup/memory/memory.oom_control",
-				},
+				pressure: undefined,
 				source: "cgroup",
 			},
 		},
 		...["9223372036854771712", String(32 * GiB)].map((limit) => ({
-			name: `cgroup v1 limit ${limit} is no limit, so host memory counts`,
+			name: `cgroup v1 limit ${limit} has more room than the host, so host memory counts`,
 			files: {
 				"/proc/self/cgroup": "4:memory:/\n",
 				"/sys/fs/cgroup/memory/memory.limit_in_bytes": limit,
+				"/sys/fs/cgroup/memory/memory.usage_in_bytes": String(GiB),
+				"/sys/fs/cgroup/memory/memory.stat": "total_inactive_file 0",
 				"/proc/meminfo": MEMINFO_16G,
-				"/proc/vmstat": "oom_kill 5\n",
 			},
 			expected: {
 				usedBytes: 4 * GiB,
 				totalBytes: 16 * GiB,
 				pressure: undefined,
-				oomKills: { count: 5, counter: "/proc/vmstat" },
 				source: "host" as const,
 			},
 		})),
@@ -145,7 +166,6 @@ describe("createRemoteFileUsage", () => {
 				usedBytes: GiB,
 				totalBytes: 2 * GiB,
 				pressure: undefined,
-				oomKills: undefined,
 				source: "cgroup",
 			},
 		},
@@ -168,7 +188,6 @@ describe("createRemoteFileUsage", () => {
 				usedBytes: 2 * GiB,
 				totalBytes: 4 * GiB,
 				pressure: undefined,
-				oomKills: undefined,
 				source: "cgroup",
 			},
 		},

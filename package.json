@@ -234,7 +234,7 @@
 					"default": 250
 				},
 				"coder.memoryMonitor.warningThreshold": {
-					"markdownDescription": "Percent of the workspace memory limit at which the Coder status bar item warns you. It also warns when memory pressure slows the workspace or processes are killed for running out of memory. Set to `0` to turn off memory warnings; usage is still shown in the tooltip.",
+					"markdownDescription": "Percent of the workspace memory limit at which the Coder status bar item warns you. It also warns when memory pressure slows the workspace. Set to `0` to turn off memory warnings; usage is still shown in the tooltip.",
 					"type": "number",
 					"minimum": 0,
 					"maximum": 99,

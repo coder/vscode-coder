@@ -16,21 +16,24 @@ const PROC_SELF_CGROUP = "/proc/self/cgroup";
 const PROC_SELF_MOUNTINFO = "/proc/self/mountinfo";
 const MEMINFO = "/proc/meminfo";
 const HOST_PRESSURE = "/proc/pressure/memory";
-const VMSTAT = "/proc/vmstat";
-const HOST_FILES = [MEMINFO, HOST_PRESSURE, VMSTAT] as const;
+const HOST_FILES = [MEMINFO, HOST_PRESSURE] as const;
 const CGROUP_V1_FILES = [
 	"memory.limit_in_bytes",
 	"memory.usage_in_bytes",
 	"memory.stat",
-	"memory.oom_control",
 ] as const;
 const CGROUP_V2_FILES = [
 	"memory.max",
 	"memory.current",
 	"memory.stat",
-	"memory.events",
 	"memory.pressure",
 ] as const;
+/**
+ * Sums the keys that make up `memory.current` from one `memory.stat` read,
+ * since mixing in the exact `memory.current` jumps by gigabytes during fast
+ * I/O while `memory.stat` lags.
+ */
+const CGROUP_V2_CHARGED = ["anon", "file", "kernel", "sock"] as const;
 /**
  * `memory.stat` keys the kernel reclaims before an OOM kill: the file LRU
  * lists and reclaimable slab. tmpfs and shared memory sit on the anon lists,
@@ -119,58 +122,56 @@ function batchPaths({ v2, v1 }: Cgroups): string[] {
 interface Limit {
 	readonly used: number;
 	readonly total: number;
-	readonly pressureFile: string;
+	/** Undefined for a cgroup v1 limit, which has no PSI of its own. */
+	readonly pressureFile: string | undefined;
 }
 
 /**
  * Used is memory the kernel cannot reclaim without killing or swapping:
- * `MemTotal - MemAvailable` on the host (as `free` and `top` report it), and
- * usage minus the file LRU lists and reclaimable slab in a cgroup.
+ * `MemTotal - MemAvailable` on the host (as `free` and `top` report it), and usage
+ * minus the file LRU lists and reclaimable slab in a cgroup. Each cgroup
+ * limit and the host is a candidate; the one with the least room left is hit
+ * first. Ties go to the nearest cgroup.
  *
- * The rest follows clistat:
- * - cgroup v2: `cgroupV2Statter.memory`. The `memory.max` with the least
- *   room left, with usage at the limit owner, falling back to the nearest
- *   cgroup that has usage files.
- * - cgroup v1: `cgroupV1Statter.memory`.
- * - Host: `Statter.HostMemory`.
- *
- * It differs from clistat in these ways:
- * - clistat subtracts only `inactive_file` in a cgroup.
- * - No `IsContainerized` check: any limit applies. Without one, host usage
- *   and total are used, since everything on the host competes for that
- *   memory; clistat reports the cgroup's own usage with no total.
- * - A cgroup v1 limit at or above host memory counts as no limit.
- * - It reads PSI and OOM kill counters, which clistat does not.
- * - It finds cgroups through `/proc/self/mountinfo`, and takes a v1 limit
- *   set on a parent from `hierarchical_memory_limit`; clistat reads fixed
- *   paths.
+ * Follows clistat's `cgroupV2Statter.memory` (usage at the limit owner, else
+ * the nearest cgroup with usage files), `cgroupV1Statter.memory` and
+ * `Statter.HostMemory`, except:
+ * - clistat subtracts only `inactive_file`, mixing `memory.current` with
+ *   `memory.stat`.
+ * - The host is always a candidate, with no `IsContainerized` check, so no
+ *   limit or one above host memory reports the host; clistat reports the
+ *   cgroup's own usage with no total.
+ * - It reads PSI, except for a cgroup v1 limit, which has none of its own.
+ * - It finds cgroups through `/proc/self/mountinfo`, and a v1 parent's limit
+ *   through `hierarchical_memory_limit`; clistat reads fixed paths.
  */
 function parseMemorySample(
 	file: Files,
 	cgroups: Cgroups,
 ): MemorySample | undefined {
-	const meminfo = file(MEMINFO) ?? "";
-	const hostTotal = parseMeminfoBytes(meminfo, "MemTotal");
 	const cgroup =
-		cgroupV2Limit(file, cgroups.v2) ??
-		cgroupV1Limit(file, cgroups.v1, hostTotal);
-	const limit = cgroup ?? hostLimit(meminfo, hostTotal);
+		cgroupV2Limit(file, cgroups.v2) ?? cgroupV1Limit(file, cgroups.v1);
+	const host = hostLimit(file(MEMINFO) ?? "");
+	const limit = cgroup && (!host || room(cgroup) <= room(host)) ? cgroup : host;
 	if (!limit) {
 		return undefined;
 	}
 	return {
 		usedBytes: limit.used,
 		totalBytes: limit.total,
-		pressure: parsePressure(file(limit.pressureFile)),
-		oomKills: oomKills(file, cgroups),
-		source: cgroup ? "cgroup" : "host",
+		pressure: limit.pressureFile
+			? parsePressure(file(limit.pressureFile))
+			: undefined,
+		source: limit === cgroup ? "cgroup" : "host",
 	};
 }
 
-function hostLimit(
-	meminfo: string,
-	total: number | undefined,
-): Limit | undefined {
+function room(limit: Limit): number {
+	return limit.total - limit.used;
+}
+
+function hostLimit(meminfo: string): Limit | undefined {
+	const total = parseMeminfoBytes(meminfo, "MemTotal");
 	const available = parseMeminfoBytes(meminfo, "MemAvailable");
 	if (!total || available === undefined) {
 		return undefined;
@@ -194,10 +195,9 @@ function cgroupV2Limit(
 		dir,
 		// `max`, meaning no limit, does not parse as a number.
 		total: parseNumber(file(`${dir}/memory.max`)),
-		used: usedBytes(
+		used: cgroupV2Used(
 			file(`${dir}/memory.current`),
 			file(`${dir}/memory.stat`),
-			CGROUP_V2_RECLAIMABLE,
 		),
 	}));
 	// Usage at the limit owner counts sibling cgroups under it; like clistat,
@@ -210,21 +210,38 @@ function cgroupV2Limit(
 		if (total === undefined || used === undefined) {
 			continue;
 		}
-		if (!best || total - used < best.total - best.used) {
+		if (!best || total - used < room(best)) {
 			best = { used, total, pressureFile: `${cgroup.dir}/memory.pressure` };
 		}
 	}
 	return best;
 }
 
+/** Used from one `memory.stat` read; before Linux 5.18 (no `kernel` key), from `memory.current`. */
+function cgroupV2Used(
+	current: string | undefined,
+	stat: string | undefined,
+): number | undefined {
+	if (stat === undefined) {
+		return undefined;
+	}
+	if (parseKeyedValue(stat, "kernel") === undefined) {
+		return usedBytes(current, stat, CGROUP_V2_RECLAIMABLE);
+	}
+	const charged = CGROUP_V2_CHARGED.reduce(
+		(sum, key) => sum + (parseKeyedValue(stat, key) ?? 0),
+		0,
+	);
+	return withoutReclaimable(charged, stat, CGROUP_V2_RECLAIMABLE);
+}
+
 /**
  * A cgroup v1 limit, the lower of the cgroup's own and its parents'
- * (`hierarchical_memory_limit`); one at or above host memory is no limit.
+ * (`hierarchical_memory_limit`).
  */
 function cgroupV1Limit(
 	file: Files,
 	dir: string | undefined,
-	hostTotal: number | undefined,
 ): Limit | undefined {
 	if (dir === undefined) {
 		return undefined;
@@ -234,10 +251,7 @@ function cgroupV1Limit(
 		parseNumber(file(`${dir}/memory.limit_in_bytes`)) ?? Infinity,
 		parseKeyedValue(stat, "hierarchical_memory_limit") ?? Infinity,
 	);
-	if (
-		total >= CGROUP_V1_UNLIMITED ||
-		(hostTotal !== undefined && total >= hostTotal)
-	) {
+	if (total >= CGROUP_V1_UNLIMITED) {
 		return undefined;
 	}
 	const used = usedBytes(
@@ -247,7 +261,7 @@ function cgroupV1Limit(
 	);
 	return used === undefined
 		? undefined
-		: { used, total, pressureFile: HOST_PRESSURE };
+		: { used, total, pressureFile: undefined };
 }
 
 /** Usage minus memory the kernel can reclaim; a missing key counts as 0. */
@@ -260,31 +274,19 @@ function usedBytes(
 	if (current === undefined || stat === undefined) {
 		return undefined;
 	}
+	return withoutReclaimable(current, stat, reclaimableKeys);
+}
+
+function withoutReclaimable(
+	bytes: number,
+	stat: string,
+	reclaimableKeys: readonly string[],
+): number {
 	const reclaimable = reclaimableKeys.reduce(
 		(sum, key) => sum + (parseKeyedValue(stat, key) ?? 0),
 		0,
 	);
-	return Math.max(current - reclaimable, 0);
-}
-
-/**
- * The first OOM kill counter found, from the same file on every poll.
- * `memory.events` is hierarchical, so the outermost cgroup we can see counts
- * kills anywhere in the workspace.
- */
-function oomKills(file: Files, { v2, v1 }: Cgroups): MemorySample["oomKills"] {
-	const counters = [
-		...v2.toReversed().map((dir) => `${dir}/memory.events`),
-		...(v1 === undefined ? [] : [`${v1}/memory.oom_control`]),
-		VMSTAT,
-	];
-	for (const counter of counters) {
-		const count = parseKeyedValue(file(counter), "oom_kill");
-		if (count !== undefined) {
-			return { count, counter };
-		}
-	}
-	return undefined;
+	return Math.max(bytes - reclaimable, 0);
 }
 
 /** Where the process's memory cgroups are mounted. */
@@ -377,7 +379,7 @@ function parseMeminfoBytes(meminfo: string, key: string): number | undefined {
 	return match ? Number(match[1]) * 1024 : undefined;
 }
 
-/** A `key value` line, as in `memory.stat`, `memory.events` and `/proc/vmstat`. */
+/** A `key value` line, as in `memory.stat`. */
 function parseKeyedValue(
 	text: string | undefined,
 	key: string,
