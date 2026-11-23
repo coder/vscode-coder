@@ -79,12 +79,14 @@ Options merge from three sources, highest priority first: the
 `coder.sshConfig` setting, `--ssh-option` flags from a `coder config-ssh`
 block, and the deployment's SSH config. Only the deployment's options are
 deny-listed (`DENIED_DEPLOYMENT_KEYS` in `src/remote/sshConfig.ts`), since the
-other two are the user's own. `SetEnv` and `SendEnv` values accumulate across
-sources. The session app goes to the CLI as `--usage-app` and to the agent as
-`CODER_SSH_SESSION_TYPE`, set in the environment ssh inherits and forwarded
-with `SendEnv`. It is the editor's URI scheme when both the CLI and the
-deployment accept custom session app names, and `vscode` otherwise. Any `SetEnv`
-of that variable is dropped, since ssh sends it after `SendEnv`.
+other two are the user's own. Deployment options that send local environment
+variables or sockets to the workspace are ignored with a warning
+(`IGNORED_DEPLOYMENT_KEYS`). The user's
+`SetEnv` and `SendEnv` values accumulate across sources. The session app goes
+to the CLI as `--usage-app` and to the agent as `CODER_SSH_SESSION_TYPE`, set in the
+environment ssh inherits and forwarded with `SendEnv`. It is the editor's URI
+scheme when both the CLI and the deployment accept custom session app names,
+and `vscode` otherwise.
 
 After writing, `ssh -G` resolves the host with the Remote - SSH extension's ssh
 executable, falling back to a built-in parser, to detect a `RemoteCommand`.

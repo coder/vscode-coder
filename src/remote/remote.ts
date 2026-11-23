@@ -16,7 +16,11 @@ import { CoderApi } from "../api/coderApi";
 import { HttpStatusCode } from "../api/httpStatusCode";
 import { extractAgents } from "../api/models";
 import { version as cliVersion } from "../cli/cliExec";
-import { escapeCommandArg, escapeProxyCommandPath } from "../common/strings";
+import {
+	escapeCommandArg,
+	escapeProxyCommandPath,
+	lowercase,
+} from "../common/strings";
 import {
 	CONFIG_CHANGE_DEBOUNCE_MS,
 	watchConfigurationChanges,
@@ -67,7 +71,6 @@ import {
 	parseCoderSshOptions,
 	parseSshConfig,
 	validateDeploymentSshOptions,
-	withoutSetEnv,
 } from "./sshConfig";
 import { getRemoteSshConfigFile, getRemoteSshPath } from "./sshExtension";
 import { applySettingOverrides, buildSshOverrides } from "./sshOverrides";
@@ -930,10 +933,15 @@ export class Remote {
 		let deploymentSshConfig = {};
 		try {
 			const deploymentConfig = await workspaceClient.getDeploymentSSHConfig();
-			deploymentSshConfig = validateDeploymentSshOptions(
+			const { options, ignored } = validateDeploymentSshOptions(
 				deploymentConfig.ssh_config_options,
 				{ ...configSshOptions, ...userConfig },
 			);
+			deploymentSshConfig = options;
+			if (ignored.length > 0) {
+				this.logger.warn("Ignoring deployment SSH options", ignored);
+				this.warnIgnoredSshOptions(safeHostname, ignored);
+			}
 		} catch (error) {
 			if (!isAxiosError(error)) {
 				throw error;
@@ -954,13 +962,9 @@ export class Remote {
 		// 2. coder config-ssh --ssh-option flags from the CLI block
 		// 3. Deployment SSH config from the coderd API
 		// Only 3 is deny listed; 1 and 2 are the user's own options.
-		// SetEnv is sent after SendEnv, so it would replace the session type.
-		const sshConfigOverrides = withoutSetEnv(
-			mergeSshConfigValues(
-				mergeSshConfigValues(deploymentSshConfig, configSshOptions),
-				userConfig,
-			),
-			SESSION_TYPE_ENV,
+		const sshConfigOverrides = mergeSshConfigValues(
+			mergeSshConfigValues(deploymentSshConfig, configSshOptions),
+			userConfig,
 		);
 
 		const proxyCommand = buildSshProxyCommand({
@@ -1005,6 +1009,27 @@ export class Remote {
 				`${coderConfig.getRaw()}\n${sshConfig.getRaw()}`,
 			);
 		}
+	}
+
+	/** Stays hidden while every ignored option was already dismissed. */
+	private warnIgnoredSshOptions(safeHostname: string, ignored: string[]): void {
+		const memento = this.serviceContainer.getMementoManager();
+		const dismissed = new Set(memento.getDismissedSshOptions(safeHostname));
+		const keys = ignored.map(lowercase);
+		if (keys.every((key) => dismissed.has(key))) {
+			return;
+		}
+		const dontShow = "Don't Show Again";
+		void vscode.window
+			.showWarningMessage(
+				`Ignored SSH options from the Coder deployment that could expose your machine: ${ignored.join(", ")}. To use them, add them to the "coder.sshConfig" setting.`,
+				dontShow,
+			)
+			.then((choice) =>
+				choice === dontShow
+					? memento.addDismissedSshOptions(safeHostname, keys)
+					: undefined,
+			);
 	}
 
 	private watchSettings(

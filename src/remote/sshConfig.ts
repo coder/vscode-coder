@@ -78,9 +78,6 @@ const KEY_ONLY_REGEX = /^[a-zA-Z0-9-]+$/;
 /** Characters that would break a value out of its config line. */
 const UNSAFE_CHARS_REGEX = /[\r\n\0]/;
 
-/** A SetEnv argument; quotes may hold spaces. */
-const SETENV_ARG_REGEX = /(?:"[^"]*"|[^\s"])+/g;
-
 interface BlockMarkers {
 	start: string;
 	end: string;
@@ -134,6 +131,18 @@ const DENIED_DEPLOYMENT_KEYS: ReadonlySet<Lowercase<string>> = new Set([
 ]);
 
 /**
+ * Options that send local environment variables (directly or through `${VAR}`
+ * expansion) or local sockets to the workspace. Ignored rather than rejected,
+ * since the server accepts them.
+ */
+const IGNORED_DEPLOYMENT_KEYS: ReadonlySet<Lowercase<string>> = new Set([
+	"sendenv",
+	"setenv",
+	"user",
+	"remoteforward",
+]);
+
+/**
  * Connection-critical options Coder always writes itself, so the error must
  * not suggest overriding them in coder.sshConfig.
  */
@@ -144,15 +153,15 @@ const PINNED_KEYS: ReadonlySet<Lowercase<string>> = new Set([
 ]);
 
 /**
- * Validate SSH options sent by the Coder deployment. Keys in `userOverrides`
- * are exempt from the deny list: the user's value wins the merge, so the
- * deployment's value is never written.
+ * Validate SSH options sent by the Coder deployment, removing the ignored ones.
+ * Keys in `userOverrides` are exempt from the deny list: the user's value wins
+ * the merge, so the deployment's value is never written.
  * @throws {Error} when an option is malformed or denied.
  */
 export function validateDeploymentSshOptions(
 	options: Record<string, unknown>,
 	userOverrides: Record<string, string>,
-): Record<string, string> {
+): { options: Record<string, string>; ignored: string[] } {
 	validateSshConfigOptions(options);
 	const overridden = new Set(Object.keys(userOverrides).map(lowercase));
 	const denied = Object.keys(options).filter((key) => {
@@ -173,7 +182,15 @@ export function validateDeploymentSshOptions(
 		}
 		throw new Error(message);
 	}
-	return options;
+	const ignored = Object.keys(options).filter((key) =>
+		IGNORED_DEPLOYMENT_KEYS.has(lowercase(key)),
+	);
+	return {
+		options: Object.fromEntries(
+			Object.entries(options).filter(([key]) => !ignored.includes(key)),
+		),
+		ignored,
+	};
 }
 
 /** Validate the key and value of every option in the record. */
@@ -315,27 +332,6 @@ export function mergeSshConfigValues(
 	});
 
 	return merged;
-}
-
-/** Drop `name` from SetEnv, and SetEnv itself once empty. */
-export function withoutSetEnv(
-	options: Record<string, string>,
-	name: string,
-): Record<string, string> {
-	const result: Record<string, string> = {};
-	for (const [key, value] of Object.entries(options)) {
-		if (lowercase(key) !== "setenv") {
-			result[key] = value;
-			continue;
-		}
-		const kept = (value.match(SETENV_ARG_REGEX) ?? []).filter(
-			(arg) => !arg.replaceAll('"', "").startsWith(`${name}=`),
-		);
-		if (kept.length > 0) {
-			result[key] = kept.join(" ");
-		}
-	}
-	return result;
 }
 
 export class SshConfig {

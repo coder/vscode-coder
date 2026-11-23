@@ -15,6 +15,8 @@ export const REMOTE_SSH_EXTENSION_IDS = [
 	"google.antigravity-remote-openssh",
 ] as const;
 
+export type RemoteSshExtensionId = (typeof REMOTE_SSH_EXTENSION_IDS)[number];
+
 /**
  * VS Code Remote-SSH log layout, shared by the live SSH monitor and the
  * support-bundle collector so a future layout change updates one place.
@@ -23,12 +25,6 @@ const OUTPUT_LOGGING_DIR_PREFIX = "output_logging_";
 const REMOTE_SSH_LOG_NAME_FRAGMENT = "Remote - SSH";
 
 const DEVIN_CONFIG_FILE_VERSION = "3.12.32";
-
-export type RemoteSshExtensionId = (typeof REMOTE_SSH_EXTENSION_IDS)[number];
-
-type RemoteSshExtension = vscode.Extension<unknown> & {
-	id: RemoteSshExtensionId;
-};
 
 /**
  * The SSH config file the active extension passes to ssh with `-F`, if any.
@@ -101,6 +97,10 @@ export function isOutputLoggingDir(dirName: string): boolean {
 export function isSharedChannelRemoteSshLog(fileName: string): boolean {
 	return fileName.includes(REMOTE_SSH_LOG_NAME_FRAGMENT);
 }
+
+type RemoteSshExtension = vscode.Extension<unknown> & {
+	id: RemoteSshExtensionId;
+};
 
 export function getRemoteSshExtension(): RemoteSshExtension | undefined {
 	for (const id of REMOTE_SSH_EXTENSION_IDS) {

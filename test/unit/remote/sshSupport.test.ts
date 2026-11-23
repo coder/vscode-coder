@@ -24,7 +24,7 @@ describe.skipIf(spawnSync("ssh", ["-V"]).error)(
 				.replaceAll("\\", "/");
 			await fs.writeFile(
 				config,
-				`Host coder-*\n  PermitLocalCommand no\nMatch all\n  Include "~/${includePath}"\n`,
+				`Host coder-*\n  ProxyCommand coder ssh %h\n  PermitLocalCommand no\nMatch all\n  Include "~/${includePath}"\n`,
 			);
 			await fs.writeFile(
 				included,
@@ -40,23 +40,35 @@ describe.skipIf(spawnSync("ssh", ["-V"]).error)(
 			expect(properties.permitlocalcommand).toBe("no");
 		});
 
-		it("rejects a broken config or a Windows batch file", async () => {
+		it("rejects a broken config", async () => {
 			const missing = path.join(os.tmpdir(), "coder-ssh-g-missing", "config");
 			await expect(
 				resolveSshProperties(undefined, "coder-ws", missing),
 			).rejects.toThrow();
+		});
 
-			const realPlatform = process.platform;
-			Object.defineProperty(process, "platform", { value: "win32" });
-			onTestFinished(() => {
-				Object.defineProperty(process, "platform", { value: realPlatform });
-			});
+		it("rejects a config without the Coder ProxyCommand", async () => {
+			const dir = await fs.mkdtemp(path.join(os.tmpdir(), "coder-ssh-g-"));
+			onTestFinished(() => fs.rm(dir, { recursive: true, force: true }));
+			const config = path.join(dir, "config");
+			await fs.writeFile(config, "Host other\n  ProxyCommand coder ssh %h\n");
 			await expect(
-				resolveSshProperties("C:\\wrappers\\ssh.BAT", "coder-ws", undefined),
-			).rejects.toThrow("batch");
+				resolveSshProperties(undefined, "coder-ws", config),
+			).rejects.toThrow("ProxyCommand");
 		});
 	},
 );
+
+it("rejects a Windows batch file without running it", async () => {
+	const realPlatform = process.platform;
+	Object.defineProperty(process, "platform", { value: "win32" });
+	onTestFinished(() => {
+		Object.defineProperty(process, "platform", { value: realPlatform });
+	});
+	await expect(
+		resolveSshProperties("C:\\wrappers\\ssh.BAT", "coder-ws", undefined),
+	).rejects.toThrow("batch");
+});
 
 describe("computeSshProperties", () => {
 	it("computes the config for a host", () => {

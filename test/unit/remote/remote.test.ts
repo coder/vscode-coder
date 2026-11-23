@@ -569,8 +569,10 @@ describe("Remote", () => {
 			},
 		);
 
-		async function writeConfig(sshConfigOptions?: Record<string, string>) {
-			const { remote } = createRemote();
+		async function writeConfig(
+			sshConfigOptions?: Record<string, string>,
+			{ remote } = createRemote(),
+		) {
 			useEditor("cursor");
 			vi.mocked(resolveSshProperties).mockRejectedValue(new Error("no ssh"));
 			const method = "writeRemoteSshConfig";
@@ -591,11 +593,26 @@ describe("Remote", () => {
 			expect(config.permitlocalcommand).toBe("no");
 		});
 
-		it("drops a SetEnv that would replace the forwarded session type", async () => {
-			const config = await writeConfig({
-				SetEnv: "CODER_SSH_SESSION_TYPE=spoofed FOO=1",
-			});
-			expect(config.setenv).toBe("FOO=1");
+		it("ignores deployment SetEnv and SendEnv, warning until dismissed", async () => {
+			const context = createRemote();
+			context.userInteraction.setResponse(/^Ignored SSH/, "Don't Show Again");
+			const config = await writeConfig(
+				{ SetEnv: "CODER_SSH_SESSION_TYPE=spoofed", SendEnv: "SECRET" },
+				context,
+			);
+			expect(config.setenv).toBeUndefined();
+			expect(config.sendenv).toBe("CODER_SSH_SESSION_TYPE");
+			await flush();
+
+			// A dismissed subset stays hidden; a new option warns again.
+			await writeConfig({ sendenv: "SECRET" }, context);
+			await writeConfig({ SendEnv: "SECRET", User: "x" }, context);
+			expect(
+				context.userInteraction.getMessageCalls().map((call) => call.message),
+			).toEqual([
+				expect.stringContaining(": SetEnv, SendEnv."),
+				expect.stringContaining(": SendEnv, User."),
+			]);
 		});
 	});
 

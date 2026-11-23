@@ -123,16 +123,29 @@ describe("MementoManager", () => {
 		});
 	});
 
+	it("stores dismissed SSH options apart from surfaced banners", async () => {
+		await mementoManager.addDismissedSshOptions("example.com", ["sendenv"]);
+		await mementoManager.addDismissedSshOptions("example.com", ["user"]);
+
+		expect(mementoManager.getDismissedSshOptions("example.com")).toEqual([
+			"sendenv",
+			"user",
+		]);
+		expect(mementoManager.getSurfacedBanners("example.com")).toEqual([]);
+	});
+
 	describe("deployment data", () => {
-		it("clears access timestamp and surfaced banners together", async () => {
+		it("clears access timestamp and stored key sets together", async () => {
 			await mementoManager.updateDeploymentAccess("example.com");
 			await mementoManager.addSurfacedBanners("example.com", ["one"]);
+			await mementoManager.addDismissedSshOptions("example.com", ["user"]);
 			expect(mementoManager.getDeploymentAccess("example.com")).toBeDefined();
 
 			await mementoManager.clearDeploymentData("example.com");
 
 			expect(mementoManager.getDeploymentAccess("example.com")).toBeUndefined();
 			expect(mementoManager.getSurfacedBanners("example.com")).toEqual([]);
+			expect(mementoManager.getDismissedSshOptions("example.com")).toEqual([]);
 		});
 	});
 

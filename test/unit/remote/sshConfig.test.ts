@@ -13,7 +13,6 @@ import {
 	type ManagedPermissions,
 	type SshValues,
 	validateDeploymentSshOptions,
-	withoutSetEnv,
 } from "@/remote/sshConfig";
 
 import { createMockLogger } from "../../mocks/testHelpers";
@@ -58,7 +57,6 @@ const USER_OVERRIDES = {
 const BENIGN_DEPLOYMENT_OPTIONS = {
 	ConnectTimeout: "30",
 	IdentityFile: "~/.ssh/coder identity",
-	SetEnv: "CODER_SSH_SESSION_TYPE=vscode",
 	serveraliveinterval: "5",
 } as const;
 
@@ -681,33 +679,6 @@ describe("mergeSshConfigValues", () => {
 	});
 });
 
-describe("withoutSetEnv", () => {
-	interface WithoutSetEnvCase {
-		name: string;
-		options: Record<string, string>;
-		expected: Record<string, string>;
-	}
-	it.each<WithoutSetEnvCase>([
-		{
-			name: "keeps other variables and options",
-			options: { setenv: 'A=1 "NAME=x y" B="2 3"', LogLevel: "ERROR" },
-			expected: { setenv: 'A=1 B="2 3"', LogLevel: "ERROR" },
-		},
-		{
-			name: "drops SetEnv once empty",
-			options: { SetEnv: "NAME=x" },
-			expected: {},
-		},
-		{
-			name: "keeps a longer name with the same prefix",
-			options: { SetEnv: "NAME_EXTRA=x" },
-			expected: { SetEnv: "NAME_EXTRA=x" },
-		},
-	])("$name", ({ options, expected }) => {
-		expect(withoutSetEnv(options, "NAME")).toEqual(expected);
-	});
-});
-
 describe("parseCoderSshOptions", () => {
 	const coderBlock = (...lines: string[]) =>
 		`# ------------START-CODER-----------\n${lines.join("\n")}\n# ------------END-CODER------------`;
@@ -806,6 +777,22 @@ describe("validateDeploymentSshOptions", () => {
 				{},
 			),
 		).not.toThrow();
+	});
+
+	it("ignores options that expose the client even when the user sets them", () => {
+		const ignored = {
+			setenv: "A=1",
+			SENDENV: "SECRET",
+			User: "${SECRET}",
+			RemoteForward: "/tmp/d /var/run/docker.sock",
+		};
+		const kept = { ConnectTimeout: "30", LocalForward: "8080 localhost:80" };
+		expect(
+			validateDeploymentSshOptions(
+				{ ...ignored, ...kept },
+				{ SetEnv: "B=2", User: "me" },
+			),
+		).toEqual({ options: kept, ignored: Object.keys(ignored) });
 	});
 
 	it("collects every denied option into one error", () => {

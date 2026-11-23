@@ -29,7 +29,8 @@ export type SshProperties = Record<Lowercase<string>, string>;
  * Effective SSH properties for a host as OpenSSH resolves them (`ssh -G`),
  * following Include and Match. Runs `sshPath`, or `ssh` on PATH when unset.
  * @throws {Error} when ssh is a Windows batch file (which needs a shell),
- * fails, times out, or prints no config.
+ * fails, times out, or resolves no ProxyCommand, meaning it never read the
+ * Coder config (a different ssh build or home directory).
  */
 export async function resolveSshProperties(
 	sshPath: string | undefined,
@@ -53,8 +54,8 @@ export async function resolveSshProperties(
 			properties[lowercase(line.slice(0, space))] ??= line.slice(space + 1);
 		}
 	}
-	if (!properties.hostname) {
-		throw new Error("ssh -G printed no hostname");
+	if (!properties.proxycommand) {
+		throw new Error("ssh -G resolved no ProxyCommand");
 	}
 	return properties;
 }
