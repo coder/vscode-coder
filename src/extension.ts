@@ -24,6 +24,7 @@ import {
 	type ActivationTracer,
 } from "./instrumentation/activation";
 import { OAuthSessionManager } from "./oauth/sessionManager";
+import { ConnectionSetup } from "./remote/connectionSetup";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
@@ -206,6 +207,10 @@ async function doActivate(
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
+	const connectionSetup = new ConnectionSetup(
+		serviceContainer,
+		ctx.extensionMode,
+	);
 	const commands = new Commands(serviceContainer, client, deploymentManager);
 
 	// Placeholder tree view for the coderTasks container when not authenticated.
@@ -432,7 +437,7 @@ async function doActivate(
 		commands.supportBundle.bind(commands),
 	);
 
-	const remote = new Remote(serviceContainer, commands, ctx);
+	const remote = new Remote(serviceContainer, commands, ctx, connectionSetup);
 
 	// Respond to PINGs and DUPLICATE commands from other windows.
 	const duplicateWorkspaceIpc = serviceContainer.getDuplicateWorkspaceIpc();
