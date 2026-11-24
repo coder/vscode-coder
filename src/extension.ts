@@ -27,6 +27,7 @@ import { OAuthSessionManager } from "./oauth/sessionManager";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
+import { isAgentsWindow } from "./vscode/agentsWindow";
 import { initVscodeProposed } from "./vscode/proposed";
 import { TasksPanelProvider } from "./webviews/tasks/tasksPanelProvider";
 import { WorkspaceActionRunner } from "./webviews/workspaces/workspaceActionRunner";
@@ -76,7 +77,8 @@ async function doActivate(
 			path.join(remoteSshExtension.extensionPath, "package.json"),
 		);
 		vscodeProposed = extensionRequire("vscode") as typeof vscode;
-	} else {
+	} else if (!isAgentsWindow()) {
+		// The Agents window disables Remote SSH, so its absence there is expected.
 		vscode.window.showErrorMessage(
 			"Remote SSH extension not found, this may not work as expected.\n" +
 				// NB should we link to documentation or marketplace?

@@ -925,6 +925,9 @@
 	},
 	"icon": "media/logo.png",
 	"capabilities": {
+		"agentsWindow": {
+			"supported": true
+		},
 		"untrustedWorkspaces": {
 			"supported": true
 		}

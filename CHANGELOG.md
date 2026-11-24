@@ -7,6 +7,10 @@
 
 ## Unreleased
 
+### Added
+
+- The extension is now enabled by default in the VS Code Agents window.
+
 ### Security
 
 - Workspace hosts now set `PermitLocalCommand no`, so a `LocalCommand` in your
