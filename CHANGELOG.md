@@ -10,6 +10,9 @@
 ### Added
 
 - The extension is now enabled by default in the VS Code Agents window.
+- `Coder: Open Workspace in Agents Window` opens a workspace in the VS Code
+  Agents window, starting it first if needed. It opens the template's
+  directory, or the folder you last opened on the workspace.
 
 ### Security
 

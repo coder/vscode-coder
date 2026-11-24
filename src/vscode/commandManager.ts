@@ -17,6 +17,7 @@ export const CODER_COMMAND_IDS = [
 	"coder.open",
 	"coder.openDevContainer",
 	"coder.openFromSidebar",
+	"coder.openInAgentsWindow",
 	"coder.openAppStatus",
 	"coder.workspace.update",
 	"coder.createWorkspace",

@@ -16,3 +16,23 @@ export function isAgentsWindow(): boolean {
 		path.posix.basename(workspaceFile.path) === AGENTS_WINDOW_WORKSPACE_FILE
 	);
 }
+
+/** Missing in VS Code versions and forks without the Agents window. */
+const OPEN_AGENTS_WINDOW_COMMAND = "workbench.action.openAgentsWindow";
+
+/** Whether this editor can open the Agents window. */
+export async function canOpenAgentsWindow(): Promise<boolean> {
+	const commands = await vscode.commands.getCommands(true);
+	return commands.includes(OPEN_AGENTS_WINDOW_COMMAND);
+}
+
+/** Open the Agents window on `folderUri`, or on its last folder when undefined. */
+export async function openAgentsWindow(
+	folderUri: vscode.Uri | undefined,
+): Promise<void> {
+	// Without `reveal`, an Agents window that is already open ignores the folder.
+	await vscode.commands.executeCommand(OPEN_AGENTS_WINDOW_COMMAND, {
+		folderUri,
+		reveal: "new",
+	});
+}

@@ -11,7 +11,10 @@ import {
 	streamBuildLogs,
 	streamAgentLogs,
 } from "@/api/workspace";
-import { WorkspaceStateMachine } from "@/remote/workspaceStateMachine";
+import {
+	WorkspaceStartCancelledError,
+	WorkspaceStateMachine,
+} from "@/remote/workspaceStateMachine";
 import { maybeAskAgent } from "@/ui/prompts";
 
 import {
@@ -343,7 +346,7 @@ describe("WorkspaceStateMachine", () => {
 			const ws = createWorkspace({ latest_build: { status: "stopped" } });
 
 			await expect(sm.processWorkspace(ws, progress)).rejects.toThrow(
-				"Workspace start cancelled",
+				WorkspaceStartCancelledError,
 			);
 		});
 	});

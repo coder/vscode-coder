@@ -36,6 +36,7 @@ import {
 } from "./instrumentation/diagnostics";
 import { WorkspaceOperationTelemetry } from "./instrumentation/workspace";
 import {
+	type AgentsWindowOpenTrace,
 	type DevContainerMode,
 	type WorkspaceOpenSource,
 	WorkspaceOpenTelemetry,
@@ -44,6 +45,7 @@ import {
 	type WorkspacePickerResult,
 	type WorkspacePickerSource,
 } from "./instrumentation/workspaceOpen";
+import { prepareAgentsWindowConnection } from "./remote/agentsWindowConnection";
 import {
 	LegacyEditorId,
 	currentEditorId,
@@ -58,6 +60,7 @@ import {
 	applySettingOverrides,
 	getRecommendedSshSettings,
 } from "./remote/sshOverrides";
+import { WorkspaceStartCancelledError } from "./remote/workspaceStateMachine";
 import { isKeyringEnabled, resolveCliAuth } from "./settings/cli";
 import { appendVsCodeLogs } from "./supportBundle/appendVsCodeLogs";
 import {
@@ -71,6 +74,7 @@ import {
 	withProgress,
 } from "./ui/progress";
 import { maybeAskAgent, maybeAskUrl } from "./ui/prompts";
+import { openAgentsWindow } from "./vscode/agentsWindow";
 import { vscodeProposed } from "./vscode/proposed";
 import { parseNetcheckReport } from "./webviews/netcheck/types";
 import { parseSpeedtestResult } from "./webviews/speedtest/types";
@@ -91,6 +95,7 @@ import type { ServiceContainer } from "./container";
 import type { DeploymentManager } from "./deployment/deploymentManager";
 import type { Logger } from "./logging/logger";
 import type { LoginCoordinator, LoginMethod } from "./login/loginCoordinator";
+import type { ConnectionSetup } from "./remote/connectionSetup";
 import type { MementoManager } from "./storage/mementoManager";
 import type { PathResolver } from "./storage/pathResolver";
 import type { SecretsManager, SessionAuth } from "./storage/secretsManager";
@@ -155,7 +160,14 @@ type SelectedWorkspace = Extract<WorkspaceResolution, { status: "selected" }>;
 
 type OpenWorkspaceResult =
 	| { readonly status: "opened"; readonly handoff: "folder" | "empty_window" }
-	| { readonly status: "cancelled"; readonly stage: "recent_folder_picker" };
+	| {
+			readonly status: "cancelled";
+			readonly stage: "recent_folder_picker" | "start_prompt";
+	  };
+
+type FolderChoice =
+	| { readonly status: "chosen"; readonly folderPath?: string }
+	| { readonly status: "cancelled" };
 
 const UPDATE_AND_RESTART_ACTION = "Update and Restart";
 
@@ -211,9 +223,10 @@ export class Commands {
 	public remoteWorkspaceClient?: CoderApi;
 
 	public constructor(
-		serviceContainer: ServiceContainer,
+		private readonly serviceContainer: ServiceContainer,
 		private readonly extensionClient: CoderApi,
 		private readonly deploymentManager: DeploymentManager,
+		private readonly connectionSetup: ConnectionSetup,
 	) {
 		this.telemetryService = serviceContainer.getTelemetryService();
 		this.authTelemetry = new AuthTelemetry(this.telemetryService);
@@ -1209,6 +1222,104 @@ export class Commands {
 	}
 
 	/**
+	 * Open a workspace of the logged-in deployment in the VS Code Agents window,
+	 * starting it first if needed.
+	 */
+	public async openInAgentsWindow(): Promise<boolean> {
+		return this.workspaceOpenTelemetry.traceAgentsWindow((telemetry) =>
+			this.runOpenInAgentsWindow(telemetry),
+		);
+	}
+
+	private async runOpenInAgentsWindow(
+		telemetry: AgentsWindowOpenTrace,
+	): Promise<boolean> {
+		const baseUrl = this.requireExtensionBaseUrl();
+		const pick = await this.pickWorkspace("workspace_open");
+		if (pick.status === "cancelled") {
+			telemetry.abort("workspace_picker");
+			return false;
+		}
+		if (pick.status === "failed") {
+			telemetry.error(pick.category);
+			return false;
+		}
+		const agents = await this.extractAgentsWithFallback(pick.workspace);
+		const picked = await maybeAskAgent(agents);
+		if (!picked) {
+			telemetry.abort("agent_picker", { workspace: pick.workspace });
+			return false;
+		}
+		telemetry.select({ workspace: pick.workspace, agent: picked });
+
+		const remoteAuthority = toRemoteAuthority(
+			baseUrl,
+			pick.workspace.owner_name,
+			pick.workspace.name,
+			picked.name,
+		);
+		let ready: { workspace: Workspace; agent: WorkspaceAgent };
+		try {
+			ready = await prepareAgentsWindowConnection({
+				client: this.extensionClient,
+				baseUrl,
+				workspace: pick.workspace,
+				remoteAuthority,
+				connectionSetup: this.connectionSetup,
+				serviceContainer: this.serviceContainer,
+				trace: telemetry,
+			});
+		} catch (error) {
+			if (error instanceof WorkspaceStartCancelledError) {
+				return recordOpenResult(
+					telemetry,
+					{ workspace: pick.workspace, agent: picked },
+					{ status: "cancelled", stage: "start_prompt" },
+				);
+			}
+			throw error;
+		}
+
+		const { folders } = await this.recentlyOpened();
+		const folder = await this.chooseFolder(
+			folders,
+			remoteAuthority,
+			ready.agent,
+		);
+		if (folder.status === "cancelled") {
+			return recordOpenResult(telemetry, ready, {
+				status: "cancelled",
+				stage: "recent_folder_picker",
+			});
+		}
+		const { folderPath } = folder;
+		const handoff = folderPath ? "folder" : "empty_window";
+		if (!folderPath) {
+			void vscode.window.showWarningMessage(
+				`The template for ${createWorkspaceIdentifier(ready.workspace)} sets no directory and no folder was opened on it before, so the Agents window opens without a folder on it.`,
+			);
+		}
+
+		this.logger.info("Opening workspace in the Agents window", {
+			remoteAuthority,
+			handoff,
+		});
+		await openAgentsWindow(
+			folderPath
+				? vscode.Uri.from({
+						scheme: "vscode-remote",
+						authority: remoteAuthority,
+						path: folderPath,
+					})
+				: undefined,
+		);
+		return recordOpenResult(telemetry, ready, {
+			status: "opened",
+			handoff,
+		});
+	}
+
+	/**
 	 * Open a devcontainer from a workspace belonging to the currently logged-in deployment.
 	 *
 	 * Throw if not logged into a deployment.
@@ -1712,44 +1823,27 @@ export class Commands {
 	}
 
 	/**
-	 * Given a workspace and agent, build the host name, find a directory to open,
-	 * and pass both to the Remote SSH plugin in the form of a remote authority
-	 * URI.
-	 *
-	 * If provided, folderPath is always used, otherwise expanded_directory from
-	 * the agent is used.
+	 * The folder to open on the agent: `folderPath`, else the template's default
+	 * directory, else a recently opened folder on this workspace.
 	 */
-	private async openWorkspace(
-		baseUrl: string,
-		workspace: Workspace,
+	private async chooseFolder(
+		folders: vscode.Uri[],
+		remoteAuthority: string,
 		agent: WorkspaceAgent,
 		options: Pick<
 			OpenOptions,
 			"folderPath" | "openRecent" | "useDefaultDirectory"
 		> = {},
-	): Promise<OpenWorkspaceResult> {
+	): Promise<FolderChoice> {
 		const { openRecent, useDefaultDirectory } = {
 			...openDefaults,
 			...options,
 		};
 		let { folderPath } = options;
-		let remoteAuthority = toRemoteAuthority(
-			baseUrl,
-			workspace.owner_name,
-			workspace.name,
-			agent.name,
-		);
-
-		let newWindow = true;
-		// Open in the existing window if no workspaces are open.
-		if (!vscode.workspace.workspaceFolders?.length) {
-			newWindow = false;
-		}
 		if (!folderPath && useDefaultDirectory) {
 			folderPath = agent.expanded_directory;
 		}
 
-		const { folders, entries } = await this.recentlyOpened();
 		// If the agent had no folder or we have been asked to open the most recent,
 		// we can try to open a recently opened folder/workspace.
 		if (!folderPath || openRecent) {
@@ -1773,10 +1867,54 @@ export class Commands {
 				});
 				if (!folderPath) {
 					// User aborted.
-					return { status: "cancelled", stage: "recent_folder_picker" };
+					return { status: "cancelled" };
 				}
 			}
 		}
+		return { status: "chosen", folderPath };
+	}
+
+	/**
+	 * Given a workspace and agent, build the host name, find a directory to open,
+	 * and pass both to the Remote SSH plugin in the form of a remote authority
+	 * URI.
+	 *
+	 * If provided, folderPath is always used, otherwise expanded_directory from
+	 * the agent is used.
+	 */
+	private async openWorkspace(
+		baseUrl: string,
+		workspace: Workspace,
+		agent: WorkspaceAgent,
+		options: Pick<
+			OpenOptions,
+			"folderPath" | "openRecent" | "useDefaultDirectory"
+		> = {},
+	): Promise<OpenWorkspaceResult> {
+		let remoteAuthority = toRemoteAuthority(
+			baseUrl,
+			workspace.owner_name,
+			workspace.name,
+			agent.name,
+		);
+
+		let newWindow = true;
+		// Open in the existing window if no workspaces are open.
+		if (!vscode.workspace.workspaceFolders?.length) {
+			newWindow = false;
+		}
+
+		const { folders, entries } = await this.recentlyOpened();
+		const folder = await this.chooseFolder(
+			folders,
+			remoteAuthority,
+			agent,
+			options,
+		);
+		if (folder.status === "cancelled") {
+			return { status: "cancelled", stage: "recent_folder_picker" };
+		}
+		const { folderPath } = folder;
 		remoteAuthority = this.reusableAuthority(entries, remoteAuthority);
 
 		// Only set the memento when opening a new folder/window

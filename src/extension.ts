@@ -28,7 +28,7 @@ import { ConnectionSetup } from "./remote/connectionSetup";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
-import { isAgentsWindow } from "./vscode/agentsWindow";
+import { canOpenAgentsWindow, isAgentsWindow } from "./vscode/agentsWindow";
 import { initVscodeProposed } from "./vscode/proposed";
 import { TasksPanelProvider } from "./webviews/tasks/tasksPanelProvider";
 import { WorkspaceActionRunner } from "./webviews/workspaces/workspaceActionRunner";
@@ -198,6 +198,9 @@ async function doActivate(
 		contextManager.set("coder.tasksSupported", supported);
 	};
 	void updateTasksSupported();
+	void canOpenAgentsWindow().then((supported) =>
+		contextManager.set("coder.agentsWindowSupported", supported),
+	);
 
 	ctx.subscriptions.push(
 		deploymentManager.session.onDidChange(() => {
@@ -211,7 +214,12 @@ async function doActivate(
 		serviceContainer,
 		ctx.extensionMode,
 	);
-	const commands = new Commands(serviceContainer, client, deploymentManager);
+	const commands = new Commands(
+		serviceContainer,
+		client,
+		deploymentManager,
+		connectionSetup,
+	);
 
 	// Placeholder tree view for the coderTasks container when not authenticated.
 	// Works around a Cursor bug where containers with all views hidden via `when`
@@ -356,6 +364,10 @@ async function doActivate(
 		commands.switchDeployment.bind(commands),
 	);
 	commandManager.register("coder.open", commands.open.bind(commands));
+	commandManager.register(
+		"coder.openInAgentsWindow",
+		commands.openInAgentsWindow.bind(commands),
+	);
 	commandManager.register(
 		"coder.openDevContainer",
 		commands.openDevContainer.bind(commands),

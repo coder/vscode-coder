@@ -9,6 +9,7 @@ import { createMockLogger } from "./testHelpers";
 import type { CoderApi } from "@/api/coderApi";
 import type { ServiceContainer } from "@/container";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
+import type { ConnectionSetup } from "@/remote/connectionSetup";
 
 /** Build `Commands`; services left unnamed stand in as empty objects. */
 export function createTestCommands(
@@ -33,5 +34,6 @@ export function createTestCommands(
 		}),
 		createTestCoderApi({ baseUrl: options.baseUrl, overrides: options.client }),
 		{} as DeploymentManager,
+		{} as ConnectionSetup,
 	);
 }
