@@ -16,7 +16,9 @@ describe.skipIf(spawnSync("ssh", ["-V"]).error)(
 		it("follows Include and Match with ssh on PATH", async () => {
 			// ssh expands ~ from HOME when set, which may not be the home directory.
 			vi.stubEnv("HOME", os.homedir());
-			onTestFinished(() => vi.unstubAllEnvs());
+			onTestFinished(() => {
+				vi.unstubAllEnvs();
+			});
 			// Windows OpenSSH reads only ~/ include paths as absolute.
 			const dir = await fs.mkdtemp(path.join(os.homedir(), "coder-ssh-g-"));
 			onTestFinished(() => fs.rm(dir, { recursive: true, force: true }));
