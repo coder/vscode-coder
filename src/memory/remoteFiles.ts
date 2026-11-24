@@ -80,7 +80,7 @@ export async function readRemoteFile(
 export function createRemoteFileUsage(
 	read: ReadWorkspaceFile = readRemoteFile,
 ): MemoryUsageSource {
-	let cgroups: Cgroups = { v2: [], v1: undefined };
+	let cgroups: Cgroups = { v2: [], v1: [] };
 	return async () => {
 		let file = await readFiles(read, batchPaths(cgroups));
 		// The batch read the cgroup files of the last poll's cgroups. When the
@@ -114,7 +114,7 @@ function batchPaths({ v2, v1 }: Cgroups): string[] {
 		PROC_SELF_CGROUP,
 		PROC_SELF_MOUNTINFO,
 		...HOST_FILES,
-		...(v1 === undefined ? [] : CGROUP_V1_FILES.map((f) => `${v1}/${f}`)),
+		...v1.flatMap((dir) => CGROUP_V1_FILES.map((f) => `${dir}/${f}`)),
 		...v2.flatMap((dir) => CGROUP_V2_FILES.map((f) => `${dir}/${f}`)),
 	];
 }
@@ -142,8 +142,8 @@ interface Limit {
  *   limit or one above host memory reports the host; clistat reports the
  *   cgroup's own usage with no total.
  * - It reads PSI, except for a cgroup v1 limit, which has none of its own.
- * - It finds cgroups through `/proc/self/mountinfo`, and a v1 parent's limit
- *   through `hierarchical_memory_limit`; clistat reads fixed paths.
+ * - It finds cgroups through `/proc/self/mountinfo` and reads cgroup v1 at
+ *   every level, like v2; clistat reads fixed paths.
  */
 function parseMemorySample(
 	file: Files,
@@ -183,38 +183,48 @@ function hostLimit(meminfo: string): Limit | undefined {
 	};
 }
 
+/** A cgroup level's own limit and usage, either undefined when unreadable. */
+interface Level {
+	readonly total: number | undefined;
+	readonly used: number | undefined;
+	readonly pressureFile: string | undefined;
+}
+
 /**
- * Every `memory.max` from the process up to the root applies; the one with
- * the least room left is hit first. Ties go to the nearest cgroup.
+ * Every limit from the process up to the root applies; the one with the
+ * least room left is hit first. Ties go to the nearest level. Usage at the
+ * limit owner counts sibling cgroups under it; like clistat, a level without
+ * usage files falls back to the nearest level that has them.
  */
-function cgroupV2Limit(
-	file: Files,
-	dirs: readonly string[],
-): Limit | undefined {
-	const cgroups = dirs.map((dir) => ({
-		dir,
-		// `max`, meaning no limit, does not parse as a number.
-		total: parseNumber(file(`${dir}/memory.max`)),
-		used: cgroupV2Used(
-			file(`${dir}/memory.current`),
-			file(`${dir}/memory.stat`),
-		),
-	}));
-	// Usage at the limit owner counts sibling cgroups under it; like clistat,
-	// fall back to the nearest cgroup that exposes usage.
-	const nearestUsed = cgroups.find((c) => c.used !== undefined)?.used;
+function leastRoom(levels: readonly Level[]): Limit | undefined {
+	const nearestUsed = levels.find((l) => l.used !== undefined)?.used;
 	let best: Limit | undefined;
-	for (const cgroup of cgroups) {
-		const total = cgroup.total;
-		const used = cgroup.used ?? nearestUsed;
+	for (const { total, used = nearestUsed, pressureFile } of levels) {
 		if (total === undefined || used === undefined) {
 			continue;
 		}
 		if (!best || total - used < room(best)) {
-			best = { used, total, pressureFile: `${cgroup.dir}/memory.pressure` };
+			best = { used, total, pressureFile };
 		}
 	}
 	return best;
+}
+
+function cgroupV2Limit(
+	file: Files,
+	dirs: readonly string[],
+): Limit | undefined {
+	return leastRoom(
+		dirs.map((dir) => ({
+			// `max`, meaning no limit, does not parse as a number.
+			total: parseNumber(file(`${dir}/memory.max`)),
+			used: cgroupV2Used(
+				file(`${dir}/memory.current`),
+				file(`${dir}/memory.stat`),
+			),
+			pressureFile: `${dir}/memory.pressure`,
+		})),
+	);
 }
 
 /** Used from one `memory.stat` read; before Linux 5.18 (no `kernel` key), from `memory.current`. */
@@ -236,32 +246,47 @@ function cgroupV2Used(
 }
 
 /**
- * A cgroup v1 limit, the lower of the cgroup's own and its parents'
- * (`hierarchical_memory_limit`).
+ * Like v2, each level's `memory.limit_in_bytes` with that level's usage.
+ * A limit above the mount, which a container cannot see, still shows in
+ * `hierarchical_memory_limit` (the lowest limit up to the root), so it is a
+ * candidate too, with the nearest usage.
  */
 function cgroupV1Limit(
 	file: Files,
-	dir: string | undefined,
+	dirs: readonly string[],
 ): Limit | undefined {
-	if (dir === undefined) {
+	const [nearest] = dirs;
+	if (nearest === undefined) {
 		return undefined;
 	}
-	const stat = file(`${dir}/memory.stat`);
-	const total = Math.min(
-		parseNumber(file(`${dir}/memory.limit_in_bytes`)) ?? Infinity,
-		parseKeyedValue(stat, "hierarchical_memory_limit") ?? Infinity,
+	const levels = dirs.map((dir) => ({
+		total: cgroupV1Total(parseNumber(file(`${dir}/memory.limit_in_bytes`))),
+		used: usedBytes(
+			file(`${dir}/memory.usage_in_bytes`),
+			file(`${dir}/memory.stat`),
+			CGROUP_V1_RECLAIMABLE,
+		),
+		pressureFile: undefined,
+	}));
+	const hierarchical = parseKeyedValue(
+		file(`${nearest}/memory.stat`),
+		"hierarchical_memory_limit",
 	);
-	if (total >= CGROUP_V1_UNLIMITED) {
-		return undefined;
-	}
-	const used = usedBytes(
-		file(`${dir}/memory.usage_in_bytes`),
-		stat,
-		CGROUP_V1_RECLAIMABLE,
-	);
-	return used === undefined
+	// Last, so a visible owner of the same limit wins the tie.
+	return leastRoom([
+		...levels,
+		{
+			total: cgroupV1Total(hierarchical),
+			used: undefined,
+			pressureFile: undefined,
+		},
+	]);
+}
+
+function cgroupV1Total(bytes: number | undefined): number | undefined {
+	return bytes === undefined || bytes >= CGROUP_V1_UNLIMITED
 		? undefined
-		: { used, total, pressureFile: undefined };
+		: bytes;
 }
 
 /** Usage minus memory the kernel can reclaim; a missing key counts as 0. */
@@ -293,8 +318,8 @@ function withoutReclaimable(
 interface Cgroups {
 	/** cgroup v2 directories from the process's cgroup up to the mount. */
 	readonly v2: readonly string[];
-	/** The process's cgroup v1 memory directory. */
-	readonly v1: string | undefined;
+	/** cgroup v1 memory directories from the process's cgroup up to the mount. */
+	readonly v1: readonly string[];
 }
 
 /**
@@ -319,7 +344,7 @@ function findCgroups(
 		.join(":");
 	return {
 		v2: cgroupDirs(findMount(mountinfo, "cgroup2"), v2Path),
-		v1: cgroupDirs(findMount(mountinfo, "cgroup", "memory"), v1Path)[0],
+		v1: cgroupDirs(findMount(mountinfo, "cgroup", "memory"), v1Path),
 	};
 }
 

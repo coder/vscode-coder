@@ -170,7 +170,7 @@ describe("createRemoteFileUsage", () => {
 			},
 		},
 		{
-			name: "hybrid: memory is on cgroup v1, with the limit set on a parent cgroup",
+			name: "hybrid: memory is on cgroup v1, with the limit set on a parent cgroup that is not readable",
 			files: {
 				"/proc/self/cgroup": "4:memory:/user.slice/job\n0::/user.slice/job\n",
 				"/proc/self/mountinfo":
@@ -186,6 +186,31 @@ describe("createRemoteFileUsage", () => {
 			},
 			expected: {
 				usedBytes: 2 * GiB,
+				totalBytes: 4 * GiB,
+				pressure: undefined,
+				source: "cgroup",
+			},
+		},
+		{
+			name: "cgroup v1 limit on a readable parent: usage at the parent counts sibling cgroups",
+			files: {
+				"/proc/self/cgroup": "4:memory:/user.slice/job\n",
+				"/sys/fs/cgroup/memory/user.slice/job/memory.limit_in_bytes":
+					"9223372036854771712",
+				"/sys/fs/cgroup/memory/user.slice/job/memory.usage_in_bytes":
+					String(GiB),
+				"/sys/fs/cgroup/memory/user.slice/job/memory.stat": `hierarchical_memory_limit ${4 * GiB}\ntotal_inactive_file 0`,
+				"/sys/fs/cgroup/memory/user.slice/memory.limit_in_bytes": String(
+					4 * GiB,
+				),
+				"/sys/fs/cgroup/memory/user.slice/memory.usage_in_bytes": String(
+					3.5 * GiB,
+				),
+				"/sys/fs/cgroup/memory/user.slice/memory.stat": `total_inactive_file ${0.5 * GiB}`,
+				"/proc/meminfo": MEMINFO_16G,
+			},
+			expected: {
+				usedBytes: 3 * GiB,
 				totalBytes: 4 * GiB,
 				pressure: undefined,
 				source: "cgroup",
