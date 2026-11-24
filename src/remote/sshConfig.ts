@@ -119,14 +119,15 @@ export async function getSshHomeDir(): Promise<string> {
 	if (process.platform !== "win32" || !home) {
 		return profile;
 	}
+	const key = (dir: string) => path.resolve(dir).toLowerCase();
+	if (key(home) === key(profile)) {
+		return profile;
+	}
 	// The real path sees through 8.3 names, junctions and subst drives.
-	const canonical = (dir: string) =>
-		realpath(dir)
-			.catch(() => path.resolve(dir))
-			.then((resolved) => resolved.toLowerCase());
+	const realKey = (dir: string) => realpath(dir).then(key, () => key(dir));
 	const [realHome, realProfile] = await Promise.all([
-		canonical(home),
-		canonical(profile),
+		realKey(home),
+		realKey(profile),
 	]);
 	return realHome === realProfile ? profile : home;
 }
