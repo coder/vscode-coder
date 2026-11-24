@@ -43,14 +43,11 @@ export async function resolveSshProperties(
 	}
 	const configArgs = configFile ? ["-F", configFile] : [];
 	// -v lists the files ssh read, which explains a missing ProxyCommand.
-	const { stdout, stderr } = await execFile(
-		ssh,
-		["-v", "-G", ...configArgs, "--", host],
-		{
-			env: getCliProcessEnv(),
-			timeout: RESOLVE_TIMEOUT_MS,
-		},
-	);
+	const args = ["-v", "-G", ...configArgs, "--", host];
+	const { stdout, stderr } = await execFile(ssh, args, {
+		env: getCliProcessEnv(),
+		timeout: RESOLVE_TIMEOUT_MS,
+	});
 
 	const properties: SshProperties = {};
 	for (const line of stdout.split(/\r?\n/)) {

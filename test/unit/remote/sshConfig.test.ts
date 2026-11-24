@@ -322,18 +322,15 @@ describe("SshConfig.updateInclude", () => {
 			dir: "C:\\Users\\Jane Doe\\ssh",
 			escaped: "C:/Users/Jane Doe/ssh",
 		},
+		// OpenSSH 9.9+ expands %-tokens in Include and older builds don't; the
+		// glob ? matches a literal % on both.
+		{
+			dir: "/opt/50%d [x]/ssh",
+			escaped: "/opt/50?d [[]x]/ssh",
+		},
 	])("escapes $dir", async ({ dir, escaped }) => {
 		await updateInclude("", dir);
 		expect(await readConfig()).toContain(`Include "${escaped}/*.conf"`);
-	});
-
-	// OpenSSH 9.9+ expands %-tokens in Include and older builds don't; the
-	// glob ? matches a literal % on both.
-	it("writes % in an include path as ?", async () => {
-		await updateInclude("", "/opt/50%d [x]/ssh");
-		expect(await readConfig()).toContain(
-			'Include "/opt/50?d [[]x]/ssh/*.conf"',
-		);
 	});
 
 	// A tilde swallows home-path quirks that ssh could not read back otherwise.
