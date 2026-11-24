@@ -4,7 +4,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { SshConfig, type SshValues } from "@/remote/sshConfig";
 
@@ -71,6 +71,7 @@ async function createFixture(includeDirName: string) {
 		async appendUserConfig(contents: string) {
 			await fs.appendFile(userConfigPath, contents);
 		},
+		readUserConfig: () => fs.readFile(userConfigPath, "utf8"),
 		/** The host's effective options according to the real ssh. */
 		async resolve(host: string, ssh = "ssh") {
 			const { stdout } = await run(ssh, ["-G", "-F", userConfigPath, host], {
@@ -181,5 +182,16 @@ describe.skipIf(windowsSshBuilds.length === 0)(
 			},
 			TEST_TIMEOUT_MS,
 		);
+
+		it("keeps ~ when HOME reaches the profile through a junction", async () => {
+			const ssh = await createFixture("Code Dir");
+			const junction = path.join(os.tmpdir(), `coder-home-${process.pid}`);
+			await fs.symlink(os.homedir(), junction, "junction");
+			// rmdir removes the junction itself, never the profile behind it.
+			onTestFinished(() => fs.rmdir(junction));
+			vi.stubEnv("HOME", junction.toUpperCase());
+			await ssh.connect("dev.coder.com", "echo dev-wins");
+			expect(await ssh.readUserConfig()).toContain('Include "~/');
+		});
 	},
 );

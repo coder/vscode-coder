@@ -623,7 +623,7 @@ describe("Remote", () => {
 		describe("HOME ssh config on Windows", () => {
 			const homeConfig = "/h/.ssh/config";
 			beforeEach(() => {
-				vi.mocked(getWindowsHomeSshConfigPath).mockReturnValue(homeConfig);
+				vi.mocked(getWindowsHomeSshConfigPath).mockResolvedValue(homeConfig);
 			});
 
 			it.each([

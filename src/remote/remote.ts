@@ -997,7 +997,7 @@ export class Remote {
 		// Without -F, Git for Windows ssh reads HOME's config instead.
 		const homeConfigPath = configFile
 			? undefined
-			: getWindowsHomeSshConfigPath();
+			: await getWindowsHomeSshConfigPath();
 		if (homeConfigPath) {
 			await new SshConfig(homeConfigPath, this.logger)
 				.updateInclude(includeDir, safeHostname)

@@ -2,6 +2,7 @@ import {
 	mkdir,
 	readFile,
 	readdir,
+	realpath,
 	rename,
 	stat,
 	unlink,
@@ -114,23 +115,31 @@ const WINDOWS_PATH_SPELLINGS: ReadonlyArray<(dir: string) => string> = [
 ];
 
 /** On Windows, a `HOME` other than the profile, which ssh expands `~` from. */
-function getWindowsHomeOverride(): string | undefined {
+async function getWindowsHomeOverride(): Promise<string | undefined> {
 	const home = process.env.HOME;
 	if (process.platform !== "win32" || !home) {
 		return undefined;
 	}
-	const same =
-		path.win32.resolve(home).toLowerCase() ===
-		path.win32.resolve(os.homedir()).toLowerCase();
-	return same ? undefined : home;
+	// The real path sees through 8.3 names, junctions and subst drives.
+	const canonical = (dir: string) =>
+		realpath(dir)
+			.catch(() => path.win32.resolve(dir))
+			.then((resolved) => resolved.toLowerCase());
+	const [resolvedHome, profile] = await Promise.all([
+		canonical(home),
+		canonical(os.homedir()),
+	]);
+	return resolvedHome === profile ? undefined : home;
 }
 
 /**
  * The config Git for Windows ssh reads without `-F` when `HOME` overrides the
  * profile. Only drive and UNC paths, so `/c/...` is never resolved by guessing.
  */
-export function getWindowsHomeSshConfigPath(): string | undefined {
-	const home = getWindowsHomeOverride();
+export async function getWindowsHomeSshConfigPath(): Promise<
+	string | undefined
+> {
+	const home = await getWindowsHomeOverride();
 	if (!home || !/^([a-z]:|[\\/]{2}[^\\/])/i.test(home)) {
 		return undefined;
 	}
@@ -408,7 +417,9 @@ export class SshConfig {
 	 * when the include is already in place nothing is written.
 	 */
 	async updateInclude(includeDir: string, safeHostname: string) {
-		const block = this.renderIncludeBlock(includeDir);
+		const block = this.renderIncludeBlock(
+			await this.includeArguments(includeDir),
+		);
 		const raw = await this.read();
 		this.raw = this.mergeInclude(raw, block, safeHostname);
 		if (this.raw !== raw) {
@@ -471,12 +482,12 @@ export class SshConfig {
 		return { start, end: endMarkerStart + markers.end.length };
 	}
 
-	private renderIncludeBlock(includeDir: string): string {
+	private renderIncludeBlock(includeArguments: string[]): string {
 		return [
 			INCLUDE_MARKERS.start,
 			"# Managed by the Coder extension for VS Code and its forks.",
 			"# Moves back to the top on connect; override options via coder.sshConfig.",
-			`Include ${this.includeArguments(includeDir)
+			`Include ${includeArguments
 				.map((dir) => `"${this.escapeIncludePath(dir)}/*${SSH_CONFIG_EXT}"`)
 				.join(" ")}`,
 			INCLUDE_MARKERS.end,
@@ -484,13 +495,13 @@ export class SshConfig {
 	}
 
 	/** `~/...` when ssh's `~` is `os.homedir()`, else every absolute spelling. */
-	private includeArguments(includeDir: string): string[] {
+	private async includeArguments(includeDir: string): Promise<string[]> {
 		const windows = process.platform === "win32";
 		const pathApi = windows ? path.win32 : path;
 		const relative = pathApi.relative(os.homedir(), includeDir);
 		const underHome =
 			relative && !relative.startsWith("..") && !pathApi.isAbsolute(relative);
-		if (underHome && !getWindowsHomeOverride()) {
+		if (underHome && !(await getWindowsHomeOverride())) {
 			return [`~/${relative}`];
 		}
 		if (!windows) {

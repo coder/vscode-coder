@@ -414,9 +414,9 @@ describe("Windows include paths", () => {
 		{ home: "\\\\srv\\jane", configPath: "\\\\srv\\jane\\.ssh\\config" },
 		{ home: "/c/hshare", configPath: undefined },
 		{ home: "C:\\USERS\\jane", configPath: undefined },
-	])("finds HOME's ssh config for HOME $home", ({ home, configPath }) => {
+	])("finds HOME's ssh config for HOME $home", async ({ home, configPath }) => {
 		vi.stubEnv("HOME", home);
-		expect(getWindowsHomeSshConfigPath()).toBe(configPath);
+		expect(await getWindowsHomeSshConfigPath()).toBe(configPath);
 	});
 
 	it("ignores HOME on other platforms", async () => {
@@ -425,7 +425,7 @@ describe("Windows include paths", () => {
 		vi.stubEnv("HOME", "H:\\");
 		await updateInclude("", `${homeDir}/ssh`);
 		expect(await readConfig()).toBe(renderIncludeBlock("~/ssh"));
-		expect(getWindowsHomeSshConfigPath()).toBeUndefined();
+		expect(await getWindowsHomeSshConfigPath()).toBeUndefined();
 	});
 });
 
