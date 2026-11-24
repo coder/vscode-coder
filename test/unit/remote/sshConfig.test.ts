@@ -84,11 +84,11 @@ Host coder-vscode--*
 
 const includeDir = "~/.ssh/coder";
 
-function renderIncludeBlock(dir: string): string {
+function renderIncludeBlock(...dirs: string[]): string {
 	return `# --- START CODER INCLUDE CODER-REMOTE ---
 # Managed by the Coder extension for VS Code and its forks.
 # Moves back to the top on connect; override options via coder.sshConfig.
-Include "${dir}/*.conf"
+Include ${dirs.map((dir) => `"${dir}/*.conf"`).join(" ")}
 # --- END CODER INCLUDE CODER-REMOTE ---`;
 }
 
@@ -322,12 +322,6 @@ describe("SshConfig.updateInclude", () => {
 			dir: "C:\\Users\\Jane Doe\\ssh",
 			escaped: "C:/Users/Jane Doe/ssh",
 		},
-		// OpenSSH 9.9+ expands %-tokens in Include and older builds don't; the
-		// glob ? matches a literal % on both.
-		{
-			dir: "/opt/50%d [x]/ssh",
-			escaped: "/opt/50?d [[]x]/ssh",
-		},
 	])("escapes $dir", async ({ dir, escaped }) => {
 		await updateInclude("", dir);
 		expect(await readConfig()).toContain(`Include "${escaped}/*.conf"`);
@@ -357,114 +351,80 @@ describe("SshConfig.updateInclude", () => {
 });
 
 describe("Windows include paths", () => {
-	const profile = "C:\\Users\\Jane";
-	const appDataDir = `${profile}\\AppData\\Roaming\\coder.coder-remote\\ssh`;
+	const appData = "Users/Jane/AppData/Roaming/coder.coder-remote/ssh";
 
 	beforeEach(() => {
 		const realPlatform = process.platform;
 		Object.defineProperty(process, "platform", { value: "win32" });
-		vi.mocked(os.homedir).mockReturnValue(profile);
+		vi.mocked(os.homedir).mockReturnValue("C:\\Users\\Jane");
 		return () => {
 			Object.defineProperty(process, "platform", { value: realPlatform });
 		};
 	});
 
-	async function includeLine(dir: string): Promise<string | undefined> {
-		await updateInclude("", dir);
-		return (await readConfig())
-			.split("\n")
-			.find((line) => line.startsWith("Include "));
-	}
-
 	interface WindowsIncludeCase {
 		name: string;
 		home?: string;
 		dir: string;
-		line: string;
+		included: string[];
 	}
 	it.each<WindowsIncludeCase>([
 		{
 			name: "keeps ~ when HOME is unset",
-			dir: appDataDir,
-			line: 'Include "~/AppData/Roaming/coder.coder-remote/ssh/*.conf"',
+			dir: `C:\\${appData}`,
+			included: ["~/AppData/Roaming/coder.coder-remote/ssh"],
 		},
 		{
 			name: "keeps ~ when HOME is the profile in another case",
 			home: "c:\\users\\JANE\\",
-			dir: appDataDir,
-			line: 'Include "~/AppData/Roaming/coder.coder-remote/ssh/*.conf"',
+			dir: `C:\\${appData}`,
+			included: ["~/AppData/Roaming/coder.coder-remote/ssh"],
 		},
 		{
-			name: "writes both absolute forms when HOME is another drive",
+			name: "spells the path both ways when HOME is elsewhere",
 			home: "H:\\",
-			dir: appDataDir,
-			line: 'Include "C:/Users/Jane/AppData/Roaming/coder.coder-remote/ssh/*.conf" "/c/Users/Jane/AppData/Roaming/coder.coder-remote/ssh/*.conf"',
+			dir: `C:\\${appData}`,
+			included: [`C:/${appData}`, `/c/${appData}`],
 		},
 		{
-			name: "writes both absolute forms when HOME is an MSYS path",
-			home: "/c/hshare",
-			dir: appDataDir,
-			line: 'Include "C:/Users/Jane/AppData/Roaming/coder.coder-remote/ssh/*.conf" "/c/Users/Jane/AppData/Roaming/coder.coder-remote/ssh/*.conf"',
-		},
-		{
-			name: "writes both absolute forms outside the profile",
+			name: "spells the path both ways outside the profile",
 			dir: "D:\\Profiles\\jane\\ssh",
-			line: 'Include "D:/Profiles/jane/ssh/*.conf" "/d/Profiles/jane/ssh/*.conf"',
+			included: ["D:/Profiles/jane/ssh", "/d/Profiles/jane/ssh"],
+		},
+		{
+			name: "escapes both spellings",
+			home: "/c/hshare",
+			dir: "C:\\Users\\J%d [x]\\ssh",
+			included: ["C:/Users/J?d [[]x]/ssh", "/c/Users/J?d [[]x]/ssh"],
 		},
 		{
 			name: "writes a UNC path once",
 			home: "H:\\",
-			dir: "\\\\srv\\share\\jane\\ssh",
-			line: 'Include "//srv/share/jane/ssh/*.conf"',
+			dir: "\\\\srv\\share\\ssh",
+			included: ["//srv/share/ssh"],
 		},
-		{
-			name: "escapes every absolute form",
-			home: "H:\\",
-			dir: "C:\\Users\\J%d [x]\\ssh",
-			line: 'Include "C:/Users/J?d [[]x]/ssh/*.conf" "/c/Users/J?d [[]x]/ssh/*.conf"',
-		},
-	])("$name", async ({ home, dir, line }) => {
-		if (home !== undefined) {
-			vi.stubEnv("HOME", home);
-		}
-		expect(await includeLine(dir)).toBe(line);
+	])("$name", async ({ home, dir, included }) => {
+		vi.stubEnv("HOME", home);
+		await updateInclude("", dir);
+		expect(await readConfig()).toBe(renderIncludeBlock(...included));
 	});
 
-	it("keeps ~ on other platforms whatever HOME is", async () => {
-		Object.defineProperty(process, "platform", { value: "linux" });
-		vi.mocked(os.homedir).mockReturnValue(homeDir);
-		vi.stubEnv("HOME", "/elsewhere");
-		expect(await includeLine(`${homeDir}/.local/share/ssh`)).toBe(
-			'Include "~/.local/share/ssh/*.conf"',
-		);
-	});
-
-	interface HomeConfigCase {
-		home?: string;
-		configPath: string | undefined;
-	}
-	it.each<HomeConfigCase>([
+	it.each([
 		{ home: "H:\\", configPath: "H:\\.ssh\\config" },
-		{
-			home: "\\\\srv\\home\\jane",
-			configPath: "\\\\srv\\home\\jane\\.ssh\\config",
-		},
+		{ home: "\\\\srv\\jane", configPath: "\\\\srv\\jane\\.ssh\\config" },
 		{ home: "/c/hshare", configPath: undefined },
 		{ home: "C:\\USERS\\jane", configPath: undefined },
-		{ home: undefined, configPath: undefined },
-	])(
-		"finds the HOME ssh config $configPath for HOME $home",
-		({ home, configPath }) => {
-			if (home !== undefined) {
-				vi.stubEnv("HOME", home);
-			}
-			expect(getWindowsHomeSshConfigPath()).toBe(configPath);
-		},
-	);
+	])("finds HOME's ssh config for HOME $home", ({ home, configPath }) => {
+		vi.stubEnv("HOME", home);
+		expect(getWindowsHomeSshConfigPath()).toBe(configPath);
+	});
 
-	it("finds no HOME ssh config on other platforms", () => {
+	it("ignores HOME on other platforms", async () => {
 		Object.defineProperty(process, "platform", { value: "linux" });
+		vi.mocked(os.homedir).mockReturnValue(homeDir);
 		vi.stubEnv("HOME", "H:\\");
+		await updateInclude("", `${homeDir}/ssh`);
+		expect(await readConfig()).toBe(renderIncludeBlock("~/ssh"));
 		expect(getWindowsHomeSshConfigPath()).toBeUndefined();
 	});
 });

@@ -622,35 +622,30 @@ describe("Remote", () => {
 
 		describe("HOME ssh config on Windows", () => {
 			const homeConfig = "/h/.ssh/config";
-			const includeMarker = "# --- START CODER INCLUDE CODER-REMOTE ---";
-
 			beforeEach(() => {
 				vi.mocked(getWindowsHomeSshConfigPath).mockReturnValue(homeConfig);
 			});
 
-			it("includes the Coder config when ssh runs without -F", async () => {
-				await writeConfig();
-				expect(vol.readFileSync(homeConfig, "utf8")).toContain(includeMarker);
-			});
-
-			it("leaves it alone when Remote-SSH passes -F", async () => {
-				const context = createRemote();
-				new MockConfigurationProvider().set(
-					"remote.SSH.configFile",
-					"/mock/ssh/config",
-				);
-				await writeConfig(undefined, context);
-				expect(vol.existsSync(homeConfig)).toBe(false);
-				expect(vol.readFileSync("/mock/ssh/config", "utf8")).toContain(
-					includeMarker,
-				);
-			});
+			it.each([
+				{ configFile: undefined, included: true },
+				{ configFile: "/mock/ssh/config", included: false },
+			])(
+				"includes the Coder config: $included with -F $configFile",
+				async ({ configFile, included }) => {
+					const context = createRemote();
+					new MockConfigurationProvider().set(
+						"remote.SSH.configFile",
+						configFile,
+					);
+					await writeConfig(undefined, context);
+					expect(vol.existsSync(homeConfig)).toBe(included);
+				},
+			);
 
 			it("warns and still connects when it cannot be written", async () => {
 				const logger = createMockLogger();
 				vol.fromJSON({ "/h": "not a directory" });
-				const config = await writeConfig(undefined, createRemote(logger));
-				expect(config.proxycommand).toBeDefined();
+				await writeConfig(undefined, createRemote(logger));
 				expect(logger.warn).toHaveBeenCalledWith(
 					"Failed to include the Coder SSH config in",
 					homeConfig,

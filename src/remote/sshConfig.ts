@@ -101,14 +101,11 @@ const INCLUDE_MARKERS: BlockMarkers = {
 	end: "# --- END CODER INCLUDE CODER-REMOTE ---",
 };
 
-/**
- * Absolute Include spellings for each Windows ssh build; an argument that
- * matches nothing is skipped silently, so each build reads one of them.
- */
+/** One absolute Include spelling per Windows ssh build; ssh skips the rest. */
 const WINDOWS_PATH_SPELLINGS: ReadonlyArray<(dir: string) => string> = [
-	// Win32-OpenSSH 8.1+ reads C:/Users/... as absolute.
+	// Win32-OpenSSH 8.1+: C:/Users/...
 	(dir) => dir,
-	// MSYS builds such as Git for Windows read only /-rooted paths as absolute.
+	// MSYS builds such as Git for Windows: /c/Users/...
 	(dir) =>
 		dir.replace(
 			/^([a-z]):\//i,
@@ -116,10 +113,7 @@ const WINDOWS_PATH_SPELLINGS: ReadonlyArray<(dir: string) => string> = [
 		),
 ];
 
-/**
- * On Windows, `HOME` when it names a directory other than `os.homedir()`.
- * Win32-OpenSSH and Git for Windows ssh both expand `~` from it when set.
- */
+/** On Windows, a `HOME` other than the profile, which ssh expands `~` from. */
 function getWindowsHomeOverride(): string | undefined {
 	const home = process.env.HOME;
 	if (process.platform !== "win32" || !home) {
@@ -132,9 +126,8 @@ function getWindowsHomeOverride(): string | undefined {
 }
 
 /**
- * The main config Git for Windows ssh reads without `-F` when `HOME` moves
- * it away from the profile. Undefined unless `HOME` is a drive or UNC path,
- * so a form like `/c/...` is never resolved to a guessed location.
+ * The config Git for Windows ssh reads without `-F` when `HOME` overrides the
+ * profile. Only drive and UNC paths, so `/c/...` is never resolved by guessing.
  */
 export function getWindowsHomeSshConfigPath(): string | undefined {
 	const home = getWindowsHomeOverride();
@@ -490,10 +483,7 @@ export class SshConfig {
 		].join("\n");
 	}
 
-	/**
-	 * `~/...` wherever ssh expands `~` to `os.homedir()`, which keeps home-path
-	 * quirks away from ssh; otherwise every absolute spelling the platform needs.
-	 */
+	/** `~/...` when ssh's `~` is `os.homedir()`, else every absolute spelling. */
 	private includeArguments(includeDir: string): string[] {
 		const windows = process.platform === "win32";
 		const pathApi = windows ? path.win32 : path;
@@ -517,9 +507,8 @@ export class SshConfig {
 				"SSH include path must not contain CR, LF, NUL, or double-quote characters.",
 			);
 		}
-		// Bracket classes, since OpenSSH for Windows can't backslash-escape. `%`
-		// becomes `?`: OpenSSH 9.9+ expands %-tokens in Include and older builds
-		// don't, so no escape works on both.
+		// Bracket classes, since OpenSSH for Windows can't backslash-escape. `?`
+		// stands in for `%`, which only OpenSSH 9.9+ expands as a token.
 		return argument
 			.replaceAll("\\", "/")
 			.replace(/[*?[]/g, "[$&]")

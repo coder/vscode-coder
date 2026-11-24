@@ -992,12 +992,22 @@ export class Remote {
 
 		// Write our file before including it, so the include never dangles.
 		await coderConfig.update(sshValues, sshConfigOverrides);
-		await sshConfig.updateInclude(
-			this.pathResolver.getSshConfigDir(),
-			safeHostname,
-		);
-		if (!configFile) {
-			await this.includeInWindowsHomeConfig(safeHostname);
+		const includeDir = this.pathResolver.getSshConfigDir();
+		await sshConfig.updateInclude(includeDir, safeHostname);
+		// Without -F, Git for Windows ssh reads HOME's config instead.
+		const homeConfigPath = configFile
+			? undefined
+			: getWindowsHomeSshConfigPath();
+		if (homeConfigPath) {
+			await new SshConfig(homeConfigPath, this.logger)
+				.updateInclude(includeDir, safeHostname)
+				.catch((error: unknown) => {
+					this.logger.warn(
+						"Failed to include the Coder SSH config in",
+						homeConfigPath,
+						error,
+					);
+				});
 		}
 
 		try {
@@ -1011,31 +1021,6 @@ export class Remote {
 			return computeSshProperties(
 				parts.sshHost,
 				`${coderConfig.getRaw()}\n${sshConfig.getRaw()}`,
-			);
-		}
-	}
-
-	/**
-	 * Git for Windows ssh reads `HOME`'s config without `-F`; Win32-OpenSSH
-	 * never does, so a failure here only warns.
-	 */
-	private async includeInWindowsHomeConfig(
-		safeHostname: string,
-	): Promise<void> {
-		const configPath = getWindowsHomeSshConfigPath();
-		if (!configPath) {
-			return;
-		}
-		try {
-			await new SshConfig(configPath, this.logger).updateInclude(
-				this.pathResolver.getSshConfigDir(),
-				safeHostname,
-			);
-		} catch (error) {
-			this.logger.warn(
-				"Failed to include the Coder SSH config in",
-				configPath,
-				error,
 			);
 		}
 	}
