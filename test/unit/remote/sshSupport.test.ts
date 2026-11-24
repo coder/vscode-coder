@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, it, expect, onTestFinished } from "vitest";
+import { describe, it, expect, onTestFinished, vi } from "vitest";
 
 import {
 	computeSshProperties,
@@ -14,6 +14,9 @@ describe.skipIf(spawnSync("ssh", ["-V"]).error)(
 	{ timeout: 30_000 },
 	() => {
 		it("follows Include and Match with ssh on PATH", async () => {
+			// ssh expands ~ from HOME when set, which may not be the home directory.
+			vi.stubEnv("HOME", os.homedir());
+			onTestFinished(() => vi.unstubAllEnvs());
 			// Windows OpenSSH reads only ~/ include paths as absolute.
 			const dir = await fs.mkdtemp(path.join(os.homedir(), "coder-ssh-g-"));
 			onTestFinished(() => fs.rm(dir, { recursive: true, force: true }));
