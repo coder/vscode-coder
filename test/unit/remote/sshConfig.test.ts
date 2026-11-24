@@ -2,11 +2,20 @@ import { vol } from "memfs";
 import * as fsPromises from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	onTestFinished,
+	vi,
+} from "vitest";
 
 import {
 	countSubstring,
-	getWindowsHomeSshConfigPath,
+	getHomeSshConfigPath,
+	getSshHomeDir,
 	mergeSshConfigValues,
 	parseCoderSshOptions,
 	parseSshConfig,
@@ -17,6 +26,7 @@ import {
 } from "@/remote/sshConfig";
 
 import { createMockLogger } from "../../mocks/testHelpers";
+import { isWindows } from "../../utils/platform";
 
 vi.mock("node:fs/promises", async () => {
 	const fs = (await import("memfs")).fs.promises;
@@ -125,9 +135,19 @@ async function updateDeployment(
 async function updateInclude(
 	contents: string,
 	dir: string = includeDir,
+	sshHomeDir: string = homeDir,
 ): Promise<void> {
 	const sshConfig = await loadSshConfig(contents);
-	await sshConfig.updateInclude(dir, hostname);
+	await sshConfig.updateInclude(dir, sshHomeDir, hostname);
+}
+
+/** ssh's home while `HOME` is stubbed for the rest of the test. */
+function getSshHomeDirWith(home: string | undefined): Promise<string> {
+	vi.stubEnv("HOME", home);
+	onTestFinished(() => {
+		vi.unstubAllEnvs();
+	});
+	return getSshHomeDir();
 }
 
 beforeEach(() => {
@@ -135,13 +155,10 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	vi.mocked(fsPromises.readdir).mockReset();
 	vi.mocked(os.homedir).mockReturnValue(homeDir);
-	// Windows CI sets HOME, which would move ssh's ~ away from homeDir.
-	vi.stubEnv("HOME", undefined);
 });
 
 afterEach(() => {
 	vi.restoreAllMocks();
-	vi.unstubAllEnvs();
 });
 
 describe("SshConfig.getRaw", () => {
@@ -330,8 +347,11 @@ describe("SshConfig.updateInclude", () => {
 	// A tilde swallows home-path quirks that ssh could not read back otherwise.
 	it("writes a home-relative include path with a tilde", async () => {
 		const home = "/home/we[i]rd %user";
-		vi.mocked(os.homedir).mockReturnValue(home);
-		await updateInclude("", `${home}/.local/share/coder.coder-remote/ssh`);
+		await updateInclude(
+			"",
+			`${home}/.local/share/coder.coder-remote/ssh`,
+			home,
+		);
 		expect(await readConfig()).toContain(
 			'Include "~/.local/share/coder.coder-remote/ssh/*.conf"',
 		);
@@ -350,84 +370,90 @@ describe("SshConfig.updateInclude", () => {
 	});
 });
 
-describe("Windows include paths", () => {
+describe.runIf(isWindows())("Windows ssh home and include paths", () => {
+	const profile = "C:\\Users\\Jane";
 	const appData = "Users/Jane/AppData/Roaming/coder.coder-remote/ssh";
 
-	beforeEach(() => {
-		const realPlatform = process.platform;
-		Object.defineProperty(process, "platform", { value: "win32" });
-		vi.mocked(os.homedir).mockReturnValue("C:\\Users\\Jane");
-		return () => {
-			Object.defineProperty(process, "platform", { value: realPlatform });
-		};
+	interface SshHomeCase {
+		home?: string;
+		sshHomeDir: string;
+	}
+	it.each<SshHomeCase>([
+		{ sshHomeDir: profile },
+		{ home: "c:\\users\\JANE\\", sshHomeDir: profile },
+		{ home: "H:\\", sshHomeDir: "H:\\" },
+	])("expands ~ from $sshHomeDir with HOME $home", async (testCase) => {
+		vi.mocked(os.homedir).mockReturnValue(profile);
+		expect(await getSshHomeDirWith(testCase.home)).toBe(testCase.sshHomeDir);
 	});
 
 	interface WindowsIncludeCase {
 		name: string;
-		home?: string;
+		sshHomeDir: string;
 		dir: string;
 		included: string[];
 	}
 	it.each<WindowsIncludeCase>([
 		{
-			name: "keeps ~ when HOME is unset",
+			name: "writes ~ under the profile",
+			sshHomeDir: profile,
 			dir: `C:\\${appData}`,
 			included: ["~/AppData/Roaming/coder.coder-remote/ssh"],
 		},
 		{
-			name: "keeps ~ when HOME is the profile in another case",
-			home: "c:\\users\\JANE\\",
-			dir: `C:\\${appData}`,
-			included: ["~/AppData/Roaming/coder.coder-remote/ssh"],
+			name: "writes ~ under HOME",
+			sshHomeDir: "H:\\",
+			dir: "H:\\coder\\ssh",
+			included: ["~/coder/ssh"],
 		},
 		{
-			name: "spells the path both ways when HOME is elsewhere",
-			home: "H:\\",
+			name: "spells the path both ways outside ssh's home",
+			sshHomeDir: "H:\\",
 			dir: `C:\\${appData}`,
 			included: [`C:/${appData}`, `/c/${appData}`],
 		},
 		{
-			name: "spells the path both ways outside the profile",
-			dir: "D:\\Profiles\\jane\\ssh",
-			included: ["D:/Profiles/jane/ssh", "/d/Profiles/jane/ssh"],
-		},
-		{
 			name: "escapes both spellings",
-			home: "/c/hshare",
+			sshHomeDir: "/c/hshare",
 			dir: "C:\\Users\\J%d [x]\\ssh",
 			included: ["C:/Users/J?d [[]x]/ssh", "/c/Users/J?d [[]x]/ssh"],
 		},
 		{
 			name: "writes a UNC path once",
-			home: "H:\\",
+			sshHomeDir: "H:\\",
 			dir: "\\\\srv\\share\\ssh",
 			included: ["//srv/share/ssh"],
 		},
-	])("$name", async ({ home, dir, included }) => {
-		vi.stubEnv("HOME", home);
-		await updateInclude("", dir);
+	])("$name", async ({ sshHomeDir, dir, included }) => {
+		await updateInclude("", dir, sshHomeDir);
 		expect(await readConfig()).toBe(renderIncludeBlock(...included));
 	});
 
-	it.each([
-		{ home: "H:\\", configPath: "H:\\.ssh\\config" },
-		{ home: "\\\\srv\\jane", configPath: "\\\\srv\\jane\\.ssh\\config" },
-		{ home: "/c/hshare", configPath: undefined },
-		{ home: "C:\\USERS\\jane", configPath: undefined },
-	])("finds HOME's ssh config for HOME $home", async ({ home, configPath }) => {
-		vi.stubEnv("HOME", home);
-		expect(await getWindowsHomeSshConfigPath()).toBe(configPath);
-	});
-
-	it("ignores HOME on other platforms", async () => {
-		Object.defineProperty(process, "platform", { value: "linux" });
-		vi.mocked(os.homedir).mockReturnValue(homeDir);
-		vi.stubEnv("HOME", "H:\\");
-		await updateInclude("", `${homeDir}/ssh`);
-		expect(await readConfig()).toBe(renderIncludeBlock("~/ssh"));
-		expect(await getWindowsHomeSshConfigPath()).toBeUndefined();
+	interface HomeSshConfigCase {
+		sshHomeDir: string;
+		configPath?: string;
+	}
+	it.each<HomeSshConfigCase>([
+		{ sshHomeDir: profile },
+		{ sshHomeDir: "H:\\", configPath: "H:\\.ssh\\config" },
+		{
+			sshHomeDir: "\\\\srv\\jane",
+			configPath: "\\\\srv\\jane\\.ssh\\config",
+		},
+		{ sshHomeDir: "/c/hshare" },
+	])("finds the config Git reads in $sshHomeDir", (testCase) => {
+		vi.mocked(os.homedir).mockReturnValue(profile);
+		expect(getHomeSshConfigPath(testCase.sshHomeDir)).toBe(testCase.configPath);
 	});
 });
+
+it.skipIf(isWindows())(
+	"expands ~ from the home directory off Windows",
+	async () => {
+		expect(await getSshHomeDirWith("/elsewhere")).toBe(homeDir);
+		expect(getHomeSshConfigPath(homeDir)).toBeUndefined();
+	},
+);
 
 describe("persistence", () => {
 	interface FileModeCase {
@@ -460,7 +486,7 @@ describe("persistence", () => {
 			if (stage === "include read") {
 				vi.spyOn(fsPromises, "readFile").mockRejectedValueOnce(denied);
 				await expect(
-					sshConfig.updateInclude(includeDir, hostname),
+					sshConfig.updateInclude(includeDir, homeDir, hostname),
 				).rejects.toThrow("denied");
 				return;
 			}
@@ -512,7 +538,7 @@ describe("persistence", () => {
 		// The include update reads right before merging, so it picks up content
 		// written after load().
 		vol.writeFileSync(sshFilePath, "Host concurrent");
-		await sshConfig.updateInclude(includeDir, hostname);
+		await sshConfig.updateInclude(includeDir, homeDir, hostname);
 		expect(await readConfig()).toBe(`${includeBlock}\n\nHost concurrent`);
 	});
 
@@ -520,7 +546,7 @@ describe("persistence", () => {
 		const sshConfig = await loadSshConfig(`${includeBlock}\n\nHost *`);
 		const writeFileSpy = vi.spyOn(fsPromises, "writeFile");
 		const renameSpy = vi.spyOn(fsPromises, "rename");
-		await sshConfig.updateInclude(includeDir, hostname);
+		await sshConfig.updateInclude(includeDir, homeDir, hostname);
 		expect(writeFileSpy).not.toHaveBeenCalled();
 		expect(renameSpy).not.toHaveBeenCalled();
 	});

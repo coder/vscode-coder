@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
-import { SshConfig, type SshValues } from "@/remote/sshConfig";
+import { getSshHomeDir, SshConfig, type SshValues } from "@/remote/sshConfig";
 
 import { createMockLogger } from "../../mocks/testHelpers";
 
@@ -63,7 +63,11 @@ async function createFixture(includeDirName: string) {
 			await coderConfig.update(sshValues(hostname, proxyCommand, editor));
 			const userConfig = new SshConfig(userConfigPath, logger);
 			await userConfig.load();
-			await userConfig.updateInclude(includeDir, hostname);
+			await userConfig.updateInclude(
+				includeDir,
+				await getSshHomeDir(),
+				hostname,
+			);
 		},
 		async seedUserConfig(contents: string) {
 			await fs.writeFile(userConfigPath, contents);
@@ -156,25 +160,33 @@ const windowsSshBuilds =
 				`${process.env.ProgramFiles}\\Git\\usr\\bin\\ssh.exe`,
 			].filter((ssh) => existsSync(ssh))
 		: [];
-const homes = {
-	unset: undefined,
-	profile: os.homedir(),
-	elsewhere: path.join(os.tmpdir(), "elsewhere"),
-};
+interface HomeCase {
+	sshPath: string;
+	name: string;
+	/** The HOME to set, given the fixture directory that holds the include. */
+	home: (fixtureDir: string) => string | undefined;
+}
 
 // Every build expands ~ from HOME; they differ on which absolute paths they read.
 describe.skipIf(windowsSshBuilds.length === 0)(
 	"include resolution by each Windows ssh build",
 	() => {
-		it.each(
-			windowsSshBuilds.flatMap((sshPath) =>
-				Object.entries(homes).map(([name, home]) => ({ sshPath, name, home })),
-			),
+		it.each<HomeCase>(
+			windowsSshBuilds.flatMap((sshPath) => [
+				{ sshPath, name: "unset", home: () => undefined },
+				{ sshPath, name: "the profile", home: () => os.homedir() },
+				{
+					sshPath,
+					name: "elsewhere",
+					home: () => path.join(os.tmpdir(), "elsewhere"),
+				},
+				{ sshPath, name: "holding the include", home: (dir) => dir },
+			]),
 		)(
 			"$sshPath reads the include with HOME $name",
 			async ({ sshPath, home }) => {
-				vi.stubEnv("HOME", home);
 				const ssh = await createFixture("Code Dir");
+				vi.stubEnv("HOME", home(path.dirname(ssh.includeDir)));
 				await ssh.connect("dev.coder.com", "echo dev-wins");
 				expect(
 					await ssh.resolve("coder-vscode.dev.coder.com--user--ws", sshPath),
@@ -185,10 +197,15 @@ describe.skipIf(windowsSshBuilds.length === 0)(
 
 		it("keeps ~ when HOME reaches the profile through a junction", async () => {
 			const ssh = await createFixture("Code Dir");
-			const junction = path.join(os.tmpdir(), `coder-home-${process.pid}`);
+			// A unique parent, so a killed run never blocks the next one.
+			const parent = await fs.mkdtemp(path.join(os.tmpdir(), "coder-home-"));
+			const junction = path.join(parent, "home");
 			await fs.symlink(os.homedir(), junction, "junction");
 			// rmdir removes the junction itself, never the profile behind it.
-			onTestFinished(() => fs.rmdir(junction));
+			onTestFinished(async () => {
+				await fs.rmdir(junction);
+				await fs.rmdir(parent);
+			});
 			vi.stubEnv("HOME", junction.toUpperCase());
 			await ssh.connect("dev.coder.com", "echo dev-wins");
 			expect(await ssh.readUserConfig()).toContain('Include "~/');

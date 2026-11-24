@@ -79,6 +79,12 @@ const KEY_ONLY_REGEX = /^[a-zA-Z0-9-]+$/;
 /** Characters that would break a value out of its config line. */
 const UNSAFE_CHARS_REGEX = /[\r\n\0]/;
 
+/** A drive (`C:\`) or UNC (`\\server`) path, unlike MSYS `/c/...`. */
+const DRIVE_OR_UNC_PATH_REGEX = /^([a-z]:[\\/]|[\\/]{2}[^\\/])/i;
+
+/** The drive of a forward-slashed Windows path, such as `C:/`. */
+const DRIVE_PREFIX_REGEX = /^([a-z]):\//i;
+
 interface BlockMarkers {
 	start: string;
 	end: string;
@@ -102,48 +108,50 @@ const INCLUDE_MARKERS: BlockMarkers = {
 	end: "# --- END CODER INCLUDE CODER-REMOTE ---",
 };
 
-/** One absolute Include spelling per Windows ssh build; ssh skips the rest. */
-const WINDOWS_PATH_SPELLINGS: ReadonlyArray<(dir: string) => string> = [
-	// Win32-OpenSSH 8.1+: C:/Users/...
-	(dir) => dir,
-	// MSYS builds such as Git for Windows: /c/Users/...
-	(dir) =>
-		dir.replace(
-			/^([a-z]):\//i,
-			(_, drive: string) => `/${drive.toLowerCase()}/`,
-		),
-];
-
-/** On Windows, a `HOME` other than the profile, which ssh expands `~` from. */
-async function getWindowsHomeOverride(): Promise<string | undefined> {
+/**
+ * The directory ssh expands `~` from: `HOME` on Windows, where every build
+ * reads it, unless it is the profile under another spelling. Otherwise
+ * exactly `os.homedir()`.
+ */
+export async function getSshHomeDir(): Promise<string> {
 	const home = process.env.HOME;
+	const profile = os.homedir();
 	if (process.platform !== "win32" || !home) {
-		return undefined;
+		return profile;
 	}
 	// The real path sees through 8.3 names, junctions and subst drives.
 	const canonical = (dir: string) =>
 		realpath(dir)
-			.catch(() => path.win32.resolve(dir))
+			.catch(() => path.resolve(dir))
 			.then((resolved) => resolved.toLowerCase());
-	const [resolvedHome, profile] = await Promise.all([
+	const [realHome, realProfile] = await Promise.all([
 		canonical(home),
-		canonical(os.homedir()),
+		canonical(profile),
 	]);
-	return resolvedHome === profile ? undefined : home;
+	return realHome === realProfile ? profile : home;
 }
 
 /**
- * The config Git for Windows ssh reads without `-F` when `HOME` overrides the
- * profile. Only drive and UNC paths, so `/c/...` is never resolved by guessing.
+ * The config Git for Windows ssh reads without `-F` when ssh's home is not
+ * the profile. Undefined for the profile, which is already included, and for
+ * MSYS homes like `/c/home`, which only MSYS can map to a Windows path.
  */
-export async function getWindowsHomeSshConfigPath(): Promise<
-	string | undefined
-> {
-	const home = await getWindowsHomeOverride();
-	if (!home || !/^([a-z]:|[\\/]{2}[^\\/])/i.test(home)) {
+export function getHomeSshConfigPath(sshHomeDir: string): string | undefined {
+	if (
+		sshHomeDir === os.homedir() ||
+		!DRIVE_OR_UNC_PATH_REGEX.test(sshHomeDir)
+	) {
 		return undefined;
 	}
-	return path.win32.join(home, ".ssh", "config");
+	return path.join(sshHomeDir, ".ssh", "config");
+}
+
+/** `C:/Users/...` as MSYS builds such as Git for Windows spell it: `/c/Users/...`. */
+function toMsysPath(dir: string): string {
+	return dir.replace(
+		DRIVE_PREFIX_REGEX,
+		(_, drive: string) => `/${drive.toLowerCase()}/`,
+	);
 }
 
 /** Header of the generated per-deployment file. */
@@ -416,9 +424,13 @@ export class SshConfig {
 	 * blocks. Read-modify-write with no locking, like the CLI's config-ssh;
 	 * when the include is already in place nothing is written.
 	 */
-	async updateInclude(includeDir: string, safeHostname: string) {
+	async updateInclude(
+		includeDir: string,
+		sshHomeDir: string,
+		safeHostname: string,
+	) {
 		const block = this.renderIncludeBlock(
-			await this.includeArguments(includeDir),
+			this.includeArguments(includeDir, sshHomeDir),
 		);
 		const raw = await this.read();
 		this.raw = this.mergeInclude(raw, block, safeHostname);
@@ -494,21 +506,20 @@ export class SshConfig {
 		].join("\n");
 	}
 
-	/** `~/...` when ssh's `~` is `os.homedir()`, else every absolute spelling. */
-	private async includeArguments(includeDir: string): Promise<string[]> {
-		const windows = process.platform === "win32";
-		const pathApi = windows ? path.win32 : path;
-		const relative = pathApi.relative(os.homedir(), includeDir);
-		const underHome =
-			relative && !relative.startsWith("..") && !pathApi.isAbsolute(relative);
-		if (underHome && !(await getWindowsHomeOverride())) {
+	/**
+	 * `~/...` under ssh's home. Otherwise the absolute path, which Windows gets
+	 * in both builds' spellings since each skips the one it cannot match.
+	 */
+	private includeArguments(includeDir: string, sshHomeDir: string): string[] {
+		const relative = path.relative(sshHomeDir, includeDir);
+		if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
 			return [`~/${relative}`];
 		}
-		if (!windows) {
+		if (process.platform !== "win32") {
 			return [includeDir];
 		}
 		const dir = includeDir.replaceAll("\\", "/");
-		return [...new Set(WINDOWS_PATH_SPELLINGS.map((spell) => spell(dir)))];
+		return [...new Set([dir, toMsysPath(dir)])];
 	}
 
 	private escapeIncludePath(argument: string): string {

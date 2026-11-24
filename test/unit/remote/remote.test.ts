@@ -14,7 +14,7 @@ import {
 	Remote,
 	workspaceLabelSuffix,
 } from "@/remote/remote";
-import { getWindowsHomeSshConfigPath } from "@/remote/sshConfig";
+import { getHomeSshConfigPath } from "@/remote/sshConfig";
 import { resolveSshProperties } from "@/remote/sshSupport";
 import { MementoManager } from "@/storage/mementoManager";
 import { PathResolver } from "@/storage/pathResolver";
@@ -85,7 +85,7 @@ vi.mock(import("@/remote/sshSupport"), async (importOriginal) => ({
 }));
 vi.mock(import("@/remote/sshConfig"), async (importOriginal) => ({
 	...(await importOriginal()),
-	getWindowsHomeSshConfigPath: vi.fn(),
+	getHomeSshConfigPath: vi.fn(),
 }));
 
 const SAFE_HOSTNAME = "coder.example.com";
@@ -108,7 +108,7 @@ const CLI_AUTH: CliAuth = {
 };
 
 function createRemote(logger: Logger = createMockLogger()) {
-	new MockConfigurationProvider();
+	const config = new MockConfigurationProvider();
 	const userInteraction = new MockUserInteraction();
 	const pathResolver = new PathResolver("/mock/global", "/mock/log");
 	vol.fromJSON({
@@ -148,6 +148,7 @@ function createRemote(logger: Logger = createMockLogger()) {
 			{} as Commands,
 			{} as vscode.ExtensionContext,
 		),
+		config,
 		ensureLoggedInWithDialog,
 		mementoManager,
 		secretsManager,
@@ -622,30 +623,35 @@ describe("Remote", () => {
 
 		describe("HOME ssh config on Windows", () => {
 			const homeConfig = "/h/.ssh/config";
-			beforeEach(() => {
-				vi.mocked(getWindowsHomeSshConfigPath).mockResolvedValue(homeConfig);
-			});
 
-			it.each([
-				{ configFile: undefined, included: true },
+			/** Connects while Git for Windows ssh would read `homeConfig`. */
+			async function writeWithHomeConfig(configFile?: string) {
+				vi.mocked(getHomeSshConfigPath).mockReturnValue(homeConfig);
+				const logger = createMockLogger();
+				const context = createRemote(logger);
+				context.config.set("remote.SSH.configFile", configFile);
+				await writeConfig(undefined, context);
+				return logger;
+			}
+
+			interface HomeConfigCase {
+				configFile?: string;
+				included: boolean;
+			}
+			it.each<HomeConfigCase>([
+				{ included: true },
 				{ configFile: "/mock/ssh/config", included: false },
 			])(
 				"includes the Coder config: $included with -F $configFile",
 				async ({ configFile, included }) => {
-					const context = createRemote();
-					new MockConfigurationProvider().set(
-						"remote.SSH.configFile",
-						configFile,
-					);
-					await writeConfig(undefined, context);
+					await writeWithHomeConfig(configFile);
 					expect(vol.existsSync(homeConfig)).toBe(included);
 				},
 			);
 
 			it("warns and still connects when it cannot be written", async () => {
-				const logger = createMockLogger();
 				vol.fromJSON({ "/h": "not a directory" });
-				await writeConfig(undefined, createRemote(logger));
+				const logger = await writeWithHomeConfig();
 				expect(logger.warn).toHaveBeenCalledWith(
 					"Failed to include the Coder SSH config in",
 					homeConfig,

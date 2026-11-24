@@ -63,7 +63,7 @@ describe.skipIf(spawnSync("ssh", ["-V"]).error)(
 			await expect(
 				resolveSshProperties(undefined, "coder-ws", config),
 			).rejects.toThrow(
-				/no ProxyCommand\n.*Reading configuration data.*\n.*coder-ssh-g-missing\/\*\.conf matched no files/,
+				/^ssh -G resolved no ProxyCommand\n[^]*coder-ssh-g-missing\/\*\.conf matched no files/,
 			);
 		});
 	},

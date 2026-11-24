@@ -55,12 +55,12 @@ Include "~/.local/share/coder.coder-remote/ssh/*.conf"
 # --- END CODER INCLUDE CODER-REMOTE ---
 ```
 
-ssh expands `~` from `HOME` when it is set, on Windows too. When `HOME` names
-another directory, or the data directory is outside the profile, Windows gets
-the absolute path twice instead: `C:/...` for Windows OpenSSH and `/c/...` for
-Git for Windows ssh. Each build skips the spelling it cannot match. Without
-`-F`, Git for Windows ssh reads `$HOME/.ssh/config`, so that file gains the
-include block too. A `%` in the path is written as the glob `?`, since OpenSSH
+On Windows, ssh expands `~` from `HOME` when it is set, else from the profile,
+and the include is relative to that directory. When the data directory is
+outside it, Windows gets the absolute path twice instead: `C:/...` for Windows
+OpenSSH and `/c/...` for Git for Windows ssh. Each build skips the spelling it
+cannot match. Without `-F`, Git for Windows ssh reads `$HOME/.ssh/config`, so
+that file gains the include block too. A `%` in the path is written as the glob `?`, since OpenSSH
 9.9 and later expand `%` tokens in `Include` and older versions don't.
 
 Each generated file contains only its own editor's host entries for one
