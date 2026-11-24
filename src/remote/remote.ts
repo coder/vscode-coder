@@ -65,6 +65,7 @@ import {
 } from "./environment";
 import { migrateAuthToSecretsStorage } from "./migration";
 import {
+	getWindowsHomeSshConfigPath,
 	SshConfig,
 	type SshValues,
 	mergeSshConfigValues,
@@ -995,6 +996,9 @@ export class Remote {
 			this.pathResolver.getSshConfigDir(),
 			safeHostname,
 		);
+		if (!configFile) {
+			await this.includeInWindowsHomeConfig(safeHostname);
+		}
 
 		try {
 			return await resolveSshProperties(
@@ -1007,6 +1011,31 @@ export class Remote {
 			return computeSshProperties(
 				parts.sshHost,
 				`${coderConfig.getRaw()}\n${sshConfig.getRaw()}`,
+			);
+		}
+	}
+
+	/**
+	 * Git for Windows ssh reads `HOME`'s config without `-F`; Win32-OpenSSH
+	 * never does, so a failure here only warns.
+	 */
+	private async includeInWindowsHomeConfig(
+		safeHostname: string,
+	): Promise<void> {
+		const configPath = getWindowsHomeSshConfigPath();
+		if (!configPath) {
+			return;
+		}
+		try {
+			await new SshConfig(configPath, this.logger).updateInclude(
+				this.pathResolver.getSshConfigDir(),
+				safeHostname,
+			);
+		} catch (error) {
+			this.logger.warn(
+				"Failed to include the Coder SSH config in",
+				configPath,
+				error,
 			);
 		}
 	}

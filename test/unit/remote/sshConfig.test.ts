@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	countSubstring,
+	getWindowsHomeSshConfigPath,
 	mergeSshConfigValues,
 	parseCoderSshOptions,
 	parseSshConfig,
@@ -134,10 +135,13 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	vi.mocked(fsPromises.readdir).mockReset();
 	vi.mocked(os.homedir).mockReturnValue(homeDir);
+	// Windows CI sets HOME, which would move ssh's ~ away from homeDir.
+	vi.stubEnv("HOME", undefined);
 });
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	vi.unstubAllEnvs();
 });
 
 describe("SshConfig.getRaw", () => {
@@ -323,6 +327,15 @@ describe("SshConfig.updateInclude", () => {
 		expect(await readConfig()).toContain(`Include "${escaped}/*.conf"`);
 	});
 
+	// OpenSSH 9.9+ expands %-tokens in Include and older builds don't; the
+	// glob ? matches a literal % on both.
+	it("writes % in an include path as ?", async () => {
+		await updateInclude("", "/opt/50%d [x]/ssh");
+		expect(await readConfig()).toContain(
+			'Include "/opt/50?d [[]x]/ssh/*.conf"',
+		);
+	});
+
 	// A tilde swallows home-path quirks that ssh could not read back otherwise.
 	it("writes a home-relative include path with a tilde", async () => {
 		const home = "/home/we[i]rd %user";
@@ -339,11 +352,123 @@ describe("SshConfig.updateInclude", () => {
 		"path\nname",
 		"path\0name",
 		'path"name',
-		"path%name",
 	])("rejects unrepresentable include paths", async (dir) => {
 		await expect(updateInclude("", dir)).rejects.toThrow(
 			"must not contain CR, LF, NUL",
 		);
+	});
+});
+
+describe("Windows include paths", () => {
+	const profile = "C:\\Users\\Jane";
+	const appDataDir = `${profile}\\AppData\\Roaming\\coder.coder-remote\\ssh`;
+
+	beforeEach(() => {
+		const realPlatform = process.platform;
+		Object.defineProperty(process, "platform", { value: "win32" });
+		vi.mocked(os.homedir).mockReturnValue(profile);
+		return () => {
+			Object.defineProperty(process, "platform", { value: realPlatform });
+		};
+	});
+
+	async function includeLine(dir: string): Promise<string | undefined> {
+		await updateInclude("", dir);
+		return (await readConfig())
+			.split("\n")
+			.find((line) => line.startsWith("Include "));
+	}
+
+	interface WindowsIncludeCase {
+		name: string;
+		home?: string;
+		dir: string;
+		line: string;
+	}
+	it.each<WindowsIncludeCase>([
+		{
+			name: "keeps ~ when HOME is unset",
+			dir: appDataDir,
+			line: 'Include "~/AppData/Roaming/coder.coder-remote/ssh/*.conf"',
+		},
+		{
+			name: "keeps ~ when HOME is the profile in another case",
+			home: "c:\\users\\JANE\\",
+			dir: appDataDir,
+			line: 'Include "~/AppData/Roaming/coder.coder-remote/ssh/*.conf"',
+		},
+		{
+			name: "writes both absolute forms when HOME is another drive",
+			home: "H:\\",
+			dir: appDataDir,
+			line: 'Include "C:/Users/Jane/AppData/Roaming/coder.coder-remote/ssh/*.conf" "/c/Users/Jane/AppData/Roaming/coder.coder-remote/ssh/*.conf"',
+		},
+		{
+			name: "writes both absolute forms when HOME is an MSYS path",
+			home: "/c/hshare",
+			dir: appDataDir,
+			line: 'Include "C:/Users/Jane/AppData/Roaming/coder.coder-remote/ssh/*.conf" "/c/Users/Jane/AppData/Roaming/coder.coder-remote/ssh/*.conf"',
+		},
+		{
+			name: "writes both absolute forms outside the profile",
+			dir: "D:\\Profiles\\jane\\ssh",
+			line: 'Include "D:/Profiles/jane/ssh/*.conf" "/d/Profiles/jane/ssh/*.conf"',
+		},
+		{
+			name: "writes a UNC path once",
+			home: "H:\\",
+			dir: "\\\\srv\\share\\jane\\ssh",
+			line: 'Include "//srv/share/jane/ssh/*.conf"',
+		},
+		{
+			name: "escapes every absolute form",
+			home: "H:\\",
+			dir: "C:\\Users\\J%d [x]\\ssh",
+			line: 'Include "C:/Users/J?d [[]x]/ssh/*.conf" "/c/Users/J?d [[]x]/ssh/*.conf"',
+		},
+	])("$name", async ({ home, dir, line }) => {
+		if (home !== undefined) {
+			vi.stubEnv("HOME", home);
+		}
+		expect(await includeLine(dir)).toBe(line);
+	});
+
+	it("keeps ~ on other platforms whatever HOME is", async () => {
+		Object.defineProperty(process, "platform", { value: "linux" });
+		vi.mocked(os.homedir).mockReturnValue(homeDir);
+		vi.stubEnv("HOME", "/elsewhere");
+		expect(await includeLine(`${homeDir}/.local/share/ssh`)).toBe(
+			'Include "~/.local/share/ssh/*.conf"',
+		);
+	});
+
+	interface HomeConfigCase {
+		home?: string;
+		configPath: string | undefined;
+	}
+	it.each<HomeConfigCase>([
+		{ home: "H:\\", configPath: "H:\\.ssh\\config" },
+		{
+			home: "\\\\srv\\home\\jane",
+			configPath: "\\\\srv\\home\\jane\\.ssh\\config",
+		},
+		{ home: "/c/hshare", configPath: undefined },
+		{ home: "C:\\USERS\\jane", configPath: undefined },
+		{ home: undefined, configPath: undefined },
+	])(
+		"finds the HOME ssh config $configPath for HOME $home",
+		({ home, configPath }) => {
+			if (home !== undefined) {
+				vi.stubEnv("HOME", home);
+			}
+			expect(getWindowsHomeSshConfigPath()).toBe(configPath);
+		},
+	);
+
+	it("finds no HOME ssh config on other platforms", () => {
+		Object.defineProperty(process, "platform", { value: "linux" });
+		vi.stubEnv("HOME", "H:\\");
+		expect(getWindowsHomeSshConfigPath()).toBeUndefined();
 	});
 });
 

@@ -101,6 +101,49 @@ const INCLUDE_MARKERS: BlockMarkers = {
 	end: "# --- END CODER INCLUDE CODER-REMOTE ---",
 };
 
+/**
+ * Absolute Include spellings for each Windows ssh build; an argument that
+ * matches nothing is skipped silently, so each build reads one of them.
+ */
+const WINDOWS_PATH_SPELLINGS: ReadonlyArray<(dir: string) => string> = [
+	// Win32-OpenSSH 8.1+ reads C:/Users/... as absolute.
+	(dir) => dir,
+	// MSYS builds such as Git for Windows read only /-rooted paths as absolute.
+	(dir) =>
+		dir.replace(
+			/^([a-z]):\//i,
+			(_, drive: string) => `/${drive.toLowerCase()}/`,
+		),
+];
+
+/**
+ * On Windows, `HOME` when it names a directory other than `os.homedir()`.
+ * Win32-OpenSSH and Git for Windows ssh both expand `~` from it when set.
+ */
+function getWindowsHomeOverride(): string | undefined {
+	const home = process.env.HOME;
+	if (process.platform !== "win32" || !home) {
+		return undefined;
+	}
+	const same =
+		path.win32.resolve(home).toLowerCase() ===
+		path.win32.resolve(os.homedir()).toLowerCase();
+	return same ? undefined : home;
+}
+
+/**
+ * The main config Git for Windows ssh reads without `-F` when `HOME` moves
+ * it away from the profile. Undefined unless `HOME` is a drive or UNC path,
+ * so a form like `/c/...` is never resolved to a guessed location.
+ */
+export function getWindowsHomeSshConfigPath(): string | undefined {
+	const home = getWindowsHomeOverride();
+	if (!home || !/^([a-z]:|[\\/]{2}[^\\/])/i.test(home)) {
+		return undefined;
+	}
+	return path.win32.join(home, ".ssh", "config");
+}
+
 /** Header of the generated per-deployment file. */
 const CODER_SSH_CONFIG_HEADER = `# Coder workspace hosts. Do not edit; the Coder extension rewrites this file
 # on every connection. Override options with the "coder.sshConfig" setting.`;
@@ -440,27 +483,47 @@ export class SshConfig {
 			INCLUDE_MARKERS.start,
 			"# Managed by the Coder extension for VS Code and its forks.",
 			"# Moves back to the top on connect; override options via coder.sshConfig.",
-			`Include "${this.escapeIncludePath(includeDir)}/*${SSH_CONFIG_EXT}"`,
+			`Include ${this.includeArguments(includeDir)
+				.map((dir) => `"${this.escapeIncludePath(dir)}/*${SSH_CONFIG_EXT}"`)
+				.join(" ")}`,
 			INCLUDE_MARKERS.end,
 		].join("\n");
 	}
 
-	private escapeIncludePath(includePath: string): string {
-		// Emit ~/... so home-path quirks (spaces, %, glob chars) never reach ssh.
-		const relative = path.relative(os.homedir(), includePath);
-		const argument =
-			relative && !relative.startsWith("..") && !path.isAbsolute(relative)
-				? `~/${relative}`
-				: includePath;
-		// No escape exists for '"' in quoted arguments; OpenSSH 9.9+ fatals on
-		// unknown %-tokens in Include arguments.
-		if (/[\r\n\0"%]/.test(argument)) {
+	/**
+	 * `~/...` wherever ssh expands `~` to `os.homedir()`, which keeps home-path
+	 * quirks away from ssh; otherwise every absolute spelling the platform needs.
+	 */
+	private includeArguments(includeDir: string): string[] {
+		const windows = process.platform === "win32";
+		const pathApi = windows ? path.win32 : path;
+		const relative = pathApi.relative(os.homedir(), includeDir);
+		const underHome =
+			relative && !relative.startsWith("..") && !pathApi.isAbsolute(relative);
+		if (underHome && !getWindowsHomeOverride()) {
+			return [`~/${relative}`];
+		}
+		if (!windows) {
+			return [includeDir];
+		}
+		const dir = includeDir.replaceAll("\\", "/");
+		return [...new Set(WINDOWS_PATH_SPELLINGS.map((spell) => spell(dir)))];
+	}
+
+	private escapeIncludePath(argument: string): string {
+		// No escape exists for '"' in quoted arguments.
+		if (/[\r\n\0"]/.test(argument)) {
 			throw new Error(
-				"SSH include path must not contain CR, LF, NUL, %, or double-quote characters.",
+				"SSH include path must not contain CR, LF, NUL, or double-quote characters.",
 			);
 		}
-		// Bracket classes, since OpenSSH for Windows can't backslash-escape.
-		return argument.replaceAll("\\", "/").replace(/[*?[]/g, "[$&]");
+		// Bracket classes, since OpenSSH for Windows can't backslash-escape. `%`
+		// becomes `?`: OpenSSH 9.9+ expands %-tokens in Include and older builds
+		// don't, so no escape works on both.
+		return argument
+			.replaceAll("\\", "/")
+			.replace(/[*?[]/g, "[$&]")
+			.replaceAll("%", "?");
 	}
 
 	private mergeInclude(

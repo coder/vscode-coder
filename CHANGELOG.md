@@ -23,6 +23,9 @@
 - The session type now reaches the workspace with every OpenSSH version.
 - On Devin 3.12.32 and later, workspace hosts go into the file set in
   `remote.devinSSH.configFile`.
+- On Windows, workspaces connect again when `HOME` points somewhere other than
+  your user profile, with both Windows OpenSSH and Git for Windows ssh.
+- SSH config paths containing `%` no longer stop workspaces from connecting.
 
 ## [v1.18.2](https://github.com/coder/vscode-coder/releases/tag/v1.18.2) (Pre-release) 2026-11-20
 

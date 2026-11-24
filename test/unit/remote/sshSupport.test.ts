@@ -47,14 +47,19 @@ describe.skipIf(spawnSync("ssh", ["-V"]).error)(
 			).rejects.toThrow();
 		});
 
-		it("rejects a config without the Coder ProxyCommand", async () => {
+		it("rejects a config without the Coder ProxyCommand, listing what ssh read", async () => {
 			const dir = await fs.mkdtemp(path.join(os.tmpdir(), "coder-ssh-g-"));
 			onTestFinished(() => fs.rm(dir, { recursive: true, force: true }));
 			const config = path.join(dir, "config");
-			await fs.writeFile(config, "Host other\n  ProxyCommand coder ssh %h\n");
+			await fs.writeFile(
+				config,
+				'Include "~/coder-ssh-g-missing/*.conf"\nHost other\n  ProxyCommand coder ssh %h\n',
+			);
 			await expect(
 				resolveSshProperties(undefined, "coder-ws", config),
-			).rejects.toThrow("ProxyCommand");
+			).rejects.toThrow(
+				/no ProxyCommand\n.*Reading configuration data.*\n.*coder-ssh-g-missing\/\*\.conf matched no files/,
+			);
 		});
 	},
 );

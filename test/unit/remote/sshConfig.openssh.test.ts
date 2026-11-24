@@ -1,9 +1,10 @@
 import { execFile, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SshConfig, type SshValues } from "@/remote/sshConfig";
 
@@ -34,6 +35,7 @@ const sshValues = (
 let tempDir: string | undefined;
 
 afterEach(async () => {
+	vi.unstubAllEnvs();
 	if (tempDir) {
 		await fs.rm(tempDir, { recursive: true, force: true });
 		tempDir = undefined;
@@ -51,6 +53,7 @@ async function createFixture(includeDirName: string) {
 	const userConfigPath = path.join(tempDir, "config");
 
 	return {
+		tempDir,
 		includeDir,
 		/** What the extension does on connect: write our file, then include it. */
 		async connect(hostname: string, proxyCommand: string, editor = "vscode") {
@@ -70,8 +73,8 @@ async function createFixture(includeDirName: string) {
 			await fs.appendFile(userConfigPath, contents);
 		},
 		/** The host's effective options according to the real ssh. */
-		async resolve(host: string) {
-			const { stdout } = await run("ssh", ["-G", "-F", userConfigPath, host], {
+		async resolve(host: string, ssh = "ssh") {
+			const { stdout } = await run(ssh, ["-G", "-F", userConfigPath, host], {
 				timeout: 10_000,
 			});
 			return stdout;
@@ -143,4 +146,60 @@ describe.skipIf(!sshAvailable)("include resolution by real OpenSSH", () => {
 		},
 		TEST_TIMEOUT_MS,
 	);
+
+	// OpenSSH 9.9+ expands %d to the home directory in Include arguments.
+	it(
+		"honors % in the include path",
+		async () => {
+			const ssh = await createFixture("50%d off");
+			await ssh.connect("dev.coder.com", "echo dev-wins");
+			expect(
+				await ssh.resolve("coder-vscode.dev.coder.com--user--ws"),
+			).toContain("proxycommand echo dev-wins");
+		},
+		TEST_TIMEOUT_MS,
+	);
 });
+
+const windowsSshBuilds = [
+	path.join(
+		process.env.SystemRoot ?? "C:\\Windows",
+		"System32\\OpenSSH\\ssh.exe",
+	),
+	path.join(
+		process.env.ProgramFiles ?? "C:\\Program Files",
+		"Git\\usr\\bin\\ssh.exe",
+	),
+].filter((ssh) => process.platform === "win32" && existsSync(ssh));
+
+// Both builds expand ~ from HOME when it is set, and differ on which absolute
+// Include paths they read.
+describe.skipIf(windowsSshBuilds.length === 0)(
+	"include resolution by each Windows ssh build",
+	() => {
+		type HomeCase = "unset" | "profile" | "elsewhere";
+		const cases = windowsSshBuilds.flatMap((ssh) =>
+			(["unset", "profile", "elsewhere"] as const).map(
+				(home): [string, HomeCase] => [ssh, home],
+			),
+		);
+		it.each(cases)(
+			"%s reads the include with HOME %s",
+			async (sshPath, home) => {
+				const ssh = await createFixture("Code Dir");
+				const homes: Record<HomeCase, string | undefined> = {
+					unset: undefined,
+					profile: os.homedir(),
+					elsewhere: path.join(ssh.tempDir, "elsewhere"),
+				};
+				// ssh inherits the HOME the extension sees.
+				vi.stubEnv("HOME", homes[home]);
+				await ssh.connect("dev.coder.com", "echo dev-wins");
+				expect(
+					await ssh.resolve("coder-vscode.dev.coder.com--user--ws", sshPath),
+				).toContain("proxycommand echo dev-wins");
+			},
+			TEST_TIMEOUT_MS,
+		);
+	},
+);
