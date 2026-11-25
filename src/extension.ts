@@ -23,6 +23,7 @@ import {
 	ActivationTelemetry,
 	type ActivationTracer,
 } from "./instrumentation/activation";
+import { registerMcpServerProvider } from "./mcp/mcpServerProvider";
 import { OAuthSessionManager } from "./oauth/sessionManager";
 import { ConnectionSetup } from "./remote/connectionSetup";
 import { Remote } from "./remote/remote";
@@ -37,6 +38,9 @@ import { WorkspaceStore } from "./webviews/workspaces/workspaceStore";
 import { WorkspaceProvider } from "./workspace/workspacesProvider";
 
 import type { WorkspaceFilter } from "@repo/shared";
+
+import type { Logger } from "./logging/logger";
+import type { MementoManager } from "./storage/mementoManager";
 
 const MY_WORKSPACES_TREE_ID = "myWorkspaces";
 const SHARED_WORKSPACES_TREE_ID = "sharedWorkspaces";
@@ -70,6 +74,8 @@ async function doActivate(
 	// Means that vscodium is not supported by this for now
 
 	const remoteSshExtension = getRemoteSshExtension();
+	const output = serviceContainer.getLogger();
+	const mementoManager = serviceContainer.getMementoManager();
 
 	let vscodeProposed: typeof vscode = vscode;
 
@@ -80,18 +86,12 @@ async function doActivate(
 		vscodeProposed = extensionRequire("vscode") as typeof vscode;
 	} else if (!isAgentsWindow()) {
 		// The Agents window disables Remote SSH, so its absence there is expected.
-		vscode.window.showErrorMessage(
-			"Remote SSH extension not found, this may not work as expected.\n" +
-				// NB should we link to documentation or marketplace?
-				"Please install your choice of Remote SSH extension from the VS Code Marketplace.",
-		);
+		await warnRemoteSshMissing(mementoManager, output);
 	}
 
 	// Initialize the global vscodeProposed module for use throughout the extension
 	initVscodeProposed(vscodeProposed);
 
-	const output = serviceContainer.getLogger();
-	const mementoManager = serviceContainer.getMementoManager();
 	const secretsManager = serviceContainer.getSecretsManager();
 	const contextManager = serviceContainer.getContextManager();
 	const commandManager = serviceContainer.getCommandManager();
@@ -179,6 +179,15 @@ async function doActivate(
 		output,
 	);
 	ctx.subscriptions.push(announcementManager);
+
+	const mcpServerRegistration = registerMcpServerProvider(
+		client,
+		deploymentManager.session,
+		output,
+	);
+	if (mcpServerRegistration) {
+		ctx.subscriptions.push(mcpServerRegistration);
+	}
 
 	// The deprecated Tasks panel only shows on deployments old enough to
 	// still support it, which requires fetching the deployment version.
@@ -592,6 +601,26 @@ async function doActivate(
 			}
 		}
 	}
+}
+
+/**
+ * Shows the missing Remote SSH warning once per install and logs it after
+ * that, since the extension activates at startup in every window.
+ */
+async function warnRemoteSshMissing(
+	mementoManager: MementoManager,
+	logger: Logger,
+): Promise<void> {
+	logger.warn("Remote SSH extension not found");
+	if (mementoManager.hasShownRemoteSshMissing()) {
+		return;
+	}
+	await mementoManager.setShownRemoteSshMissing();
+	void vscode.window.showErrorMessage(
+		"Remote SSH extension not found, this may not work as expected.\n" +
+			// NB should we link to documentation or marketplace?
+			"Please install your choice of Remote SSH extension from the VS Code Marketplace.",
+	);
 }
 
 /**

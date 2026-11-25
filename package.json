@@ -182,6 +182,12 @@
 					"type": "boolean",
 					"default": false
 				},
+				"coder.mcpServer.enabled": {
+					"markdownDescription": "Offer the Coder deployment's MCP server to chat and the Agents window. Only deployments with the `mcp-server-http` experiment and the OAuth2 provider enabled serve it. Sign in to it from the MCP Servers view.",
+					"type": "boolean",
+					"default": true,
+					"scope": "application"
+				},
 				"coder.disableSignatureVerification": {
 					"markdownDescription": "Disable Coder CLI signature verification, which can be useful if you run an unsigned fork of the binary.",
 					"type": "boolean",
@@ -329,6 +335,12 @@
 				}
 			}
 		},
+		"mcpServerDefinitionProviders": [
+			{
+				"id": "coder",
+				"label": "Coder"
+			}
+		],
 		"viewsContainers": {
 			"activitybar": [
 				{
@@ -840,7 +852,8 @@
 	"activationEvents": [
 		"onResolveRemoteAuthority:ssh-remote",
 		"onCommand:coder.connect",
-		"onUri"
+		"onUri",
+		"onStartupFinished"
 	],
 	"dependencies": {
 		"@abraham/reflection": "^0.14.0",

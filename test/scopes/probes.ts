@@ -21,6 +21,7 @@ export const apiProbes = {
 	getBuildInfo: ({ scoped }) => scoped.getBuildInfo(),
 	getAuthenticatedUser: ({ scoped }) => scoped.getAuthenticatedUser(),
 	getAppearance: ({ scoped }) => scoped.getAppearance(),
+	getExperiments: ({ scoped }) => scoped.getExperiments(),
 	getDeploymentSSHConfig: ({ scoped }) => scoped.getDeploymentSSHConfig(),
 	getWorkspaces: async ({ scoped }) =>
 		assertNonEmpty((await scoped.getWorkspaces({ q: "owner:me" })).workspaces),
