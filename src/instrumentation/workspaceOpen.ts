@@ -11,6 +11,8 @@ import type { CallerProperties } from "../telemetry/event";
 import type { TelemetryReporter } from "../telemetry/reporter";
 import type { Span } from "../telemetry/span";
 
+import type { RemoteSetupPhase } from "./remoteSetup";
+
 export type WorkspaceOpenSource =
 	| "command"
 	| "sidebar_agent"
@@ -32,7 +34,18 @@ export type DevContainerMode = "dev_container" | "attached_container";
 export type WorkspaceOpenAbortStage =
 	| "workspace_picker"
 	| "agent_picker"
-	| "recent_folder_picker";
+	| "recent_folder_picker"
+	| "start_prompt";
+/** `remote.setup` phases that opening in the Agents window shares. */
+export type AgentsWindowPhase = Extract<
+	RemoteSetupPhase,
+	| "cli_resolve"
+	| "compatibility_check"
+	| "cli_configure"
+	| "workspace_monitor_setup"
+	| "workspace_ready"
+	| "ssh_config_write"
+>;
 
 export interface WorkspaceOpenSelection {
 	readonly workspace: Workspace;
@@ -53,9 +66,14 @@ export interface WorkspaceOpenTrace {
 	handoff(kind: "folder" | "empty_window"): void;
 }
 
+export interface AgentsWindowOpenTrace extends WorkspaceOpenTrace {
+	phase<T>(name: AgentsWindowPhase, fn: () => Promise<T>): Promise<T>;
+}
+
 /**
  * Emits the spans around opening a workspace: `workspace.open`,
- * `workspace.picker.prompted`, and `workspace.dev_container.open`.
+ * `workspace.picker.prompted`, `workspace.dev_container.open`, and
+ * `workspace.agents_window.open`.
  */
 export class WorkspaceOpenTelemetry {
 	public constructor(private readonly telemetry: TelemetryReporter) {}
@@ -65,22 +83,13 @@ export class WorkspaceOpenTelemetry {
 		selection: WorkspaceOpenSelection | undefined,
 		fn: (trace: WorkspaceOpenTrace) => Promise<boolean>,
 	): Promise<boolean> {
-		return this.traceRethrowing(
-			"workspace.open",
-			{ source },
-			false,
-			async (span) => {
-				const trace = new SpanWorkspaceOpenTrace(span);
-				if (selection) {
-					trace.select(selection);
-				}
-				const opened = await fn(trace);
-				if (!opened) {
-					span.markAborted();
-				}
-				return opened;
-			},
-		);
+		return this.traceOpening("workspace.open", { source }, (span) => {
+			const trace = new SpanWorkspaceOpenTrace(span);
+			if (selection) {
+				trace.select(selection);
+			}
+			return fn(trace);
+		});
 	}
 
 	public tracePicker(
@@ -104,6 +113,29 @@ export class WorkspaceOpenTelemetry {
 			undefined,
 			fn,
 		);
+	}
+
+	public traceAgentsWindow(
+		fn: (trace: AgentsWindowOpenTrace) => Promise<boolean>,
+	): Promise<boolean> {
+		return this.traceOpening("workspace.agents_window.open", {}, (span) =>
+			fn(new SpanAgentsWindowOpenTrace(span)),
+		);
+	}
+
+	/** Like {@link traceRethrowing}, marking the span aborted when nothing opened. */
+	private traceOpening(
+		eventName: string,
+		properties: CallerProperties,
+		fn: (span: Span) => Promise<boolean>,
+	): Promise<boolean> {
+		return this.traceRethrowing(eventName, properties, false, async (span) => {
+			const opened = await fn(span);
+			if (!opened) {
+				span.markAborted();
+			}
+			return opened;
+		});
 	}
 
 	/**
@@ -156,7 +188,7 @@ class SpanWorkspacePickerTrace implements WorkspacePickerTrace {
 }
 
 class SpanWorkspaceOpenTrace implements WorkspaceOpenTrace {
-	public constructor(private readonly span: Span) {}
+	public constructor(protected readonly span: Span) {}
 
 	public select(selection: WorkspaceOpenSelection): void {
 		recordWorkspaceContext(this.span, selection.workspace, selection.agent);
@@ -178,6 +210,15 @@ class SpanWorkspaceOpenTrace implements WorkspaceOpenTrace {
 
 	public handoff(kind: "folder" | "empty_window"): void {
 		this.span.setProperty("handoff", kind);
+	}
+}
+
+class SpanAgentsWindowOpenTrace
+	extends SpanWorkspaceOpenTrace
+	implements AgentsWindowOpenTrace
+{
+	public phase<T>(name: AgentsWindowPhase, fn: () => Promise<T>): Promise<T> {
+		return this.span.phase(name, fn);
 	}
 }
 

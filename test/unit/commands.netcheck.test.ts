@@ -10,6 +10,7 @@ import { createMockLogger, MockUserInteraction } from "../mocks/testHelpers";
 
 import type { ServiceContainer } from "@/container";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
+import type { ConnectionSetup } from "@/remote/connectionSetup";
 import type { NetcheckPanelFactory } from "@/webviews/netcheck/netcheckPanelFactory";
 
 vi.mock("@/workspace/workspacesProvider", () => ({
@@ -39,6 +40,7 @@ function setup(options: { extensionBaseUrl?: string } = {}) {
 		serviceContainer,
 		createTestCoderApi({ baseUrl: options.extensionBaseUrl }),
 		{} as DeploymentManager,
+		{} as ConnectionSetup,
 	);
 
 	return { commands, sink };

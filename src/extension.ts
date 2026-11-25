@@ -24,9 +24,11 @@ import {
 	type ActivationTracer,
 } from "./instrumentation/activation";
 import { OAuthSessionManager } from "./oauth/sessionManager";
+import { ConnectionSetup } from "./remote/connectionSetup";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
 import { registerUriHandler } from "./uri/uriHandler";
+import { canOpenAgentsWindow, isAgentsWindow } from "./vscode/agentsWindow";
 import { initVscodeProposed } from "./vscode/proposed";
 import { TasksPanelProvider } from "./webviews/tasks/tasksPanelProvider";
 import { WorkspaceActionRunner } from "./webviews/workspaces/workspaceActionRunner";
@@ -76,7 +78,8 @@ async function doActivate(
 			path.join(remoteSshExtension.extensionPath, "package.json"),
 		);
 		vscodeProposed = extensionRequire("vscode") as typeof vscode;
-	} else {
+	} else if (!isAgentsWindow()) {
+		// The Agents window disables Remote SSH, so its absence there is expected.
 		vscode.window.showErrorMessage(
 			"Remote SSH extension not found, this may not work as expected.\n" +
 				// NB should we link to documentation or marketplace?
@@ -195,6 +198,9 @@ async function doActivate(
 		contextManager.set("coder.tasksSupported", supported);
 	};
 	void updateTasksSupported();
+	void canOpenAgentsWindow().then((supported) =>
+		contextManager.set("coder.agentsWindowSupported", supported),
+	);
 
 	ctx.subscriptions.push(
 		deploymentManager.session.onDidChange(() => {
@@ -204,7 +210,16 @@ async function doActivate(
 
 	// Register globally available commands.  Many of these have visibility
 	// controlled by contexts, see `when` in the package.json.
-	const commands = new Commands(serviceContainer, client, deploymentManager);
+	const connectionSetup = new ConnectionSetup(
+		serviceContainer,
+		ctx.extensionMode,
+	);
+	const commands = new Commands(
+		serviceContainer,
+		client,
+		deploymentManager,
+		connectionSetup,
+	);
 
 	// Placeholder tree view for the coderTasks container when not authenticated.
 	// Works around a Cursor bug where containers with all views hidden via `when`
@@ -350,6 +365,10 @@ async function doActivate(
 	);
 	commandManager.register("coder.open", commands.open.bind(commands));
 	commandManager.register(
+		"coder.openInAgentsWindow",
+		commands.openInAgentsWindow.bind(commands),
+	);
+	commandManager.register(
 		"coder.openDevContainer",
 		commands.openDevContainer.bind(commands),
 	);
@@ -430,7 +449,7 @@ async function doActivate(
 		commands.supportBundle.bind(commands),
 	);
 
-	const remote = new Remote(serviceContainer, commands, ctx);
+	const remote = new Remote(serviceContainer, commands, ctx, connectionSetup);
 
 	// Respond to PINGs and DUPLICATE commands from other windows.
 	const duplicateWorkspaceIpc = serviceContainer.getDuplicateWorkspaceIpc();

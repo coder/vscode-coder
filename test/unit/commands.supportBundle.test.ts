@@ -24,6 +24,7 @@ import {
 import type { CoderApi } from "@/api/coderApi";
 import type { ServiceContainer } from "@/container";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
+import type { ConnectionSetup } from "@/remote/connectionSetup";
 
 vi.mock("@/cli/cliExec", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@/cli/cliExec")>();
@@ -118,6 +119,7 @@ function setup(options: { cliVersion?: string } = {}) {
 		serviceContainer,
 		client,
 		{} as DeploymentManager,
+		{} as ConnectionSetup,
 	);
 
 	return { commands, client, logger, interaction, sink };

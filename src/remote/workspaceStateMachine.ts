@@ -33,6 +33,14 @@ import type { StartupMode } from "../storage/mementoManager";
 
 import type { AuthorityParts } from "./authority";
 
+/** Thrown when the user dismisses the prompt to start a stopped workspace. */
+export class WorkspaceStartCancelledError extends Error {
+	constructor() {
+		super("Workspace start cancelled");
+		this.name = "WorkspaceStartCancelledError";
+	}
+}
+
 /**
  * Manages workspace and agent state transitions until ready for SSH connection.
  * Streams build and agent logs, and handles socket lifecycle.
@@ -126,7 +134,7 @@ export class WorkspaceStateMachine implements vscode.Disposable {
 						workspace.outdated,
 					);
 					if (!choice) {
-						throw new Error(`Workspace start cancelled`);
+						throw new WorkspaceStartCancelledError();
 					}
 					this.startupMode = choice;
 				}

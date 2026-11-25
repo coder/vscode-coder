@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 const CONTEXT_DEFAULTS = {
+	"coder.agentsWindowSupported": false,
 	"coder.authenticated": false,
 	"coder.isOwner": false,
 	"coder.loaded": false,

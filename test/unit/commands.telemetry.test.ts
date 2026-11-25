@@ -16,6 +16,7 @@ import type { ServiceContainer } from "@/container";
 import type { DeploymentManager } from "@/deployment/deploymentManager";
 import type { Deployment } from "@/deployment/types";
 import type { LoginCoordinator, LoginResult } from "@/login/loginCoordinator";
+import type { ConnectionSetup } from "@/remote/connectionSetup";
 import type { MementoManager } from "@/storage/mementoManager";
 import type { PathResolver } from "@/storage/pathResolver";
 import type { SecretsManager, SessionAuth } from "@/storage/secretsManager";
@@ -128,6 +129,7 @@ function setup(options: SetupOptions = {}) {
 		serviceContainer,
 		extensionClient,
 		deploymentManager as DeploymentManager,
+		{} as ConnectionSetup,
 	);
 
 	return {

@@ -442,6 +442,11 @@
 				"icon": "$(play)"
 			},
 			{
+				"command": "coder.openInAgentsWindow",
+				"title": "Open Workspace in Agents Window",
+				"category": "Coder"
+			},
+			{
 				"command": "coder.openDevContainer",
 				"title": "Open Dev Container",
 				"category": "Coder"
@@ -673,6 +678,10 @@
 				{
 					"command": "coder.openFromSidebar",
 					"when": "false"
+				},
+				{
+					"command": "coder.openInAgentsWindow",
+					"when": "coder.authenticated && coder.agentsWindowSupported"
 				},
 				{
 					"command": "coder.openDevContainer",
@@ -925,6 +934,9 @@
 	},
 	"icon": "media/logo.png",
 	"capabilities": {
+		"agentsWindow": {
+			"supported": true
+		},
 		"untrustedWorkspaces": {
 			"supported": true
 		}
