@@ -5,54 +5,68 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
-## Unreleased
+## [v1.18.3](https://github.com/coder/vscode-coder/releases/tag/v1.18.3) 2026-11-25
 
-### Security
-
-- Workspace hosts now set `PermitLocalCommand no`, so a `LocalCommand` in your
-  SSH config no longer runs for workspaces. Add `PermitLocalCommand yes` to
-  `coder.sshConfig` to allow it.
-- The deployment's SSH config options can no longer send your local
-  environment variables or sockets to the workspace: `SendEnv`, `SetEnv`,
-  `User` and `RemoteForward` from the deployment are ignored, with a warning. Set them in `coder.sshConfig` instead.
-
-### Fixed
-
-- `RemoteCommand` set through an SSH config `Include` or `Match` block is now
-  detected.
-- The session type now reaches the workspace with every OpenSSH version.
-- On Devin 3.12.32 and later, workspace hosts go into the file set in
-  `remote.devinSSH.configFile`.
-- On Windows, workspaces connect again when `HOME` points somewhere other than
-  your user profile, with both Windows OpenSSH and Git for Windows ssh.
-- SSH config paths containing `%` no longer stop workspaces from connecting.
-
-## [v1.18.2](https://github.com/coder/vscode-coder/releases/tag/v1.18.2) (Pre-release) 2026-11-20
+> **Note:** The Coder sidebar has a new Workspaces panel, and some SSH options
+> work differently. Entries marked **Breaking** tell you what changed and how to
+> keep the old behavior.
 
 ### Added
 
-- A Workspaces panel is now the Coder Remote sidebar, replacing the legacy My
-  Workspaces, Shared Workspaces, and All Workspaces tree views. From one place
-  you can:
-  - Switch between your workspaces, workspaces shared with you, and, for
-    owners, all workspaces.
-  - Search the listed workspaces by name, owner, or template with `Ctrl+F`
-    (`Cmd+F` on macOS).
-  - See at a glance whether each workspace and agent is healthy, and which
-    workspaces have a Coder Agents chat.
+- See and manage all your workspaces from the new Workspaces panel in the Coder
+  sidebar:
+  - Switch between your workspaces, workspaces shared with you, and, if you're
+    an owner, all workspaces.
+  - Find a workspace by name, owner, or template. Press `Ctrl+F` (`Cmd+F` on
+    macOS) or click **Search**.
+  - Spot unhealthy workspaces and agents at a glance, and see which workspaces
+    have a Coder Agents chat.
   - Expand a workspace to see its agents, dev containers, app statuses, and
     agent metadata.
   - Start, stop, restart, update, and delete workspaces without leaving the
-    editor. You're asked to confirm before deleting a workspace or
-    interrupting the one you're connected to.
-  - Open a workspace or a specific agent, or go to its dashboard, sharing, or
+    editor. The panel asks before it deletes a workspace or interrupts the one
+    you're connected to.
+  - Open a workspace or a specific agent, or jump to its dashboard, sharing, or
     settings page.
-  - Ping, run a speed test, or collect a support bundle for a specific agent.
-  - Keep working from the last results if your deployment can't be reached.
-- To switch back to the legacy tree views, choose **Switch to Legacy Tree
-  Views** from the panel's **...** menu, or set `coder.workspacesPanel.enabled`
-  to `false`. No reload is needed, and **Switch to Workspaces Panel** switches
-  back.
+  - Ping an agent, run a speed test, or collect a support bundle.
+  - Keep working from the last results when your deployment can't be reached.
+
+### Changed
+
+- **Breaking:** the Workspaces panel replaces the My Workspaces, Shared
+  Workspaces, and All Workspaces views. Prefer the old views? Choose **Switch to
+  Legacy Tree Views** from the panel's **...** menu. To come back, choose
+  **Switch to Workspaces Panel** from the **...** menu of **My Workspaces**. The
+  sidebar switches right away, with no reload. You can also set
+  `coder.workspacesPanel.enabled`.
+- **Breaking:** if you have a keybinding for `coder.refreshWorkspaces`, change
+  it to `coder.workspaces.refresh` (**Coder: Refresh Workspaces**), which
+  refreshes every workspace view.
+- The `coder.experimental.workspacesPanel` setting is gone. Use
+  `coder.workspacesPanel.enabled` instead.
+
+### Security
+
+- **Breaking:** your deployment can no longer use SSH options to send your
+  local environment variables or forward sockets from your machine, such as the
+  Docker socket, to workspaces. If the deployment sets `SendEnv`, `SetEnv`,
+  `User`, or `RemoteForward`, the extension skips them and shows a warning.
+  Your connections keep working. If you need one of these options, add it to
+  `coder.sshConfig`.
+- **Breaking:** a `LocalCommand` in your SSH config no longer runs on your
+  machine when you connect to a workspace. To run it, add
+  `PermitLocalCommand yes` to `coder.sshConfig`.
+
+### Fixed
+
+- On Windows, workspaces connect again when your `HOME` folder is somewhere
+  other than your user profile, such as a network drive.
+- Workspaces connect when your user name or data folder path contains `%`.
+- With `remote.SSH.enableRemoteCommand` turned on, a `RemoteCommand` works even
+  when you set it in an `Include` file or `Match` block of your SSH config.
+- Coder shows which editor you connected from, even with OpenSSH older than 7.8.
+- On Devin 3.12.32 and later, workspaces connect when you use a custom SSH
+  config file (`remote.devinSSH.configFile`).
 
 ## [v1.18.1](https://github.com/coder/vscode-coder/releases/tag/v1.18.1) 2026-11-18
 
