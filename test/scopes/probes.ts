@@ -60,6 +60,15 @@ export const apiProbes = {
 		assertNonEmpty(
 			await scoped.getTemplateVersionPresets(own.template_active_version_id),
 		),
+	getTemplateVersionDynamicParameters: async ({ scoped, own }) =>
+		assertNonEmpty(
+			(
+				await scoped.getTemplateVersionDynamicParameters(
+					own.template_active_version_id,
+					{ id: 0, owner_id: own.owner_id, inputs: {} },
+				)
+			).parameters,
+		),
 	watchWorkspace: receives(({ scoped, own }) => scoped.watchWorkspace(own)),
 	watchAgentMetadata: receives(async ({ scoped, admin, own }) =>
 		scoped.watchAgentMetadata(await currentAgentId(admin, own)),

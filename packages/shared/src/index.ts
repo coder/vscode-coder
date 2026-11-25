@@ -35,3 +35,8 @@ export * from "./workspaces/types";
 export * from "./workspaces/diagnostics";
 export * from "./workspaces/actions";
 export { WorkspacesApi } from "./workspaces/api";
+
+// Workspace Update types and API
+export * from "./workspaceUpdate/types";
+export * from "./workspaceUpdate/parameters";
+export { WorkspaceUpdateApi } from "./workspaceUpdate/api";
