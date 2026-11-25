@@ -131,7 +131,7 @@ jobs:
       - name: Generate release App token
         id: app_token
         if: steps.check.outputs.create == 'true'
-        uses: coder/github-app-token-action@00eaec58ee1bfea9c8b48655b7ab7470b07739e5 # main 2026-11-17
+        uses: coder/github-app-token-action@6e522647a301a860cee724d573b03a59754f84b2 # main 2026-11-17
         with:
           client-id: ${{ secrets.CODER_RELEASE_PUBLISHER_APP_ID }}
           kms-key: ${{ secrets.CODER_RELEASE_PUBLISHER_APP_KMS_KEY }}
