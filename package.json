@@ -1,7 +1,7 @@
 {
 	"name": "coder-remote",
 	"displayName": "Coder",
-	"version": "1.18.2",
+	"version": "1.18.3",
 	"description": "Open any workspace with a single click.",
 	"categories": [
 		"Other"
