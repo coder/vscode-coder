@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, it, expect, onTestFinished } from "vitest";
+import { describe, it, expect, onTestFinished, vi } from "vitest";
 
 import {
 	computeSshProperties,
@@ -14,6 +14,11 @@ describe.skipIf(spawnSync("ssh", ["-V"]).error)(
 	{ timeout: 30_000 },
 	() => {
 		it("follows Include and Match with ssh on PATH", async () => {
+			// ssh expands ~ from HOME when set, which may not be the home directory.
+			vi.stubEnv("HOME", os.homedir());
+			onTestFinished(() => {
+				vi.unstubAllEnvs();
+			});
 			// Windows OpenSSH reads only ~/ include paths as absolute.
 			const dir = await fs.mkdtemp(path.join(os.homedir(), "coder-ssh-g-"));
 			onTestFinished(() => fs.rm(dir, { recursive: true, force: true }));
@@ -47,14 +52,19 @@ describe.skipIf(spawnSync("ssh", ["-V"]).error)(
 			).rejects.toThrow();
 		});
 
-		it("rejects a config without the Coder ProxyCommand", async () => {
+		it("rejects a config without the Coder ProxyCommand, listing what ssh read", async () => {
 			const dir = await fs.mkdtemp(path.join(os.tmpdir(), "coder-ssh-g-"));
 			onTestFinished(() => fs.rm(dir, { recursive: true, force: true }));
 			const config = path.join(dir, "config");
-			await fs.writeFile(config, "Host other\n  ProxyCommand coder ssh %h\n");
+			await fs.writeFile(
+				config,
+				'Include "~/coder-ssh-g-missing/*.conf"\nHost other\n  ProxyCommand coder ssh %h\n',
+			);
 			await expect(
 				resolveSshProperties(undefined, "coder-ws", config),
-			).rejects.toThrow("ProxyCommand");
+			).rejects.toThrow(
+				/^ssh -G resolved no ProxyCommand\n[^]*coder-ssh-g-missing\/\*\.conf matched no files/,
+			);
 		});
 	},
 );

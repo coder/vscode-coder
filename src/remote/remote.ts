@@ -65,6 +65,8 @@ import {
 } from "./environment";
 import { migrateAuthToSecretsStorage } from "./migration";
 import {
+	getHomeSshConfigPath,
+	getSshHomeDir,
 	SshConfig,
 	type SshValues,
 	mergeSshConfigValues,
@@ -991,10 +993,26 @@ export class Remote {
 
 		// Write our file before including it, so the include never dangles.
 		await coderConfig.update(sshValues, sshConfigOverrides);
-		await sshConfig.updateInclude(
-			this.pathResolver.getSshConfigDir(),
-			safeHostname,
-		);
+		const includeDir = this.pathResolver.getSshConfigDir();
+		const sshHomeDir = await getSshHomeDir();
+		await sshConfig.updateInclude(includeDir, sshHomeDir, safeHostname);
+		// Without -F, Git for Windows ssh reads HOME's config, not the profile's.
+		const homeConfigPath = getHomeSshConfigPath(sshHomeDir);
+		if (!configFile && homeConfigPath) {
+			try {
+				await new SshConfig(homeConfigPath, this.logger).updateInclude(
+					includeDir,
+					sshHomeDir,
+					safeHostname,
+				);
+			} catch (error) {
+				this.logger.warn(
+					"Failed to include the Coder SSH config in",
+					homeConfigPath,
+					error,
+				);
+			}
+		}
 
 		try {
 			return await resolveSshProperties(

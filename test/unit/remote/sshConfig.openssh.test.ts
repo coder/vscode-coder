@@ -1,11 +1,12 @@
 import { execFile, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
-import { SshConfig, type SshValues } from "@/remote/sshConfig";
+import { getSshHomeDir, SshConfig, type SshValues } from "@/remote/sshConfig";
 
 import { createMockLogger } from "../../mocks/testHelpers";
 
@@ -34,6 +35,7 @@ const sshValues = (
 let tempDir: string | undefined;
 
 afterEach(async () => {
+	vi.unstubAllEnvs();
 	if (tempDir) {
 		await fs.rm(tempDir, { recursive: true, force: true });
 		tempDir = undefined;
@@ -61,7 +63,11 @@ async function createFixture(includeDirName: string) {
 			await coderConfig.update(sshValues(hostname, proxyCommand, editor));
 			const userConfig = new SshConfig(userConfigPath, logger);
 			await userConfig.load();
-			await userConfig.updateInclude(includeDir, hostname);
+			await userConfig.updateInclude(
+				includeDir,
+				await getSshHomeDir(),
+				hostname,
+			);
 		},
 		async seedUserConfig(contents: string) {
 			await fs.writeFile(userConfigPath, contents);
@@ -69,9 +75,10 @@ async function createFixture(includeDirName: string) {
 		async appendUserConfig(contents: string) {
 			await fs.appendFile(userConfigPath, contents);
 		},
+		readUserConfig: () => fs.readFile(userConfigPath, "utf8"),
 		/** The host's effective options according to the real ssh. */
-		async resolve(host: string) {
-			const { stdout } = await run("ssh", ["-G", "-F", userConfigPath, host], {
+		async resolve(host: string, ssh = "ssh") {
+			const { stdout } = await run(ssh, ["-G", "-F", userConfigPath, host], {
 				timeout: 10_000,
 			});
 			return stdout;
@@ -116,11 +123,12 @@ describe.skipIf(!sshAvailable)("include resolution by real OpenSSH", () => {
 		TEST_TIMEOUT_MS,
 	);
 
-	// Brackets are legal in file names on every platform, unlike * and ?.
+	// Brackets and % are legal in file names on every platform, unlike * and ?.
+	// OpenSSH 9.9+ expands %d to the home directory in Include arguments.
 	it(
-		"honors escaped glob characters in the include path",
+		"honors glob characters and % in the include path",
 		async () => {
-			const ssh = await createFixture("we[i]rd [dir]");
+			const ssh = await createFixture("we[i]rd 50%d [dir]");
 			await ssh.connect("dev.coder.com", "echo dev-wins");
 			expect(
 				await ssh.resolve("coder-vscode.dev.coder.com--user--ws"),
@@ -144,3 +152,63 @@ describe.skipIf(!sshAvailable)("include resolution by real OpenSSH", () => {
 		TEST_TIMEOUT_MS,
 	);
 });
+
+const windowsSshBuilds =
+	process.platform === "win32"
+		? [
+				`${process.env.SystemRoot}\\System32\\OpenSSH\\ssh.exe`,
+				`${process.env.ProgramFiles}\\Git\\usr\\bin\\ssh.exe`,
+			].filter((ssh) => existsSync(ssh))
+		: [];
+interface HomeCase {
+	sshPath: string;
+	name: string;
+	/** The HOME to set, given the fixture directory that holds the include. */
+	home: (fixtureDir: string) => string | undefined;
+}
+
+// Every build expands ~ from HOME; they differ on which absolute paths they read.
+describe.skipIf(windowsSshBuilds.length === 0)(
+	"include resolution by each Windows ssh build",
+	() => {
+		it.each<HomeCase>(
+			windowsSshBuilds.flatMap((sshPath) => [
+				{ sshPath, name: "unset", home: () => undefined },
+				{ sshPath, name: "the profile", home: () => os.homedir() },
+				{
+					sshPath,
+					name: "elsewhere",
+					home: () => path.join(os.tmpdir(), "elsewhere"),
+				},
+				{ sshPath, name: "holding the include", home: (dir) => dir },
+			]),
+		)(
+			"$sshPath reads the include with HOME $name",
+			async ({ sshPath, home }) => {
+				const ssh = await createFixture("Code Dir");
+				vi.stubEnv("HOME", home(path.dirname(ssh.includeDir)));
+				await ssh.connect("dev.coder.com", "echo dev-wins");
+				expect(
+					await ssh.resolve("coder-vscode.dev.coder.com--user--ws", sshPath),
+				).toContain("proxycommand echo dev-wins");
+			},
+			TEST_TIMEOUT_MS,
+		);
+
+		it("keeps ~ when HOME reaches the profile through a junction", async () => {
+			const ssh = await createFixture("Code Dir");
+			// A unique parent, so a killed run never blocks the next one.
+			const parent = await fs.mkdtemp(path.join(os.tmpdir(), "coder-home-"));
+			const junction = path.join(parent, "home");
+			await fs.symlink(os.homedir(), junction, "junction");
+			// rmdir removes the junction itself, never the profile behind it.
+			onTestFinished(async () => {
+				await fs.rmdir(junction);
+				await fs.rmdir(parent);
+			});
+			vi.stubEnv("HOME", junction.toUpperCase());
+			await ssh.connect("dev.coder.com", "echo dev-wins");
+			expect(await ssh.readUserConfig()).toContain('Include "~/');
+		});
+	},
+);

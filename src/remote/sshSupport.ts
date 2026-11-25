@@ -42,7 +42,9 @@ export async function resolveSshProperties(
 		throw new Error(`${ssh} is a batch file, which needs a shell to run`);
 	}
 	const configArgs = configFile ? ["-F", configFile] : [];
-	const { stdout } = await execFile(ssh, ["-G", ...configArgs, "--", host], {
+	// -v logs the version and every file read to stderr, never to stdout.
+	const args = ["-v", "-G", ...configArgs, "--", host];
+	const { stdout, stderr } = await execFile(ssh, args, {
 		env: getCliProcessEnv(),
 		timeout: RESOLVE_TIMEOUT_MS,
 	});
@@ -55,7 +57,7 @@ export async function resolveSshProperties(
 		}
 	}
 	if (!properties.proxycommand) {
-		throw new Error("ssh -G resolved no ProxyCommand");
+		throw new Error(`ssh -G resolved no ProxyCommand\n${stderr.trim()}`);
 	}
 	return properties;
 }

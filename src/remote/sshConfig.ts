@@ -2,6 +2,7 @@ import {
 	mkdir,
 	readFile,
 	readdir,
+	realpath,
 	rename,
 	stat,
 	unlink,
@@ -78,6 +79,12 @@ const KEY_ONLY_REGEX = /^[a-zA-Z0-9-]+$/;
 /** Characters that would break a value out of its config line. */
 const UNSAFE_CHARS_REGEX = /[\r\n\0]/;
 
+/** A drive (`C:\`) or UNC (`\\server`) path, unlike MSYS `/c/...`. */
+const DRIVE_OR_UNC_PATH_REGEX = /^([a-z]:[\\/]|[\\/]{2}[^\\/])/i;
+
+/** The drive of a forward-slashed Windows path, such as `C:/`. */
+const DRIVE_PREFIX_REGEX = /^([a-z]):\//i;
+
 interface BlockMarkers {
 	start: string;
 	end: string;
@@ -100,6 +107,53 @@ const INCLUDE_MARKERS: BlockMarkers = {
 	start: "# --- START CODER INCLUDE CODER-REMOTE ---",
 	end: "# --- END CODER INCLUDE CODER-REMOTE ---",
 };
+
+/**
+ * The directory ssh expands `~` from: `HOME` on Windows, where every build
+ * reads it, unless it is the profile under another spelling. Otherwise
+ * exactly `os.homedir()`.
+ */
+export async function getSshHomeDir(): Promise<string> {
+	const home = process.env.HOME;
+	const profile = os.homedir();
+	if (process.platform !== "win32" || !home) {
+		return profile;
+	}
+	const key = (dir: string) => path.resolve(dir).toLowerCase();
+	if (key(home) === key(profile)) {
+		return profile;
+	}
+	// The real path sees through 8.3 names, junctions and subst drives.
+	const realKey = (dir: string) => realpath(dir).then(key, () => key(dir));
+	const [realHome, realProfile] = await Promise.all([
+		realKey(home),
+		realKey(profile),
+	]);
+	return realHome === realProfile ? profile : home;
+}
+
+/**
+ * The config Git for Windows ssh reads without `-F` when ssh's home is not
+ * the profile. Undefined for the profile, which is already included, and for
+ * MSYS homes like `/c/home`, which only MSYS can map to a Windows path.
+ */
+export function getHomeSshConfigPath(sshHomeDir: string): string | undefined {
+	if (
+		sshHomeDir === os.homedir() ||
+		!DRIVE_OR_UNC_PATH_REGEX.test(sshHomeDir)
+	) {
+		return undefined;
+	}
+	return path.join(sshHomeDir, ".ssh", "config");
+}
+
+/** `C:/Users/...` as MSYS builds such as Git for Windows spell it: `/c/Users/...`. */
+function toMsysPath(dir: string): string {
+	return dir.replace(
+		DRIVE_PREFIX_REGEX,
+		(_, drive: string) => `/${drive.toLowerCase()}/`,
+	);
+}
 
 /** Header of the generated per-deployment file. */
 const CODER_SSH_CONFIG_HEADER = `# Coder workspace hosts. Do not edit; the Coder extension rewrites this file
@@ -371,8 +425,14 @@ export class SshConfig {
 	 * blocks. Read-modify-write with no locking, like the CLI's config-ssh;
 	 * when the include is already in place nothing is written.
 	 */
-	async updateInclude(includeDir: string, safeHostname: string) {
-		const block = this.renderIncludeBlock(includeDir);
+	async updateInclude(
+		includeDir: string,
+		sshHomeDir: string,
+		safeHostname: string,
+	) {
+		const block = this.renderIncludeBlock(
+			this.includeArguments(includeDir, sshHomeDir),
+		);
 		const raw = await this.read();
 		this.raw = this.mergeInclude(raw, block, safeHostname);
 		if (this.raw !== raw) {
@@ -435,32 +495,47 @@ export class SshConfig {
 		return { start, end: endMarkerStart + markers.end.length };
 	}
 
-	private renderIncludeBlock(includeDir: string): string {
+	private renderIncludeBlock(includeArguments: string[]): string {
 		return [
 			INCLUDE_MARKERS.start,
 			"# Managed by the Coder extension for VS Code and its forks.",
 			"# Moves back to the top on connect; override options via coder.sshConfig.",
-			`Include "${this.escapeIncludePath(includeDir)}/*${SSH_CONFIG_EXT}"`,
+			`Include ${includeArguments
+				.map((dir) => `"${this.escapeIncludePath(dir)}/*${SSH_CONFIG_EXT}"`)
+				.join(" ")}`,
 			INCLUDE_MARKERS.end,
 		].join("\n");
 	}
 
-	private escapeIncludePath(includePath: string): string {
-		// Emit ~/... so home-path quirks (spaces, %, glob chars) never reach ssh.
-		const relative = path.relative(os.homedir(), includePath);
-		const argument =
-			relative && !relative.startsWith("..") && !path.isAbsolute(relative)
-				? `~/${relative}`
-				: includePath;
-		// No escape exists for '"' in quoted arguments; OpenSSH 9.9+ fatals on
-		// unknown %-tokens in Include arguments.
-		if (/[\r\n\0"%]/.test(argument)) {
+	/**
+	 * `~/...` under ssh's home. Otherwise the absolute path, which Windows gets
+	 * in both builds' spellings since each skips the one it cannot match.
+	 */
+	private includeArguments(includeDir: string, sshHomeDir: string): string[] {
+		const relative = path.relative(sshHomeDir, includeDir);
+		if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+			return [`~/${relative}`];
+		}
+		if (process.platform !== "win32") {
+			return [includeDir];
+		}
+		const dir = includeDir.replaceAll("\\", "/");
+		return [...new Set([dir, toMsysPath(dir)])];
+	}
+
+	private escapeIncludePath(argument: string): string {
+		// No escape exists for '"' in quoted arguments.
+		if (/[\r\n\0"]/.test(argument)) {
 			throw new Error(
-				"SSH include path must not contain CR, LF, NUL, %, or double-quote characters.",
+				"SSH include path must not contain CR, LF, NUL, or double-quote characters.",
 			);
 		}
-		// Bracket classes, since OpenSSH for Windows can't backslash-escape.
-		return argument.replaceAll("\\", "/").replace(/[*?[]/g, "[$&]");
+		// Bracket classes, since OpenSSH for Windows can't backslash-escape. `?`
+		// stands in for `%`, which only OpenSSH 9.9+ expands as a token.
+		return argument
+			.replaceAll("\\", "/")
+			.replace(/[*?[]/g, "[$&]")
+			.replaceAll("%", "?");
 	}
 
 	private mergeInclude(
