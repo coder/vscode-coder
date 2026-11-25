@@ -1,11 +1,11 @@
 name: Release
 run-name: ${{ inputs.prerelease && 'Pre-Release' || 'Release' }} ${{ inputs.version }}
 
-# A release is dispatched on main with a version and a commit on main. Nobody pushes the tag:
-# once a member of clients other than the dispatcher approves the "release-approval"
-# environment, the approve job creates it as the coder-release-publisher App, which is the only
-# actor the tag ruleset lets create v* tags. Its key is in Cloud KMS, and only the approve job of
-# main's copy of this file, in release-approval, may sign with it. See CONTRIBUTING.md.
+# A release is dispatched on main. Nobody pushes the tag: once a member of clients other than
+# the dispatcher approves the "release-approval" environment, the approve job creates it as the
+# coder-release-publisher App, which is the only actor the tag ruleset lets create v* tags. Its
+# key is in Cloud KMS, and only the approve job of main's copy of this file, in
+# release-approval, may sign with it. See CONTRIBUTING.md.
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ on:
         required: true
         type: string
       commit:
-        description: "Full SHA of the commit on main to release"
+        description: "Full SHA of the commit to release: on main, or on any branch for a pre-release"
         required: true
         type: string
       prerelease:
@@ -26,7 +26,8 @@ on:
 
 permissions: {}
 
-# Build releases from a clean install.
+# Build releases from a clean install. This also keeps the package job, which runs the released
+# commit's scripts in main's context, from reading or writing main's caches.
 cache-mode: none
 
 concurrency:
@@ -37,8 +38,9 @@ env:
   PRE_RELEASE_FLAG: ${{ inputs.prerelease && '--pre-release' || '' }}
 
 jobs:
-  # The jobs below run the scripts of the commit they build, so only a commit that went through
-  # review on main may be released.
+  # Fails a bad request before it asks for approval. The jobs below run the scripts of the commit
+  # they build, so a release comes from a reviewed commit on main, and a pre-release from a
+  # branch of this repository (never a fork) whose changes the approver reviews.
   validate:
     name: Check the request
     runs-on: ubuntu-24.04
@@ -56,6 +58,7 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
           COMMIT: ${{ inputs.commit }}
+          PRERELEASE: ${{ inputs.prerelease }}
         run: |
           set -euo pipefail
           fail() { echo "::error::$*"; exit 1; }
@@ -64,7 +67,11 @@ jobs:
           [[ "$GITHUB_REF" == "refs/heads/main" ]] || fail "This workflow only runs on main, not on $GITHUB_REF."
           [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "version must look like v1.2.3, got '$VERSION'."
           [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "commit must be a full 40-character SHA, got '$COMMIT'."
-          git merge-base --is-ancestor "$COMMIT" "$GITHUB_SHA" || fail "$COMMIT is not on main."
+          if [[ "$PRERELEASE" == "true" ]]; then
+            [[ -n "$(git branch --remotes --contains "$COMMIT" 2>/dev/null)" ]] || fail "$COMMIT is not on a branch of $GITHUB_REPOSITORY."
+          else
+            git merge-base --is-ancestor "$COMMIT" "$GITHUB_SHA" || fail "$COMMIT is not on main. Only a pre-release can come from another branch."
+          fi
 
           PACKAGE_VERSION="$(git show "$COMMIT:package.json" | jq -r .version)"
           [[ "${VERSION#v}" == "$PACKAGE_VERSION" ]] || fail "version $VERSION does not match package.json ($PACKAGE_VERSION) at $COMMIT."
@@ -81,12 +88,11 @@ jobs:
       contents: read
       id-token: write # Cloud KMS signs the App's JWT
     steps:
-      # For the tags and the history of main. Nothing from the tree runs in this job.
+      # For the tags and the history. Nothing from the tree runs in this job.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          fetch-tags: true
           persist-credentials: false
 
       # Here and not in the validate job, because the tags can change while the run waits for
@@ -100,11 +106,6 @@ jobs:
           set -euo pipefail
           fail() { echo "::error::$*"; exit 1; }
 
-          # Checked by the validate job too, and again in the job that may tag.
-          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "version must look like v1.2.3, got '$VERSION'."
-          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "commit must be a full 40-character SHA, got '$COMMIT'."
-          git merge-base --is-ancestor "$COMMIT" "$GITHUB_SHA" || fail "$COMMIT is not on main."
-
           # A re-run finds the tag that the first attempt created.
           if existing="$(git rev-parse --verify --quiet "refs/tags/$VERSION^{commit}")"; then
             [[ "$existing" == "$COMMIT" ]] || fail "Tag $VERSION already exists at $existing, not at $COMMIT."
@@ -117,12 +118,10 @@ jobs:
           released="$(git tag --points-at "$COMMIT" --list 'v*' | paste -sd ' ' -)"
           [[ -z "$released" ]] || fail "$COMMIT was already released as $released. Release a newer commit."
 
-          # Versions only go up, and a release never comes from before the last one.
-          tags="$(git tag --list 'v*' --sort=-version:refname)"
-          latest="$(grep -E -m 1 '^v[0-9]+\.[0-9]+\.[0-9]+$' <<<"$tags" || true)"
+          # Checked before tagging, because the Marketplace only rejects an older version at publish.
+          latest="$(git tag --list 'v*' --sort=-version:refname | grep -E -m 1 '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)"
           if [[ -n "$latest" ]]; then
             printf '%s\n' "$latest" "$VERSION" | sort -V -C || fail "$VERSION is not newer than $latest, the latest release."
-            git merge-base --is-ancestor "$latest" "$COMMIT" || fail "$COMMIT is older than the commit released as $latest."
           fi
 
           echo "create=true" >> "$GITHUB_OUTPUT"
@@ -170,21 +169,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.commit }}
+          ref: refs/tags/${{ inputs.version }}
           persist-credentials: false
+
+      # The validate job checked package.json at this commit.
+      - name: Check the tag is at the approved commit
+        env:
+          COMMIT: ${{ inputs.commit }}
+        run: |
+          [[ "$(git rev-parse HEAD)" == "$COMMIT" ]] || { echo "::error::The tag is not at $COMMIT."; exit 1; }
 
       - name: Setup pnpm, Node.js, and dependencies
         uses: ./.github/actions/pnpm-setup
-
-      - name: Validate version matches package.json
-        env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          if [ "${VERSION#v}" != "$PACKAGE_VERSION" ]; then
-            echo "Error: Version ($VERSION) does not match package.json version ($PACKAGE_VERSION)"
-            exit 1
-          fi
 
       - name: Build extension
         run: pnpm build:production
