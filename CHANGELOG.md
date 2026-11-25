@@ -13,6 +13,16 @@
 - `Coder: Open Workspace in Agents Window` opens a workspace in the VS Code
   Agents window, starting it first if needed. It opens the template's
   directory, or the folder you last opened on the workspace.
+- Chat and the Agents window can use the Coder deployment's MCP server when
+  the deployment enables the `mcp-server-http` experiment and the OAuth2
+  provider. Sign in to the "Coder" server from the MCP Servers view. Turn it
+  off with `coder.mcpServer.enabled`.
+
+### Changed
+
+- The extension activates when the editor starts, so its MCP server is
+  available in the Agents window. The "Remote SSH extension not found"
+  warning is shown once instead of on every activation.
 
 ### Security
 

@@ -10,6 +10,7 @@ const MAX_URLS = 10;
 const DEPLOYMENT_ACCESS_PREFIX = "coder.access.";
 const SURFACED_BANNERS_PREFIX = "coder.surfacedBanners.";
 const DISMISSED_SSH_OPTIONS_PREFIX = "coder.dismissedSshOptions.";
+const REMOTE_SSH_MISSING_SHOWN_KEY = "coder.remoteSshMissingShown";
 
 const KeysSchema = z.array(z.string());
 
@@ -106,6 +107,15 @@ export class MementoManager {
 
 	public async clearLegacyUrl(): Promise<void> {
 		await this.memento.update("url", undefined);
+	}
+
+	/** Whether the missing Remote SSH extension warning was already shown. */
+	public hasShownRemoteSshMissing(): boolean {
+		return this.memento.get<boolean>(REMOTE_SSH_MISSING_SHOWN_KEY) === true;
+	}
+
+	public async setShownRemoteSshMissing(): Promise<void> {
+		await this.memento.update(REMOTE_SSH_MISSING_SHOWN_KEY, true);
 	}
 
 	public getSurfacedBanners(safeHostname: string): string[] {

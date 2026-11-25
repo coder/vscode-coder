@@ -308,6 +308,17 @@ export const extensions = {
 	all: [] as unknown[],
 };
 
+export class McpHttpServerDefinition {
+	constructor(
+		public readonly label: string,
+		public readonly uri: Uri,
+	) {}
+}
+
+export const lm = {
+	registerMcpServerDefinitionProvider: vi.fn(() => ({ dispose: vi.fn() })),
+};
+
 export const version = "1.106.0-test";
 
 const vscode = {
@@ -331,6 +342,8 @@ const vscode = {
 	workspace,
 	env,
 	extensions,
+	McpHttpServerDefinition,
+	lm,
 	version,
 };
 
