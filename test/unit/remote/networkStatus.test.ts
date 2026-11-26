@@ -68,6 +68,7 @@ describe("NetworkStatusReporter tooltip", () => {
 		expect(t).not.toContain("Slow connection detected");
 		expect(t).not.toContain("Run latency test");
 		expect(t).not.toContain("Configure threshold");
+		expect(t).not.toContain("Troubleshooting guide");
 	});
 
 	it("leads with a relay explainer mentioning the DERP region", () => {
@@ -92,6 +93,23 @@ describe("NetworkStatusReporter tooltip", () => {
 		expect(t).toContain("Run latency test");
 		expect(t).toContain("Run network check");
 		expect(t).toContain("Configure threshold");
+		expect(t).toContain(
+			"[$(book) Troubleshooting guide](https://coder.com/docs/admin/networking/troubleshooting)",
+		);
+	});
+
+	it("links the relay troubleshooting section when a slow connection is relayed", () => {
+		const { bar, reporter } = setup(100);
+		const slowRelay = makeNetworkInfo({
+			p2p: false,
+			preferred_derp: "SFO",
+			latency: 350,
+		});
+		reporter.update(slowRelay, false);
+		reporter.update(slowRelay, false);
+		expect(tooltipOf(bar)).toContain(
+			"(https://coder.com/docs/admin/networking/troubleshooting#common-problems-with-direct-connections)",
+		);
 	});
 
 	it("appends a stale footer at the bottom of the tooltip", () => {
