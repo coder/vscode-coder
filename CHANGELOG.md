@@ -5,6 +5,16 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Added
+
+- Open a Coder workspace folder with `liveShare=true` in an `/open` link to
+  request a Live Share session. After confirmation in the selected trusted
+  folder, install Live Share if needed and copy the invitation link. Requires
+  an absolute `folder`; `openRecent` cannot be used for sharing. Requests expire
+  after five minutes and never apply to ordinary workspace launches.
+
 ## [v1.18.3](https://github.com/coder/vscode-coder/releases/tag/v1.18.3) 2026-11-25
 
 > **Note:** The Coder sidebar has a new Workspaces panel, and some SSH options

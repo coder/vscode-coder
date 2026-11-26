@@ -12,11 +12,13 @@ import { vscodeProposed } from "../vscode/proposed";
 import type { Commands } from "../commands";
 import type { ServiceContainer } from "../container";
 import type { DeploymentManager } from "../deployment/deploymentManager";
+import type { LiveShareLauncher } from "../liveshare/liveShareLauncher";
 
 interface UriHandlerDeps {
 	serviceContainer: ServiceContainer;
 	deploymentManager: Pick<DeploymentManager, "setDeployment">;
 	commands: Pick<Commands, "open" | "openDevContainer">;
+	liveShare: Pick<LiveShareLauncher, "prepare">;
 }
 
 interface UriRouteContext extends UriHandlerDeps {
@@ -119,6 +121,15 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 	const openRecent =
 		params.has("openRecent") &&
 		(!params.get("openRecent") || params.get("openRecent") === "true");
+	const liveShare = params.get("liveShare");
+	if (liveShare !== null && liveShare !== "true" && liveShare !== "false") {
+		throw new Error("liveShare must be true or false");
+	}
+	if (liveShare === "true" && (!folder?.startsWith("/") || openRecent)) {
+		throw new Error(
+			"Live Share requires an absolute folder and cannot use openRecent",
+		);
+	}
 
 	await setupDeployment("open", params, serviceContainer, deploymentManager);
 
@@ -130,6 +141,9 @@ async function handleOpen(ctx: UriRouteContext): Promise<void> {
 		openRecent,
 		source: "uri",
 		useDefaultDirectory: false,
+		...(liveShare === "true"
+			? { prepareLiveShare: ctx.liveShare.prepare.bind(ctx.liveShare) }
+			: {}),
 	});
 }
 

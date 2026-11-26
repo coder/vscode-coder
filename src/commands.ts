@@ -117,6 +117,7 @@ interface OpenOptions {
 	agentName?: string;
 	folderPath?: string;
 	openRecent?: boolean;
+	prepareLiveShare?: (folder: vscode.Uri) => Promise<void>;
 	source?: WorkspaceOpenSource;
 	/** When false, an absent folderPath opens a bare remote window instead of
 	 *  falling back to the agent's expanded_directory. Defaults to true. */
@@ -1169,6 +1170,7 @@ export class Commands {
 			folderPath,
 			openRecent,
 			useDefaultDirectory,
+			prepareLiveShare,
 		} = options;
 		const baseUrl = this.requireExtensionBaseUrl();
 
@@ -1204,6 +1206,7 @@ export class Commands {
 			folderPath,
 			openRecent,
 			useDefaultDirectory,
+			prepareLiveShare,
 		});
 		return recordOpenResult(telemetry, selection, result);
 	}
@@ -1725,7 +1728,7 @@ export class Commands {
 		agent: WorkspaceAgent,
 		options: Pick<
 			OpenOptions,
-			"folderPath" | "openRecent" | "useDefaultDirectory"
+			"folderPath" | "openRecent" | "useDefaultDirectory" | "prepareLiveShare"
 		> = {},
 	): Promise<OpenWorkspaceResult> {
 		const { openRecent, useDefaultDirectory } = {
@@ -1803,13 +1806,15 @@ export class Commands {
 		});
 
 		if (folderPath) {
+			const folder = vscode.Uri.from({
+				scheme: "vscode-remote",
+				authority: remoteAuthority,
+				path: folderPath,
+			});
+			await options.prepareLiveShare?.(folder);
 			await vscode.commands.executeCommand(
 				"vscode.openFolder",
-				vscode.Uri.from({
-					scheme: "vscode-remote",
-					authority: remoteAuthority,
-					path: folderPath,
-				}),
+				folder,
 				// Open this in a new window!
 				newWindow,
 			);
