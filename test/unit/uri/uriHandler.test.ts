@@ -139,6 +139,7 @@ function createTestContext() {
 		serviceContainer: container,
 		deploymentManager,
 		commands,
+		liveShare: { prepare: vi.fn().mockResolvedValue(undefined) },
 	});
 
 	return {
@@ -187,6 +188,45 @@ describe("uriHandler", () => {
 	});
 
 	describe("/open", () => {
+		it("passes a sharing request only for an explicit Live Share launch", async () => {
+			const t = createTestContext();
+			await t.open(
+				withUrl(
+					"owner=o&workspace=w&folder=%2Fproject+%26+docs&liveShare=true",
+				),
+			);
+			expect(t.commands.open).toHaveBeenCalledWith(
+				expect.objectContaining({
+					folderPath: "/project & docs",
+					prepareLiveShare: expect.any(Function),
+				}),
+			);
+		});
+
+		it.each(["", "&liveShare=false"])(
+			"does not share ordinary launches (%s)",
+			async (suffix) => {
+				const t = createTestContext();
+				await t.open(withUrl(`owner=o&workspace=w&folder=/project${suffix}`));
+				expect(t.commands.open.mock.calls[0][0]).not.toHaveProperty(
+					"prepareLiveShare",
+				);
+			},
+		);
+
+		it.each([
+			"liveShare=yes&folder=/project",
+			"liveShare=true",
+			"liveShare=true&folder=relative",
+			"liveShare=true&folder=/project&openRecent",
+		])("rejects an ambiguous sharing target (%s)", async (query) => {
+			const t = createTestContext();
+			await t.open(withUrl(`owner=o&workspace=w&${query}`));
+			expect(t.commands.open).not.toHaveBeenCalled();
+			expect(t.loginCoordinator.ensureLoggedIn).not.toHaveBeenCalled();
+			expect(t.showErrorMessage).toHaveBeenCalled();
+		});
+
 		// Fields the URI handler always supplies; per-test overrides spread on top.
 		const OPEN_DEFAULTS = {
 			source: "uri",

@@ -92,6 +92,46 @@ describe("openWorkspace", () => {
 		useEditor("cursor");
 	});
 
+	it("prepares Live Share for the resolved agent and folder before opening", async () => {
+		new MockConfigurationProvider();
+		mockRecentlyOpened([LEGACY], FOLDER);
+		const prepareLiveShare = vi.fn().mockResolvedValue(undefined);
+		const commands = createTestCommands({
+			baseUrl: BASE_URL,
+			client: {
+				getWorkspaceByOwnerAndName: vi.fn().mockResolvedValue(
+					createWorkspace({
+						owner_name: "foo",
+						name: "bar",
+						latest_build: {
+							resources: [
+								createResource({ agents: [createAgent({ name: "main" })] }),
+							],
+						},
+					}),
+				),
+			},
+		});
+		await commands.open({
+			workspaceOwner: "foo",
+			workspaceName: "bar",
+			agentName: "main",
+			folderPath: FOLDER,
+			prepareLiveShare,
+		});
+		expect(prepareLiveShare).toHaveBeenCalledWith(
+			expect.objectContaining({ authority: LEGACY, path: FOLDER }),
+		);
+		const opened = vi
+			.mocked(vscode.commands.executeCommand)
+			.mock.calls.findIndex(([name]) => name === "vscode.openFolder");
+		expect(prepareLiveShare.mock.invocationCallOrder[0]).toBeLessThan(
+			vi.mocked(vscode.commands.executeCommand).mock.invocationCallOrder[
+				opened
+			],
+		);
+	});
+
 	interface RecentCase {
 		label: string;
 		recents: string[];

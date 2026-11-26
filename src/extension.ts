@@ -23,6 +23,7 @@ import {
 	ActivationTelemetry,
 	type ActivationTracer,
 } from "./instrumentation/activation";
+import { LiveShareLauncher } from "./liveshare/liveShareLauncher";
 import { OAuthSessionManager } from "./oauth/sessionManager";
 import { Remote } from "./remote/remote";
 import { getRemoteSshExtension } from "./remote/sshExtension";
@@ -334,11 +335,16 @@ async function doActivate(
 		]);
 	});
 
+	const liveShare = new LiveShareLauncher(
+		ctx.globalStorageUri.fsPath,
+		ctx.secrets,
+	);
 	ctx.subscriptions.push(
 		registerUriHandler({
 			serviceContainer,
 			deploymentManager,
 			commands,
+			liveShare,
 		}),
 	);
 
@@ -530,6 +536,8 @@ async function doActivate(
 			return;
 		}
 	}
+
+	ctx.subscriptions.push(liveShare.start());
 
 	// Initialize deployment manager with stored deployment (if any).
 	// Skip if already set by remote.setup above.
