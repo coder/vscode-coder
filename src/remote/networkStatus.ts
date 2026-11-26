@@ -10,6 +10,8 @@ const WARNING_BACKGROUND = new vscode.ThemeColor(
 	"statusBarItem.warningBackground",
 );
 
+const NETWORKING_TROUBLESHOOTING_URL =
+	"https://coder.com/docs/admin/networking/troubleshooting";
 const CODER_CONNECT_TEXT = "$(globe) Coder Connect";
 
 /** The commands the tooltip links to; no other command link may run. */
@@ -137,7 +139,8 @@ export class NetworkStatusReporter {
 			sections.push(
 				"[$(pulse) Run latency test](command:coder.pingWorkspace) · " +
 					"[$(globe) Run network check](command:coder.netcheck) · " +
-					"[$(gear) Configure threshold](command:workbench.action.openSettings?%22coder.networkThreshold%22)",
+					"[$(gear) Configure threshold](command:workbench.action.openSettings?%22coder.networkThreshold%22) · " +
+					`[$(book) Troubleshooting guide](${troubleshootingUrl(network)})`,
 			);
 		}
 
@@ -150,6 +153,16 @@ export class NetworkStatusReporter {
 		// Blank line between sections = paragraph break.
 		return markdown(sections.join("\n\n"));
 	}
+}
+
+/**
+ * Relay connections link to the section on why a connection falls back to a
+ * relay. No section covers slow direct connections, so those get the page root.
+ */
+function troubleshootingUrl(network: NetworkInfo): string {
+	return network.p2p
+		? NETWORKING_TROUBLESHOOTING_URL
+		: `${NETWORKING_TROUBLESHOOTING_URL}#common-problems-with-direct-connections`;
 }
 
 function markdown(value: string): vscode.MarkdownString {
