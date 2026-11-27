@@ -85,6 +85,9 @@ const DRIVE_OR_UNC_PATH_REGEX = /^([a-z]:[\\/]|[\\/]{2}[^\\/])/i;
 /** The drive of a forward-slashed Windows path, such as `C:/`. */
 const DRIVE_PREFIX_REGEX = /^([a-z]):\//i;
 
+/** The drive of an MSYS path, such as `/h` or `/h/dir`. */
+const MSYS_DRIVE_REGEX = /^\/([a-z])(?=\/|$)/i;
+
 interface BlockMarkers {
 	start: string;
 	end: string;
@@ -111,17 +114,26 @@ const INCLUDE_MARKERS: BlockMarkers = {
 /**
  * The home Git for Windows ssh expands `~` from and reads `.ssh/config` in:
  * `HOME`, else `HOMEDRIVE` and `HOMEPATH`, which a domain home folder sets,
- * else the profile. This is the `env` scheme of its `db_home` default. The
- * profile under another spelling is the profile; off Windows, `os.homedir()`.
+ * else the profile. This is the `env` scheme of its `db_home` default. An MSYS
+ * `HOME` like `/h` is read as `H:\`, where Git mounts drives. The profile
+ * under another spelling is the profile; off Windows, `os.homedir()`.
  */
 export async function getMsysHomeDir(): Promise<string> {
 	const { HOME, HOMEDRIVE, HOMEPATH } = process.env;
-	const home =
+	const raw =
 		HOME || (HOMEDRIVE && HOMEPATH ? HOMEDRIVE + HOMEPATH : undefined);
 	const profile = os.homedir();
-	if (process.platform !== "win32" || !home) {
+	if (process.platform !== "win32" || !raw) {
 		return profile;
 	}
+	const home = MSYS_DRIVE_REGEX.test(raw)
+		? path.win32.normalize(
+				raw.replace(
+					MSYS_DRIVE_REGEX,
+					(_, drive: string) => `${drive.toUpperCase()}:\\`,
+				),
+			)
+		: raw;
 	const key = (dir: string) => path.resolve(dir).toLowerCase();
 	if (key(home) === key(profile)) {
 		return profile;
@@ -138,7 +150,7 @@ export async function getMsysHomeDir(): Promise<string> {
 /**
  * The config Git for Windows ssh reads without `-F`, given its home from
  * `getMsysHomeDir`. Undefined for the profile, which is already included, and
- * for MSYS homes like `/c/home`, which only MSYS can map to a Windows path.
+ * for MSYS homes like `/home/jane`, under Git's own install directory.
  */
 export function getHomeSshConfigPath(sshHomeDir: string): string | undefined {
 	if (

@@ -11,6 +11,10 @@
 
 - On Windows, workspaces connect again with Git for Windows ssh when your home
   folder is a network drive such as `H:\` and `HOME` is not set.
+- On Windows, workspaces connect with Windows OpenSSH 7.x, such as the one built
+  into Windows Server 2019, when `HOME` points somewhere other than your user
+  profile, and with every Windows OpenSSH version when `HOME` contains
+  non-ASCII characters.
 
 ## [v1.18.3](https://github.com/coder/vscode-coder/releases/tag/v1.18.3) 2026-11-25
 

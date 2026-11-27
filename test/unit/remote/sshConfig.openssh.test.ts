@@ -239,6 +239,12 @@ describe.skipIf(windowsSshBuilds.length === 0)(
 		// Without -F, Remote-SSH's default, Git ssh reads only ~/.ssh/config.
 		it.runIf(gitSsh).each<{ name: string; env: (home: string) => HomeEnv }>([
 			{ name: "HOME", env: (home) => ({ HOME: home }) },
+			{
+				name: "HOME in MSYS form",
+				env: (home) => ({
+					HOME: `/${home[0].toLowerCase()}${home.slice(2).replaceAll("\\", "/")}`,
+				}),
+			},
 			{ name: "HOMEDRIVE and HOMEPATH", env: homeDriveEnv },
 		])(
 			"Git for Windows ssh reads the include from its home set by $name",
