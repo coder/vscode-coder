@@ -4,9 +4,13 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getSshHomeDir, SshConfig, type SshValues } from "@/remote/sshConfig";
+import {
+	getGitSshConfigPath,
+	SshConfig,
+	type SshValues,
+} from "@/remote/sshConfig";
 
 import { createMockLogger } from "../../mocks/testHelpers";
 
@@ -45,7 +49,7 @@ afterEach(async () => {
 /** Real files and the real ssh binary; only the editor plumbing is absent. */
 async function createFixture(includeDirName: string) {
 	// Windows tmpdir paths use 8.3 short names ssh cannot glob; the product
-	// writes under the home directory anyway, emitted as a ~/... include.
+	// writes under the home directory anyway.
 	const root = process.platform === "win32" ? os.homedir() : os.tmpdir();
 	tempDir = await fs.mkdtemp(path.join(root, "coder-ssh-test-"));
 	const logger = createMockLogger();
@@ -63,11 +67,7 @@ async function createFixture(includeDirName: string) {
 			await coderConfig.update(sshValues(hostname, proxyCommand, editor));
 			const userConfig = new SshConfig(userConfigPath, logger);
 			await userConfig.load();
-			await userConfig.updateInclude(
-				includeDir,
-				await getSshHomeDir(),
-				hostname,
-			);
+			await userConfig.updateInclude(includeDir, hostname);
 		},
 		async seedUserConfig(contents: string) {
 			await fs.writeFile(userConfigPath, contents);
@@ -75,7 +75,6 @@ async function createFixture(includeDirName: string) {
 		async appendUserConfig(contents: string) {
 			await fs.appendFile(userConfigPath, contents);
 		},
-		readUserConfig: () => fs.readFile(userConfigPath, "utf8"),
 		/** The host's effective options according to the real ssh. */
 		async resolve(host: string, ssh = "ssh") {
 			const { stdout } = await run(ssh, ["-G", "-F", userConfigPath, host], {
@@ -160,33 +159,55 @@ const windowsSshBuilds =
 				`${process.env.ProgramFiles}\\Git\\usr\\bin\\ssh.exe`,
 			].filter((ssh) => existsSync(ssh))
 		: [];
+const gitSsh = windowsSshBuilds.find((ssh) => ssh.includes("Git"));
+
+type HomeEnv = Partial<Record<"HOME" | "HOMEDRIVE" | "HOMEPATH", string>>;
+
+/** Sets exactly the given home variables, unsetting the others. */
+function stubHomeEnv(env: HomeEnv): void {
+	for (const name of ["HOME", "HOMEDRIVE", "HOMEPATH"] as const) {
+		vi.stubEnv(name, env[name]);
+	}
+}
+
+/** `C:\dir` as Windows sets it for a domain home folder: `C:` and `\dir`. */
+function homeDriveEnv(dir: string): HomeEnv {
+	return { HOMEDRIVE: dir.slice(0, 2), HOMEPATH: dir.slice(2) };
+}
+
 interface HomeCase {
 	sshPath: string;
 	name: string;
-	/** The HOME to set, given the fixture directory that holds the include. */
-	home: (fixtureDir: string) => string | undefined;
+	env: HomeEnv;
 }
 
-// Every build expands ~ from HOME; they differ on which absolute paths they read.
+// Windows OpenSSH expands ~ from HOME, else the profile. Git for Windows falls
+// back to HOMEDRIVE and HOMEPATH, which a domain home folder such as H:\ sets.
 describe.skipIf(windowsSshBuilds.length === 0)(
 	"include resolution by each Windows ssh build",
 	() => {
+		const elsewhere = path.join(os.tmpdir(), "elsewhere");
 		it.each<HomeCase>(
 			windowsSshBuilds.flatMap((sshPath) => [
-				{ sshPath, name: "unset", home: () => undefined },
-				{ sshPath, name: "the profile", home: () => os.homedir() },
+				{ sshPath, name: "nothing", env: {} },
+				{ sshPath, name: "HOME at the profile", env: { HOME: os.homedir() } },
+				{ sshPath, name: "HOME elsewhere", env: { HOME: elsewhere } },
 				{
 					sshPath,
-					name: "elsewhere",
-					home: () => path.join(os.tmpdir(), "elsewhere"),
+					name: "HOMEDRIVE and HOMEPATH elsewhere",
+					env: homeDriveEnv(elsewhere),
 				},
-				{ sshPath, name: "holding the include", home: (dir) => dir },
+				{
+					sshPath,
+					name: "HOME at the profile and HOMEDRIVE elsewhere",
+					env: { HOME: os.homedir(), ...homeDriveEnv(elsewhere) },
+				},
 			]),
 		)(
-			"$sshPath reads the include with HOME $name",
-			async ({ sshPath, home }) => {
+			"$sshPath reads the include with $name",
+			async ({ sshPath, env }) => {
 				const ssh = await createFixture("Code Dir");
-				vi.stubEnv("HOME", home(path.dirname(ssh.includeDir)));
+				stubHomeEnv(env);
 				await ssh.connect("dev.coder.com", "echo dev-wins");
 				expect(
 					await ssh.resolve("coder-vscode.dev.coder.com--user--ws", sshPath),
@@ -195,20 +216,37 @@ describe.skipIf(windowsSshBuilds.length === 0)(
 			TEST_TIMEOUT_MS,
 		);
 
-		it("keeps ~ when HOME reaches the profile through a junction", async () => {
-			const ssh = await createFixture("Code Dir");
-			// A unique parent, so a killed run never blocks the next one.
-			const parent = await fs.mkdtemp(path.join(os.tmpdir(), "coder-home-"));
-			const junction = path.join(parent, "home");
-			await fs.symlink(os.homedir(), junction, "junction");
-			// rmdir removes the junction itself, never the profile behind it.
-			onTestFinished(async () => {
-				await fs.rmdir(junction);
-				await fs.rmdir(parent);
-			});
-			vi.stubEnv("HOME", junction.toUpperCase());
-			await ssh.connect("dev.coder.com", "echo dev-wins");
-			expect(await ssh.readUserConfig()).toContain('Include "~/');
-		});
+		// Without -F, Remote-SSH's default, Git ssh reads only ~/.ssh/config.
+		it.runIf(gitSsh).each<{ name: string; env: (home: string) => HomeEnv }>([
+			{ name: "HOME", env: (home) => ({ HOME: home }) },
+			{
+				name: "HOME in MSYS form",
+				env: (home) => ({
+					HOME: `/${home[0].toLowerCase()}${home.slice(2).replaceAll("\\", "/")}`,
+				}),
+			},
+			{ name: "HOMEDRIVE and HOMEPATH", env: homeDriveEnv },
+		])(
+			"Git for Windows ssh reads the include from its home set by $name",
+			async ({ env }) => {
+				const ssh = await createFixture("Code Dir");
+				const home = path.join(path.dirname(ssh.includeDir), "home");
+				stubHomeEnv(env(home));
+				await ssh.connect("dev.coder.com", "echo dev-wins");
+				const configPath = getGitSshConfigPath();
+				expect(configPath).toBe(path.join(home, ".ssh", "config"));
+				await new SshConfig(configPath!, createMockLogger()).updateInclude(
+					ssh.includeDir,
+					"dev.coder.com",
+				);
+				const { stdout } = await run(
+					gitSsh!,
+					["-G", "--", "coder-vscode.dev.coder.com--user--ws"],
+					{ timeout: 10_000 },
+				);
+				expect(stdout).toContain("proxycommand echo dev-wins");
+			},
+			TEST_TIMEOUT_MS,
+		);
 	},
 );

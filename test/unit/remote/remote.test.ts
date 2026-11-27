@@ -14,7 +14,7 @@ import {
 	Remote,
 	workspaceLabelSuffix,
 } from "@/remote/remote";
-import { getHomeSshConfigPath } from "@/remote/sshConfig";
+import { getGitSshConfigPath } from "@/remote/sshConfig";
 import { resolveSshProperties } from "@/remote/sshSupport";
 import { MementoManager } from "@/storage/mementoManager";
 import { PathResolver } from "@/storage/pathResolver";
@@ -85,7 +85,7 @@ vi.mock(import("@/remote/sshSupport"), async (importOriginal) => ({
 }));
 vi.mock(import("@/remote/sshConfig"), async (importOriginal) => ({
 	...(await importOriginal()),
-	getHomeSshConfigPath: vi.fn(),
+	getGitSshConfigPath: vi.fn(),
 }));
 
 const SAFE_HOSTNAME = "coder.example.com";
@@ -626,7 +626,7 @@ describe("Remote", () => {
 
 			/** Connects while Git for Windows ssh would read `homeConfig`. */
 			async function writeWithHomeConfig(configFile?: string) {
-				vi.mocked(getHomeSshConfigPath).mockReturnValue(homeConfig);
+				vi.mocked(getGitSshConfigPath).mockReturnValue(homeConfig);
 				const logger = createMockLogger();
 				const context = createRemote(logger);
 				context.config.set("remote.SSH.configFile", configFile);
