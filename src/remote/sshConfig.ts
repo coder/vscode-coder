@@ -126,14 +126,12 @@ export async function getMsysHomeDir(): Promise<string> {
 	if (process.platform !== "win32" || !raw) {
 		return profile;
 	}
-	const home = MSYS_DRIVE_REGEX.test(raw)
-		? path.win32.normalize(
-				raw.replace(
-					MSYS_DRIVE_REGEX,
-					(_, drive: string) => `${drive.toUpperCase()}:\\`,
-				),
-			)
-		: raw;
+	const home = path.win32.normalize(
+		raw.replace(
+			MSYS_DRIVE_REGEX,
+			(_, drive: string) => `${drive.toUpperCase()}:\\`,
+		),
+	);
 	const key = (dir: string) => path.resolve(dir).toLowerCase();
 	if (key(home) === key(profile)) {
 		return profile;

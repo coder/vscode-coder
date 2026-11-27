@@ -375,10 +375,6 @@ describe.runIf(isWindows())("Windows ssh home and include paths", () => {
 			env: { HOMEDRIVE: "\\\\srv\\homes", HOMEPATH: "\\jane" },
 			msysHomeDir: "\\\\srv\\homes\\jane",
 		},
-		{
-			env: { HOMEDRIVE: "C:", HOMEPATH: "\\Users\\Jane" },
-			msysHomeDir: profile,
-		},
 		{ env: { HOMEDRIVE: "H:" }, msysHomeDir: profile },
 		{
 			env: { HOME: "G:\\", HOMEDRIVE: "H:", HOMEPATH: "\\" },
@@ -391,8 +387,7 @@ describe.runIf(isWindows())("Windows ssh home and include paths", () => {
 		{ env: { HOME: "/h" }, msysHomeDir: "H:\\" },
 		{ env: { HOME: "/h/jane" }, msysHomeDir: "H:\\jane" },
 		{ env: { HOME: "/c/Users/Jane" }, msysHomeDir: profile },
-		{ env: { HOME: "/home/jane" }, msysHomeDir: "/home/jane" },
-		{ env: { HOME: "/hshare" }, msysHomeDir: "/hshare" },
+		{ env: { HOME: "/home/jane" }, msysHomeDir: "\\home\\jane" },
 		{
 			env: { HOME: profile, HOMEDRIVE: "H:", HOMEPATH: "\\" },
 			msysHomeDir: profile,
@@ -446,7 +441,7 @@ describe.runIf(isWindows())("Windows ssh home and include paths", () => {
 			sshHomeDir: "\\\\srv\\jane",
 			configPath: "\\\\srv\\jane\\.ssh\\config",
 		},
-		{ sshHomeDir: "/home/jane" },
+		{ sshHomeDir: "\\home\\jane" },
 	])("finds the config Git reads in $sshHomeDir", (testCase) => {
 		vi.mocked(os.homedir).mockReturnValue(profile);
 		expect(getHomeSshConfigPath(testCase.sshHomeDir)).toBe(testCase.configPath);

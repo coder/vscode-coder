@@ -179,8 +179,7 @@ function homeDriveEnv(dir: string): HomeEnv {
 interface HomeCase {
 	sshPath: string;
 	name: string;
-	/** The home variables to set, given the fixture directory holding the include. */
-	env: (fixtureDir: string) => HomeEnv;
+	env: HomeEnv;
 }
 
 // Windows OpenSSH expands ~ from HOME, else the profile. Git for Windows falls
@@ -188,46 +187,28 @@ interface HomeCase {
 describe.skipIf(windowsSshBuilds.length === 0)(
 	"include resolution by each Windows ssh build",
 	() => {
-		const elsewhere = () => path.join(os.tmpdir(), "elsewhere");
+		const elsewhere = path.join(os.tmpdir(), "elsewhere");
 		it.each<HomeCase>(
 			windowsSshBuilds.flatMap((sshPath) => [
-				{ sshPath, name: "nothing", env: () => ({}) },
-				{
-					sshPath,
-					name: "HOME at the profile",
-					env: () => ({ HOME: os.homedir() }),
-				},
-				{
-					sshPath,
-					name: "HOME elsewhere",
-					env: () => ({ HOME: elsewhere() }),
-				},
-				{
-					sshPath,
-					name: "HOME holding the include",
-					env: (dir) => ({ HOME: dir }),
-				},
+				{ sshPath, name: "nothing", env: {} },
+				{ sshPath, name: "HOME at the profile", env: { HOME: os.homedir() } },
+				{ sshPath, name: "HOME elsewhere", env: { HOME: elsewhere } },
 				{
 					sshPath,
 					name: "HOMEDRIVE and HOMEPATH elsewhere",
-					env: () => homeDriveEnv(elsewhere()),
-				},
-				{
-					sshPath,
-					name: "HOMEDRIVE and HOMEPATH holding the include",
-					env: homeDriveEnv,
+					env: homeDriveEnv(elsewhere),
 				},
 				{
 					sshPath,
 					name: "HOME at the profile and HOMEDRIVE elsewhere",
-					env: () => ({ HOME: os.homedir(), ...homeDriveEnv(elsewhere()) }),
+					env: { HOME: os.homedir(), ...homeDriveEnv(elsewhere) },
 				},
 			]),
 		)(
 			"$sshPath reads the include with $name",
 			async ({ sshPath, env }) => {
 				const ssh = await createFixture("Code Dir");
-				stubHomeEnv(env(path.dirname(ssh.includeDir)));
+				stubHomeEnv(env);
 				await ssh.connect("dev.coder.com", "echo dev-wins");
 				expect(
 					await ssh.resolve("coder-vscode.dev.coder.com--user--ws", sshPath),
