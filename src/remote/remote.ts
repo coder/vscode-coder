@@ -65,8 +65,7 @@ import {
 } from "./environment";
 import { migrateAuthToSecretsStorage } from "./migration";
 import {
-	getHomeSshConfigPath,
-	getMsysHomeDir,
+	getGitSshConfigPath,
 	SshConfig,
 	type SshValues,
 	mergeSshConfigValues,
@@ -996,18 +995,19 @@ export class Remote {
 		const includeDir = this.pathResolver.getSshConfigDir();
 		await sshConfig.updateInclude(includeDir, safeHostname);
 		// Without -F, Git for Windows ssh reads its own home's config, which a
-		// domain home folder moves off the profile even when HOME is unset.
-		const homeConfigPath = getHomeSshConfigPath(await getMsysHomeDir());
-		if (!configFile && homeConfigPath) {
+		// domain home folder moves off the profile even when HOME is unset. When
+		// it is the profile's config, the include is already there: no write.
+		const gitConfigPath = getGitSshConfigPath();
+		if (!configFile && gitConfigPath) {
 			try {
-				await new SshConfig(homeConfigPath, this.logger).updateInclude(
+				await new SshConfig(gitConfigPath, this.logger).updateInclude(
 					includeDir,
 					safeHostname,
 				);
 			} catch (error) {
 				this.logger.warn(
 					"Failed to include the Coder SSH config in",
-					homeConfigPath,
+					gitConfigPath,
 					error,
 				);
 			}

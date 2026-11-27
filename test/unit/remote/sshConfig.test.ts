@@ -14,8 +14,7 @@ import {
 
 import {
 	countSubstring,
-	getHomeSshConfigPath,
-	getMsysHomeDir,
+	getGitSshConfigPath,
 	mergeSshConfigValues,
 	parseCoderSshOptions,
 	parseSshConfig,
@@ -360,47 +359,47 @@ describe("SshConfig.updateInclude", () => {
 	});
 });
 
+/** Sets exactly the given home variables for the rest of the test. */
+function stubHomeEnv(
+	env: Partial<Record<"HOME" | "HOMEDRIVE" | "HOMEPATH", string>>,
+): void {
+	for (const name of ["HOME", "HOMEDRIVE", "HOMEPATH"] as const) {
+		vi.stubEnv(name, env[name]);
+	}
+	onTestFinished(() => {
+		vi.unstubAllEnvs();
+	});
+}
+
 describe.runIf(isWindows())("Windows ssh home and include paths", () => {
-	const profile = "C:\\Users\\Jane";
 	const appData = "Users/Jane/AppData/Roaming/coder.coder-remote/ssh";
 
-	interface MsysHomeCase {
+	interface GitConfigCase {
 		env: Partial<Record<"HOME" | "HOMEDRIVE" | "HOMEPATH", string>>;
-		msysHomeDir: string;
+		configPath?: string;
 	}
-	it.each<MsysHomeCase>([
-		{ env: {}, msysHomeDir: profile },
-		{ env: { HOMEDRIVE: "H:", HOMEPATH: "\\" }, msysHomeDir: "H:\\" },
+	it.each<GitConfigCase>([
+		{ env: {} },
+		{ env: { HOMEDRIVE: "H:" } },
+		{
+			env: { HOMEDRIVE: "H:", HOMEPATH: "\\" },
+			configPath: "H:\\.ssh\\config",
+		},
 		{
 			env: { HOMEDRIVE: "\\\\srv\\homes", HOMEPATH: "\\jane" },
-			msysHomeDir: "\\\\srv\\homes\\jane",
+			configPath: "\\\\srv\\homes\\jane\\.ssh\\config",
 		},
-		{ env: { HOMEDRIVE: "H:" }, msysHomeDir: profile },
 		{
 			env: { HOME: "G:\\", HOMEDRIVE: "H:", HOMEPATH: "\\" },
-			msysHomeDir: "G:\\",
+			configPath: "G:\\.ssh\\config",
 		},
-		{
-			env: { HOME: "c:\\users\\JANE\\" },
-			msysHomeDir: profile,
-		},
-		{ env: { HOME: "/h" }, msysHomeDir: "H:\\" },
-		{ env: { HOME: "/h/jane" }, msysHomeDir: "H:\\jane" },
-		{ env: { HOME: "/c/Users/Jane" }, msysHomeDir: profile },
-		{ env: { HOME: "/home/jane" }, msysHomeDir: "\\home\\jane" },
-		{
-			env: { HOME: profile, HOMEDRIVE: "H:", HOMEPATH: "\\" },
-			msysHomeDir: profile,
-		},
-	])("Git for Windows ssh uses $msysHomeDir with $env", async (testCase) => {
-		vi.mocked(os.homedir).mockReturnValue(profile);
-		for (const name of ["HOME", "HOMEDRIVE", "HOMEPATH"] as const) {
-			vi.stubEnv(name, testCase.env[name]);
-		}
-		onTestFinished(() => {
-			vi.unstubAllEnvs();
-		});
-		expect(await getMsysHomeDir()).toBe(testCase.msysHomeDir);
+		{ env: { HOME: "/h" }, configPath: "H:\\.ssh\\config" },
+		{ env: { HOME: "/h/jane" }, configPath: "H:\\jane\\.ssh\\config" },
+		{ env: { HOME: "/home/jane" } },
+		{ env: { HOME: "relative" } },
+	])("Git for Windows ssh reads $configPath with $env", (testCase) => {
+		stubHomeEnv(testCase.env);
+		expect(getGitSshConfigPath()).toBe(testCase.configPath);
 	});
 
 	interface WindowsIncludeCase {
@@ -425,42 +424,15 @@ describe.runIf(isWindows())("Windows ssh home and include paths", () => {
 			included: ["//srv/share/ssh"],
 		},
 	])("$name", async ({ dir, included }) => {
-		vi.mocked(os.homedir).mockReturnValue(profile);
 		await updateInclude("", dir);
 		expect(await readConfig()).toBe(renderIncludeBlock(...included));
 	});
-
-	interface HomeSshConfigCase {
-		sshHomeDir: string;
-		configPath?: string;
-	}
-	it.each<HomeSshConfigCase>([
-		{ sshHomeDir: profile },
-		{ sshHomeDir: "H:\\", configPath: "H:\\.ssh\\config" },
-		{
-			sshHomeDir: "\\\\srv\\jane",
-			configPath: "\\\\srv\\jane\\.ssh\\config",
-		},
-		{ sshHomeDir: "\\home\\jane" },
-	])("finds the config Git reads in $sshHomeDir", (testCase) => {
-		vi.mocked(os.homedir).mockReturnValue(profile);
-		expect(getHomeSshConfigPath(testCase.sshHomeDir)).toBe(testCase.configPath);
-	});
 });
 
-it.skipIf(isWindows())(
-	"uses the home directory as Git's home off Windows",
-	async () => {
-		vi.stubEnv("HOME", "/elsewhere");
-		vi.stubEnv("HOMEDRIVE", "H:");
-		vi.stubEnv("HOMEPATH", "/");
-		onTestFinished(() => {
-			vi.unstubAllEnvs();
-		});
-		expect(await getMsysHomeDir()).toBe(homeDir);
-		expect(getHomeSshConfigPath(homeDir)).toBeUndefined();
-	},
-);
+it.skipIf(isWindows())("reads no extra Git config off Windows", () => {
+	stubHomeEnv({ HOME: "/elsewhere", HOMEDRIVE: "H:", HOMEPATH: "/" });
+	expect(getGitSshConfigPath()).toBeUndefined();
+});
 
 describe("persistence", () => {
 	interface FileModeCase {

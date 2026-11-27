@@ -4,11 +4,10 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-	getHomeSshConfigPath,
-	getMsysHomeDir,
+	getGitSshConfigPath,
 	SshConfig,
 	type SshValues,
 } from "@/remote/sshConfig";
@@ -234,7 +233,7 @@ describe.skipIf(windowsSshBuilds.length === 0)(
 				const home = path.join(path.dirname(ssh.includeDir), "home");
 				stubHomeEnv(env(home));
 				await ssh.connect("dev.coder.com", "echo dev-wins");
-				const configPath = getHomeSshConfigPath(await getMsysHomeDir());
+				const configPath = getGitSshConfigPath();
 				expect(configPath).toBe(path.join(home, ".ssh", "config"));
 				await new SshConfig(configPath!, createMockLogger()).updateInclude(
 					ssh.includeDir,
@@ -249,19 +248,5 @@ describe.skipIf(windowsSshBuilds.length === 0)(
 			},
 			TEST_TIMEOUT_MS,
 		);
-
-		it("treats HOME reaching the profile through a junction as the profile", async () => {
-			// A unique parent, so a killed run never blocks the next one.
-			const parent = await fs.mkdtemp(path.join(os.tmpdir(), "coder-home-"));
-			const junction = path.join(parent, "home");
-			await fs.symlink(os.homedir(), junction, "junction");
-			// rmdir removes the junction itself, never the profile behind it.
-			onTestFinished(async () => {
-				await fs.rmdir(junction);
-				await fs.rmdir(parent);
-			});
-			vi.stubEnv("HOME", junction.toUpperCase());
-			expect(getHomeSshConfigPath(await getMsysHomeDir())).toBeUndefined();
-		});
 	},
 );

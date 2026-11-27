@@ -2,7 +2,6 @@ import {
 	mkdir,
 	readFile,
 	readdir,
-	realpath,
 	rename,
 	stat,
 	unlink,
@@ -112,52 +111,27 @@ const INCLUDE_MARKERS: BlockMarkers = {
 };
 
 /**
- * The home Git for Windows ssh expands `~` from and reads `.ssh/config` in:
- * `HOME`, else `HOMEDRIVE` and `HOMEPATH`, which a domain home folder sets,
- * else the profile. This is the `env` scheme of its `db_home` default. An MSYS
- * `HOME` like `/h` is read as `H:\`, where Git mounts drives. The profile
- * under another spelling is the profile; off Windows, `os.homedir()`.
+ * The config Git for Windows ssh reads without `-F` when its home is set by
+ * the environment: `HOME`, else `HOMEDRIVE` and `HOMEPATH`, which a domain
+ * home folder sets (the `env` scheme of its `db_home` default). An MSYS `HOME`
+ * like `/h` is `H:\`, where Git mounts drives. Undefined when Git falls back to
+ * the profile, off Windows, and for MSYS homes like `/home/jane` under Git's
+ * install directory. May be the profile's config under another spelling.
  */
-export async function getMsysHomeDir(): Promise<string> {
+export function getGitSshConfigPath(): string | undefined {
 	const { HOME, HOMEDRIVE, HOMEPATH } = process.env;
-	const raw =
+	const home =
 		HOME || (HOMEDRIVE && HOMEPATH ? HOMEDRIVE + HOMEPATH : undefined);
-	const profile = os.homedir();
-	if (process.platform !== "win32" || !raw) {
-		return profile;
-	}
-	const home = path.win32.normalize(
-		raw.replace(
-			MSYS_DRIVE_REGEX,
-			(_, drive: string) => `${drive.toUpperCase()}:\\`,
-		),
-	);
-	const key = (dir: string) => path.resolve(dir).toLowerCase();
-	if (key(home) === key(profile)) {
-		return profile;
-	}
-	// The real path sees through 8.3 names, junctions and subst drives.
-	const realKey = (dir: string) => realpath(dir).then(key, () => key(dir));
-	const [realHome, realProfile] = await Promise.all([
-		realKey(home),
-		realKey(profile),
-	]);
-	return realHome === realProfile ? profile : home;
-}
-
-/**
- * The config Git for Windows ssh reads without `-F`, given its home from
- * `getMsysHomeDir`. Undefined for the profile, which is already included, and
- * for MSYS homes like `/home/jane`, under Git's own install directory.
- */
-export function getHomeSshConfigPath(sshHomeDir: string): string | undefined {
-	if (
-		sshHomeDir === os.homedir() ||
-		!DRIVE_OR_UNC_PATH_REGEX.test(sshHomeDir)
-	) {
+	if (process.platform !== "win32" || !home) {
 		return undefined;
 	}
-	return path.join(sshHomeDir, ".ssh", "config");
+	const windowsHome = home.replace(
+		MSYS_DRIVE_REGEX,
+		(_, drive: string) => `${drive.toUpperCase()}:\\`,
+	);
+	return DRIVE_OR_UNC_PATH_REGEX.test(windowsHome)
+		? path.win32.join(windowsHome, ".ssh", "config")
+		: undefined;
 }
 
 /** `C:/Users/...` as MSYS builds such as Git for Windows spell it: `/c/Users/...`. */
