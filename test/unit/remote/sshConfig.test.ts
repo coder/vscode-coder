@@ -16,7 +16,6 @@ import {
 	countSubstring,
 	getHomeSshConfigPath,
 	getMsysHomeDir,
-	getSshHomeDir,
 	mergeSshConfigValues,
 	parseCoderSshOptions,
 	parseSshConfig,
@@ -136,19 +135,9 @@ async function updateDeployment(
 async function updateInclude(
 	contents: string,
 	dir: string = includeDir,
-	sshHomeDir: string = homeDir,
 ): Promise<void> {
 	const sshConfig = await loadSshConfig(contents);
-	await sshConfig.updateInclude(dir, sshHomeDir, hostname);
-}
-
-/** ssh's home while `HOME` is stubbed for the rest of the test. */
-function getSshHomeDirWith(home: string | undefined): Promise<string> {
-	vi.stubEnv("HOME", home);
-	onTestFinished(() => {
-		vi.unstubAllEnvs();
-	});
-	return getSshHomeDir();
+	await sshConfig.updateInclude(dir, hostname);
 }
 
 beforeEach(() => {
@@ -342,21 +331,21 @@ describe("SshConfig.updateInclude", () => {
 		},
 	])("escapes $dir", async ({ dir, escaped }) => {
 		await updateInclude("", dir);
-		expect(await readConfig()).toContain(`Include "${escaped}/*.conf"`);
+		expect(await readConfig()).toContain(`${escaped}/*.conf"`);
 	});
 
 	// A tilde swallows home-path quirks that ssh could not read back otherwise.
-	it("writes a home-relative include path with a tilde", async () => {
-		const home = "/home/we[i]rd %user";
-		await updateInclude(
-			"",
-			`${home}/.local/share/coder.coder-remote/ssh`,
-			home,
-		);
-		expect(await readConfig()).toContain(
-			'Include "~/.local/share/coder.coder-remote/ssh/*.conf"',
-		);
-	});
+	it.skipIf(isWindows())(
+		"writes a home-relative include path with a tilde",
+		async () => {
+			const home = "/home/we[i]rd %user";
+			vi.mocked(os.homedir).mockReturnValue(home);
+			await updateInclude("", `${home}/.local/share/coder.coder-remote/ssh`);
+			expect(await readConfig()).toContain(
+				'Include "~/.local/share/coder.coder-remote/ssh/*.conf"',
+			);
+		},
+	);
 
 	type InvalidIncludeDir = string;
 	it.each<InvalidIncludeDir>([
@@ -374,19 +363,6 @@ describe("SshConfig.updateInclude", () => {
 describe.runIf(isWindows())("Windows ssh home and include paths", () => {
 	const profile = "C:\\Users\\Jane";
 	const appData = "Users/Jane/AppData/Roaming/coder.coder-remote/ssh";
-
-	interface SshHomeCase {
-		home?: string;
-		sshHomeDir: string;
-	}
-	it.each<SshHomeCase>([
-		{ sshHomeDir: profile },
-		{ home: "c:\\users\\JANE\\", sshHomeDir: profile },
-		{ home: "H:\\", sshHomeDir: "H:\\" },
-	])("expands ~ from $sshHomeDir with HOME $home", async (testCase) => {
-		vi.mocked(os.homedir).mockReturnValue(profile);
-		expect(await getSshHomeDirWith(testCase.home)).toBe(testCase.sshHomeDir);
-	});
 
 	interface MsysHomeCase {
 		env: Partial<Record<"HOME" | "HOMEDRIVE" | "HOMEPATH", string>>;
@@ -409,6 +385,10 @@ describe.runIf(isWindows())("Windows ssh home and include paths", () => {
 			msysHomeDir: "G:\\",
 		},
 		{
+			env: { HOME: "c:\\users\\JANE\\" },
+			msysHomeDir: profile,
+		},
+		{
 			env: { HOME: profile, HOMEDRIVE: "H:", HOMEPATH: "\\" },
 			msysHomeDir: profile,
 		},
@@ -425,47 +405,28 @@ describe.runIf(isWindows())("Windows ssh home and include paths", () => {
 
 	interface WindowsIncludeCase {
 		name: string;
-		sshHomeDir: string;
 		dir: string;
 		included: string[];
 	}
 	it.each<WindowsIncludeCase>([
 		{
-			name: "writes ~ and both spellings under the profile",
-			sshHomeDir: profile,
+			name: "spells a drive path for Windows OpenSSH and Git",
 			dir: `C:\\${appData}`,
-			included: [
-				"~/AppData/Roaming/coder.coder-remote/ssh",
-				`C:/${appData}`,
-				`/c/${appData}`,
-			],
-		},
-		{
-			name: "writes ~ and both spellings under HOME",
-			sshHomeDir: "H:\\",
-			dir: "H:\\coder\\ssh",
-			included: ["~/coder/ssh", "H:/coder/ssh", "/h/coder/ssh"],
-		},
-		{
-			name: "spells the path both ways outside ssh's home",
-			sshHomeDir: "H:\\",
-			dir: `C:\\${appData}`,
-			included: [`C:/${appData}`, `/c/${appData}`],
+			included: [`/C:/${appData}`, `/c/${appData}`],
 		},
 		{
 			name: "escapes both spellings",
-			sshHomeDir: "/c/hshare",
 			dir: "C:\\Users\\J%d [x]\\ssh",
-			included: ["C:/Users/J?d [[]x]/ssh", "/c/Users/J?d [[]x]/ssh"],
+			included: ["/C:/Users/J?d [[]x]/ssh", "/c/Users/J?d [[]x]/ssh"],
 		},
 		{
 			name: "writes a UNC path once",
-			sshHomeDir: "H:\\",
 			dir: "\\\\srv\\share\\ssh",
 			included: ["//srv/share/ssh"],
 		},
-	])("$name", async ({ sshHomeDir, dir, included }) => {
-		await updateInclude("", dir, sshHomeDir);
+	])("$name", async ({ dir, included }) => {
+		vi.mocked(os.homedir).mockReturnValue(profile);
+		await updateInclude("", dir);
 		expect(await readConfig()).toBe(renderIncludeBlock(...included));
 	});
 
@@ -488,11 +449,14 @@ describe.runIf(isWindows())("Windows ssh home and include paths", () => {
 });
 
 it.skipIf(isWindows())(
-	"expands ~ from the home directory off Windows",
+	"uses the home directory as Git's home off Windows",
 	async () => {
-		expect(await getSshHomeDirWith("/elsewhere")).toBe(homeDir);
+		vi.stubEnv("HOME", "/elsewhere");
 		vi.stubEnv("HOMEDRIVE", "H:");
 		vi.stubEnv("HOMEPATH", "/");
+		onTestFinished(() => {
+			vi.unstubAllEnvs();
+		});
 		expect(await getMsysHomeDir()).toBe(homeDir);
 		expect(getHomeSshConfigPath(homeDir)).toBeUndefined();
 	},
@@ -529,7 +493,7 @@ describe("persistence", () => {
 			if (stage === "include read") {
 				vi.spyOn(fsPromises, "readFile").mockRejectedValueOnce(denied);
 				await expect(
-					sshConfig.updateInclude(includeDir, homeDir, hostname),
+					sshConfig.updateInclude(includeDir, hostname),
 				).rejects.toThrow("denied");
 				return;
 			}
@@ -581,7 +545,7 @@ describe("persistence", () => {
 		// The include update reads right before merging, so it picks up content
 		// written after load().
 		vol.writeFileSync(sshFilePath, "Host concurrent");
-		await sshConfig.updateInclude(includeDir, homeDir, hostname);
+		await sshConfig.updateInclude(includeDir, hostname);
 		expect(await readConfig()).toBe(`${includeBlock}\n\nHost concurrent`);
 	});
 
@@ -589,7 +553,7 @@ describe("persistence", () => {
 		const sshConfig = await loadSshConfig(`${includeBlock}\n\nHost *`);
 		const writeFileSpy = vi.spyOn(fsPromises, "writeFile");
 		const renameSpy = vi.spyOn(fsPromises, "rename");
-		await sshConfig.updateInclude(includeDir, homeDir, hostname);
+		await sshConfig.updateInclude(includeDir, hostname);
 		expect(writeFileSpy).not.toHaveBeenCalled();
 		expect(renameSpy).not.toHaveBeenCalled();
 	});

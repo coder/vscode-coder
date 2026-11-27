@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
 	getHomeSshConfigPath,
 	getMsysHomeDir,
-	getSshHomeDir,
 	SshConfig,
 	type SshValues,
 } from "@/remote/sshConfig";
@@ -51,7 +50,7 @@ afterEach(async () => {
 /** Real files and the real ssh binary; only the editor plumbing is absent. */
 async function createFixture(includeDirName: string) {
 	// Windows tmpdir paths use 8.3 short names ssh cannot glob; the product
-	// writes under the home directory anyway, emitted as a ~/... include.
+	// writes under the home directory anyway.
 	const root = process.platform === "win32" ? os.homedir() : os.tmpdir();
 	tempDir = await fs.mkdtemp(path.join(root, "coder-ssh-test-"));
 	const logger = createMockLogger();
@@ -69,11 +68,7 @@ async function createFixture(includeDirName: string) {
 			await coderConfig.update(sshValues(hostname, proxyCommand, editor));
 			const userConfig = new SshConfig(userConfigPath, logger);
 			await userConfig.load();
-			await userConfig.updateInclude(
-				includeDir,
-				await getSshHomeDir(),
-				hostname,
-			);
+			await userConfig.updateInclude(includeDir, hostname);
 		},
 		async seedUserConfig(contents: string) {
 			await fs.writeFile(userConfigPath, contents);
@@ -81,7 +76,6 @@ async function createFixture(includeDirName: string) {
 		async appendUserConfig(contents: string) {
 			await fs.appendFile(userConfigPath, contents);
 		},
-		readUserConfig: () => fs.readFile(userConfigPath, "utf8"),
 		/** The host's effective options according to the real ssh. */
 		async resolve(host: string, ssh = "ssh") {
 			const { stdout } = await run(ssh, ["-G", "-F", userConfigPath, host], {
@@ -257,7 +251,6 @@ describe.skipIf(windowsSshBuilds.length === 0)(
 				expect(configPath).toBe(path.join(home, ".ssh", "config"));
 				await new SshConfig(configPath!, createMockLogger()).updateInclude(
 					ssh.includeDir,
-					await getSshHomeDir(),
 					"dev.coder.com",
 				);
 				const { stdout } = await run(
@@ -270,8 +263,7 @@ describe.skipIf(windowsSshBuilds.length === 0)(
 			TEST_TIMEOUT_MS,
 		);
 
-		it("keeps ~ when HOME reaches the profile through a junction", async () => {
-			const ssh = await createFixture("Code Dir");
+		it("treats HOME reaching the profile through a junction as the profile", async () => {
 			// A unique parent, so a killed run never blocks the next one.
 			const parent = await fs.mkdtemp(path.join(os.tmpdir(), "coder-home-"));
 			const junction = path.join(parent, "home");
@@ -282,8 +274,6 @@ describe.skipIf(windowsSshBuilds.length === 0)(
 				await fs.rmdir(parent);
 			});
 			vi.stubEnv("HOME", junction.toUpperCase());
-			await ssh.connect("dev.coder.com", "echo dev-wins");
-			expect(await ssh.readUserConfig()).toContain('Include "~/');
 			expect(getHomeSshConfigPath(await getMsysHomeDir())).toBeUndefined();
 		});
 	},
