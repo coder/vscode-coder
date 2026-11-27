@@ -66,6 +66,7 @@ import {
 import { migrateAuthToSecretsStorage } from "./migration";
 import {
 	getHomeSshConfigPath,
+	getMsysHomeDir,
 	getSshHomeDir,
 	SshConfig,
 	type SshValues,
@@ -996,8 +997,9 @@ export class Remote {
 		const includeDir = this.pathResolver.getSshConfigDir();
 		const sshHomeDir = await getSshHomeDir();
 		await sshConfig.updateInclude(includeDir, sshHomeDir, safeHostname);
-		// Without -F, Git for Windows ssh reads HOME's config, not the profile's.
-		const homeConfigPath = getHomeSshConfigPath(sshHomeDir);
+		// Without -F, Git for Windows ssh reads its own home's config, which a
+		// domain home folder moves off the profile even when HOME is unset.
+		const homeConfigPath = getHomeSshConfigPath(await getMsysHomeDir());
 		if (!configFile && homeConfigPath) {
 			try {
 				await new SshConfig(homeConfigPath, this.logger).updateInclude(

@@ -5,6 +5,13 @@
      from published versions since it shows up in the VS Code extension changelog
      tab and is confusing to users. Add it back between releases if needed. -->
 
+## Unreleased
+
+### Fixed
+
+- On Windows, workspaces connect again with Git for Windows ssh when your home
+  folder is a network drive such as `H:\` and `HOME` is not set.
+
 ## [v1.18.3](https://github.com/coder/vscode-coder/releases/tag/v1.18.3) 2026-11-25
 
 > **Note:** The Coder sidebar has a new Workspaces panel, and some SSH options

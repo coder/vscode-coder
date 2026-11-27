@@ -109,12 +109,27 @@ const INCLUDE_MARKERS: BlockMarkers = {
 };
 
 /**
- * The directory ssh expands `~` from: `HOME` on Windows, where every build
- * reads it, unless it is the profile under another spelling. Otherwise
- * exactly `os.homedir()`.
+ * The directory Windows OpenSSH expands `~` from: `HOME` on Windows, unless it
+ * is the profile under another spelling. Otherwise exactly `os.homedir()`.
  */
 export async function getSshHomeDir(): Promise<string> {
-	const home = process.env.HOME;
+	return resolveHomeDir(process.env.HOME);
+}
+
+/**
+ * The home Git for Windows ssh expands `~` from and reads `.ssh/config` in:
+ * `HOME`, else `HOMEDRIVE` and `HOMEPATH`, which a domain home folder sets,
+ * else the profile. This is the `env` scheme of its `db_home` default.
+ */
+export async function getMsysHomeDir(): Promise<string> {
+	const { HOME, HOMEDRIVE, HOMEPATH } = process.env;
+	return resolveHomeDir(
+		HOME || (HOMEDRIVE && HOMEPATH ? HOMEDRIVE + HOMEPATH : undefined),
+	);
+}
+
+/** `home` on Windows, or `os.homedir()` when it is unset or the same directory. */
+async function resolveHomeDir(home: string | undefined): Promise<string> {
 	const profile = os.homedir();
 	if (process.platform !== "win32" || !home) {
 		return profile;
@@ -133,9 +148,9 @@ export async function getSshHomeDir(): Promise<string> {
 }
 
 /**
- * The config Git for Windows ssh reads without `-F` when ssh's home is not
- * the profile. Undefined for the profile, which is already included, and for
- * MSYS homes like `/c/home`, which only MSYS can map to a Windows path.
+ * The config Git for Windows ssh reads without `-F`, given its home from
+ * `getMsysHomeDir`. Undefined for the profile, which is already included, and
+ * for MSYS homes like `/c/home`, which only MSYS can map to a Windows path.
  */
 export function getHomeSshConfigPath(sshHomeDir: string): string | undefined {
 	if (
@@ -508,19 +523,22 @@ export class SshConfig {
 	}
 
 	/**
-	 * `~/...` under ssh's home. Otherwise the absolute path, which Windows gets
-	 * in both builds' spellings since each skips the one it cannot match.
+	 * `~/...` under Windows OpenSSH's home, which older builds need since they
+	 * read no absolute path. Windows also gets the absolute path in both builds'
+	 * spellings, since Git for Windows can expand `~` from another home and each
+	 * build skips the spelling it cannot match.
 	 */
 	private includeArguments(includeDir: string, sshHomeDir: string): string[] {
 		const relative = path.relative(sshHomeDir, includeDir);
-		if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
-			return [`~/${relative}`];
-		}
+		const home =
+			relative && !relative.startsWith("..") && !path.isAbsolute(relative)
+				? [`~/${relative}`]
+				: [];
 		if (process.platform !== "win32") {
-			return [includeDir];
+			return home.length > 0 ? home : [includeDir];
 		}
 		const dir = includeDir.replaceAll("\\", "/");
-		return [...new Set([dir, toMsysPath(dir)])];
+		return [...new Set([...home, dir, toMsysPath(dir)])];
 	}
 
 	private escapeIncludePath(argument: string): string {

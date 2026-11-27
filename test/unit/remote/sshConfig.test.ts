@@ -15,6 +15,7 @@ import {
 import {
 	countSubstring,
 	getHomeSshConfigPath,
+	getMsysHomeDir,
 	getSshHomeDir,
 	mergeSshConfigValues,
 	parseCoderSshOptions,
@@ -387,6 +388,41 @@ describe.runIf(isWindows())("Windows ssh home and include paths", () => {
 		expect(await getSshHomeDirWith(testCase.home)).toBe(testCase.sshHomeDir);
 	});
 
+	interface MsysHomeCase {
+		env: Partial<Record<"HOME" | "HOMEDRIVE" | "HOMEPATH", string>>;
+		msysHomeDir: string;
+	}
+	it.each<MsysHomeCase>([
+		{ env: {}, msysHomeDir: profile },
+		{ env: { HOMEDRIVE: "H:", HOMEPATH: "\\" }, msysHomeDir: "H:\\" },
+		{
+			env: { HOMEDRIVE: "\\\\srv\\homes", HOMEPATH: "\\jane" },
+			msysHomeDir: "\\\\srv\\homes\\jane",
+		},
+		{
+			env: { HOMEDRIVE: "C:", HOMEPATH: "\\Users\\Jane" },
+			msysHomeDir: profile,
+		},
+		{ env: { HOMEDRIVE: "H:" }, msysHomeDir: profile },
+		{
+			env: { HOME: "G:\\", HOMEDRIVE: "H:", HOMEPATH: "\\" },
+			msysHomeDir: "G:\\",
+		},
+		{
+			env: { HOME: profile, HOMEDRIVE: "H:", HOMEPATH: "\\" },
+			msysHomeDir: profile,
+		},
+	])("Git for Windows ssh uses $msysHomeDir with $env", async (testCase) => {
+		vi.mocked(os.homedir).mockReturnValue(profile);
+		for (const name of ["HOME", "HOMEDRIVE", "HOMEPATH"] as const) {
+			vi.stubEnv(name, testCase.env[name]);
+		}
+		onTestFinished(() => {
+			vi.unstubAllEnvs();
+		});
+		expect(await getMsysHomeDir()).toBe(testCase.msysHomeDir);
+	});
+
 	interface WindowsIncludeCase {
 		name: string;
 		sshHomeDir: string;
@@ -395,16 +431,20 @@ describe.runIf(isWindows())("Windows ssh home and include paths", () => {
 	}
 	it.each<WindowsIncludeCase>([
 		{
-			name: "writes ~ under the profile",
+			name: "writes ~ and both spellings under the profile",
 			sshHomeDir: profile,
 			dir: `C:\\${appData}`,
-			included: ["~/AppData/Roaming/coder.coder-remote/ssh"],
+			included: [
+				"~/AppData/Roaming/coder.coder-remote/ssh",
+				`C:/${appData}`,
+				`/c/${appData}`,
+			],
 		},
 		{
-			name: "writes ~ under HOME",
+			name: "writes ~ and both spellings under HOME",
 			sshHomeDir: "H:\\",
 			dir: "H:\\coder\\ssh",
-			included: ["~/coder/ssh"],
+			included: ["~/coder/ssh", "H:/coder/ssh", "/h/coder/ssh"],
 		},
 		{
 			name: "spells the path both ways outside ssh's home",
@@ -451,6 +491,9 @@ it.skipIf(isWindows())(
 	"expands ~ from the home directory off Windows",
 	async () => {
 		expect(await getSshHomeDirWith("/elsewhere")).toBe(homeDir);
+		vi.stubEnv("HOMEDRIVE", "H:");
+		vi.stubEnv("HOMEPATH", "/");
+		expect(await getMsysHomeDir()).toBe(homeDir);
 		expect(getHomeSshConfigPath(homeDir)).toBeUndefined();
 	},
 );
